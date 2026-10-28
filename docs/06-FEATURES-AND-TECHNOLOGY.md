@@ -10,7 +10,7 @@ L large.
 |---|---|---|---|
 | M1 | **Foundations** | Ops roles and ops owner per client; the Ops inbox; one timers engine for every clock (working days, Colombo time, holidays); messages drafted → approved → sent through the safety checks; the connection to TA's API; audit log; on/off switches | L |
 | M2 | **Leads** | New lead form and website leads; duplicate-client check; banking and finance decline; intro call booking and rebook (3 emails then close); package, role and brief saved | M |
-| M3 | **Client agreement (ESA)** | Draft from the template (blank fields block sending); send within 2 hours; chase plan with approval; Rushda call task; negotiation and resend; signed copy, team notice, Director countersign in 1 day; declined after 2 weeks | L |
+| M3 | **Client agreement (ESA)** | Draft from the template (blank fields block sending); send within 2 hours; chase plan with approval; Rushda call task; negotiation and resend; signed copy, team notice, Director countersign in 1 day; declined 14 calendar days after sending | L |
 | M4 | **Requirement and hand-over** | Requirement meeting booking and rebook; requirement form; impractical role reply and invite-back reminder; the opening created in TA with primary TA and 100% day | M |
 | M5 | **Adverts** | TopJobs requests, flyer, live and closed dates (2 weeks), cost; Talent Pulse weekly list and tracked links; CVs filed to the opening with their source | M |
 | M6 | **Client CV sets and messages** | Send client sets (at least 5 CVs) with approval; receipt date; 7-working-day ownership countdown; claimed-CV drop; client group post text | L |
@@ -24,7 +24,11 @@ L large.
 Plus, in the TA repository: the **TA API for Ops** (endpoints, events, Ops key) and
 the small TA rule changes listed in [03](03-CONNECTION-TO-TA.md), section 5.
 
-## Technology for each need
+## Technology for each need (proposed)
+
+These are **proposals**, mostly the same tools as the TA System. They are decided after the
+whole flow is agreed (order of work in [01](01-STARTUP-PLAN.md)); record each decision in
+[09](09-DECISIONS-AND-QUESTIONS.md).
 
 | Need | Technology | Reused from TA | Outside need |
 |---|---|---|---|
