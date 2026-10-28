@@ -18,7 +18,7 @@ of each step are agreed feature by feature in Phase 0, step 3.
 
 ### 9:00 · Open the Ops inbox
 
-The first screen is the **Ops inbox**: everything that needs this person today, in
+The first screen is the **Ops inbox** (it replaces the notebook, the sheets and the WhatsApp scroll): everything that needs this person today, in
 one list, most urgent first.
 
 - **Waiting for my approval:** messages the system has already drafted. For
@@ -30,7 +30,8 @@ one list, most urgent first.
   intro call.
 
 **How it helps:** nothing depends on memory. The system watches every timer and
-puts the work in front of the right person.
+puts the work in front of the right person. The flow behind each item is in
+[04](04-OPS-FLOW.md).
 
 ### 9:30 · Approve and send
 
@@ -62,7 +63,7 @@ The system reads the client's replies and suggests what each one means
 ("shortlisted: candidates A and B; rejected: candidate C, salary too high"). The ops owner
 confirms, and the decision goes to the TA System straight away, so the TA sees it
 on the opening without a phone call. If the client now has 5 shortlisted, the TA is
-told to hold and monitor.
+told to hold and monitor; if 3 or fewer are pending, the TA gets an add-on alert.
 
 ### 14:00 · Book an interview
 

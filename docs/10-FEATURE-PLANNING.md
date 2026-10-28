@@ -4,6 +4,12 @@ The Ops work is big, so we plan it **one feature at a time** with the owner and 
 Ops team, and only then build it. Each feature gets its own plan file in
 `docs/features/`, written from the template below.
 
+## Before any feature: agree the whole flow
+
+Feature planning starts only after the owner has walked through the whole flow in
+[04](04-OPS-FLOW.md) (phases A to I) and the technology is decided ([06](06-FEATURES-AND-TECHNOLOGY.md)).
+Each feature plan then takes its part of the agreed flow.
+
 ## The order
 
 The order follows what each feature depends on. Foundations first, because every

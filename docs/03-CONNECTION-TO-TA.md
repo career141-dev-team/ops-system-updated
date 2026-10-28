@@ -32,6 +32,27 @@ owner to change it.
 **No copies:** Ops stores TA's IDs (for example "TA opening 123") and asks TA for
 the details when it needs them.
 
+⚪ **Open (question 5 in [09](09-DECISIONS-AND-QUESTIONS.md)):** TA leads and directors can
+still edit clients inside TA today. If both systems edit the same client, changes can
+clash. Either TA's client editing stays (and Ops reads the latest before every change),
+or client editing moves to Ops only.
+
+## 1b. The 26 connection points, by phase of the flow
+
+| Phase ([04](04-OPS-FLOW.md)) | Points | What crosses between the systems |
+|---|---|---|
+| A. Lead and client check | CP-01, CP-02 | Staff list and roles; client find, create, link; ops owner |
+| B. Intro call and ESA | CP-03 | ESA status and fee terms to TA (TA copies them at Place) |
+| C. Requirement → opening | CP-04, CP-05 | Opening created from the requirement; primary TA and 100% day; opening state Ops watches |
+| D. Adverts, CVs, Director set | CP-06, CP-07, CP-08 | TopJobs and Talent Pulse CVs with source; pipeline counts; Director set sent and decided |
+| E. Client set and feedback | CP-09 to CP-14 | Client set ready / sent / received; client decisions with reasons; client-owned CVs; silence hold; unreported hire; pipeline depth → add-on or monitor |
+| F. Interviews and reference | CP-15 to CP-17 | Interview booked, rescheduled, outcome, client decision; reference requested and reported |
+| G. Offer, placement, joining | CP-18 to CP-21 | Offer made / accepted / declined; placement with package, joining date, offer letter; joining, no-show; rejection notices |
+| I. Guarantee and close | CP-22, CP-23 | Candidate left → opening reopened; close the opening and its posts |
+| All phases | CP-24 to CP-26 | Weekly report data; bells for TA users; files (CVs, offer letters) |
+
+Each point in full: [`reference/OPS-TA-CONNECTIONS.md`](reference/OPS-TA-CONNECTIONS.md), section 3.
+
 ## 2. What TA's API has today
 
 TA already has a **read-only partner API** (`/integrations/v1`, built for the

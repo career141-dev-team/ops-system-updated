@@ -1,0 +1,77 @@
+# 13 · Corrections log
+
+Everything corrected while consolidating the plan, with the reason. Newest first.
+
+## 28 Oct 2026 · Consolidation pass (this repository)
+
+**Canvas re-read:** all 59 cards present; every diagram has the same steps and arrows as
+on 27 Oct (c5237 250/332, c4585 236/324, c3626 60/95, c3002 60/94, c2790 60/93, c719
+65/75, c4412 65/93, c4234 28/27, c1061 25/36, c2511 11/10, c1039 10/11, c4381 10/9). Text
+cards checked against the stored copies: identical. **Nothing on the canvas changed.**
+
+**TA System re-checked on `main` (a083b14b):** `client.manage` still excludes `ops`;
+Place still redirects to `/placements/{id}`, a page that does not exist; the read-only
+partner API (`/integrations/v1`) is unchanged; Gajani's TA tracking has been added to TA
+(separate project, not part of Ops).
+
+**Repository documents corrected:**
+
+| Document | Was | Now |
+|---|---|---|
+| 04 flow | A 15-row table copied from the canvas, with its gaps | Full flow in 9 phases with diagrams, the design gaps fixed, combined position status |
+| 03 connection | Said TA "keeps" the client and Ops writes it, without the open conflict | Same model, plus the open question: TA leads and directors can still edit clients in TA |
+| 01 plan | Technology listed as decided | Order of work: agree the flow → decide technology → update documents → build |
+| 06 technology | Read as final | Marked "proposed", decided after the flow is agreed |
+| 09 decisions | Pointed to the analysis for the 17 settled conflicts | Lists all 17 with their resolution, and the 10 flow corrections to confirm |
+| New | — | 00 context for a new chat, 11 people and roles, 12 glossary, 13 this log |
+
+## 27 Oct 2026 · Corrections to the canvas flow (c5237)
+
+### Design gaps fixed in [04](04-OPS-FLOW.md)
+
+1. A first hire's 90-day clock (n6181) led only to the invoice; the leave / day-75 /
+   clean branches hung off the replacement clock (n6201). Now every hire's guarantee has them.
+2. "Fee collected" (n6189) was a dead end while the locked flow c3626 closed the position
+   at fee collected. Decided 27 Oct: the position closes at guarantee end, refund or write-off.
+3. "Escalated to TA" (n6333) was a dead end. Now a call task for the TA.
+4. Only Reminder 48h/72h led to "Reply read". A reply at any point stops the reminders.
+5. "Director rejection notice" fed "Pipeline pending counted" (client counts). Director
+   rejections now only continue the search.
+6. Rejection notices back to pipeline depth were only partly drawn. Drawn for client
+   rejections.
+7. "Set reviewed, none shortlisted" leaked into scheduling (an arrow the canvas tool could
+   not delete). Removed.
+8. The surcharge invoice has no chase or payment path. Kept as ⚪ open.
+9. Single reminders with no escalation (Director countersign, Director chase, client
+   report reminder). Kept as ⚪ open.
+10. Undecided timeouts: offer silent, silent-hold limit, client deadline for replace or stop,
+    day-75 warning, hold exit. Kept as ⚪ open.
+11. "Hold lead, chase ESA" for a returning client jumped into ESA email 1. Now: the existing
+    agreement is sent again, then chased.
+12. The weekly report and Talent Pulse hung off "LinkedIn advert Live". The weekly report is
+    one desk-level job; Talent Pulse runs weekly per open role.
+
+### Arrow labels on the wrong arrow
+
+The canvas stores arrow labels as floating text; about 35 sat on a neighbouring arrow. The
+full table (shown on → belongs to) is in [`reference/ANALYSIS.md`](reference/ANALYSIS.md),
+section 3. The diagrams in [04](04-OPS-FLOW.md) use the corrected labels. Examples:
+
+| Shown on | Says | Belongs to |
+|---|---|---|
+| ESA clock starts → ESA drafted | "no reply to 3 emails" | Intro call not held → Intro silent, lead closed |
+| TA informed of decision → Rejected after round | "selected" | swapped with "not moving" |
+| Client asks for reference? → Offer made | "TA wants TopJobs" | should be "no reference requested" |
+| Candidate leaves → No guarantee | "refund paid, close" | should be "fee unpaid" |
+| Package asked → Placement saved | "candidate declines" | Search stops → Offer declined |
+
+### The plan's claims about the TA System, corrected
+
+| Canvas said | TA code says |
+|---|---|
+| No interview scheduling in the code | Interview records, schedule/confirm/reschedule/outcome/feedback actions and alerts exist; slots, invites, Teams, automatic reconfirm and client notices are missing |
+| No ESA record | An ESA table and status logic exist but no screen uses them (dormant) |
+| Weekly report, rejection notices, placement update to Asma "already automatic" | None exist in code; they are planned |
+| Guarantee not tied to joining day | The guarantee end is already joining date + guarantee days; missing: ops owner, day-75, full-payment check, replace first |
+| (not on canvas) | Place redirects to a page that does not exist (TA bug) |
+| (not on canvas) | Ops cannot create clients in TA (`client.manage`) |

@@ -22,7 +22,11 @@ system for the client side, sharing information with TA, **without any risk to T
           Same VPS · same Postgres server · separate backend and database
 ```
 
-| Part | Choice | Why |
+The separate system is **decided**. The tools in the table below are **proposals**: the
+same tools as TA, because the team already knows them. They are confirmed after the
+whole flow is agreed (order of work in [01](01-STARTUP-PLAN.md)).
+
+| Part | Proposed | Why |
 |---|---|---|
 | Code | This repository, `career141-dev/ops-system` | Ops team works and releases on its own |
 | Backend | Its own self-hosted Convex | Same tool as TA, so the team already knows it |
@@ -45,6 +49,22 @@ system for the client side, sharing information with TA, **without any risk to T
   "candidate dropped out". TA writes them to an events list; Ops checks the list
   every minute, so TA never waits for Ops.
 - **No copies:** each side stores only the ID of the other side's records.
+
+```mermaid
+sequenceDiagram
+  participant O as Ops system
+  participant T as TA System API
+  O->>T: create opening from the requirement (Ops key, repeat-safe key)
+  T-->>O: opening ID, or TA's own refusal message
+  Note over T: TA works the search
+  T->>T: client set built, event "client set ready" saved
+  O->>T: read new events (every minute)
+  T-->>O: client set ready for opening X
+  O->>T: read the client set and CVs
+  Note over O: ops owner approves, system emails the client
+  O->>T: client set sent and received dates
+  O->>T: client decision per candidate, with reason
+```
 
 Details: [`03-CONNECTION-TO-TA.md`](03-CONNECTION-TO-TA.md).
 
