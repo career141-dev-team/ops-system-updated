@@ -43,6 +43,7 @@ with the client until the guarantee ends.
 | 11 | [People and roles](docs/11-PEOPLE-AND-ROLES.md) | Who does what today, and the proposed Ops roles |
 | 12 | [Glossary](docs/12-GLOSSARY.md) | Every term in plain words |
 | 13 | [Corrections log](docs/13-CORRECTIONS-LOG.md) | What was corrected from the canvas and earlier plans, and why |
+| 14 | [Diagram deep walkthrough](docs/14-DIAGRAM-DEEP-WALKTHROUGH.md) | All 250 steps of the owner's diagram c5237, phase by phase, with owners, arrows, labels and connection points |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).
