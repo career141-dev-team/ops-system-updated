@@ -6,6 +6,8 @@ feature skills in the TA repository, the owner's planning board (59 cards), and 
 ([15](15-BUILD-PLAN.md)). Where this document says "verified", the behaviour was read in the
 code on 1 Nov; where it says "unverified", it was not._
 
+> **2 Nov:** superseded where it differs by [19](19-TA-SYSTEM-IMPROVEMENT-PLAN.md), which was written from seven code audits; the corrections are listed in 19 §13.
+
 **What this document is.** Part 1 describes the real working environment of the TA System
 as it is today, and lists where the intended workflow and the real behaviour differ. Part 2
 sets out four roles as working people: what each decides, needs and depends on. Part 3 runs

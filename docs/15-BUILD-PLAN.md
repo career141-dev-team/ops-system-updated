@@ -1195,6 +1195,8 @@ _12 decided by the owner on 1 Nov (marked). Still open: 1, 5, 7, 10, 12, 18-23._
 
 # Part J · Second pass: what the TA System's real workings change in this plan
 
+_Corrections 2 Nov (from [19](19-TA-SYSTEM-IMPROVEMENT-PLAN.md) §13): **J4** — `jobPosts.routingEmailAlias` is written but no router reads it today; routing is LinkedIn job number → project number → `campaignCode` → exact headline. The Ops plan therefore uses the post's `campaignCode` in the TopJobs/Talent Pulse subject until TA adds the alias branch (19 §7.5). **E5 T15** — the `shortlists@` and `interviews@` readers run only with `C141_MAIL_INTAKE=on`; the Ops plan must not assume them._
+
 _Added 1 Nov after reading the plan against the full TA System knowledge (`/ta-system-full-flow`
 and the 12 feature skills) and the full Ops board (`/ops`). Each item says what was found,
 why it matters, and what the plan now does. Where it changes an earlier part, that part is
