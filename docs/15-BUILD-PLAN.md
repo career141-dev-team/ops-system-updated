@@ -1399,4 +1399,62 @@ The public names stay for people only.
 
 ---
 
+# Part K · Third pass: gaps found by checking every card on the board
+
+_Added 1 Nov after the card-by-card check in [17](17-BOARD-COVERAGE.md). Each item amends the
+part it names._
+
+**K1. The ops lead assigns the owner; the owner is on the position's team** (23 Oct note).
+P2 step 2 changes: a new lead creates a task "assign an owner" for the **ops lead**
+(round-robin only as the suggested name); `POST openings` carries `opsOwnerId` and TA stores
+it on the job (new field `jobs.opsOwnerId`, T12) so the owner is listed with the team and
+included in bells about that opening.
+
+**K2. The client's duty to send placement details** (ESA clause 2.12). P6 gains a step after
+`offer.accepted`: Ops drafts `placement.details_request` to the client HR asking for package,
+joining date, billing address and the signed offer letter, with a 3-working-day timer and a
+reminder; what comes back is recorded on `opsPlacements` (and `opsClientProfiles.billingAddress`,
+new field) and, if the TA's Place has not yet happened, passed to the TA as a bell so Place is
+filled correctly. TA's Place stays the record; this closes the gap when the client, not the
+TA, holds the details.
+
+**K3. Requirement meeting recording.** `opsMeetings` can hold a recording (R2) with consent
+noted; `POST openings` passes `briefRecordingKey` and TA creates the brief with
+`method=recording` (TA's `briefs` already has `recordingKey`, `transcript`, consent fields),
+so the TA hears the requirement meeting instead of reading notes about it. P3 steps 3 and 6
+amended.
+
+**K4. Replacement profiles within 14 days.** P7 step 4 gains timer `replacement.profiles`
+(14 calendar days from the leaver date): a task to the TA (`notify`) and the owner; the
+weekly KPIs include "replacement profiles on time".
+
+**K5. Suggest the TA by load (optional).** P3 step 6: before "Create opening in TA", Ops
+shows the TA lead each active TA's open positions and 100% count (`GET openings?status=open`
+grouped by `assignedTaIds`) as a suggestion. The lead still decides in TA.
+
+**K6. Team approval before building.** P1 gains step 0b: a walkthrough of [04](04-OPS-FLOW.md)
+with Asma, Rushda, two TAs and the TA lead, recorded in [09](09-DECISIONS-AND-QUESTIONS.md);
+building Phase 2 onward starts only after it. (Phase 1 foundation can start in parallel; it
+holds no business rule.)
+
+**K7. Fix the ESA template first.** Outside approvals (Part H / 01 step 12) gain: "ESA
+template proofread and corrected: fill NAME/DESIGNATION/ADDRESS placeholders as fields,
+decide clause 1.1 'working calendar days', remove the duplicated 8.5/8.6, correct the file
+name." P2 step 9 refuses a template version that still contains unmapped placeholders.
+
+**K8. KPIs.** "Profiles per set" is dropped from P7 step 16 (owner: do not track 5-10
+profiles); "set within 14 days of ESA" and "ESA response time" stay.
+
+**K9. The One Desk risks (c3777) and their handling.**
+
+| Risk on the board | Handling |
+|---|---|
+| Building all at once delays use; one fault blocks the whole flow | Eight phases behind flags, released together, switched on per client (pilot); each phase demoable alone |
+| Clients keep replying in WhatsApp groups outside the system | "Record what the client said" on every set and interview; group posts drafted; direct WhatsApp read by the webhook |
+| Live sending needs the outbound lock and test mode | Safety gate with `OPS_OUTREACH_LIVE` off, test recipients, do-not-contact, caps (P1 16) |
+| In-memory store vs Convex: two data paths | T9 moves the shared writes into Convex; J1 raises events from `commit:apply` meanwhile |
+| 400-CV scoring cap and 60-per-run sweep may lag | TA-side capacity; Ops never adds CV load (J4); noted for the TA work plan |
+| Staff habits keep two copies alive | Sheet freeze plan with dates (P8 12); the inbox is the only page to open; every sheet column has a system home (D4) |
+---
+
 _End of the plan. Questions, then approval, then Phase 1 step 1._

@@ -61,6 +61,7 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 | The owner's diagram c5237, all 250 steps, read deeply | [14](14-DIAGRAM-DEEP-WALKTHROUGH.md) |
 | **The build plan** for the whole backend, stage by stage | [15](15-BUILD-PLAN.md) |
 | Every problem on the board with its solution | [16](16-PROBLEM-REGISTER.md) |
+| Every card checked against the plan | [17](17-BOARD-COVERAGE.md) |
 | Source material (analysis, 26 connection points, diagrams as step lists) | [`reference/`](reference/) |
 
 ## 5. Sources and how reliable they are
