@@ -1,6 +1,6 @@
 # 15 · Implementation plan: the Ops backend, connected to the TA System
 
-_Version 2, 1 Nov 2026. For the owner's questions and approval before any code. Replaces
+_Version 2.1, 1 Nov 2026 (second pass in Part J). For the owner's questions and approval before any code. Replaces
 version 1 of this file. Written from: the owner's planning board (59 cards, re-read 1 Nov,
 unchanged since 27 Oct: every flow, every problem card, every note), the TA System's code on
 `main`, and the decisions of 20 Oct to 28 Oct. Where this plan says "TA field `x`" it is the
@@ -492,7 +492,7 @@ data}` or `{ok:false, code, message}`. Pagination: `limit` ≤ 100, `cursor`.
 | `POST openings/{id}/status` | status (open · on_hold · filled · closed), reason | `setOpeningStatus` (moved into Convex), posts closed on `closed` | `opening.closed` / `updated` |
 | `POST openings/{id}/working-stage` | userId, mode (100 · follow_up · add_on · monitor) | `setWorkingStage` (+ `monitor` ⚪ new mode or on_hold) | `opening.working_stage_changed` |
 | `POST openings/{id}/ad-channel` | channel, state, cost?, liveAt?, closedAt? | `jobPosts.adChannelState` | `jobpost.live` / `closed` |
-| `POST cvs` | fileRef (R2 key or upload), openingId, source, candidateName? | `cvUploads` with `source`, extraction queued | `application.stage_changed` later |
+| `POST openings/{id}/posts` (J) | channel (portal = TopJobs · email_campaign = Talent Pulse), title | a `jobPosts` row with its own `routingEmailAlias` and `campaignCode`; TA's mail intake files CVs sent to that alias with the source known | `jobpost.live` |
 | `POST client-sets/{roundId}/sent` | sentAt, receivedAt, sentTo[] | `reviewRounds.dispatch=sent`, `sentAt`, `receivedAt` | `client_set.sent` |
 | `POST applications/{id}/client-decision` | decision, reason, source, reviewedByName | `moveStage` to client_shortlist / rejected with reason; `clientReviews` row; rejection template send (TA) | `application.stage_changed`, `candidate.rejection_notice_sent` |
 | `POST applications/{id}/client-owned` | claimedAt, note | `clientOwnedAt`; stage → rejected (reason `client_owned`) | `application.stage_changed` |
@@ -550,9 +550,15 @@ timeout 10 s; retry 3× with backoff on network/5xx, never on 4xx; every call lo
 | T6 | Team save keeps working modes; TA lead editable | `src/lib/openings/admin.ts`, `writeOpeningTeam` | S | P3 |
 | T7 | `OPS_API_TOKEN` + key-per-endpoint check; `contractEvents` table + writer helper | `convex/http.ts`, `convex/lib/partnerAuth.ts`, `convex/schema.ts`, `convex/lib/contractEvents.ts` | M | P1 |
 | T8 | Read endpoints of E2 | `convex/integrations/opsRead.ts` | M | P1 |
-| T9 | Move `saveEsa`, `setOpeningStatus`, `writeCandidateInterview`, `writeCandidateClosing` from the web app (`src/data/store.ts` + `commit:apply`) into Convex mutations, keeping the web app calling them | `convex/ta/esa.ts`, `openings.ts`, `interviews.ts`, `placements.ts` | **L** (the critical path) | P2-P6 |
+| T9 | Move `saveEsa`, `setOpeningStatus`, `writeCandidateInterview`, `writeCandidateClosing` from the web app (`src/data/store.ts` + `commit:apply`) into Convex mutations, keeping the web app calling them; API create sets `assignedAt` and `requirementReceivedAt` (J8) | `convex/ta/esa.ts`, `openings.ts`, `interviews.ts`, `placements.ts` | **L** (the critical path) | P2-P6 |
 | T10 | Write endpoints of E2 on top of T9 | `convex/integrations/opsWrite.ts` | M | P2-P7 |
-| T11 | Event writers at every raise point in E2 | the mutations in T9 + pipeline state machine + offers + sets | M | P1-P7 |
+| T11a (J) | Change detector in `ta/commit:apply`: row ops on interviews, offers, placements, esaRecords, client reviewRounds, jobs status/jdStatus/team, jobPosts status → `contractEvents` in the same transaction | `convex/ta/commit.ts` | S | P1 |
+| T11b | Event writers in the new mutations (T9) and the stage machine (reads `pipelineEvents`) | T9 mutations, `pipelineStateMachine.ts` | M | P2-P7 |
+| T15 (J) | `shortlists@` and `interviews@` readers skip mail carrying `[C141-OPS-…]` | `convex/mailIntake/aiReader.ts`, `interviews.ts` | S | P4, P5 |
+| T16 (J) | System actor: a `users` row `ops-system@career141.com`, role `ops`, not sign-in-able; API writes run as it | `convex/lib/partnerAuth.ts` | S | P1 |
+| T17 (J) | `notifications` type `ops_notice` declared and rendered in the bell | `src/lib/alertKinds.ts`, NotificationBell | S | P1 |
+| T18 (J) | Clerk satellite domain `ops.career141.com` on the production instance; Ops people provisioned on TA's People page | Clerk dashboard, `/people` | S | P1 |
+| T19 (J) | Prepared-CV read endpoint on the Next app with the Ops token (reuse the EOD attachment when present) | `src/app/api/integrations/v1/...` | S | P4 |
 | T12 | New fields: `clients.opsOwnerId`, `esaRecords.feeRule/declinedAt`, `jobPosts.adChannelState`, `applications.clientOwnedAt`, `interviews.teamsLink/coordinatedBy`, `reviewRounds.receivedAt`; optional `monitor` working stage | `convex/schema.ts` + `convex/ta/model/tables.ts` | S | per phase |
 | T13 | `opsForTa` read on the TA side (later): show ESA status, ops owner, set state, guarantee state on the opening page by calling Ops's read endpoint | TA opening page | S | after pilot |
 | T14 | Feature skills updated in the same PRs (`/openings`, `/sets-shortlist`, `/follow-up`, `/workday`, `/eod-email`) and `skill-sync` stamped | `.claude/skills/*` | S | each PR |
@@ -678,6 +684,9 @@ will call, and a small internal test page (`/dev`) exists only to click through.
 
 ## Phase 1 · Foundation (nothing business-specific yet)
 
+0. Baseline (J13): a one-off form for the Ops team to enter the last 6 months' ESA return
+   times, client waits on sets and slipped joinings from the archive into `opsReports`
+   kind `baseline`, so the weekly KPIs (P7 step 16) can show the change.
 1. Create the repo structure: `convex/` (backend), `app/` (empty Next.js shell with Clerk
    only), `deploy/local/`, `deploy/production/`, `docs/`, `tests/`.
 2. Local run script `deploy/local/start.sh`: Ops Convex on `127.0.0.1:3310`, dashboard on
@@ -707,8 +716,10 @@ will call, and a small internal test page (`/dev`) exists only to click through.
    OPS_OUTREACH_LIVE off, OPS_TIMERS_ENABLED on, OPS_TA_WRITES_ENABLED off,
    OPS_TA_READS_ENABLED on; testRecipients; pilotClientIds [].
 10. `opsHolidays` import from a CSV; a query for the calendar helper.
-11. `opsMembers`: sync from Clerk on sign-in (`clerkUserId`, name, email); `members.setRole`
-    (ops_lead only); `members.link TA user` by email through `GET people`.
+11. `opsMembers`: people are provisioned on TA's People page first (Clerk invitation +
+    `users` row, J10); Ops syncs from Clerk on first sign-in on the satellite domain
+    (`clerkUserId`, name, email); `members.setRole` (ops_lead only); `taUserId` linked by
+    email through `GET people`.
 12. Roles: `lib/access.ts` with `can(member, capability, subject)` per D2 roles table; every
     mutation calls it; "own clients only" is a setting (⚪ default all).
 13. Timers engine: `timers.start / cancel / reschedule`; cron `timers.tick` every minute,
@@ -834,17 +845,17 @@ will call, and a small internal test page (`/dev`) exists only to click through.
     approved → sent, cost recorded) → `ads.markLive(date)` → timer `ad.close` 14 days →
     `ads.markClosed` → **TA:** `POST openings/{id}/ad-channel` at live and closed; `notify`
     the TA at each change.
-13. TopJobs CV intake: the mail reader recognises TopJobs application mails (sender/domain
-    rule) → attachment to R2 → **TA:** `POST cvs` with `source=topjobs` and the opening
-    matched by title/alias (TA's `routeShared` idea reused in Ops as a small matcher; unmatched →
-    task).
+13. TopJobs CV intake (J4): `ads.request` first calls **TA** `POST openings/{id}/posts`
+    (channel `portal`) and puts the returned routing alias on the TopJobs order; CVs mailed
+    to that alias are filed by TA's own mail intake with the source known. Ops reads
+    `cvCountToday` per post for the ad's CV count. No CV passes through Ops.
 14. Talent Pulse: Tuesday 09:00 job → `GET openings?status=open` → rows with the TA's
     one-line brief (task to each TA via `notify`, default = title + location) →
     `opsTalentPulseIssues` compiled → task to marketing → `tp.markPosted`.
 15. Talent Pulse links: ⚪ one tracked apply link per role (`/apply/<token>` on the Ops
     app, redirecting to a mailbox alias per opening that TA already routes, with
-    `source=talentpulse` set through `POST cvs` when the CV arrives by mail) — or plain
-    mailbox aliases.
+    the post's routing alias from `POST openings/{id}/posts` channel `email_campaign`, J4)
+    — or the alias printed plainly in the newsletter.
 16. LinkedIn repost prompt: handler on `jobpost.*` + TA's low-volume alert forwarded;
     monitor-only closes LinkedIn → task to the TA.
 17. Position view queries: `positions.forClient`, `positions.byStage`, each joining live TA
@@ -892,8 +903,10 @@ will call, and a small internal test page (`/dev`) exists only to click through.
 14. Depth evaluation `depth.evaluate(openingTaId)` after every decision and every
     `application.stage_changed` event: `GET openings/{id}/pipeline` → `shortlistedTotal`
     (stages client_shortlist + interview + offer) and `pending` (client_shortlist not yet
-    interviewed); order: `≥5 → monitor`, else `≤3 pending → add_on`, else `follow_up`; if the
-    mode changed → **TA:** `POST working-stage` for the primary TA + `notify`; `opsDepthChecks` row.
+    interviewed); order: `≥5 → on hold, reason "five shortlisted"` (J9: **TA** `POST
+    openings/{id}/status on_hold`), else `≤3 pending → add_on` (**TA** `POST working-stage`
+    for the primary TA), else `follow_up`; below five again → status `open`; `notify` the TA
+    on every change; `opsDepthChecks` row.
 15. "Hold at five" also sets a position flag so the set sender refuses to send a new set
     until the count drops (with an override for the ops lead).
 16. Back-up visibility: `backupForApplicationId` shown on the set and interviews; the slot
@@ -1154,14 +1167,14 @@ exist, against staging.
 |---|---|---|---|
 | 1 | Same Clerk accounts as TA | Yes | P1 |
 | 2 | Who holds which Ops role; own clients or all | All visible, own in the inbox | P1 |
-| 3 | Ops mailbox(es) | one `ops@` | P1 |
+| 3 | Ops mailbox(es) | one **new** `ops@` (not `opsteam@`, which receives every EOD) (J5) | P1 |
 | 4 | Website leads: webhook or hello@ | webhook | P2 |
 | 5 | Meeting invites auto or approved | auto (template) | P2, P5 |
 | 6 | Escalation targets after single reminders (countersign, Director chase, client report) | ops lead after 24 h | P2 |
 | 7 | ESA signing: scan now, e-signature later | yes | P2 |
 | 8 | One or five 100% positions per TA per day | TA's current rule (five) | P3 |
 | 9 | Talent Pulse tracked links | per-opening mailbox alias (no link) | P3 |
-| 10 | TA "monitor" mode: new working stage or on_hold | new `monitor` mode (T12) | P4 |
+| 10 | TA "monitor" mode: new working stage or on_hold | **on hold** with reason "five shortlisted" (J9) | P4 |
 | 11 | Hold limit before closing a held position | none (manual close) | P4, P7 |
 | 12 | Teams (consent), Zoom, or manual links to start | manual links until consent | P5 |
 | 13 | Calls: tasks + logs only, no telephony now | yes | P1 |
@@ -1170,10 +1183,217 @@ exist, against staging.
 | 16 | Offer-silent timeout | none (TA's concern) | P6 |
 | 17 | Day-75 warning; client deadline after no-show | 75 on; 5 working days | P7 |
 | 18 | TA client editing stays in TA or moves to Ops | stays; Ops reads before writing | P2 |
-| 19 | API over the public name or loopback on the VPS | loopback | P8 |
+| 19 | API over the public name or the Docker network on the VPS | Docker network `career141_default` (J15) | P8 |
 | 20 | Import the sheets or start clean | start clean + the three migrations | P8 |
 | 21 | Rebuild TA staging or pilot only | Ops staging + pilot | P8 |
 | 22 | What "DLA" is | ⚪ | P2 |
+| 23 (J) | Pipeline depth per opening or per work location | per opening | P4 |
+
+---
+
+# Part J · Second pass: what the TA System's real workings change in this plan
+
+_Added 1 Nov after reading the plan against the full TA System knowledge (`/ta-system-full-flow`
+and the 12 feature skills) and the full Ops board (`/ops`). Each item says what was found,
+why it matters, and what the plan now does. Where it changes an earlier part, that part is
+amended in place and marked "(J)"._
+
+## J1. How TA writes really happen, and why the events must be raised in `commit:apply`
+
+**Found.** Most TA writes do not go through dedicated Convex mutations. The web app loads an
+in-memory store (`primeStore()` → `src/data/store.ts`), a server action changes it,
+`diffTables` turns the change into row operations, and one Convex mutation,
+`ta/commit:apply`, writes them (with a "someone else changed this record" conflict check).
+Interviews, offers, placements, ESA records, client rounds and opening status all reach the
+database this way today.
+
+**Why it matters.** If events are only raised inside new mutations, nothing the TA does
+from the web app (booking an interview, pressing Place, building a client set) raises an
+event. Ops would never hear of it.
+
+**Plan.** T11 becomes two things: (a) a small **change detector inside `commit:apply`**: for
+every row operation on `interviews`, `offers`, `placements`, `esaRecords`, `reviewRounds`
+(kind client), `jobs` (status, jdStatus, assignedTaIds) and `jobPosts` (status), insert the
+matching `contractEvents` row in the same transaction; (b) the dedicated mutations for Ops
+writes (T9) raise the same events through the same helper. (a) is small and lands in Phase 1;
+it makes every TA-originated change visible to Ops at once, before any logic moves.
+`application.stage_changed` needs no new row: TA already writes `pipelineEvents` on every
+stage move; the events endpoint reads both tables merged by time.
+
+## J2. Two writers on the same record: the conflict check
+
+**Found.** `commit:apply` refuses a web write when a field it is changing was changed by
+someone else since the page loaded.
+
+**Why it matters.** Ops writing `clients.opsOwnerId` or `placements.joinDateMs` through the
+API while a TA has that record open can make the TA's next save fail with "Someone else
+changed this record".
+
+**Plan.** API writes touch **only Ops-owned fields** on shared rows (`opsOwnerId`,
+`clientOwnedAt`, `teamsLink`, `receivedAt`, `adChannelState`, `package`, invoice fields) or
+go through dedicated mutations that the web app also uses (status, interviews, placements
+after T9). The TA client-editor conflict is listed as decision 18; the default stays "TA keeps
+editing clients", and Ops reads before every write, so the collision window is seconds.
+
+## J3. The workday gate and the collision lock
+
+**Found.** A TA's writes on an opening are refused unless that TA has a started workday
+(`assertWorkdayScope`), and the first TA to shortlist a candidate owns it (collision lock).
+Desk-wide roles (admin, director, ta_lead, ops) are exempt from both.
+
+**Plan.** Every Ops API write runs as a **system actor with the `ops` desk-wide role** (a
+dedicated `users` row `ops-system@career141.com`, inactive for sign-in), so the workday gate
+and the lock never block a client decision, and TA's audit shows "Ops system" as the actor.
+Bells still name the ops owner in the body.
+
+## J4. Adverts: reuse TA's own routing instead of a new CV endpoint
+
+**Found.** `jobPosts` already has `channel` (linkedin · portal · whatsapp · facebook ·
+email_campaign · other), `campaignCode` and `routingEmailAlias`; TA's mail intake routes a CV
+to the post by that alias and counts `cvCountToday` per post.
+
+**Plan (replaces E2 `POST cvs` and P3 step 13).** `POST openings/{id}/posts` with
+`channel=portal` (TopJobs) or `email_campaign` (Talent Pulse) creates a job post and returns
+its `routingEmailAlias`. Ops puts that alias on the TopJobs order and on the Talent Pulse
+entry (or behind the tracked link, decision 9). CVs arrive by mail, TA files them to the
+right post with the source already known, scoring runs as for LinkedIn, and "CVs per
+source" is `cvCountToday` per post. Ops's own mail reader does not touch CVs at all.
+`POST openings/{id}/ad-channel` stays for live/closed dates and cost on that post.
+
+## J5. Mailboxes that already read client and interview mail
+
+**Found.** `shortlists@` is read by TA's AI reader: Director replies apply decisions, and
+**client replies move candidates to Client Shortlist**. `interviews@` (24 Oct) reads
+invitation mail and moves candidates to Interview. `opsteam@` is Cc on every EOD email.
+
+**Why it matters.** Two readers acting on the same client reply would double-move a
+candidate; an Ops interview invite copied to `interviews@` would be read as a client's.
+
+**Plan.** (1) Ops uses a **new `ops@` mailbox**, not `opsteam@` (decision 3 default
+changed), so EOD traffic never enters the Ops reader. (2) Client sets go out from `ops@`
+only; the client's reply lands in Ops; TA's `shortlists@` reader keeps Director replies and
+is told (T-change) to **skip any mail carrying the `[C141-OPS-…]` reference**. (3) The
+`interviews@` reader likewise skips Ops-referenced mail; Ops bookings reach TA only through
+the API. (4) During the pilot, both readers log "skipped Ops mail" so the overlap is visible.
+
+## J6. Prepared CVs are made in the Next app, not in Convex
+
+**Found.** Prepared-CV PDFs are generated by the Next app (`src/lib/preparedCvFile.ts`) and
+attached to EOD emails (`dailyEmailAttachments`); Convex's HTTP router serves raw CVs only.
+
+**Plan.** The read endpoint for prepared CVs lives on the **Next app**
+(`ta-system.career141.com/api/integrations/v1/applications/{id}/prepared-cv`, same Ops
+token), reusing the EOD attachment when one exists for that candidate, else generating it.
+Raw CVs stay on the Convex endpoint. The TA client in Ops has two base URLs.
+
+## J7. TA alerts are computed in the web layer, not stored
+
+**Found.** `src/lib/sla.ts` computes alerts on request; nothing is written, so there is no
+TA event for "JD unapproved after 1 day" or "stale role".
+
+**Plan.** Ops computes the few alerts it needs from reads (`jdStatus` + `createdAt`;
+`assignedAt` + priority target) in its own tick, instead of the `notification.for_ops` event
+for those. `notification.for_ops` stays only for things TA code explicitly wants an ops owner
+to know.
+
+## J8. Opening creation details that TA does not set today
+
+**Found.** `ta/openings:create` never writes `assignedAt` or `requirementReceivedAt`; the
+Master Sheet corrects `assignedAt` later; "day N of target" starts from `createdAt`.
+
+**Plan.** `POST openings` sets `requirementReceivedAt` (the requirement meeting date) and
+`assignedAt` when the TA lead's assignment is given; the hand-over date in B4 row 24 is
+therefore exact. Priority tier can be passed (`priorityTier`, default P3).
+
+## J9. "Monitor" mode: use On hold, not a new mode
+
+**Found.** On hold already stops the follow-up sweep and SLA alerts, keeps the opening
+readable, still accepts CVs through the post's own link, and lets a TA keep it in a workday.
+That is what "hold at five, monitor only, LinkedIn closes" asks for.
+
+**Plan (changes decision 10 default).** Hold-at-five sets the opening **on hold with reason
+"five shortlisted"** through the existing status write, and the TA keeps interviews moving
+on it; "below five again" sets it open. No new working stage in TA.
+
+## J10. Sign-in across two domains
+
+**Found.** TA's Clerk production instance is bound to `clerk.ta-system.career141.com`;
+Clerk users are provisioned by an admin on TA's People page (invitation + `users` row).
+
+**Plan.** Ops is a **Clerk satellite domain** (`ops.career141.com`) of the same instance,
+so one session works on both; the Ops backend's Convex auth config lists the same issuer.
+Ops people are first provisioned in TA's People page (so bells and `GET people` work), then
+given an Ops role in `opsMembers`. Phase 1 step 11 is amended.
+
+## J11. Positions with several work locations and headcount
+
+**Found.** An opening can have several work locations, each with its own L-sheets, sets and
+EOD emails (`reviewRounds.workLocationId`), and `headcount` can be more than one.
+
+**Plan.** `opsClientSets` carries `workLocationId`; the client email names the location; a
+placement is invoiced **per hire** (the board's "first hire only" means "not for a
+replacement", not "only one per position"); the guarantee is per placement, as planned.
+Pipeline depth is evaluated per opening (all locations together) unless the owner wants per
+location (decision 23).
+
+## J12. The ESA holds more than fee and guarantee
+
+**Found (board, ESA draft c2505 / terms c2511).** A 3-year term with 14 days' written
+notice; interview-room charges (LKR 50,000 a day, 2,000 an extra hour); 12-month and 4-month
+candidate rules; response in 7-14 days and 5-10 profiles per set promised to the client.
+
+**Plan.** `opsEsa.fields` gains `termYears`, `noticeDays`, `termEndsAt` (timer `esa.renewal`
+60 days before), `interviewRoomDayRate`, `interviewRoomHourRate`, `candidateRules` (text,
+⚪ to interpret); `opsInvoices.kind` gains `other_charges` for interview-room use; the KPIs in
+P7 step 16 include "sets within 14 days of ESA" and "profiles per set".
+
+## J13. Measure today's numbers before building (the owner's "strategy first")
+
+**Found.** The board's brief says: measure ESA return time, client wait on sets and slipped
+hires first, so the system's effect can be shown.
+
+**Plan.** Phase 1 gains step 0: a one-off baseline from the archive (Outlook, the ESA tracker,
+Placement Updates) for the last 6 months, entered into `opsReports` kind `baseline` by the
+Ops team with a simple form; the same KPIs are then produced weekly by P7 step 16.
+
+## J14. The Ops system is not reactive to TA
+
+**Found.** Convex screens update live inside one backend; across two backends they do not.
+
+**Plan.** Ops screens poll TA reads every 30 s while open and refresh on consumed events;
+the UI team is told so. The inbox itself is live (Ops data).
+
+## J15. Networking on the one server
+
+**Found.** The firewall closes 3210/3211 to the internet; containers on the
+`career141_default` Docker network reach the TA backend by name.
+
+**Plan (decision 19 default).** The Ops backend joins `career141_default` and calls TA at
+`http://career141-backend-1:3210/integrations/v1/...` for Convex endpoints and
+`http://ta-prod-app:3110/api/integrations/v1/...` for the Next ones; nothing leaves the box.
+The public names stay for people only.
+
+## J16. Where the Ops dashboard in TA goes
+
+**Found.** TA has an `OpsDashboard` for the `ops` role (clients, alerts to chase, interviews).
+
+**Plan.** After the pilot, that page links to the Ops system and shows the `opsForTa` reads
+(ESA status, ops owner, set state, guarantee state); nothing is removed from TA.
+
+## J17. Amended lists
+
+- **E2 writes:** add `POST openings/{id}/posts` (J4); remove `POST cvs`.
+- **E5 TA changes:** T11 split as in J1; add T15 "`shortlists@` and `interviews@` readers skip
+  Ops-referenced mail"; add T16 "system actor `ops-system` user"; add T17 "`notifications`
+  type `ops_notice` declared and rendered"; add T18 "Clerk satellite domain for `ops.career141.com`";
+  add T19 "prepared-CV endpoint on the Next app"; T9 note: `assignedAt`/`requirementReceivedAt`
+  set on API create.
+- **Phase 1:** step 0 (baseline), step 11 amended (provisioning through TA People + satellite).
+- **Phase 3:** step 13 replaced by the posts endpoint (J4); step 15 uses the post alias.
+- **Phase 4:** step 14 sets on hold with reason instead of a monitor mode (J9).
+- **Part I:** decision 3 default `ops@` new mailbox; decision 10 default "on hold"; decision 19
+  default "Docker network, not public name"; new decision 23 "depth per opening or per
+  location".
 
 ---
 
