@@ -67,32 +67,32 @@ map, c5185 flow problems, c4309 system gaps, c4103 map gaps, c2499 open question
 | # | Problem (board) | Solution | Built in |
 |---|---|---|---|
 | 1 | ESA follow-ups miss the 5-working-day activation KPI; Rushda chases by hand from a tracker | ESA state machine with a chase plan (email 1, WhatsApp 1, email 2, WhatsApp 2, email 3, call task) driven by timers; each chase drafted for the ops owner's approval; any client reply cancels the chase; decline at 14 days | P2 steps 9-16 |
-| 2 | ESA copy came back unsealed and was resent (22 Apr 2025); placeholders left in a draft (Best Pacific) | **Decided 1 Nov:** all visible, own in the inbox | P2 steps 5-8 |
-| 3 | Client feedback chased late; 21 positions "pending client feedback" (13 Mar 2026); Damad chased 29 Sep | **Decided 1 Nov:** one **new** `ops@` | P4 steps 10-15 |
-| 4 | Candidates heard nothing (Prima, 13 Mar 2026) | **Decided 1 Nov:** webhook | P4 step 17; TA rule T5 |
+| 2 | ESA copy came back unsealed and was resent (22 Apr 2025); placeholders left in a draft (Best Pacific) | ESA built from a template with named fields; blank required field blocks sending; version kept with the file | P2 steps 5-8 |
+| 3 | Client feedback chased late; 21 positions "pending client feedback" (13 Mar 2026); Damad chased 29 Sep | Feedback timer from the client's receipt date: chase drafted at 1 day, call task next day, stop after 3-4 silent days, hold at 14 days; the inbox shows every pending client | P4 steps 10-15 |
+| 4 | Candidates heard nothing (Prima, 13 Mar 2026) | Rejection notices from one approved template, automatic, for Director and client rejections (TA sends them; Ops triggers the client ones through the decision write) | P4 step 17; TA rule T5 |
 | 5 | Invites unanswered (Neel, Dilum, 25 Sep 2026) | Day-before reconfirm timer; no reply → call task to the TA; candidate out → client notice 1 day / 3 h before | P5 steps 11-14 |
-| 6 | Countersign and Director set have a single reminder and no escalation | **Decided 1 Nov:** ops lead after 24 h | P2 step 18; ⚪ |
+| 6 | Countersign and Director set have a single reminder and no escalation | Timer with one reminder, then an escalation task to the ops lead (⚪ owner to confirm the escalation target) | P2 step 18; ⚪ |
 | 7 | Payment never chased; no late charge | Invoice timer at 30 days; chase with 5% per unpaid month; write-off task at ~60 days | P6 steps 13-17 |
 
 ## B2. News passed by hand arrives late
 
 | # | Problem | Solution | Built in |
 |---|---|---|---|
-| 8 | Signed ESA reached the Director only on 2 Jun 2026 (Fletching) | **Decided 1 Nov:** TA's current rule (five) | P2 steps 16-19 |
-| 9 | Asma learned of a January joining on 30 Mar 2026; package details missing at invoicing | **Decided 1 Nov:** routing address only | P6 steps 1-5; TA rules T1 |
+| 8 | Signed ESA reached the Director only on 2 Jun 2026 (Fletching) | On "signed": internal notice to ops, TA lead and Director at once; countersign task with a 1-day timer; countersigned copy emailed back automatically | P2 steps 16-19 |
+| 9 | Asma learned of a January joining on 30 Mar 2026; package details missing at invoicing | TA's Place requires package, DOJ and offer letter; TA writes event `placement.created`; Ops notifies Asma and the owner the same day; invoice drafted on joining day from the ESA fee rule | P6 steps 1-5; TA rules T1 |
 | 10 | Interview cancellations learned late (24-25 Sep 2026) | Client cancel recorded in Ops → TA interview rescheduled/cancelled through the API → bell to the TA at once | P5 step 15 |
-| 11 | TopJobs status and post removal relayed through ops by hand | **Decided 1 Nov:** never automatically; owner task every 30 days | P3 steps 14-19; P7 step 14 |
+| 11 | TopJobs status and post removal relayed through ops by hand | Ad-channel record with live/closed dates and a 2-week timer; TA told through `notify` on each change; close checklist at the end | P3 steps 14-19; P7 step 14 |
 | 12 | TA hears client feedback late | Client decision written to TA the moment the owner confirms it; TA bell | P4 steps 16-18 |
-| 13 | Ops must always be told to remove posts | **Decided 1 Nov:** yes | P7 steps 13-15 |
-| 14 | Placement updates posted by hand in a WhatsApp group | **Decided 1 Nov:** new number | P6 step 4 |
+| 13 | Ops must always be told to remove posts | Close checklist creates the "close LinkedIn" task for the TA and "close TopJobs" for ops | P7 steps 13-15 |
+| 14 | Placement updates posted by hand in a WhatsApp group | The same-day notice replaces the post; the group post text is still drafted if the owner wants to post it | P6 step 4 |
 
 ## B3. The same data retyped
 
 | # | Problem | Solution | Built in |
 |---|---|---|---|
 | 15 | Master, client, job and interview sheets updated by hand; tabs not updated | No sheets: the client record (TA), the opening (TA), the Ops client view, the interview record (TA) and the placement record (Ops) are the single copies; Ops reads TA live and never copies | Part D; P1 steps 20-23 |
-| 16 | No master client contact sheet (Sapna, 14 May 2026) | **Decided 1 Nov:** none (TA's) | P2 step 3 |
-| 17 | Requirement in the TA lead's head; handover date unclear | **Decided 1 Nov:** 75 on; 5 working days | P3 steps 6-10 |
+| 16 | No master client contact sheet (Sapna, 14 May 2026) | Client contacts live on TA's `clients.contacts`; Ops creates and updates them through the API; the Clients screen is the contact sheet | P2 step 3 |
+| 17 | Requirement in the TA lead's head; handover date unclear | Requirement form in Ops; "Create opening in TA" copies it as the opening's brief; TA stamps `assignedAt`; Ops stores the opening ID and the handover time | P3 steps 6-10 |
 | 18 | Hunted CVs not always copied to the CV mailbox; Talent Pulse CVs don't reach the job | TopJobs/Talent Pulse CVs filed to the opening through the API with `source`; source tags on every CV | P3 steps 18-22 |
 | 19 | Interview schedule kept in a summary sheet; reschedules not tracked | One interview record in TA with history; Ops writes every change through the API | P5 steps 8-16 |
 
