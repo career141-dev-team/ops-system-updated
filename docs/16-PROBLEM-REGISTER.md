@@ -273,7 +273,9 @@ the owner decided or as outside Ops.
 
 ---
 
-## 12. The decisions still open, collected from the rows above
+## 12. The decisions, collected from the rows above
+
+**All ten were decided by the owner on 1 Nov** (recorded in [09](09-DECISIONS-AND-QUESTIONS.md)); the "default" column below is what was chosen.
 
 | Decision (Part I number) | Rows | Default in the plan |
 |---|---|---|
