@@ -44,7 +44,7 @@ with the client until the guarantee ends.
 | 12 | [Glossary](docs/12-GLOSSARY.md) | Every term in plain words |
 | 13 | [Corrections log](docs/13-CORRECTIONS-LOG.md) | What was corrected from the canvas and earlier plans, and why |
 | 14 | [Diagram deep walkthrough](docs/14-DIAGRAM-DEEP-WALKTHROUGH.md) | All 250 steps of the owner's diagram c5237 |
-| 15 | [**The build plan**](docs/15-BUILD-PLAN.md) | The whole Ops backend, stage by stage, with tables, timers, messages, integrations, the TA side, screens, data, release |
+| 15 | [**The implementation plan**](docs/15-BUILD-PLAN.md) | Version 2: every problem and its solution, an Ops day and a TA day side by side, every table and link, the API and events, the TA changes, integrations and the calls decision, 8 phases of 20-25 steps, release and pilot, open decisions |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).
