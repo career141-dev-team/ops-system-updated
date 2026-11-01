@@ -62,6 +62,7 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 | **The build plan** for the whole backend, stage by stage | [15](15-BUILD-PLAN.md) |
 | Every problem on the board with its solution | [16](16-PROBLEM-REGISTER.md) |
 | Every card checked against the plan | [17](17-BOARD-COVERAGE.md) |
+| The simulated working day, verified TA gaps, final technologies and connection points | [18](18-OPERATIONS-SIMULATION.md) |
 | Source material (analysis, 26 connection points, diagrams as step lists) | [`reference/`](reference/) |
 
 ## 5. Sources and how reliable they are
