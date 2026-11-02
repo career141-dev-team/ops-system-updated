@@ -30,7 +30,7 @@ The lesson for Ops: a sheet dies when **(a)** its columns live on records, **(b)
 shows them, **(c)** the numbers are computed not typed, **(d)** changes need a reason and are
 logged, and **(e)** an export exists. Anything less and the sheet comes back in a week.
 
-## 2. The six sheets and the WhatsApp post, and what replaces each
+## 2. The sheets and the WhatsApp post, and what replaces each
 
 Each row names the sheet, who keeps it today, the problem the board records against it, and
 the screen that replaces it. "Computed" means the system works the value out; nobody types it.
@@ -103,7 +103,24 @@ Client, role, candidate, joining date, source.
 - **Why it ends:** the TA now has to enter the package, the joining date and the offer letter
   at Place (live in the TA System from 2 Nov), and that is what triggers the notice.
 
-### 2.7 Invoices and payments · no sheet today
+### 2.7 Two more sheets the diagram names, and one naming question
+
+Re-reading the as-is diagram (c719) on 2 Nov turned up two sheets this document had missed,
+and one thing to confirm with the team.
+
+- **Performance sheet** (step n730, internal shortlist, the TA then the Director). Replaced
+  by the TA System's own Director review and set records, which already hold who was
+  shortlisted and when. The board's problem against it is that the Director does not say why
+  a candidate was not shortlisted, and that stays true: his rejections need no reason, by his
+  own rule. Nothing to build; the sheet is already redundant.
+- **Summary sheet** (step n749, round 2 or drop, kept on the client's side). It is listed
+  against the client, not against us, so it may be the client's own file rather than ours.
+  **To confirm with Rushda.**
+- **"Job sheet", "TA job sheet" and "job order status sheet"** appear on three different
+  steps (n726, n733, n725). They may be one file under three names, or three files. **To
+  confirm before mapping columns.**
+
+### 2.8 Invoices and payments · no sheet today
 
 - **New, not replaced:** `opsInvoices` and `opsPayments`, with the CSV export the owner asked
   for, since accounting has no tool today and invoicing is manual.
@@ -159,6 +176,8 @@ extra ones are exactly where a screen fails if we guess.
 | The job order status sheet | Asma | Handover and allocation columns |
 | The ESA tracker | Rushda | The chase columns, and how "activation in 5 working days" is measured |
 | The interview summary sheet | Rushda, Rakshana, Haifa | Round and outcome vocabulary as they actually write it |
+| Whether "job sheet", "TA job sheet" and "job order status sheet" are one file or three | Asma, Zainab, the owners | Three names appear on three steps of the diagram |
+| Whether the round-2 "summary sheet" is ours or the client's | Rushda | The diagram lists it against the client |
 | Asma's invoice and payment records | Asma | The fee rules in use, and anything unpaid right now |
 | One real signed ESA with its variable fields marked | The owner | The template the system drafts from |
 
