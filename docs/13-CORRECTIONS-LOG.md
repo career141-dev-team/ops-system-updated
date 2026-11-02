@@ -130,3 +130,16 @@ own reference are stripped before parsing, because a real reply carries all thre
 Both forms are read: "CLIENT > ROLE > SET 02" and "SET 2 - CLIENT - ROLE - 5 CVs", the
 latter being what the TA app already sends.
 
+## 2 Nov · The working week was already answered
+
+`isWorkingDay` said Monday to Friday with no source, which made it look like a guess
+waiting on the owner. It is not. The room's reading of the TA System records the rule as
+settled: its alerts "skip weekends and holidays, and one working day counts as 24 hours"
+(card c1174). Ops therefore counts the same days as the TA System, which matters because
+both sides of the API quote deadlines to the same people.
+
+What is genuinely open is the **holiday list**, which is empty in both systems — so every
+"7 working days" clock currently ignores poya and public holidays and can come due on a
+day the office is shut. The dates are public; which ones Career 141 closes for is the
+owner’s call, and it belongs on the holidays screen rather than in code.
+

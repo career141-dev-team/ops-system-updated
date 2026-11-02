@@ -24,7 +24,19 @@ export function colomboHour(at: number): number {
   return new Date(at + COLOMBO_OFFSET_MS).getUTCHours();
 }
 
-/** Saturday and Sunday are not working days, nor is a date on the holiday list. */
+/**
+ * Saturday and Sunday are not working days, nor is a date on the holiday list.
+ *
+ * Not a guess: the room's reading of the TA System records it as settled — its
+ * alerts "skip weekends and holidays, and one working day counts as 24 hours"
+ * (card c1174). So Ops counts the same days as the TA System, and a deadline
+ * means the same thing on both sides of the API.
+ *
+ * The holiday list itself is still empty on both sides, which is a real gap:
+ * Sri Lanka's poya and public holidays are many, and until the list is filled a
+ * clock can come due on a day the office is shut. The holidays table and its
+ * screen are where that gets fixed, not here.
+ */
 export function isWorkingDay(at: number, holidays: string[] = []): boolean {
   const shifted = new Date(at + COLOMBO_OFFSET_MS);
   const weekday = shifted.getUTCDay();
