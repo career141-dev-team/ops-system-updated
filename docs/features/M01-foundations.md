@@ -146,12 +146,15 @@ Built with the backend, in this order, in the TA System's look, minimal and with
 
 ## Open questions
 
-1. The preview link's address: a subdomain such as `ops-preview.career141.com`, or a port on
-   the existing one? The owner decides, and it needs a DNS entry either way.
-2. Who else may open the preview besides the owner: the ops lead and Asma, or the whole team?
-3. Whether the Ops mailbox `ops@career141.com` exists yet. Until it does, M1's reader runs
+1. ~~The preview address~~ **Decided 2 Nov: `ops-preview.career141.com`**, https, one
+   password at the proxy, and **only the owner** may open it. The owner adds the DNS A record
+   to 94.136.189.48.
+2. Whether the Ops mailbox `ops@career141.com` exists yet. Until it does, M1's reader runs
    against a test mailbox.
-4. The Ops WhatsApp number is not bought yet, so the WhatsApp sender is built and left off.
+3. The Ops WhatsApp number is not bought yet, so the WhatsApp sender is built and left off.
+4. Which host port the preview app uses on the VPS, and the password itself — both set when
+   the deploy step comes, with the owner's go-ahead, and the password is never written down
+   in this repository.
 
 ## Done means
 
