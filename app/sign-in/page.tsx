@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { activeMembers, desk } from "@/data/desk";
 import { ROLE_LABEL } from "@/lib/roles";
 import { devSignInAllowed, signInAs } from "@/lib/session";
 
@@ -25,7 +25,7 @@ export default async function SignInPage() {
     redirect("/");
   }
 
-  const members = repo.members();
+  const members = activeMembers(await desk());
 
   return (
     <div className="max-w-[560px]">

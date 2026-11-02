@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { desk, liveTimers } from "@/data/desk";
+import { usingConvex } from "@/data/convexClient";
 import { currentMember } from "@/lib/session";
 import { people, readsEnabled, writesEnabled } from "@/lib/ta";
 
@@ -16,7 +17,8 @@ export default async function HealthPage() {
   if (!member) redirect("/sign-in");
 
   const ta = await people();
-  const audit = repo.audit().slice(0, 10);
+  const db = await desk();
+  const audit = [...db.audit].sort((a, b) => b.at - a.at).slice(0, 10);
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
 
   return (
@@ -37,9 +39,16 @@ export default async function HealthPage() {
       </section>
 
       <section className={card}>
+        <h2 className="text-[14.5px] font-medium">Where the desk is kept</h2>
+        <p className="mt-2 text-[13.5px]">
+          {usingConvex() ? "The Ops backend." : "A file on this machine, with invented sample data."}
+        </p>
+      </section>
+
+      <section className={card}>
         <h2 className="text-[14.5px] font-medium">Clocks</h2>
         <p className="mt-2 text-[13.5px]">
-          {repo.liveTimers().length} running, {repo.timers().length} in all.
+          {liveTimers(db).length} running, {db.timers.length} in all.
         </p>
       </section>
 

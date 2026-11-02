@@ -68,6 +68,11 @@ export const repo = {
     save();
   },
 
+  /** The whole desk, for the screens to read through `src/data/desk.ts`. */
+  all(): OpsDatabase {
+    return load();
+  },
+
   members(): OpsMember[] {
     return load().members.filter((m) => m.active);
   },

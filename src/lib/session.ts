@@ -10,7 +10,7 @@
 
 import { cookies } from "next/headers";
 
-import { repo } from "@/data/store";
+import { desk, member as findMember } from "@/data/desk";
 import type { OpsMember } from "@/data/types";
 
 const COOKIE = "ops_dev_member";
@@ -24,8 +24,8 @@ export async function currentMember(): Promise<OpsMember | null> {
   const jar = await cookies();
   const chosen = jar.get(COOKIE)?.value;
   if (!chosen) return null;
-  const member = repo.member(chosen);
-  return member && member.active ? member : null;
+  const found = findMember(await desk(), chosen);
+  return found && found.active ? found : null;
 }
 
 export async function signInAs(memberId: string): Promise<void> {

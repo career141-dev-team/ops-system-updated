@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { desk } from "@/data/desk";
 import { currentMember } from "@/lib/session";
 import { approveAndSend, recordReply, saveDraft } from "@/app/actions";
 
@@ -18,7 +18,7 @@ export default async function MessagePage({
   if (!member) redirect("/sign-in");
   const { id } = await params;
   const { msg } = await searchParams;
-  const message = repo.message(id);
+  const message = (await desk()).messages.find((m) => m.id === id);
   if (!message) notFound();
 
   const input = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";

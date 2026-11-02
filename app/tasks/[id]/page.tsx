@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { desk } from "@/data/desk";
 import { timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
 import { finishTask } from "@/app/actions";
@@ -18,7 +18,7 @@ export default async function TaskPage({
   if (!member) redirect("/sign-in");
   const { id } = await params;
   const { msg } = await searchParams;
-  const task = repo.task(id);
+  const task = (await desk()).tasks.find((t) => t.id === id);
   if (!task) notFound();
 
   const left = timeLeft(task.dueAt, Date.now());

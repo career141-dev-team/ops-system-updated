@@ -20,7 +20,8 @@ until curl -fs http://127.0.0.1:3310/version > /dev/null 2>&1; do sleep 2; done
 
 if ! grep -q "^LOCAL_ADMIN_KEY=" "$ENVFILE" 2>/dev/null; then
   KEY=$(docker exec ops-local-convex ./generate_admin_key.sh | tail -n 1 | tr -d '\r')
-  echo "LOCAL_ADMIN_KEY=$KEY" >> "$ENVFILE"
+  # The key holds a pipe, so it is quoted: an unquoted value breaks `. $ENVFILE`.
+  echo "LOCAL_ADMIN_KEY=\"$KEY\"" >> "$ENVFILE"
 fi
 
 set -a

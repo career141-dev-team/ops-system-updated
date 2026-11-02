@@ -3,7 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import {
+  desk,
+  editMessage,
+  finishTask as finishTaskWrite,
+  numberOf,
+  recordReply as recordReplyWrite,
+  runClocks,
+  setSetting,
+  settleMessage,
+  startTimer,
+  switchedOn,
+} from "@/data/desk";
 import { HOUR } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
@@ -18,7 +29,7 @@ import { currentMember } from "@/lib/session";
 export async function startTestClock(): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  repo.startTimer({
+  await startTimer({
     kind: "test.clock",
     subjectType: "test",
     subjectId: "test",
@@ -35,7 +46,7 @@ export async function startTestClock(): Promise<void> {
 export async function runClocksNow(): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const result = repo.runClocks();
+  const result = await runClocks();
   revalidatePath("/");
   const said =
     result.fired || result.warned || result.escalated
@@ -51,7 +62,7 @@ export async function recordReply(formData: FormData): Promise<void> {
   const subjectType = String(formData.get("subjectType") ?? "");
   const subjectId = String(formData.get("subjectId") ?? "");
   const back = String(formData.get("back") ?? "/");
-  const stopped = repo.recordReply(subjectType, subjectId, member.id);
+  const stopped = await recordReplyWrite(subjectType, subjectId, member.id);
   revalidatePath("/");
   redirect(
     back +
@@ -73,13 +84,13 @@ export async function changeSetting(formData: FormData): Promise<void> {
   if (!can(member, "settings.manage")) {
     redirect("/settings?msg=" + encodeURIComponent(refusal("settings.manage")));
   }
-  const current = repo.setting(key);
+  const current = (await desk()).settings.find((s) => s.key === key);
   if (!current) redirect("/settings?msg=" + encodeURIComponent("There is no setting called " + key + "."));
 
   const decided = settingChange(key, current.value, raw, reason);
   if (!decided.ok) redirect("/settings?msg=" + encodeURIComponent(decided.message));
 
-  repo.setSetting(key, decided.value, member.id, reason);
+  await setSetting(key, decided.value, member.id, reason);
   revalidatePath("/settings");
   redirect("/settings?msg=" + encodeURIComponent(key + " is now " + String(decided.value) + "."));
 }
@@ -94,7 +105,7 @@ export async function finishTask(formData: FormData): Promise<void> {
   if (!outcome.trim()) {
     redirect("/tasks/" + taskId + "?msg=" + encodeURIComponent("Write one line about what happened first."));
   }
-  repo.finishTask(taskId, member.id, outcome);
+  await finishTaskWrite(taskId, member.id, outcome);
   revalidatePath("/");
   redirect("/");
 }
@@ -103,7 +114,7 @@ export async function saveDraft(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const messageId = String(formData.get("messageId") ?? "");
-  repo.editMessage(messageId, { subject: String(formData.get("subject") ?? ""), body: String(formData.get("body") ?? "") }, member.id);
+  await editMessage(messageId, { subject: String(formData.get("subject") ?? ""), body: String(formData.get("body") ?? "") }, member.id);
   revalidatePath("/messages/" + messageId);
   redirect("/messages/" + messageId + "?msg=" + encodeURIComponent("Saved."));
 }
@@ -117,7 +128,8 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   if (!can(member, "message.approve")) {
     redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
   }
-  const message = repo.message(messageId);
+  const db = await desk();
+  const message = db.messages.find((m) => m.id === messageId);
   if (!message) redirect("/?msg=" + encodeURIComponent("That message no longer exists."));
   if (!needsApproval(message)) {
     redirect(here + "?msg=" + encodeURIComponent("That message has already been settled."));
@@ -127,22 +139,22 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   const verdict = gate(
     { ...message, state: "approved" },
     {
-      outreachLive: repo.setting("switch.outreachLive")?.value === true,
+      outreachLive: switchedOn(db, "switch.outreachLive"),
       testRecipient: (process.env.OPS_TEST_EMAIL ?? "").trim() || "test@example.test",
       doNotContact: [],
       sentToClientToday: 0,
-      dailyCapPerClient: Number(repo.setting("message.dailyCapPerClient")?.value ?? 4),
+      dailyCapPerClient: numberOf(db, "message.dailyCapPerClient", 4),
     },
   );
 
   if (!verdict.ok) {
-    repo.settleMessage(messageId, member.id, verdict.state, message.to, verdict.note);
+    await settleMessage(messageId, member.id, verdict.state, message.to, verdict.note);
     redirect(here + "?msg=" + encodeURIComponent(verdict.note));
   }
 
   // Nothing is actually sent yet: the senders arrive with M1's mail step. The
   // record says plainly what happened, which is what the screen shows.
-  repo.settleMessage(messageId, member.id, "sent", verdict.to, verdict.note);
+  await settleMessage(messageId, member.id, "sent", verdict.to, verdict.note);
   revalidatePath("/");
   redirect(here + "?msg=" + encodeURIComponent(verdict.note ?? "Sent."));
 }

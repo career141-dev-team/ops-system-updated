@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks } from "@/data/desk";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
@@ -20,18 +20,16 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const { msg } = await searchParams;
 
   // The clocks run on every visit, so a deadline never waits for someone to
-  // press something. A real schedule replaces this when the backend lands.
-  repo.runClocks();
+  // press something. A real schedule replaces this when the crons land.
+  await runClocks();
 
   const now = Date.now();
-  const drafts = repo.draftsWaiting();
-  const tasks = repo.openTasksFor(member.id);
+  const db = await desk();
+  const drafts = draftsWaiting(db);
+  const tasks = openTasksFor(db, member.id);
   const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
   const late = tasks.filter((t) => t.dueAt < now);
-  const clocks = repo
-    .liveTimers()
-    .filter((t) => t.ownerId === member.id)
-    .sort((a, b) => a.dueAt - b.dueAt);
+  const clocks = liveTimersFor(db, member.id);
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";

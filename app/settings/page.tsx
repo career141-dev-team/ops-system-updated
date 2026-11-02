@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { repo } from "@/data/store";
+import { desk } from "@/data/desk";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { changeSetting } from "@/app/actions";
@@ -17,7 +17,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { msg } = await searchParams;
   const mayChange = can(member, "settings.manage");
 
-  const settings = repo.settings();
+  const db = await desk();
+  const settings = [...db.settings].sort((a, b) => a.key.localeCompare(b.key));
   const switches = settings.filter((s) => s.key.startsWith("switch."));
   const numbers = settings.filter((s) => !s.key.startsWith("switch."));
 
@@ -99,9 +100,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="mt-1 text-[13px] text-ink-soft">
           Working days skip these, so "seven working days" means the same everywhere.
         </p>
-        {repo.holidays().map((date) => (
-          <p key={date} className="border-t border-rule py-2 text-[13.5px] first:border-t-0">
-            {date}
+        {db.holidays.map((holiday) => (
+          <p key={holiday.date} className="border-t border-rule py-2 text-[13.5px] first:border-t-0">
+            {holiday.date} · {holiday.name}
           </p>
         ))}
       </section>
