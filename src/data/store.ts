@@ -24,6 +24,7 @@ import type {
   OpsFile,
   OpsInbound,
   OpsLead,
+  OpsMeeting,
   OpsOutboxItem,
   OpsTaCall,
   OpsMember,
@@ -381,6 +382,66 @@ export const repo = {
       actorId: by,
       action: what,
       subjectType: "lead",
+      subjectId: row.id,
+      before,
+      after: row.state,
+      reason,
+    });
+    save();
+  },
+
+  /* ── Meetings with a client ─────────────────────────────── */
+
+  /** Stops named clocks, with the reason they stopped. */
+  cancelTimers(timerIds: Id[], by: Id, reason: string): void {
+    const db = load();
+    let stopped = 0;
+    for (const timerId of timerIds) {
+      const timer = db.timers.find((t) => t.id === timerId);
+      if (!timer || (timer.state !== "running" && timer.state !== "warned")) continue;
+      timer.state = "cancelled";
+      stopped += 1;
+      audit({ actorId: by, action: "timer.cancelled", subjectType: "timer", subjectId: timer.id, before: "running", after: "cancelled", reason });
+    }
+    if (stopped) save();
+  },
+
+  meetings(): OpsMeeting[] {
+    return [...load().meetings].sort((a, b) => b.at - a.at);
+  },
+
+  meeting(meetingId: Id): OpsMeeting | null {
+    return load().meetings.find((m) => m.id === meetingId) ?? null;
+  },
+
+  addMeeting(input: Omit<OpsMeeting, "id" | "createdAt" | "updatedAt">): OpsMeeting {
+    const db = load();
+    const now = Date.now();
+    const row: OpsMeeting = { ...input, id: id("mt"), createdAt: now, updatedAt: now };
+    db.meetings.push(row);
+    audit({
+      actorId: input.bookedBy,
+      action: "meeting.booked",
+      subjectType: "meeting",
+      subjectId: row.id,
+      before: null,
+      after: new Date(row.at).toISOString().slice(0, 16),
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchMeeting(meetingId: Id, patch: Partial<OpsMeeting>, by: Id, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.meetings.find((m) => m.id === meetingId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "meeting",
       subjectId: row.id,
       before,
       after: row.state,

@@ -14,6 +14,31 @@ import { runClocksNow, startTestClock } from "./actions";
  * today, what is late, and which clock is running out. Every row opens its own
  * page; nothing opens over the top of this one.
  */
+/**
+ * What a clock is, in words.
+ *
+ * The screens showed the kind as it is written in the code - "esa.send" - and
+ * a person reading their own day should not have to translate (2 Nov).
+ */
+function clockInWords(kind: string): string {
+  const words: Record<string, string> = {
+    "esa.send": "the agreement has to go out",
+    "esa.chase": "chasing the agreement",
+    "esa.decline": "two weeks with no signed agreement",
+    "meeting.reminder.day": "a client meeting tomorrow",
+    "meeting.reminder.hour": "a client meeting in an hour",
+    "meeting.rebook": "a meeting to book again",
+    "feedback.chase": "waiting on client feedback",
+    "set.ownership": "the CV ownership window",
+    "invoice.chase": "an unpaid invoice",
+    "guarantee.warn": "the guarantee, fifteen days left",
+    "guarantee.end": "the guarantee ends",
+    "interview.reconfirm": "an interview to reconfirm",
+    "test.clock": "a test clock",
+  };
+  return words[kind] ?? kind;
+}
+
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -147,7 +172,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13.5px]">{timer.payload.label ?? timer.kind}</p>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{timer.kind}</p>
+                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{clockInWords(timer.kind)}</p>
                 </div>
               </div>
             );

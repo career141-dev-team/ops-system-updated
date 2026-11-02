@@ -322,6 +322,36 @@ export interface OpsLead {
   updatedAt: number;
 }
 
+/**
+ * A meeting with a client (15, Phase 2 steps 7 and 8).
+ *
+ * The intro call and the requirement meeting are the same record. What makes
+ * it worth keeping is the two things that go missing today: how many times we
+ * have tried to rebook it, and what was actually said - which is the only
+ * record of the brief until the opening exists.
+ */
+export interface OpsMeeting {
+  id: Id;
+  leadId: Id;
+  kind: string;
+  at: number;
+  state: string;
+  /** The TA lead on the call. One is on every intro call (owner's rule). */
+  taLeadId: string;
+  /** Our own attempts, so the third unanswered one closes the lead. */
+  rebookCount: number;
+  /** What was said. Required before a meeting can be marked held. */
+  brief: string;
+  role: string;
+  packageSaid: string;
+  /** Why it was not held, or why it was cancelled. */
+  reason: string | null;
+  bookedBy: Id;
+  heldAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -333,6 +363,7 @@ export interface OpsDatabase {
   templates: OpsTemplate[];
   files: OpsFile[];
   leads: OpsLead[];
+  meetings: OpsMeeting[];
   calls: OpsCallLog[];
   baseline: OpsBaseline[];
   taCalls: OpsTaCall[];

@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -67,6 +67,7 @@ export const snapshot = internalQuery({
       // The newest 200 files: the registry grows for ever, the screen does not.
       ctx.db.query("opsFiles").withIndex("by_uploaded").order("desc").take(200),
       ctx.db.query("opsLeads").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsMeetings").withIndex("by_at").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -91,6 +92,7 @@ export const snapshot = internalQuery({
       inbound: inbound.map(row),
       files: files.map(row),
       leads: leads.map(row),
+      meetings: meetings.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -288,6 +290,63 @@ export const addFile = internalMutation({
       after: args.kind + " · " + args.name,
     });
     return { ...args, id: id as string, uploadedAt };
+  },
+});
+
+/** A meeting with a client (15, Phase 2 step 7). */
+export const addMeeting = internalMutation({
+  args: {
+    leadId: v.string(),
+    kind: v.string(),
+    at: v.number(),
+    state: v.string(),
+    taLeadId: v.string(),
+    rebookCount: v.number(),
+    brief: v.string(),
+    role: v.string(),
+    packageSaid: v.string(),
+    reason: v.union(v.string(), v.null()),
+    bookedBy: v.string(),
+    heldAt: v.union(v.number(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsMeetings", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.bookedBy,
+      action: "meeting.booked",
+      subjectType: "meeting",
+      subjectId: id as string,
+      after: new Date(args.at).toISOString().slice(0, 16),
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchMeeting = internalMutation({
+  args: {
+    meetingId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId as Id<"opsMeetings">);
+    if (!meeting) return { ok: false };
+    await ctx.db.patch(meeting._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(meeting._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "meeting",
+      subjectId: meeting._id as string,
+      before: meeting.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

@@ -1,9 +1,24 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { checkLeadDuplicate, closeLead, decideLeadIndustry } from "@/app/actions";
-import { desk, leadIn } from "@/data/desk";
+import {
+  bookIntroCall,
+  checkLeadDuplicate,
+  closeLead,
+  decideLeadIndustry,
+  markMeetingHeld,
+  markMeetingNotHeld,
+} from "@/app/actions";
+import { desk, leadIn, meetingsForLead } from "@/data/desk";
 import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
+import {
+  KIND_MEANINGS,
+  MAX_REBOOKS,
+  STATE_MEANINGS as MEETING_STATES,
+  type MeetingKind,
+  type MeetingState,
+} from "@/lib/meetings";
+import { people as taPeople } from "@/lib/ta";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { fakeTa } from "@/lib/ta";
@@ -38,6 +53,12 @@ export default async function LeadPage({
   const button = "rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
   const nameOf = (who: string | null) => (who ? db.members.find((m) => m.id === who)?.name ?? "somebody" : "nobody");
   const closed = lead.state.startsWith("closed") || lead.state === "declined_industry";
+  const meetings = meetingsForLead(db, lead.id);
+  const next = meetings.find((m) => m.state === "booked") ?? null;
+  const taSide = await taPeople();
+  const taLeads = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+  const whenLocal = (at: number) =>
+    new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
   const when = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ");
 
   return (
@@ -127,6 +148,119 @@ export default async function LeadPage({
               <p className="mt-2 text-[12px] text-ink-faint">
                 Declining is permanent: the reason is saved and they are never invited back.
               </p>
+            )}
+          </section>
+
+          <section className={card}>
+            <h2 className="text-[14.5px] font-medium">The intro call</h2>
+            <p className="mt-1 text-[13px] text-ink-soft">
+              A TA lead is on every intro call. Booking it starts two reminders: the day before at nine, and an hour
+              before.
+            </p>
+
+            {meetings.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Not booked yet.</p>}
+
+            {meetings.map((meeting) => (
+              <div key={meeting.id} className="mt-3 border-t border-rule pt-3 first:border-t-0">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-[13.5px]">{KIND_MEANINGS[meeting.kind as MeetingKind] ?? meeting.kind}</span>
+                  <span className="text-[13.5px]">{whenLocal(meeting.at)}</span>
+                  <span className="text-[12px] text-ink-faint">
+                    {MEETING_STATES[meeting.state as MeetingState] ?? meeting.state}
+                    {meeting.rebookCount > 0 ? " · attempt " + meeting.rebookCount + " of " + MAX_REBOOKS : ""}
+                  </span>
+                </div>
+                {meeting.reason && <p className="mt-1 text-[12.5px] text-ink-soft">{meeting.reason}</p>}
+                {meeting.brief && (
+                  <p className="mt-1 whitespace-pre-wrap text-[13px]">
+                    <span className="text-ink-soft">What they said: </span>
+                    {meeting.brief}
+                  </p>
+                )}
+                {(meeting.role || meeting.packageSaid) && (
+                  <p className="mt-1 text-[12.5px] text-ink-soft">
+                    {meeting.role || "position not said"} · {meeting.packageSaid || "package not said"}
+                  </p>
+                )}
+
+                {mayManage && meeting.state === "booked" && (
+                  <div className="mt-3 flex flex-col gap-4">
+                    <form action={markMeetingHeld} className="flex flex-col gap-2">
+                      <input type="hidden" name="meetingId" value={meeting.id} />
+                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                        It happened — what did they say?
+                        <textarea name="brief" rows={3} className={field} />
+                      </label>
+                      <div className="flex flex-wrap gap-3">
+                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                          The position
+                          <input name="role" className={field} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                          The package they mentioned
+                          <input name="packageSaid" className={field} />
+                        </label>
+                      </div>
+                      <button className={button}>It was held</button>
+                      <p className="text-[12px] text-ink-faint">
+                        This is the only record of the brief until the opening exists, so it cannot be left empty. The
+                        agreement clock starts when you save.
+                      </p>
+                    </form>
+
+                    <form action={markMeetingNotHeld} className="flex flex-col gap-2 border-t border-rule pt-3">
+                      <input type="hidden" name="meetingId" value={meeting.id} />
+                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                        It did not happen — why?
+                        <input name="reason" className={field} />
+                      </label>
+                      <label className="flex items-start gap-2 text-[13px]">
+                        <input type="checkbox" name="clientReplied" className="mt-0.5" />
+                        <span>
+                          The client is still answering us
+                          <span className="block text-[12px] text-ink-faint">
+                            Leave this unticked if they have gone quiet. {MAX_REBOOKS} attempts with no reply closes the
+                            lead.
+                          </span>
+                        </span>
+                      </label>
+                      <button className={button}>It was not held</button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {mayManage && !next && (
+              <form action={bookIntroCall} className="mt-3 flex flex-col gap-3 border-t border-rule pt-3">
+                <input type="hidden" name="leadId" value={lead.id} />
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                    When (Colombo time)
+                    <input type="datetime-local" name="at" required className={field} />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                    Which TA lead is joining
+                    {taLeads.length > 0 ? (
+                      <select name="taLeadId" className={field}>
+                        {taLeads.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.fullName}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input name="taLeadId" placeholder="their name" className={field} />
+                    )}
+                  </label>
+                </div>
+                <button className={button}>{meetings.length ? "Book it again" : "Book the intro call"}</button>
+                {!taSide.ok && (
+                  <p className="text-[12px] text-ink-faint">
+                    The TA System could not be asked for its people ({taSide.reason}), so type the name.
+                  </p>
+                )}
+              </form>
             )}
           </section>
 

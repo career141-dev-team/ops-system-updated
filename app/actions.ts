@@ -8,9 +8,15 @@ import {
   addFile,
   addHolidays,
   addLead,
+  addMeeting,
+  cancelMeetingClocks,
+  createTask,
   desk,
   leadIn,
+  meetingIn,
+  meetingsForLead,
   patchLead,
+  patchMeeting,
   editMessage,
   fileIn,
   logCall,
@@ -33,7 +39,7 @@ import {
   startTimer,
   switchedOn,
 } from "@/data/desk";
-import { HOUR } from "@/lib/calendar";
+import { HOUR, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
@@ -68,6 +74,15 @@ import {
   routeLead,
 } from "@/lib/leads";
 import { clients as taClients } from "@/lib/ta";
+import {
+  afterNotHeld,
+  agreementDueAt,
+  missingFromHeld,
+  problemWithBooking,
+  problemWithHeld,
+  remindersFor,
+  warningAboutBooking,
+} from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
 import { currentMember } from "@/lib/session";
 
@@ -757,4 +772,230 @@ export async function closeLead(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/leads");
   back("Closed, with the reason written down.");
+}
+
+/**
+ * Books the intro call (15, Phase 2 step 7).
+ *
+ * The TA lead is on every intro call, which is the owner's rule, so the
+ * booking asks who. Two reminders are started with it - the day before at
+ * nine, and an hour before - because a meeting nobody remembers is the
+ * commonest way a lead goes quiet.
+ */
+export async function bookIntroCall(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+
+  // A datetime-local field gives "2026-11-05T10:30" in the person's own clock,
+  // which is Colombo for everyone who uses this.
+  const typed = String(formData.get("at") ?? "").trim();
+  const at = typed ? Date.parse(typed + ":00+05:30") : 0;
+  const taLeadId = String(formData.get("taLeadId") ?? "").trim();
+  const now = Date.now();
+
+  const problem = problemWithBooking({ at, taLeadId }, now);
+  if (problem) back(problem);
+
+  // The count of attempts belongs to the lead, not to one booking: a new
+  // booking carries it forward, or three attempts would never be reached and a
+  // client who had gone quiet would be rebooked for ever (found in the
+  // browser, 2 Nov).
+  const triedBefore = meetingsForLead(db, leadId).reduce((most, m) => Math.max(most, m.rebookCount), 0);
+
+  const meeting = await addMeeting({
+    leadId,
+    kind: "intro",
+    at,
+    state: "booked",
+    taLeadId,
+    rebookCount: triedBefore,
+    brief: "",
+    role: "",
+    packageSaid: "",
+    reason: null,
+    bookedBy: member.id,
+    heldAt: null,
+  });
+
+  for (const reminder of remindersFor(at, now)) {
+    await startTimer({
+      kind: reminder.kind,
+      subjectType: "meeting",
+      subjectId: meeting.id,
+      startsAt: now,
+      dueAt: reminder.dueAt,
+      warnAt: null,
+      ownerId: member.id,
+      payload: { label: (lead as NonNullable<typeof lead>).company },
+    });
+  }
+
+  await patchLead(leadId, { state: "intro_call" }, member.id, "lead.introCallBooked", null);
+  revalidatePath(here);
+  const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
+  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+}
+
+/**
+ * The call happened (15, Phase 2 step 8).
+ *
+ * The brief is required. "The requirement was in the TA lead's head" is on the
+ * owner's problem list, and a call that can be closed with an empty box is how
+ * it stays there. Marking it held starts the agreement clock - two hours, from
+ * the settings - because the agreement going out late is the first place the
+ * business loses time.
+ */
+export async function markMeetingHeld(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const meetingId = String(formData.get("meetingId") ?? "");
+  const db = await desk();
+  const meeting = meetingIn(db, meetingId);
+  const here = "/leads/" + (meeting?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
+
+  const notes = {
+    brief: String(formData.get("brief") ?? ""),
+    role: String(formData.get("role") ?? ""),
+    packageSaid: String(formData.get("packageSaid") ?? ""),
+  };
+  const problem = problemWithHeld(notes);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const row = meeting as NonNullable<typeof meeting>;
+  await patchMeeting(
+    meetingId,
+    { ...notes, state: "held", heldAt: now },
+    member.id,
+    "meeting.held",
+    notes.brief.trim().slice(0, 200),
+  );
+  await cancelMeetingClocks(db, meetingId, member.id);
+
+  const hours = numberOf(db, "esa.sendHours", 2);
+  await startTimer({
+    kind: "esa.send",
+    subjectType: "lead",
+    subjectId: row.leadId,
+    startsAt: now,
+    dueAt: agreementDueAt(now, hours),
+    warnAt: null,
+    ownerId: member.id,
+    payload: { label: leadIn(db, row.leadId)?.company ?? "" },
+  });
+  await patchLead(row.leadId, { state: "waiting_agreement" }, member.id, "lead.callHeld", null);
+
+  // The TA lead needs the brief, not a summary of it. Two ways, because the TA
+  // lead is a person in the TA System and may have no Ops account at all:
+  //
+  //  * a task here, to whoever of ours is that same person (matched on their
+  //    TA account), or else to the lead's owner, who has to pass it on. It was
+  //    assigned to the TA System's own id first, which is nobody in Ops - so
+  //    the task would have sat where no screen shows it (found in the browser);
+  //  * a notice to them in the TA System, queued through the outbox, so it
+  //    reaches them where they work.
+  const ours = db.members.find((m) => m.taUserId && m.taUserId === row.taLeadId) ?? null;
+  await createTask({
+    kind: "record",
+    title: "The brief from the intro call",
+    body:
+      notes.brief.trim() +
+      (ours ? "" : "\n\nPass this to the TA lead: we have no Ops account matched to them."),
+    assigneeId: ours?.id ?? leadIn(db, row.leadId)?.ownerId ?? member.id,
+    dueAt: now,
+    subjectType: "lead",
+    subjectId: row.leadId,
+    link: "/leads/" + row.leadId,
+  });
+  if (row.taLeadId) {
+    await queueTaWrite(
+      "/integrations/v1/notify",
+      {
+        userId: row.taLeadId,
+        type: "ops_brief",
+        title: "Intro call held: " + (leadIn(db, row.leadId)?.company ?? "a client"),
+        body: notes.brief.trim(),
+      },
+      { type: "lead", id: row.leadId },
+    );
+  }
+
+  revalidatePath(here);
+  const missing = missingFromHeld(notes);
+  back(
+    "Saved. The agreement is due in " + hours + " hours." +
+      (missing.length ? " Still not known: " + missing.join(" and ") + "." : ""),
+  );
+}
+
+/**
+ * The call did not happen (15, Phase 2 step 8).
+ *
+ * Rebooking continues while the client is still answering. Three attempts with
+ * no reply closes the lead with a reason - the owner's rule. The reason is
+ * always written down, whichever way it goes.
+ */
+export async function markMeetingNotHeld(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const meetingId = String(formData.get("meetingId") ?? "");
+  const db = await desk();
+  const meeting = meetingIn(db, meetingId);
+  const here = "/leads/" + (meeting?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
+
+  const row = meeting as NonNullable<typeof meeting>;
+  const why = String(formData.get("reason") ?? "").trim();
+  if (why.length < 4) back("Write one line about why it did not happen.");
+  const clientReplied = formData.get("clientReplied") === "on";
+
+  const outcome = afterNotHeld(row.rebookCount, clientReplied);
+  const now = Date.now();
+  await patchMeeting(
+    meetingId,
+    { state: "not_held", rebookCount: outcome.rebookCount, reason: why },
+    member.id,
+    "meeting.notHeld",
+    why,
+  );
+  await cancelMeetingClocks(db, meetingId, member.id);
+
+  if (outcome.action === "close") {
+    await patchLead(
+      row.leadId,
+      { state: "closed_silent", reason: outcome.because + " " + why },
+      member.id,
+      "lead.closedSilent",
+      outcome.because,
+    );
+    revalidatePath(here);
+    revalidatePath("/leads");
+    back(outcome.because);
+  }
+
+  await createTask({
+    kind: "call",
+    title: "Book the intro call again",
+    body: outcome.because + " What happened last time: " + why,
+    assigneeId: member.id,
+    dueAt: nextNineAm(now),
+    subjectType: "lead",
+    subjectId: row.leadId,
+    link: "/leads/" + row.leadId,
+  });
+  revalidatePath(here);
+  back(outcome.because);
 }

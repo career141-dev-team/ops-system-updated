@@ -36,6 +36,9 @@ over older documents.
 | 2 Nov | **A lead is saved first and routed second.** A company that rang us exists whether or not the TA System can be reached, so nothing about the check blocks writing the lead down. One way to reply (an email or a number) is required, because a lead nobody can answer is not a lead | Build decision |
 | 2 Nov | **The industry rule proposes; a person decides.** Banking and finance are flagged from the company name, what they say they do, their website and the notes, with the word that caused it shown. Confirming declines them for good and marks them never to be invited back (owner's standing rule); clearing it records who cleared it | Owner's rule, built |
 | 2 Nov | **An exact company-name match is linked; a near match is only offered.** The name is reduced exactly as the TA System reduces a client's name, so the two sides agree. "Lanka Hospitals" and "Lanka Hospital Diagnostics" are two companies, and guessing would put a lead on somebody else's client | Build decision |
+| 2 Nov | **A meeting cannot be marked held with nothing written down.** The brief is required; the position and the package are asked for and what is still unknown is said back. This is the fix for "the requirement was in the TA lead's head" — until the opening exists in TA, the meeting record is the only copy | Owner's problem list, built |
+| 2 Nov | **Attempts to rebook belong to the lead, not to one booking.** Three attempts with no reply closes the lead with a reason (owner's rule); a client who is still answering is never closed on | Owner's rule, built |
+| 2 Nov | **Two reminders for every client meeting:** the day before at nine, and an hour before. Both are cancelled the moment the meeting is settled, because a reminder for a meeting that already happened teaches people to ignore reminders | Build decision |
 
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 

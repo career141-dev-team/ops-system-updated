@@ -51,6 +51,9 @@ export function seed(now = Date.now()): OpsDatabase {
     // Three invented leads, one for each thing a person has to decide about:
     // a new company, a company we already have, and one the industry rule
     // catches. No real company is named anywhere in here.
+    // No sample meetings: the sample leads are at the point of deciding,
+    // which is where a person starts.
+    meetings: [],
     leads: [
       {
         id: "ld_new",

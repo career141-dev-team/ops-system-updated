@@ -184,6 +184,26 @@ export default defineSchema({
     .index("by_state", ["state"])
     .index("by_created", ["createdAt"]),
 
+  /** Meetings with a client: the intro call and the requirement meeting. */
+  opsMeetings: defineTable({
+    leadId: v.string(),
+    kind: v.string(),
+    at: v.number(),
+    state: v.string(),
+    taLeadId: v.string(),
+    rebookCount: v.number(),
+    brief: v.string(),
+    role: v.string(),
+    packageSaid: v.string(),
+    reason: v.union(v.string(), v.null()),
+    bookedBy: v.string(),
+    heldAt: v.union(v.number(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_lead", ["leadId"])
+    .index("by_at", ["at"]),
+
   opsTemplates: defineTable({
     key: v.string(),
     channel: messageChannel,

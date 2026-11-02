@@ -59,6 +59,26 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "An interview is tomorrow",
     body: "The client's reminder has gone. The TA is reconfirming the candidate.",
   },
+  "meeting.reminder.day": {
+    kind: "remind",
+    title: "A client meeting is tomorrow",
+    body: "Check the client still means it, and that the TA lead knows.",
+  },
+  "meeting.reminder.hour": {
+    kind: "remind",
+    title: "A client meeting is in an hour",
+    body: "Nothing to do unless it does not happen - then mark it not held.",
+  },
+  "meeting.rebook": {
+    kind: "call",
+    title: "A client meeting was not held",
+    body: "Book it again and tell them. Three attempts with no reply closes the lead.",
+  },
+  "esa.send": {
+    kind: "approve",
+    title: "The agreement should be out by now",
+    body: "It goes within two hours of the call, from the brief you wrote down.",
+  },
   "test.clock": {
     kind: "check",
     title: "The test clock finished",

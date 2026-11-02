@@ -12,6 +12,7 @@ import type {
   OpsFile,
   OpsInbound,
   OpsLead,
+  OpsMeeting,
   OpsMessage,
   OpsOutboxItem,
   OpsTask,
@@ -88,6 +89,17 @@ export async function desk(): Promise<OpsDatabase> {
     return convexQuery<OpsDatabase>("ops/data:snapshot");
   }
   return snapshot;
+}
+
+/** Leaves somebody something to do. The clocks make most of these; a screen can too. */
+export async function createTask(
+  input: Omit<OpsTask, "id" | "state" | "outcome" | "doneBy" | "doneAt" | "createdAt">,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.createTask(input);
+    return;
+  }
+  await convexMutation("ops/data:createTask", input);
 }
 
 export async function startTimer(input: Omit<OpsTimer, "id" | "state" | "firedAt">): Promise<void> {
@@ -403,6 +415,53 @@ export function leadIn(db: OpsDatabase, leadId: Id): OpsLead | null {
 
 export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
   return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/* ── Meetings ──────────────────────────────────────────── */
+
+export async function addMeeting(input: Omit<OpsMeeting, "id" | "createdAt" | "updatedAt">): Promise<OpsMeeting> {
+  if (!usingConvex()) return repo.addMeeting(input);
+  return convexMutation<OpsMeeting>("ops/data:addMeeting", input);
+}
+
+export async function patchMeeting(
+  meetingId: Id,
+  patch: Partial<OpsMeeting>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchMeeting(meetingId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchMeeting", { meetingId, patch, by, what, reason });
+}
+
+export function meetingsForLead(db: OpsDatabase, leadId: Id): OpsMeeting[] {
+  return db.meetings.filter((m) => m.leadId === leadId).sort((a, b) => b.at - a.at);
+}
+
+export function meetingIn(db: OpsDatabase, meetingId: Id): OpsMeeting | null {
+  return db.meetings.find((m) => m.id === meetingId) ?? null;
+}
+
+/** Stops the clocks on a meeting that is over, however it ended. */
+export async function cancelMeetingClocks(db: OpsDatabase, meetingId: Id, by: Id): Promise<number> {
+  const live = db.timers
+    .filter((t) => t.subjectType === "meeting" && t.subjectId === meetingId)
+    .filter((t) => t.state === "running" || t.state === "warned");
+  if (!live.length) return 0;
+  if (!usingConvex()) {
+    repo.cancelTimers(
+      live.map((t) => t.id),
+      by,
+      "The meeting is over.",
+    );
+    return live.length;
+  }
+  await convexMutation("ops/data:cancelTimers", { timerIds: live.map((t) => t.id), by });
+  return live.length;
 }
 
 /* ── Calls, holidays and the baseline ─────────────────────────────── */
