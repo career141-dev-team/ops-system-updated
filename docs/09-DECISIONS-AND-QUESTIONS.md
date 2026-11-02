@@ -7,6 +7,11 @@ over older documents.
 
 | Date | Decision | By |
 |---|---|---|
+| 2 Nov | **Every feature ships with its screen.** The UI is built and connected as each backend part is built, not after it; the owner must be able to click every feature. Replaces "backend first, UI later" (28 Oct) | Owner (chat) |
+| 2 Nov | The Ops screens use **the same look as the TA System**, and are **minimal with no overlays**: no modals or drawers, one page per thing, edit in place, plain wording (rules in [07](07-SCREENS.md)) | Owner (chat) |
+| 2 Nov | Build starts with a **thin end-to-end skeleton** (sign in, inbox, one clock, one drafted message, one TA read), then fills in Phase 1 | Owner (chat) |
+| 2 Nov | A **live preview link from day one** on the VPS (own port and subdomain). Guarded: password on the whole site at the proxy, no search indexing, **test data only** while sign-in is the simple dev one; each deploy needs the owner's go-ahead | Owner (chat), guard conditions by Claude |
+| 2 Nov | Sign-in while building is a **simple dev sign-in** (pick your name, as TA's local run does); real Clerk sign-in comes once the screens are agreed | Owner (chat) |
 | 20-26 Oct | Two systems, two teams, connected wherever relevant (not only openings, interviews, offer) | Owner (canvas) |
 | 20-26 Oct | Client and Director processes stay as they are (email, WhatsApp groups). Client and Director emails: system drafts, a person approves, system sends. Routine notices from one approved template go automatically | Owner (canvas) |
 | 20-26 Oct | Everything lives in the system; the master, client, job and interview sheets and the placement WhatsApp posts are dropped | Owner (canvas) |

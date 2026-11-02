@@ -21,6 +21,31 @@ meant to work, so the designs fit the flow. Nothing here is a design.
 - Plain, specific messages: "Sent to the client", "Could not send — the email address
   is missing".
 
+## How the screens are built (decided 2 Nov)
+
+- **Every feature ships with its screen.** A backend step is not done until the screen that
+  uses it works and the owner has seen it. This replaces "backend first, UI later".
+- **A thin skeleton first:** sign in, the inbox, one real clock, one drafted message to
+  approve, and one read from the TA System. Everything else slots into that shape.
+- **The same look as the TA System.** Same fonts, colours, buttons and plain wording as
+  ta-system.career141.com, and the same components where they fit, so the team recognises it
+  and we do not design twice.
+- **Minimal, and no overlays.** No pop-up dialogs, no modals, no drawers over the page, no
+  nested pop-ups. A thing opens as its own page or expands in place. A confirmation is a
+  line with a button, not a box over the screen.
+- **One page per thing,** with a list and a detail view. Edit in place, save on the page,
+  show the result in plain words ("Sent to the client", "Could not send — the email address
+  is missing").
+- **The screen shows the clock** wherever a timer runs, with the time left, turning amber
+  then red.
+- **Nothing hidden behind hover.** Buttons are visible, labelled with verbs, and reachable on
+  a phone.
+- **A preview the owner can click, from day one** (decided 2 Nov): the Ops app runs on the
+  VPS on its own port and subdomain, with the whole site behind a password at the proxy and
+  excluded from search engines. Sign-in starts as a simple pick-your-name dev sign-in, so
+  **only test data goes on it** until real Clerk sign-in is in. Each deploy needs the owner's
+  go-ahead, as every live change does.
+
 ## The 13 screens
 
 | Screen | What it shows |

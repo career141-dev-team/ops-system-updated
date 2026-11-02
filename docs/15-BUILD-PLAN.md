@@ -683,9 +683,14 @@ guarantee 90, invoice 30).
 # Part G · The build, phase by phase
 
 Eight phases. Each step is one unit of work that ends in a test. Steps marked **TA** are
-built by the TA team in `ta-system`. Each phase ends with a demo on the laptop against a
-local TA. No UI is built in these phases; every function has a query/mutation the UI team
-will call, and a small internal test page (`/dev`) exists only to click through.
+built by the TA team in `ta-system`. Each phase ends with a demo against a local TA.
+
+**Changed 2 Nov, by the owner: every feature ships with its screen.** The earlier rule was
+backend first and the UI later. It is now one piece of work: when a backend step lands, the
+screen that uses it lands with it, and the owner can click it. The rules for those screens
+are in [07](07-SCREENS.md) section "How the screens are built". The build also starts with a
+thin end-to-end skeleton (sign in, the inbox, one clock, one drafted message, one read from
+TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 fills it in.
 
 ## Phase 1 · Foundation (nothing business-specific yet)
 
