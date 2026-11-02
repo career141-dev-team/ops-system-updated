@@ -413,6 +413,11 @@ is copied except names for display and IDs for linking.
 
 ## D4. Where every sheet column goes
 
+**The full plan for retiring the sheets is [20](20-SHEETS-TO-SYSTEM.md)** (2 Nov): the method
+the TA System used to kill its Master Sheet, one screen per sheet, what is computed rather
+than typed, the first-day import, and the sheet files still needed from the Ops team. The
+table below is the summary.
+
 | Sheet today | Column | New home |
 |---|---|---|
 | Master sheet | client, position, TA, status, dates, values | TA `jobs` + Master Sheet (exists); Ops `opsPositions.stage` |

@@ -65,6 +65,7 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 | Every card checked against the plan | [17](17-BOARD-COVERAGE.md) |
 | The simulated working day, verified TA gaps, final technologies and connection points | [18](18-OPERATIONS-SIMULATION.md) |
 | **The TA System improvement plan** (verified, 12 sections) | [19](19-TA-SYSTEM-IMPROVEMENT-PLAN.md) |
+| **Replacing the Ops sheets** the way TA replaced its Master Sheet | [20](20-SHEETS-TO-SYSTEM.md) |
 | Source material (analysis, 26 connection points, diagrams as step lists) | [`reference/`](reference/) |
 
 ## 5. Sources and how reliable they are
