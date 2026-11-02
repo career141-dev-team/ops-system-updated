@@ -103,6 +103,27 @@ export interface OpsMessage {
   createdAt: number;
 }
 
+/** One email that arrived. One way in, as `OpsMessage` is the one way out. */
+export interface OpsInbound {
+  id: Id;
+  channel: "email" | "whatsapp";
+  from: string;
+  fromName: string;
+  receivedAt: number;
+  subject: string;
+  body: string;
+  /** The mail server's own id, so the same email is never recorded twice. */
+  providerId: string;
+  inReplyTo: string | null;
+  /** How it was matched, and to what. Null until somebody or something files it. */
+  matchedBy: "reference" | "thread" | "domain" | "manual" | "none";
+  subjectType: string | null;
+  subjectId: string | null;
+  clientId: string | null;
+  readState: "new" | "filed" | "actioned";
+  note: string;
+}
+
 /** Who changed what, before and after, and why. */
 export interface OpsAuditEntry {
   id: Id;
@@ -123,5 +144,6 @@ export interface OpsDatabase {
   timers: OpsTimer[];
   tasks: OpsTask[];
   messages: OpsMessage[];
+  inbound: OpsInbound[];
   audit: OpsAuditEntry[];
 }

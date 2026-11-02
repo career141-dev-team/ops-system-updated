@@ -3,10 +3,12 @@ import "server-only";
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
 import { repo } from "./store";
 import { seed } from "./seed";
-import type { Id, OpsDatabase, OpsMessage, OpsTask, OpsTimer } from "./types";
+import type { Id, OpsDatabase, OpsInbound, OpsMessage, OpsTask, OpsTimer } from "./types";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { tick } from "@/lib/tick";
+import { type InboundMail, readMailbox } from "@/lib/graphMail";
+import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 
 /**
  * The desk, from wherever it is kept (2 Nov).
@@ -154,6 +156,110 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
   if (!stopping.length) return 0;
   await convexMutation("ops/data:cancelTimers", { timerIds: stopping.map((t) => t.id), by });
   return stopping.length;
+}
+
+/**
+ * One pass of the Ops mailbox (15, Phase 1 steps 18 and 19).
+ *
+ * Read, match, record, and stop the chasing for anything that was certainly a
+ * reply. Everything it cannot place waits in "needs filing" rather than being
+ * guessed at. Recording is keyed on the mail server's own id, so a second pass
+ * over the same mailbox records nothing twice.
+ */
+export async function readTheMailbox(
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; reason?: string; read: number; filed: number; waiting: number; chasesStopped: number }> {
+  const result = await readMailbox();
+  if (!result.ok) return { ok: false, reason: result.reason, read: 0, filed: 0, waiting: 0, chasesStopped: 0 };
+  return takeInbound(result.mail, by, now);
+}
+
+/** The same pass over mail from anywhere, so it can be tested and demonstrated. */
+export async function takeInbound(
+  mail: InboundMail[],
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; read: number; filed: number; waiting: number; chasesStopped: number }> {
+  const db = await desk();
+  const known = {
+    threads: db.messages
+      .filter((m) => m.subjectType && m.subjectId && m.sentAt)
+      .map((m) => ({ providerMessageId: "<" + m.id + "@ops.career141.com>", subjectType: m.subjectType as string, subjectId: m.subjectId as string })),
+    // Client contacts come from the TA System once that window opens; until
+    // then nothing is matched by domain, which is the safe way round.
+    contacts: [] as { email: string; clientId: string }[],
+    subjects: [
+      ...new Set(
+        db.messages
+          .filter((m) => m.subjectType && m.subjectId)
+          .map((m) => (m.subjectType as string) + "|" + (m.subjectId as string)),
+      ),
+    ].map((pair) => ({ subjectType: pair.split("|")[0].toLowerCase(), subjectId: pair.split("|")[1] })),
+  };
+
+  let filed = 0;
+  let waiting = 0;
+  let chasesStopped = 0;
+
+  for (const item of mail) {
+    const match = matchInbound(item, known);
+    const row = {
+      channel: "email" as const,
+      from: item.from,
+      fromName: item.fromName,
+      receivedAt: item.receivedAt,
+      subject: item.subject,
+      body: item.body,
+      providerId: item.providerId,
+      inReplyTo: item.inReplyTo,
+      matchedBy: match.method,
+      subjectType: match.subjectType,
+      subjectId: match.subjectId,
+      clientId: match.clientId,
+      note: match.note,
+    };
+
+    const saved = usingConvex()
+      ? await convexMutation<{ id: string; already: boolean }>("ops/data:recordInbound", row)
+      : repo.recordInbound(row);
+    if (saved.already) continue;
+
+    if (match.subjectId) filed += 1;
+    else waiting += 1;
+
+    if (stopsChasing(match) && match.subjectType && match.subjectId) {
+      chasesStopped += await recordReply(match.subjectType, match.subjectId, by);
+    }
+  }
+
+  return { ok: true, read: mail.length, filed, waiting, chasesStopped };
+}
+
+export async function fileInbound(inboundId: Id, subjectType: string, subjectId: Id, by: Id): Promise<number> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:fileInbound", { inboundId, subjectType, subjectId, by });
+  } else {
+    repo.fileInbound(inboundId, subjectType, subjectId, by);
+  }
+  // Filing it by hand is still the client answering, so the chasing stops.
+  return recordReply(subjectType, subjectId, by);
+}
+
+export async function markInboundActioned(inboundId: Id, by: Id): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:markInboundActioned", { inboundId, by });
+    return;
+  }
+  repo.markInboundActioned(inboundId, by);
+}
+
+export function inboundWaiting(db: OpsDatabase): OpsInbound[] {
+  return db.inbound.filter((i) => i.readState === "new").sort((a, b) => b.receivedAt - a.receivedAt);
+}
+
+export function inboundRecent(db: OpsDatabase): OpsInbound[] {
+  return [...db.inbound].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
 }
 
 /* ── Reading one desk, without asking for it twice ───────────────────────── */

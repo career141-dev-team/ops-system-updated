@@ -140,6 +140,33 @@ export default defineSchema({
     .index("by_state", ["state"])
     .index("by_subject", ["subjectType", "subjectId"]),
 
+  /** One email that arrived. One way in, as opsMessages is the one way out. */
+  opsInbound: defineTable({
+    channel: v.union(v.literal("email"), v.literal("whatsapp")),
+    from: v.string(),
+    fromName: v.string(),
+    receivedAt: v.number(),
+    subject: v.string(),
+    body: v.string(),
+    providerId: v.string(),
+    inReplyTo: v.union(v.string(), v.null()),
+    matchedBy: v.union(
+      v.literal("reference"),
+      v.literal("thread"),
+      v.literal("domain"),
+      v.literal("manual"),
+      v.literal("none"),
+    ),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    readState: v.union(v.literal("new"), v.literal("filed"), v.literal("actioned")),
+    note: v.string(),
+  })
+    .index("by_provider", ["providerId"])
+    .index("by_readState", ["readState"])
+    .index("by_received", ["receivedAt"]),
+
   /** Who changed what, before and after, and why. Everything, always. */
   opsAudit: defineTable({
     actorId: v.union(v.string(), v.null()),

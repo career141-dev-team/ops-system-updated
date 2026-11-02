@@ -6,6 +6,10 @@ import { redirect } from "next/navigation";
 import {
   desk,
   editMessage,
+  fileInbound,
+  markInboundActioned,
+  readTheMailbox,
+  takeInbound,
   finishTask as finishTaskWrite,
   numberOf,
   recordReply as recordReplyWrite,
@@ -19,6 +23,9 @@ import { HOUR } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
+import { fakeArrival } from "@/lib/graphMail";
+import { referenceFor } from "@/lib/mailMatch";
+import { devSignInAllowed } from "@/lib/session";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -93,6 +100,63 @@ export async function changeSetting(formData: FormData): Promise<void> {
   await setSetting(key, decided.value, member.id, reason);
   revalidatePath("/settings");
   redirect("/settings?msg=" + encodeURIComponent(key + " is now " + String(decided.value) + "."));
+}
+
+/** Read the Ops mailbox now. Off until the credentials exist, and it says so. */
+export async function readMailNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const r = await readTheMailbox(member.id);
+  const said = r.ok
+    ? r.read + " read, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped."
+    : r.reason ?? "The mailbox could not be read.";
+  revalidatePath("/mail");
+  redirect("/mail?msg=" + encodeURIComponent(said));
+}
+
+/**
+ * A pretend arrival, so the screen can be built and shown before the mailbox
+ * exists. Refused unless the development sign-in is on.
+ */
+export async function pretendMailArrives(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  if (!devSignInAllowed()) redirect("/mail?msg=" + encodeURIComponent("Pretend mail is for development only."));
+
+  const kind = String(formData.get("kind") ?? "reply");
+  const db = await desk();
+  const sent = db.messages.find((m) => m.subjectType && m.subjectId);
+  const subject =
+    kind === "reply" && sent
+      ? "Re: " + sent.subject + " " + referenceFor(sent.subjectType as string, sent.subjectId as string)
+      : "A question about our search";
+
+  const r = await takeInbound([fakeArrival({ subject })], member.id);
+  revalidatePath("/mail");
+  redirect(
+    "/mail?msg=" +
+      encodeURIComponent(r.filed ? "Filed by its reference. " + r.chasesStopped + " chases stopped." : "It arrived, and is waiting for you to file it."),
+  );
+}
+
+export async function fileThisMail(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const inboundId = String(formData.get("inboundId") ?? "");
+  const pair = String(formData.get("subject") ?? "");
+  if (!pair.includes("|")) redirect("/mail?msg=" + encodeURIComponent("Choose what it belongs to first."));
+  const [subjectType, subjectId] = pair.split("|");
+  const stopped = await fileInbound(inboundId, subjectType, subjectId, member.id);
+  revalidatePath("/mail");
+  redirect("/mail?msg=" + encodeURIComponent(stopped ? "Filed. " + stopped + " chases stopped." : "Filed."));
+}
+
+export async function markMailDone(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  await markInboundActioned(String(formData.get("inboundId") ?? ""), member.id);
+  revalidatePath("/mail");
+  redirect("/mail?msg=" + encodeURIComponent("Marked as dealt with."));
 }
 
 export async function finishTask(formData: FormData): Promise<void> {

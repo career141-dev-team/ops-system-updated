@@ -18,6 +18,7 @@ import type {
   Id,
   OpsAuditEntry,
   OpsDatabase,
+  OpsInbound,
   OpsMember,
   OpsMessage,
   OpsSetting,
@@ -295,6 +296,54 @@ export const repo = {
     }
     if (stopped.length) save();
     return stopped.length;
+  },
+
+  /**
+   * One arrival. The mail server's own id is the key: a second pass over the
+   * same mailbox must never record the same email twice, which is the bug the
+   * TA System fixed by hand after a candidate was answered twice (2 Oct).
+   */
+  recordInbound(mail: Omit<OpsInbound, "id" | "readState">): { id: Id; already: boolean } {
+    const db = load();
+    const seen = db.inbound.find((i) => i.providerId === mail.providerId);
+    if (seen) return { id: seen.id, already: true };
+    const row: OpsInbound = { ...mail, id: id("in"), readState: mail.subjectId ? "filed" : "new" };
+    db.inbound.push(row);
+    audit({
+      actorId: null,
+      action: "inbound.recorded",
+      subjectType: "inbound",
+      subjectId: row.id,
+      before: null,
+      after: row.matchedBy,
+      reason: row.note,
+    });
+    save();
+    return { id: row.id, already: false };
+  },
+
+  /** A person says what it belongs to. */
+  fileInbound(inboundId: Id, subjectType: string, subjectId: Id, by: Id): void {
+    const db = load();
+    const row = db.inbound.find((i) => i.id === inboundId);
+    if (!row) return;
+    const before = row.subjectId;
+    row.subjectType = subjectType;
+    row.subjectId = subjectId;
+    row.matchedBy = "manual";
+    row.readState = "filed";
+    row.note = "Filed by hand.";
+    audit({ actorId: by, action: "inbound.filed", subjectType: "inbound", subjectId: inboundId, before, after: subjectId, reason: null });
+    save();
+  },
+
+  markInboundActioned(inboundId: Id, by: Id): void {
+    const db = load();
+    const row = db.inbound.find((i) => i.id === inboundId);
+    if (!row) return;
+    row.readState = "actioned";
+    audit({ actorId: by, action: "inbound.actioned", subjectType: "inbound", subjectId: inboundId, before: "filed", after: "actioned", reason: null });
+    save();
   },
 
   audit(): OpsAuditEntry[] {

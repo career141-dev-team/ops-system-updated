@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, holidays, timers, tasks, messages, audit] = await Promise.all([
+    const [members, settings, holidays, timers, tasks, messages, inbound, audit] = await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
       ctx.db.query("opsHolidays").collect(),
@@ -61,6 +61,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsTimers").collect(),
       ctx.db.query("opsTasks").collect(),
       ctx.db.query("opsMessages").collect(),
+      ctx.db.query("opsInbound").withIndex("by_received").order("desc").take(100),
       ctx.db.query("opsAudit").withIndex("by_at").order("desc").take(AUDIT_SHOWN),
     ]);
 
@@ -76,6 +77,7 @@ export const snapshot = internalQuery({
       timers: timers.map(row),
       tasks: tasks.map(row),
       messages: messages.map(row),
+      inbound: inbound.map(row),
       audit: audit.map(row),
     };
   },
@@ -454,6 +456,95 @@ export const applyTick = internalMutation({
       });
     }
     return { warned: args.warned.length, fired: args.fired.length, escalated: args.escalations.length };
+  },
+});
+
+/** One arrival, recorded once. The mail server's id is the key. */
+export const recordInbound = internalMutation({
+  args: {
+    channel: v.union(v.literal("email"), v.literal("whatsapp")),
+    from: v.string(),
+    fromName: v.string(),
+    receivedAt: v.number(),
+    subject: v.string(),
+    body: v.string(),
+    providerId: v.string(),
+    inReplyTo: v.union(v.string(), v.null()),
+    matchedBy: v.union(
+      v.literal("reference"),
+      v.literal("thread"),
+      v.literal("domain"),
+      v.literal("manual"),
+      v.literal("none"),
+    ),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    note: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("opsInbound")
+      .withIndex("by_provider", (q) => q.eq("providerId", args.providerId))
+      .first();
+    if (seen) return { id: seen._id as string, already: true };
+
+    const id = await ctx.db.insert("opsInbound", {
+      ...args,
+      readState: args.subjectId ? ("filed" as const) : ("new" as const),
+    });
+    await writeAudit(ctx, {
+      actorId: null,
+      action: "inbound.recorded",
+      subjectType: "inbound",
+      subjectId: id as string,
+      after: args.matchedBy,
+      reason: args.note,
+    });
+    return { id: id as string, already: false };
+  },
+});
+
+export const fileInbound = internalMutation({
+  args: { inboundId: v.string(), subjectType: v.string(), subjectId: v.string(), by: v.string() },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.inboundId as never);
+    if (!found) return { ok: false };
+    const row = found as unknown as Doc<"opsInbound">;
+    await ctx.db.patch(args.inboundId as never, {
+      subjectType: args.subjectType,
+      subjectId: args.subjectId,
+      matchedBy: "manual",
+      readState: "filed",
+      note: "Filed by hand.",
+    });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "inbound.filed",
+      subjectType: "inbound",
+      subjectId: args.inboundId,
+      before: row.subjectId,
+      after: args.subjectId,
+    });
+    return { ok: true };
+  },
+});
+
+export const markInboundActioned = internalMutation({
+  args: { inboundId: v.string(), by: v.string() },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.inboundId as never);
+    if (!found) return { ok: false };
+    await ctx.db.patch(args.inboundId as never, { readState: "actioned" });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "inbound.actioned",
+      subjectType: "inbound",
+      subjectId: args.inboundId,
+      before: "filed",
+      after: "actioned",
+    });
+    return { ok: true };
   },
 });
 

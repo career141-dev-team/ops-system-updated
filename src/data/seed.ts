@@ -141,6 +141,7 @@ export function seed(now = Date.now()): OpsDatabase {
         createdAt: ago(3 * HOUR),
       },
     ],
+    inbound: [],
     audit: [],
   };
 }
