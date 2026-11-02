@@ -9,7 +9,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { domainOf, isOurs, matchInbound, referenceFor, referenceIn, stopsChasing, tailOf } from "@/lib/mailMatch";
+import {
+  domainOf,
+  houseSubject,
+  isOurs,
+  matchInbound,
+  referenceFor,
+  referenceIn,
+  sameName,
+  stopsChasing,
+  stripReplyPrefixes,
+  tailOf,
+} from "@/lib/mailMatch";
 
 const known = {
   threads: [{ providerMessageId: "<msg-1@ours>", subjectType: "clientSet", subjectId: "cs_11112222" }],
@@ -157,4 +168,77 @@ test("the first read of a box is a short window, and our own mail is ours", asyn
   // own copy from being read as a client's reply.
   assert.deepEqual(ourDomains(), ["career141.com"]);
   assert.equal(isOurs("rushda@career141.com", ourDomains()), true);
+});
+
+/**
+ * The house subject, "CLIENT > ROLE > SET n" (c719, added 2 Nov).
+ *
+ * It sits beside the reference, not instead of it: the reference only appears
+ * on mail the system sent, and the desk has typed this form by hand in Outlook
+ * for years. It is the looser of the two rules, so these tests are mostly
+ * about where it refuses.
+ */
+const sets = {
+  threads: [],
+  contacts: [{ email: "hr@sampleclient.test", clientId: "cl_1" }],
+  subjects: [
+    { subjectType: "clientSet", subjectId: "cs_1", subject: "Sample Client > PA to the CFO > SET 02" },
+    { subjectType: "clientSet", subjectId: "cs_2", subject: "SET 1 - Other Client - Driver - 5 CVs" },
+  ],
+};
+
+test("both forms of the house subject are read, through replies and markers", () => {
+  assert.deepEqual(houseSubject("Sample Client > PA to the CFO > SET 02"), {
+    client: "Sample Client",
+    position: "PA to the CFO",
+    setNumber: 2,
+  });
+  assert.deepEqual(houseSubject("SET 1 - Other Client - Driver - 5 CVs"), {
+    client: "Other Client",
+    position: "Driver",
+    setNumber: 1,
+  });
+  // A reply carries prefixes, a REVISED marker and our own reference at once.
+  assert.deepEqual(houseSubject("RE: FW: REVISED - A Co > Cook > SET 3 [C141-CLIENTSET-CS9]"), {
+    client: "A Co",
+    position: "Cook",
+    setNumber: 3,
+  });
+  assert.equal(stripReplyPrefixes("Re: Fwd: hello"), "hello");
+});
+
+test("a typed reply is matched to its set although it carries no reference", () => {
+  const m = matchInbound({ from: "hr@sampleclient.test", subject: "RE: SAMPLE CLIENT > pa to the cfo > Set 2" }, sets);
+  assert.equal(m.method, "house", "case and spacing carry no meaning in a name");
+  assert.equal(m.subjectId, "cs_1");
+  assert.equal(stopsChasing(m), true, "it names the set, so that chase is over");
+  assert.ok(sameName("A.B.C. Holdings (Pvt) Ltd", "abc holdings pvt ltd"));
+});
+
+test("the reference still wins where both are present", () => {
+  const m = matchInbound(
+    { from: "hr@sampleclient.test", subject: "RE: Other Client > Driver > SET 1 [C141-CLIENTSET-CS1]" },
+    sets,
+  );
+  assert.equal(m.method, "reference");
+  assert.equal(m.subjectId, "cs_1", "the reference points at set 2 of the other client, and is trusted");
+});
+
+test("it refuses rather than guesses", () => {
+  // A different set number is a different set.
+  assert.equal(matchInbound({ from: "hr@sampleclient.test", subject: "Sample Client > PA to the CFO > SET 9" }, sets).method, "domain");
+  // No set number at all is not a house subject.
+  assert.equal(houseSubject("Sample Client > PA to the CFO"), null);
+  assert.equal(houseSubject("your shortlist - thanks"), null);
+  // Two of our sets reading the same is held for a person, not split 50-50.
+  const twins = {
+    ...sets,
+    subjects: [
+      { subjectType: "clientSet", subjectId: "cs_1", subject: "Same Co > Driver > SET 1" },
+      { subjectType: "clientSet", subjectId: "cs_2", subject: "SAME CO - driver - SET 1" },
+    ],
+  };
+  const m = matchInbound({ from: "hr@sampleclient.test", subject: "RE: Same Co > Driver > SET 1" }, twins);
+  assert.equal(m.method, "none");
+  assert.match(m.note, /more than one of our sets/);
 });

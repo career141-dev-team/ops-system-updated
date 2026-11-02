@@ -217,6 +217,7 @@ export const seed = internalMutation({
         approvedBy: null,
         approvedAt: null,
         sentAt: null,
+        providerMessageId: null,
         note: null,
         createdAt: message.createdAt,
       });
@@ -367,6 +368,8 @@ export const settleMessage = internalMutation({
     state: v.union(v.literal("sent"), v.literal("failed"), v.literal("blocked"), v.literal("queued")),
     to: v.array(v.string()),
     note: v.union(v.string(), v.null()),
+    /** What the mail server called it, once a sender knows. */
+    providerMessageId: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const message = await ctx.db.get(args.messageId as never);
@@ -379,6 +382,7 @@ export const settleMessage = internalMutation({
       note: args.note,
       to: args.to,
       ...(args.state === "sent" ? { sentAt: Date.now() } : {}),
+      ...(args.providerMessageId === undefined ? {} : { providerMessageId: args.providerMessageId }),
     });
     await writeAudit(ctx, {
       actorId: args.by,
@@ -474,6 +478,7 @@ export const recordInbound = internalMutation({
     matchedBy: v.union(
       v.literal("reference"),
       v.literal("thread"),
+      v.literal("house"),
       v.literal("domain"),
       v.literal("manual"),
       v.literal("none"),

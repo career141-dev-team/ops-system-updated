@@ -98,6 +98,13 @@ export interface OpsMessage {
   approvedBy: Id | null;
   approvedAt: number | null;
   sentAt: number | null;
+  /**
+   * The id the mail server gave this message when it actually went (2 Nov).
+   * A client's reply carries it in `In-Reply-To`, so it is the only thing that
+   * matches a reply to its thread with certainty. Null until a sender fills it
+   * in: it cannot be worked out in advance, and guessing it was a bug.
+   */
+  providerMessageId: string | null;
   /** Why it was blocked or failed, in words a person can act on. */
   note: string | null;
   createdAt: number;
@@ -118,7 +125,7 @@ export interface OpsInbound {
   providerId: string;
   inReplyTo: string | null;
   /** How it was matched, and to what. Null until somebody or something files it. */
-  matchedBy: "reference" | "thread" | "domain" | "manual" | "none";
+  matchedBy: "reference" | "thread" | "house" | "domain" | "manual" | "none";
   subjectType: string | null;
   subjectId: string | null;
   clientId: string | null;

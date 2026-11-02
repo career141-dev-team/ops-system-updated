@@ -14,6 +14,16 @@ import { fileThisMail, markMailDone, pretendMailArrives, readMailNow } from "@/a
  * matched. Nothing is guessed at, so "needs filing" is a normal part of the
  * day rather than a failure.
  */
+/** How each match is said on the screen: what we matched on, in plain words. */
+const MATCH_SAID: Record<string, string> = {
+  reference: "matched by our reference",
+  thread: "matched by the thread",
+  house: "matched by the subject",
+  domain: "matched by the sender's company",
+  manual: "filed by hand",
+  none: "not placed",
+};
+
 export default async function MailPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -98,7 +108,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <div key={mail.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-2.5 first:border-t-0">
             <span className="min-w-0 flex-1 text-[13.5px]">{mail.subject || "(no subject)"}</span>
             <span className="text-[12px] text-ink-faint">
-              {mail.matchedBy === "manual" ? "filed by hand" : mail.matchedBy === "none" ? "not placed" : "matched by " + mail.matchedBy}
+              {MATCH_SAID[mail.matchedBy]}
             </span>
             <span className="text-[12px] text-ink-faint">{mail.readState}</span>
             {mail.readState === "filed" && (

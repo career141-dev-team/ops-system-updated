@@ -95,12 +95,14 @@ export async function settleMessage(
   state: Extract<OpsMessage["state"], "sent" | "failed" | "blocked" | "queued">,
   to: string[],
   note: string | null,
+  /** What the mail server called it, once a sender knows. */
+  providerMessageId?: string | null,
 ): Promise<void> {
   if (!usingConvex()) {
-    repo.settleMessage(messageId, by, state, to, note);
+    repo.settleMessage(messageId, by, state, to, note, providerMessageId);
     return;
   }
-  await convexMutation("ops/data:settleMessage", { messageId, by, state, to, note });
+  await convexMutation("ops/data:settleMessage", { messageId, by, state, to, note, providerMessageId });
 }
 
 export async function setSetting(key: string, value: string | number | boolean, by: Id, reason: string): Promise<void> {
@@ -192,19 +194,38 @@ export async function takeInbound(
 ): Promise<{ ok: boolean; read: number; filed: number; waiting: number; chasesStopped: number }> {
   const db = await desk();
   const known = {
+    // Only messages whose real server id we kept. This used to make the id up
+    // from our own row id, which no mail server has ever heard of, so the rule
+    // could never match a single real reply (2 Nov).
     threads: db.messages
-      .filter((m) => m.subjectType && m.subjectId && m.sentAt)
-      .map((m) => ({ providerMessageId: "<" + m.id + "@ops.career141.com>", subjectType: m.subjectType as string, subjectId: m.subjectId as string })),
+      .filter((m) => m.subjectType && m.subjectId && m.providerMessageId)
+      .map((m) => ({
+        providerMessageId: m.providerMessageId as string,
+        subjectType: m.subjectType as string,
+        subjectId: m.subjectId as string,
+      })),
     // Client contacts come from the TA System once that window opens; until
     // then nothing is matched by domain, which is the safe way round.
     contacts: [] as { email: string; clientId: string }[],
+    // One entry per thing we have written about, keeping the subject line we
+    // used, so a reply carrying the house form "CLIENT > ROLE > SET n" can be
+    // read against it. The newest message for a thing wins, since that is the
+    // wording the client is looking at.
     subjects: [
-      ...new Set(
+      ...new Map(
         db.messages
           .filter((m) => m.subjectType && m.subjectId)
-          .map((m) => (m.subjectType as string) + "|" + (m.subjectId as string)),
-      ),
-    ].map((pair) => ({ subjectType: pair.split("|")[0].toLowerCase(), subjectId: pair.split("|")[1] })),
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map((m) => [
+            (m.subjectType as string) + "|" + (m.subjectId as string),
+            {
+              subjectType: (m.subjectType as string).toLowerCase(),
+              subjectId: m.subjectId as string,
+              subject: m.subject,
+            },
+          ]),
+      ).values(),
+    ],
   };
 
   let filed = 0;

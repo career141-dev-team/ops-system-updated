@@ -105,3 +105,28 @@ System parses, and it would match hand-written set mail from Outlook. It is not 
 here yet, because matching by client needs the client contacts that arrive with the TA
 API.
 
+## 2 Nov · Two holes in the reply matching, closed
+
+**The sent-message id was invented.** `desk.ts` built it from our own row id as
+`<…@ops.career141.com>` — a domain that does not exist, and not what a mail server
+calls a message. Microsoft gives the real `internetMessageId` back when it sends, and a
+client’s reply quotes that. So the thread rule could never have matched a single real
+reply. The message record now keeps `providerMessageId`, null until a sender fills it,
+and the thread rule reads only messages whose real id we kept.
+
+**The desk’s own subject was not read.** The matcher looked only for our
+`[C141-…]` reference, which appears on mail the system sent — and the desk has typed
+"CLIENT > ROLE > SET n" by hand in Outlook for years (c719), which is what almost every
+client is replying to today. Both rules now run, reference first: a hybrid, not a swap.
+
+The house rule is the looser one, so it is held to three conditions. It must name a set
+number, or "your shortlist, thanks" could be read as a company and a role. It must lead
+to exactly one thing we know about, otherwise it is held for a person — the mistake the
+TA System made when it matched candidate mail on subject text alone. And names are
+compared without case, spacing or punctuation, so "A.B.C. Holdings (Pvt) Ltd" and
+"abc holdings pvt ltd" are one company. Reply prefixes, a "REVISED -" marker and our
+own reference are stripped before parsing, because a real reply carries all three.
+
+Both forms are read: "CLIENT > ROLE > SET 02" and "SET 2 - CLIENT - ROLE - 5 CVs", the
+latter being what the TA app already sends.
+

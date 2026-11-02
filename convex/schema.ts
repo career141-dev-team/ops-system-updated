@@ -133,6 +133,8 @@ export default defineSchema({
     approvedBy: v.union(v.string(), v.null()),
     approvedAt: v.union(v.number(), v.null()),
     sentAt: v.union(v.number(), v.null()),
+    /** What the mail server called it when it went; a reply quotes this. */
+    providerMessageId: v.union(v.string(), v.null()),
     /** Why it was blocked or failed, in words a person can act on. */
     note: v.union(v.string(), v.null()),
     createdAt: v.number(),
@@ -154,6 +156,7 @@ export default defineSchema({
     matchedBy: v.union(
       v.literal("reference"),
       v.literal("thread"),
+      v.literal("house"),
       v.literal("domain"),
       v.literal("manual"),
       v.literal("none"),

@@ -206,7 +206,14 @@ export const repo = {
   },
 
   /** Approval and the gate's verdict in one write, so neither can happen alone. */
-  settleMessage(messageId: Id, by: Id, state: OpsMessage["state"], to: string[], note: string | null): void {
+  settleMessage(
+    messageId: Id,
+    by: Id,
+    state: OpsMessage["state"],
+    to: string[],
+    note: string | null,
+    providerMessageId?: string | null,
+  ): void {
     const db = load();
     const message = db.messages.find((m) => m.id === messageId);
     if (!message) return;
@@ -217,6 +224,7 @@ export const repo = {
     message.note = note;
     message.to = to;
     if (state === "sent") message.sentAt = Date.now();
+    if (providerMessageId !== undefined) message.providerMessageId = providerMessageId;
     audit({ actorId: by, action: "message." + state, subjectType: "message", subjectId: messageId, before, after: state, reason: note });
     save();
   },

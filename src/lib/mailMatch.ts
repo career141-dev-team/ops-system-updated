@@ -11,16 +11,22 @@
  *   1. **Our own reference** in the subject. We put it there when we sent, so a
  *      reply that carries it is certain.
  *   2. **The thread**, through the mail headers. Also ours, also certain.
- *   3. **The sender's address**, matched against a client's known contacts.
+ *   3. **The house subject**, "CLIENT > ROLE > SET n". This is the desk's own
+ *      form, written by hand in Outlook for years (c719), and the TA System
+ *      already reads it. It is kept alongside the reference rather than
+ *      instead of it: the reference only ever appears on mail the system sent,
+ *      and most set mail is still typed by a person. It must name a set number
+ *      and lead to exactly one thing we know about, or it does not count.
+ *   4. **The sender's address**, matched against a client's known contacts.
  *      That tells us the client but not which of their things, so it is filed
  *      to the client and left for a person to place.
- *   4. **Nothing.** It waits in "needs filing". Nobody is guessed at.
+ *   5. **Nothing.** It waits in "needs filing". Nobody is guessed at.
  *
  * The TA System learned this the hard way with candidate mail: a reply matched
  * by subject text alone went to the wrong opening.
  */
 
-export type MatchMethod = "reference" | "thread" | "domain" | "none";
+export type MatchMethod = "reference" | "thread" | "house" | "domain" | "none";
 
 export interface InboundLike {
   from: string;
@@ -85,9 +91,76 @@ export function isOurs(address: string, ourDomains: string[]): boolean {
   return ourDomains.some((d) => d.trim().toLowerCase() === domain);
 }
 
+/**
+ * What a house subject says. Both forms the desk uses are read:
+ *
+ *   "LANKA HOSPITAL > PA TO CFO > SET 02"        the hand-written form
+ *   "SET 2 - LANKA HOSPITAL - PA TO CFO - 5 CVs" the form the TA app sends
+ *
+ * Reply prefixes, a "REVISED -" marker and our own reference are taken off
+ * first, because a reply carries all three.
+ */
+export interface HouseSubject {
+  client: string;
+  position: string;
+  setNumber: number;
+}
+
+export function stripReplyPrefixes(subject: string): string {
+  let out = (subject ?? "").trim();
+  for (;;) {
+    const next = out
+      .replace(/^\s*(?:re|fw|fwd|aw|antwort)\s*:\s*/i, "")
+      .replace(/^\s*revised\s*[-–—:]\s*/i, "")
+      .trim();
+    if (next === out) return out;
+    out = next;
+  }
+}
+
+/** For comparing names: case, spacing and punctuation carry no meaning here. */
+export function sameName(a: string, b: string): boolean {
+  const flat = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]/g, "");
+  const left = flat(a);
+  return left.length >= 2 && left === flat(b);
+}
+
+const SET_PART = /^set\s*0*(\d{1,3})$/i;
+
+export function houseSubject(subject: string): HouseSubject | null {
+  const clean = stripReplyPrefixes((subject ?? "").replace(/\[C141-[^\]]*\]/gi, " ")).trim();
+  if (!clean) return null;
+
+  // Either separator, and never both: "A > B > SET 1" or "SET 1 - A - B - 3 CVs".
+  const parts = (clean.includes(">") ? clean.split(">") : clean.split(/\s[-–—]\s/))
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 3) return null;
+
+  let setNumber: number | null = null;
+  const rest: string[] = [];
+  for (const part of parts) {
+    const found = SET_PART.exec(part);
+    if (found && setNumber === null) setNumber = Number(found[1]);
+    else if (!/^\d+\s*cvs?$/i.test(part)) rest.push(part);
+  }
+  // No set number is not a house subject. A client writing "your shortlist"
+  // must not be matched by two words that happen to look like a name.
+  if (setNumber === null || rest.length < 2) return null;
+
+  const [client, position] = rest;
+  if (client.length < 2 || position.length < 2) return null;
+  return { client, position, setNumber };
+}
+
 export function matchInbound(
   mail: InboundLike,
-  known: { threads: KnownThread[]; contacts: KnownContact[]; subjects: { subjectType: string; subjectId: string }[] },
+  known: {
+    threads: KnownThread[];
+    contacts: KnownContact[];
+    /** What we have written about, with the subject line we used for it. */
+    subjects: { subjectType: string; subjectId: string; subject?: string }[];
+  },
 ): Match {
   const reference = referenceIn(mail.subject);
   if (reference) {
@@ -123,6 +196,39 @@ export function matchInbound(
         subjectId: thread.subjectId,
         clientId: null,
         note: "It is a reply to a message we sent.",
+      };
+    }
+  }
+
+  const house = houseSubject(mail.subject);
+  if (house) {
+    const hits = known.subjects.filter((k) => {
+      const theirs = houseSubject(k.subject ?? "");
+      return (
+        theirs !== null &&
+        theirs.setNumber === house.setNumber &&
+        sameName(theirs.client, house.client) &&
+        sameName(theirs.position, house.position)
+      );
+    });
+    if (hits.length === 1) {
+      return {
+        method: "house",
+        subjectType: hits[0].subjectType,
+        subjectId: hits[0].subjectId,
+        clientId: null,
+        note: 'The subject names it: "' + house.client + " > " + house.position + " > set " + house.setNumber + '".',
+      };
+    }
+    if (hits.length > 1) {
+      // Two things we know about read the same. Picking one is the mistake the
+      // TA System made with candidate mail matched on subject text alone.
+      return {
+        method: "none",
+        subjectType: null,
+        subjectId: null,
+        clientId: null,
+        note: "The subject matches more than one of our sets. Please file it.",
       };
     }
   }
@@ -164,5 +270,5 @@ export function matchInbound(
 
 /** A reply we filed against something is a reply: the chasing for it stops. */
 export function stopsChasing(match: Match): boolean {
-  return match.method === "reference" || match.method === "thread";
+  return match.method === "reference" || match.method === "thread" || match.method === "house";
 }
