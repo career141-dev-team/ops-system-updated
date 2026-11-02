@@ -143,3 +143,32 @@ What is genuinely open is the **holiday list**, which is empty in both systems �
 day the office is shut. The dates are public; which ones Career 141 closes for is the
 owner’s call, and it belongs on the holidays screen rather than in code.
 
+## 2 Nov · The senders, and why a draft is sent twice over
+
+Email goes out as a **draft that is then sent**, not through Graph's one-step `sendMail`.
+`sendMail` returns nothing at all, so there would be no way to learn what the message was
+called — and without that a reply can never be matched to its thread. Creating the draft
+hands back the whole message including `internetMessageId`, which is exactly what the
+client's reply quotes. That is what closed the invented-id hole above.
+
+It sends **from the ops person's own mailbox**, with the common box copied, which is the
+mailbox decision of the same day: the client sees Rushda and replies to Rushda, and the
+thread is not hers alone.
+
+Three switches sit under each other on purpose, because any one of them can be wrong:
+`OPS_SEND` (off everywhere until somebody says otherwise), the outreach switch in Settings
+(test mode sends to the test address instead), and `OPS_OUTBOUND_LOCK` (even with sending
+on, only named addresses and numbers can be written to). The last one is what makes the
+preview safe to click around in once the database holds real client contacts.
+
+**Switched off is recorded as blocked, not failed.** A preview with no credentials would
+otherwise report every message as failed, which hides the real failures when they come.
+
+**A send is never retried.** A send that timed out may well have gone, and the record says
+exactly that — "we do not know whether it went" — rather than guessing. Retrying is how a
+client gets the same email twice (TA, 2 Oct).
+
+**WhatsApp groups are not sent by anybody.** Meta's API cannot write to a group, so the
+text is drafted and a person posts it from their phone and ticks it off. The sender says so
+in those words rather than appearing to do nothing.
+

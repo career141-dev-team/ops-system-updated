@@ -23,6 +23,7 @@ import { HOUR } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
+import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { fakeArrival } from "@/lib/graphMail";
 import { referenceFor } from "@/lib/mailMatch";
 import { devSignInAllowed } from "@/lib/session";
@@ -215,9 +216,30 @@ export async function approveAndSend(formData: FormData): Promise<void> {
     redirect(here + "?msg=" + encodeURIComponent(verdict.note));
   }
 
-  // Nothing is actually sent yet: the senders arrive with M1's mail step. The
-  // record says plainly what happened, which is what the screen shows.
-  await settleMessage(messageId, member.id, "sent", verdict.to, verdict.note);
+  // The gate said yes. Now it actually goes, from this person's own mailbox,
+  // and whatever the sender says is recorded as it is - including "we do not
+  // know whether it went", which is a real answer and not a failure to hide.
+  const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId);
+  const outcome =
+    message.channel === "group_post"
+      ? groupPostIsManual()
+      : message.channel === "whatsapp"
+        ? await sendWhatsApp({ to: verdict.to[0], body: message.body, templateKey: message.templateKey })
+        : await sendEmail({ from: member.email, to: verdict.to, subject, body: message.body });
+
+  // Test mode's note matters as much as the sender's, so both are kept.
+  const said = [verdict.note, outcome.reason].filter(Boolean).join(" ") || null;
+  await settleMessage(
+    messageId,
+    member.id,
+    // Switched off on purpose is not the same as a send that went wrong. A
+    // preview with no credentials would otherwise report every message as
+    // failed, which hides the real failures when they come.
+    outcome.ok ? "sent" : sendingEnabled() ? "failed" : "blocked",
+    verdict.to,
+    said,
+    outcome.providerMessageId,
+  );
   revalidatePath("/");
-  redirect(here + "?msg=" + encodeURIComponent(verdict.note ?? "Sent."));
+  redirect(here + "?msg=" + encodeURIComponent(said ?? "Sent."));
 }

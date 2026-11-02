@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { desk, liveTimers } from "@/data/desk";
+import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
+import { outboundLocked, sendingEnabled } from "@/lib/senders";
+import { desk, liveTimers, switchedOn } from "@/data/desk";
 import { usingConvex } from "@/data/convexClient";
 import { currentMember } from "@/lib/session";
 import { people, readsEnabled, writesEnabled } from "@/lib/ta";
@@ -34,6 +36,19 @@ export default async function HealthPage() {
             {ta.ok
               ? ta.data.length + " people read from the TA System in " + ta.ms + " ms"
               : ta.reason}
+          </p>
+        </div>
+      </section>
+
+      <section className={card}>
+        <h2 className="text-[14.5px] font-medium">What can leave the building</h2>
+        <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
+          <p>Sending: {sendingEnabled() ? "on" : "switched off"}</p>
+          <p>Outreach to real clients: {switchedOn(db, "switch.outreachLive") ? "on" : "test mode"}</p>
+          <p>Reading the mailboxes: {readerEnabled() ? "on" : "switched off"}</p>
+          <p className="text-ink-soft">
+            {mailboxesInWords()}
+            {outboundLocked() ? " · the outbound lock allows only named addresses and numbers" : ""}
           </p>
         </div>
       </section>
