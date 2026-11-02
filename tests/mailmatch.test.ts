@@ -144,3 +144,17 @@ test("every named mailbox is read, and one bad box does not silence the rest", a
   assert.equal(mailboxesInWords(), "no mailbox is named yet");
   assert.match((await readAllMailboxes()).problems[0], /No mailbox is named yet/);
 });
+
+test("the first read of a box is a short window, and our own mail is ours", async () => {
+  const { FIRST_READ_DAYS, defaultSince, ourDomains } = await import("@/lib/graphMail");
+
+  // A box in use for years must not drag in its whole history on the first pass.
+  const now = Date.parse("2026-11-02T12:00:00Z");
+  assert.equal(defaultSince(now), now - FIRST_READ_DAYS * 24 * 3_600_000);
+  assert.ok(FIRST_READ_DAYS <= 7, "a short window, not a history import");
+
+  // Reading every folder means reading Sent Items, so this is what keeps our
+  // own copy from being read as a client's reply.
+  assert.deepEqual(ourDomains(), ["career141.com"]);
+  assert.equal(isOurs("rushda@career141.com", ourDomains()), true);
+});

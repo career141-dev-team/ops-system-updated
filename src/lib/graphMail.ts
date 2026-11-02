@@ -37,6 +37,8 @@ import "server-only";
  * like good news.
  */
 
+import { isOurs } from "./mailMatch";
+
 export interface InboundMail {
   /** Which of our mailboxes it arrived in. */
   mailbox: string;
@@ -66,6 +68,29 @@ export function mailboxes(): string[] {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
+}
+
+/**
+ * Our own email domains. Mail from these is our own copy, never a client
+ * replying to us.
+ */
+export function ourDomains(): string[] {
+  return (process.env.OPS_OUR_DOMAINS ?? "career141.com")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+}
+
+/**
+ * How far back the very first read of a box goes. Bounded on purpose: a box
+ * that has been in use for years holds thousands of old threads, and filing
+ * history we were never part of is noise, not work. The TA System learned the
+ * same lesson the other way round — its mailboxes read only from the moment a
+ * lead switched them on.
+ */
+export const FIRST_READ_DAYS = 2;
+export function defaultSince(now = Date.now()): number {
+  return now - FIRST_READ_DAYS * 24 * 3_600_000;
 }
 
 /** For the screen's heading: what we read, in words. */
@@ -117,10 +142,30 @@ type GraphMessage = {
 };
 
 /**
- * The unread mail in the Ops mailbox, oldest first so a burst is worked
- * through in order and none of it waits for ever.
+ * One mailbox's recent mail, oldest first so a burst is worked through in order
+ * and none of it waits for ever.
+ *
+ * Three things here were wrong on the first try and are worth keeping written
+ * down (2 Nov, found by reading this back rather than by an incident):
+ *
+ *   **Every folder, not the inbox.** `/messages` covers the whole mailbox. A
+ *   person who has used a box for years has Outlook rules, and a reply filed
+ *   into a client's folder was invisible while this read `/mailFolders/inbox`.
+ *
+ *   **Read or unread makes no difference.** This filtered `isRead eq false`,
+ *   which is harmless for a shared box nobody opens and useless for a person's
+ *   own inbox: they read their mail in Outlook within the minute, and we would
+ *   never see it again.
+ *
+ *   **Our own mail is not a client replying.** Reading every folder means
+ *   reading Sent Items, so anything from one of our own domains is dropped
+ *   here. `isOurs` in mailMatch.ts says what counts as ours.
+ *
+ * Instead of read-or-unread, it asks for what arrived since a time we give it,
+ * which is the newest thing we already recorded for that box. So a pass always
+ * moves forward and nothing is read twice or skipped, however busy the box is.
  */
-export async function readOneMailbox(address: string): Promise<ReadResult> {
+export async function readOneMailbox(address: string, since: number): Promise<ReadResult> {
   if (!readerEnabled()) return { ok: false, mailbox: address, reason: "Reading the mailboxes is switched off." };
   if (!graphReady()) return { ok: false, mailbox: address, reason: "The mailbox credentials are not set yet." };
 
@@ -133,9 +178,10 @@ export async function readOneMailbox(address: string): Promise<ReadResult> {
     const url =
       "https://graph.microsoft.com/v1.0/users/" +
       encodeURIComponent(address) +
-      "/mailFolders/inbox/messages?$top=" +
+      "/messages?$top=" +
       BATCH +
-      "&$orderby=receivedDateTime asc&$filter=isRead eq false" +
+      "&$orderby=receivedDateTime asc&$filter=receivedDateTime ge " +
+      new Date(since).toISOString() +
       "&$select=id,subject,receivedDateTime,bodyPreview,body,from,internetMessageHeaders";
 
     const response = await fetch(url, { headers: { authorization: "Bearer " + access }, signal: stop });
@@ -147,7 +193,9 @@ export async function readOneMailbox(address: string): Promise<ReadResult> {
     }
     const json = (await response.json()) as { value?: GraphMessage[] };
 
-    const mail: InboundMail[] = (json.value ?? []).map((m) => ({
+    const mail: InboundMail[] = (json.value ?? [])
+      .filter((m) => !isOurs(m.from?.emailAddress?.address ?? "", ourDomains()))
+      .map((m) => ({
       mailbox: address,
       providerId: m.id,
       from: m.from?.emailAddress?.address ?? "",
@@ -157,7 +205,7 @@ export async function readOneMailbox(address: string): Promise<ReadResult> {
       body: (m.body?.content ?? m.bodyPreview ?? "").slice(0, 20_000),
       inReplyTo:
         m.internetMessageHeaders?.find((h) => h.name.toLowerCase() === "in-reply-to")?.value ?? null,
-    }));
+      }));
 
     return { ok: true, mail, mailbox: address, ms: Date.now() - started };
   } catch (e) {
@@ -175,7 +223,9 @@ export async function readOneMailbox(address: string): Promise<ReadResult> {
  * stop the others: its reason is carried back so the screen can show which
  * box is unhappy and which are fine.
  */
-export async function readAllMailboxes(): Promise<{ mail: InboundMail[]; problems: string[]; read: string[] }> {
+export async function readAllMailboxes(
+  since: Record<string, number> = {},
+): Promise<{ mail: InboundMail[]; problems: string[]; read: string[] }> {
   const mail: InboundMail[] = [];
   const problems: string[] = [];
   const read: string[] = [];
@@ -183,7 +233,7 @@ export async function readAllMailboxes(): Promise<{ mail: InboundMail[]; problem
   if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read };
 
   for (const address of list) {
-    const result = await readOneMailbox(address);
+    const result = await readOneMailbox(address, since[address] ?? defaultSince());
     if (result.ok) {
       mail.push(...result.mail);
       read.push(address);

@@ -170,7 +170,14 @@ export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
 ): Promise<{ ok: boolean; reason?: string; read: number; filed: number; waiting: number; chasesStopped: number }> {
-  const { mail, problems } = await readAllMailboxes();
+  // Each box carries on from the newest thing we already have from it, so a
+  // pass never re-reads and never skips. A box we have never read starts from
+  // the reader's own short window.
+  const since: Record<string, number> = {};
+  for (const i of (await desk()).inbound) {
+    if (i.mailbox && i.receivedAt > (since[i.mailbox] ?? 0)) since[i.mailbox] = i.receivedAt + 1000;
+  }
+  const { mail, problems } = await readAllMailboxes(since);
   const taken = await takeInbound(mail, by, now);
   // Some boxes may be readable and others not; say so rather than claiming
   // either a clean run or a total failure.
