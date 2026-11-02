@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -68,6 +68,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsFiles").withIndex("by_uploaded").order("desc").take(200),
       ctx.db.query("opsLeads").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsMeetings").withIndex("by_at").order("desc").take(300),
+      ctx.db.query("opsEsa").collect(),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -93,6 +94,7 @@ export const snapshot = internalQuery({
       files: files.map(row),
       leads: leads.map(row),
       meetings: meetings.map(row),
+      agreements: agreements.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -347,6 +349,102 @@ export const patchMeeting = internalMutation({
       reason: args.reason,
     });
     return { ok: true };
+  },
+});
+
+/** The client agreement (15, Phase 2 step 9). */
+export const addAgreement = internalMutation({
+  args: {
+    leadId: v.string(),
+    clientTaId: v.union(v.string(), v.null()),
+    state: v.string(),
+    version: v.number(),
+    fields: v.any(),
+    draftFileId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    chaseStep: v.number(),
+    expiresAt: v.union(v.number(), v.null()),
+    signedAt: v.union(v.number(), v.null()),
+    signedFileId: v.union(v.string(), v.null()),
+    countersignedAt: v.union(v.number(), v.null()),
+    countersignedFileId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsEsa", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "esa.started",
+      subjectType: "esa",
+      subjectId: id as string,
+      after: "version " + String(args.version),
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchAgreement = internalMutation({
+  args: {
+    esaId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const esa = await ctx.db.get(args.esaId as Id<"opsEsa">);
+    if (!esa) return { ok: false };
+    await ctx.db.patch(esa._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(esa._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "esa",
+      subjectId: esa._id as string,
+      before: esa.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** A message written as a draft for somebody to approve. */
+export const draftMessage = internalMutation({
+  args: {
+    channel: messageChannel,
+    to: v.array(v.string()),
+    subject: v.string(),
+    body: v.string(),
+    templateKey: v.union(v.string(), v.null()),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsMessages", {
+      ...args,
+      state: "draft" as const,
+      approvedBy: null,
+      approvedAt: null,
+      sentAt: null,
+      providerMessageId: null,
+      note: null,
+      createdAt: Date.now(),
+    });
+    await writeAudit(ctx, {
+      actorId: null,
+      action: "message.drafted",
+      subjectType: "message",
+      subjectId: id as string,
+      after: args.channel + " to " + args.to.join(", "),
+      reason: args.templateKey,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
   },
 });
 

@@ -53,6 +53,7 @@ export function seed(now = Date.now()): OpsDatabase {
     // catches. No real company is named anywhere in here.
     // No sample meetings: the sample leads are at the point of deciding,
     // which is where a person starts.
+    agreements: [],
     meetings: [],
     leads: [
       {
@@ -140,6 +141,90 @@ export function seed(now = Date.now()): OpsDatabase {
         subject: "",
         body: "{{taskTitle}} — due {{dueWhen}}.",
         approvedForAuto: true,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.cover",
+        channel: "email",
+        name: "Agreement, cover email",
+        subject: "{{client}} \u00b7 our agreement",
+        body: `Dear {{contact}},
+
+Thank you for your time today. Our agreement is attached.
+
+Once it is signed and back with us we will start the search straight away.
+
+Kind regards
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.email.1",
+        channel: "email",
+        name: "Agreement chase 1, email",
+        subject: "{{client}} \u00b7 our agreement",
+        body: `Dear {{contact}},
+
+Just a note about the agreement we sent. Could you let us know where it stands?
+
+We can start as soon as it is signed.
+
+Kind regards
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.wa.1",
+        channel: "whatsapp",
+        name: "Agreement chase 2, WhatsApp",
+        subject: "",
+        body: "Hello {{contact}}, this is Career 141. Could you let us know where our agreement stands? Happy to answer anything on it.",
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.email.2",
+        channel: "email",
+        name: "Agreement chase 3, email",
+        subject: "{{client}} \u00b7 our agreement",
+        body: `Dear {{contact}},
+
+We are holding the search for {{client}} until the agreement is signed. Is there anything in it you would like to go through?
+
+Kind regards
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.wa.2",
+        channel: "whatsapp",
+        name: "Agreement chase 4, WhatsApp",
+        subject: "",
+        body: "Hello {{contact}}, following up on our agreement for {{client}}. Shall I send it again, or is there something to discuss?",
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.email.3",
+        channel: "email",
+        name: "Agreement chase 5, email",
+        subject: "{{client}} \u00b7 our agreement",
+        body: `Dear {{contact}},
+
+This is our last note about the agreement. If we do not hear from you we will close the file for now, and you are welcome back whenever it suits.
+
+Kind regards
+Career 141`,
+        approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,
       },

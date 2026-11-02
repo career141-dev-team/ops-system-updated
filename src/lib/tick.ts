@@ -24,6 +24,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "The agreement has not come back",
     body: "The next chase is drafted. Read it, change anything you want, then approve it.",
   },
+  "esa.countersign": {
+    kind: "remind",
+    title: "The Director has not countersigned yet",
+    body: "One day was the rule. The client is waiting for their copy back.",
+  },
   "esa.decline": {
     kind: "decide",
     title: "Two weeks with no signed agreement",

@@ -4,11 +4,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  addAgreement,
   addBaseline,
+  cancelClocksFor,
   addFile,
   addHolidays,
   addLead,
   addMeeting,
+  agreementForLead,
+  agreementIn,
+  draftMessage,
+  patchAgreement,
   cancelMeetingClocks,
   createTask,
   desk,
@@ -74,6 +80,17 @@ import {
   routeLead,
 } from "@/lib/leads";
 import { clients as taClients } from "@/lib/ta";
+import {
+  type EsaFields,
+  type EsaState,
+  canMoveTo,
+  chaseStep,
+  defaultFields,
+  expiresAt as esaExpiresAt,
+  nextChaseAt,
+  problemWithDraft,
+  problemWithSigned,
+} from "@/lib/esa";
 import {
   afterNotHeld,
   agreementDueAt,
@@ -998,4 +1015,403 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
   });
   revalidatePath(here);
   back(outcome.because);
+}
+
+/* \u2500\u2500 The client agreement (15, Phase 2 steps 9 to 18) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+/**
+ * Starts the agreement for a lead.
+ *
+ * The numbers come from the settings, not from the code, so a client on a
+ * different guarantee is a settings change. What we know about the company
+ * from the lead is filled in, and the rest is the ops owner's to complete.
+ */
+export async function startAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  if (agreementForLead(db, leadId)) back("There is already an agreement for this client.");
+
+  const fields: EsaFields = {
+    ...defaultFields({
+      guaranteeDays: numberOf(db, "guarantee.days", 90),
+      paymentDays: numberOf(db, "invoice.dueDays", 30),
+      replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
+      refundPct: numberOf(db, "refund.pct", 25),
+    }),
+    companyName: row.company,
+    signatoryName: row.contactName,
+    signatoryEmail: row.contactEmail,
+  };
+
+  await addAgreement({
+    leadId,
+    clientTaId: row.clientTaId,
+    state: "draft",
+    version: 1,
+    fields,
+    draftFileId: null,
+    sentAt: null,
+    sentMessageId: null,
+    chaseStep: 0,
+    expiresAt: null,
+    signedAt: null,
+    signedFileId: null,
+    countersignedAt: null,
+    countersignedFileId: null,
+    reason: null,
+    ownerId: row.ownerId,
+  });
+  revalidatePath(here);
+  back("Started. Fill in what is blank; it cannot be sent until the required fields are in.");
+}
+
+/** Saves the fields. Blank required ones are allowed here and block the send. */
+export async function saveAgreementFields(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+
+  const row = esa as NonNullable<typeof esa>;
+  const fields: EsaFields = { ...row.fields };
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value);
+  }
+
+  await patchAgreement(esaId, { fields }, member.id, "esa.fieldsSaved", null);
+  revalidatePath(here);
+  const problem = problemWithDraft(fields);
+  back(problem ? "Saved. " + problem : "Saved. Everything required is in; it can go.");
+}
+
+/**
+ * Sends the agreement (15, Phase 2 step 11).
+ *
+ * Three things have to be true: every required field is filled, the owner's
+ * agreement template exists as a file, and a person approves the cover email.
+ * The template is the piece we do not have yet - the real ESA as a Word file
+ * with its variable fields - so until it is uploaded this refuses and says so,
+ * rather than inventing an agreement of our own.
+ *
+ * Sending starts two clocks: the first chase, and the two weeks after which an
+ * unsigned agreement is given up on.
+ */
+export async function sendAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  if (!canMoveTo(row.state as EsaState, "sent")) back("An agreement in that state cannot be sent.");
+  const problem = problemWithDraft(row.fields);
+  if (problem) back(problem);
+
+  // The owner's template, uploaded on the files screen as kind "Agreement,
+  // drafted". Without it there is no document to attach, and a cover email
+  // with nothing attached is worse than no email.
+  const template = db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null);
+  if (!template) {
+    back(
+      "The agreement template is not here yet. Upload the ESA as a Word file on the Files screen, as \u201cAgreement, drafted\u201d, and this can go.",
+    );
+  }
+
+  const cover = templateFor(db, "esa.cover");
+  const to = String(row.fields.signatoryEmail ?? "").trim();
+  const message = await draftMessage({
+    channel: "email",
+    to: [to],
+    subject: cover?.subject?.replace("{{client}}", row.fields.companyName ?? "") || "Our agreement",
+    body:
+      (cover?.body ?? "Dear {{contact}},\n\nOur agreement is attached.\n\nKind regards,\nCareer 141")
+        .replace("{{contact}}", row.fields.signatoryName ?? "")
+        .replace("{{client}}", row.fields.companyName ?? ""),
+    templateKey: "esa.cover",
+    subjectType: "esa",
+    subjectId: esaId,
+  });
+
+  const now = Date.now();
+  const days = numberOf(db, "esa.declineDays", 14);
+  await patchAgreement(
+    esaId,
+    { state: "sent", sentAt: now, sentMessageId: message.id, expiresAt: esaExpiresAt(now, days) },
+    member.id,
+    "esa.sent",
+    null,
+  );
+
+  const first = nextChaseAt(0, now);
+  if (first) {
+    await startTimer({
+      kind: "esa.chase",
+      subjectType: "esa",
+      subjectId: esaId,
+      startsAt: now,
+      dueAt: first.dueAt,
+      warnAt: null,
+      ownerId: member.id,
+      payload: { label: String(row.fields.companyName ?? ""), step: String(first.step) },
+    });
+  }
+  await startTimer({
+    kind: "esa.decline",
+    subjectType: "esa",
+    subjectId: esaId,
+    startsAt: now,
+    dueAt: esaExpiresAt(now, days),
+    warnAt: null,
+    ownerId: member.id,
+    payload: { label: String(row.fields.companyName ?? "") },
+  });
+
+  revalidatePath(here);
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("The cover email is drafted. Read it, then approve it to send."));
+}
+
+/**
+ * Drafts the next chase (15, Phase 2 step 13).
+ *
+ * The plan is the owner's: email, WhatsApp, email, WhatsApp, email, then a
+ * call by a person. Each one is drafted for approval, never sent on its own,
+ * and a reply from the client stops the rest.
+ */
+export async function draftNextChase(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const step = chaseStep(row.chaseStep + 1);
+  if (!step) back("The chase has run out. Somebody has to call them.");
+  const plan = step as NonNullable<typeof step>;
+
+  if (plan.channel === "call") {
+    await createTask({
+      kind: "call",
+      title: "Call about the agreement: " + (row.fields.companyName ?? "a client"),
+      body: "Five written chases and no signature. The owner's plan says a call now.",
+      assigneeId: row.ownerId,
+      dueAt: Date.now(),
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + row.leadId,
+    });
+    await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, member.id, "esa.chaseCall", plan.what);
+    revalidatePath(here);
+    back("A call task is on your list. Write down what they say.");
+  }
+
+  const wording = templateFor(db, plan.templateKey);
+  const to =
+    plan.channel === "email"
+      ? String(row.fields.signatoryEmail ?? "").trim()
+      : String(row.fields.signatoryPhone ?? leadIn(db, row.leadId)?.contactPhone ?? "").trim();
+  if (!to) back(plan.channel === "email" ? "No email address on the agreement." : "No phone number for this client.");
+
+  const message = await draftMessage({
+    channel: plan.channel as "email" | "whatsapp",
+    to: [to],
+    subject: plan.channel === "email" ? wording?.subject?.replace("{{client}}", row.fields.companyName ?? "") || "Our agreement" : "",
+    body:
+      (wording?.body ?? "Dear {{contact}},\n\nCould you let us know where our agreement stands?\n\nKind regards,\nCareer 141")
+        .replace("{{contact}}", row.fields.signatoryName ?? "")
+        .replace("{{client}}", row.fields.companyName ?? ""),
+    templateKey: plan.templateKey,
+    subjectType: "esa",
+    subjectId: esaId,
+  });
+
+  const now = Date.now();
+  await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, member.id, "esa.chaseDrafted", plan.what);
+  const following = nextChaseAt(plan.step, now);
+  if (following) {
+    await startTimer({
+      kind: "esa.chase",
+      subjectType: "esa",
+      subjectId: esaId,
+      startsAt: now,
+      dueAt: following.dueAt,
+      warnAt: null,
+      ownerId: row.ownerId,
+      payload: { label: String(row.fields.companyName ?? ""), step: String(following.step) },
+    });
+  }
+  revalidatePath(here);
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent(plan.what + " is drafted. Read it, then approve it."));
+}
+
+/**
+ * The signed copy came back (15, Phase 2 step 15).
+ *
+ * A copy came back unsealed once and had to be resent, so this asks for the
+ * file and for somebody to say they looked at it. Everyone who needs to know
+ * is told the same day - that is the fix for a signed agreement reaching the
+ * Director months later - and the countersign clock starts.
+ */
+export async function recordAgreementSigned(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const fileId = String(formData.get("fileId") ?? "").trim() || null;
+  const problem = problemWithSigned({ fileId, checked: formData.get("checked") === "on" });
+  if (problem) back(problem);
+  if (!canMoveTo(row.state as EsaState, "signed")) back("An agreement in that state cannot be marked signed.");
+
+  const now = Date.now();
+  await patchAgreement(esaId, { state: "signed", signedAt: now, signedFileId: fileId }, member.id, "esa.signed", null);
+  // Every clock on it stops, not only the chases: the two-week "nobody has
+  // signed" clock kept running and would have fired on a signed agreement.
+  await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is signed.");
+
+  const company = String(row.fields.companyName ?? "a client");
+  for (const person of db.members.filter((m) => m.active && ["ops_lead", "director_ops", "ta_lead_ro"].includes(m.role))) {
+    await createTask({
+      kind: "check",
+      title: "Agreement signed: " + company,
+      body: "The client has signed. The Director countersigns next, and the search can be set up.",
+      assigneeId: person.id,
+      dueAt: now,
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + row.leadId,
+    });
+  }
+
+  await startTimer({
+    kind: "esa.countersign",
+    subjectType: "esa",
+    subjectId: esaId,
+    startsAt: now,
+    dueAt: now + numberOf(db, "esa.countersignDays", 1) * 24 * HOUR,
+    warnAt: null,
+    ownerId: member.id,
+    payload: { label: company },
+  });
+
+  revalidatePath(here);
+  back("Signed. Everyone has been told, and the Director has a day to countersign.");
+}
+
+/** The Director countersigned; the client gets their copy back (step 18). */
+export async function recordAgreementCountersigned(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const fileId = String(formData.get("fileId") ?? "").trim() || null;
+  if (!fileId) back("Upload the countersigned copy first, on the Files screen.");
+  if (!canMoveTo(row.state as EsaState, "countersigned")) back("That agreement is not waiting to be countersigned.");
+
+  const now = Date.now();
+  await patchAgreement(
+    esaId,
+    { state: "countersigned", countersignedAt: now, countersignedFileId: fileId },
+    member.id,
+    "esa.countersigned",
+    null,
+  );
+  await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is countersigned.");
+  await patchLead(row.leadId, { state: "requirement" }, member.id, "lead.agreementDone", null);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: [String(row.fields.signatoryEmail ?? "").trim()],
+    subject: "Our countersigned agreement",
+    body:
+      "Dear " +
+      String(row.fields.signatoryName ?? "") +
+      ",\n\nOur countersigned agreement is attached. We will come back to you to arrange the requirement meeting.\n\nKind regards\nCareer 141",
+    templateKey: "esa.countersigned.cover",
+    subjectType: "esa",
+    subjectId: esaId,
+  });
+
+  revalidatePath(here);
+  redirect(
+    "/messages/" + message.id + "?msg=" + encodeURIComponent("Countersigned. Their copy is drafted — approve it to send it back."),
+  );
+}
+
+/** Declined, by them or by us. The search is blocked and everyone is told (step 17). */
+export async function declineAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why it is declined. Nothing closes without a reason.");
+
+  await patchAgreement(esaId, { state: "declined", reason }, member.id, "esa.declined", reason);
+  await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is declined.");
+  await patchLead(
+    row.leadId,
+    { state: "closed_other", reason: "No signed agreement: " + reason },
+    member.id,
+    "lead.closedNoAgreement",
+    reason,
+  );
+  for (const person of db.members.filter((m) => m.active && ["ops_lead", "ta_lead_ro"].includes(m.role))) {
+    await createTask({
+      kind: "check",
+      title: "No agreement: " + String(row.fields.companyName ?? "a client"),
+      body: "The agreement is declined, so no work starts for this client. " + reason,
+      assigneeId: person.id,
+      dueAt: Date.now(),
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + row.leadId,
+    });
+  }
+  revalidatePath(here);
+  revalidatePath("/leads");
+  back("Declined, and the team has been told the search is blocked.");
 }

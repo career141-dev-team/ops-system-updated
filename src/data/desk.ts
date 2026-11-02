@@ -8,6 +8,7 @@ import type {
   OpsBaseline,
   OpsCallLog,
   OpsDatabase,
+  OpsEsa,
   OpsEvent,
   OpsFile,
   OpsInbound,
@@ -417,6 +418,43 @@ export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
   return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/* ── The client agreement ───────────────────────────────────── */
+
+export async function addAgreement(input: Omit<OpsEsa, "id" | "createdAt" | "updatedAt">): Promise<OpsEsa> {
+  if (!usingConvex()) return repo.addAgreement(input);
+  return convexMutation<OpsEsa>("ops/data:addAgreement", input);
+}
+
+export async function patchAgreement(
+  esaId: Id,
+  patch: Partial<OpsEsa>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchAgreement(esaId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchAgreement", { esaId, patch, by, what, reason });
+}
+
+export function agreementForLead(db: OpsDatabase, leadId: Id): OpsEsa | null {
+  return db.agreements.filter((e) => e.leadId === leadId).sort((a, b) => b.version - a.version)[0] ?? null;
+}
+
+export function agreementIn(db: OpsDatabase, esaId: Id): OpsEsa | null {
+  return db.agreements.find((e) => e.id === esaId) ?? null;
+}
+
+/** Writes a message into the one way out, as a draft for somebody to approve. */
+export async function draftMessage(
+  input: Omit<OpsMessage, "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt">,
+): Promise<OpsMessage> {
+  if (!usingConvex()) return repo.draftMessage(input);
+  return convexMutation<OpsMessage>("ops/data:draftMessage", input);
+}
+
 /* ── Meetings ──────────────────────────────────────────── */
 
 export async function addMeeting(input: Omit<OpsMeeting, "id" | "createdAt" | "updatedAt">): Promise<OpsMeeting> {
@@ -444,6 +482,39 @@ export function meetingsForLead(db: OpsDatabase, leadId: Id): OpsMeeting[] {
 
 export function meetingIn(db: OpsDatabase, meetingId: Id): OpsMeeting | null {
   return db.meetings.find((m) => m.id === meetingId) ?? null;
+}
+
+/**
+ * Stops every live clock on one thing.
+ *
+ * A client's reply only ever stopped the chases, which is right - the CV
+ * ownership window and the guarantee keep running whatever a client says. But
+ * a thing that is *settled* has no clocks left worth running: a signed
+ * agreement still had the two-week "nobody has signed" clock ticking, and it
+ * would have fired a fortnight later on an agreement that was signed (found in
+ * the browser, 2 Nov).
+ */
+export async function cancelClocksFor(
+  db: OpsDatabase,
+  subjectType: string,
+  subjectId: Id,
+  by: Id,
+  reason: string,
+): Promise<number> {
+  const live = db.timers
+    .filter((t) => t.subjectType === subjectType && t.subjectId === subjectId)
+    .filter((t) => t.state === "running" || t.state === "warned");
+  if (!live.length) return 0;
+  if (!usingConvex()) {
+    repo.cancelTimers(
+      live.map((t) => t.id),
+      by,
+      reason,
+    );
+    return live.length;
+  }
+  await convexMutation("ops/data:cancelTimers", { timerIds: live.map((t) => t.id), by });
+  return live.length;
 }
 
 /** Stops the clocks on a meeting that is over, however it ended. */

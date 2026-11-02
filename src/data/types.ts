@@ -352,6 +352,40 @@ export interface OpsMeeting {
   updatedAt: number;
 }
 
+/**
+ * The client agreement (15, Phase 2 steps 9 to 18).
+ *
+ * One per client, with its own version number: a client who asks for changes
+ * gets a new version of the same agreement, not a second agreement. The
+ * fields are what the document is filled from, kept with the version so that
+ * "what did they actually sign" has an answer a year later.
+ */
+export interface OpsEsa {
+  id: Id;
+  leadId: Id;
+  clientTaId: Id | null;
+  state: string;
+  version: number;
+  /** What the document is filled from. Required ones must not be blank. */
+  fields: Record<string, string>;
+  /** The drafted document, once there is one. */
+  draftFileId: Id | null;
+  sentAt: number | null;
+  sentMessageId: Id | null;
+  /** 0 to 6, the owner's chase plan: email, WhatsApp, email, WhatsApp, email, call. */
+  chaseStep: number;
+  expiresAt: number | null;
+  signedAt: number | null;
+  signedFileId: Id | null;
+  countersignedAt: number | null;
+  countersignedFileId: Id | null;
+  /** Why it was declined, or what they want changed. */
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -364,6 +398,7 @@ export interface OpsDatabase {
   files: OpsFile[];
   leads: OpsLead[];
   meetings: OpsMeeting[];
+  agreements: OpsEsa[];
   calls: OpsCallLog[];
   baseline: OpsBaseline[];
   taCalls: OpsTaCall[];

@@ -20,6 +20,7 @@ import type {
   OpsBaseline,
   OpsCallLog,
   OpsDatabase,
+  OpsEsa,
   OpsEvent,
   OpsFile,
   OpsInbound,
@@ -388,6 +389,78 @@ export const repo = {
       reason,
     });
     save();
+  },
+
+  /* ── The client agreement ───────────────────────────────── */
+
+  agreements(): OpsEsa[] {
+    return [...load().agreements].sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+
+  agreement(esaId: Id): OpsEsa | null {
+    return load().agreements.find((e) => e.id === esaId) ?? null;
+  },
+
+  addAgreement(input: Omit<OpsEsa, "id" | "createdAt" | "updatedAt">): OpsEsa {
+    const db = load();
+    const now = Date.now();
+    const row: OpsEsa = { ...input, id: id("esa"), createdAt: now, updatedAt: now };
+    db.agreements.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "esa.started",
+      subjectType: "esa",
+      subjectId: row.id,
+      before: null,
+      after: "version " + row.version,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchAgreement(esaId: Id, patch: Partial<OpsEsa>, by: Id, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.agreements.find((e) => e.id === esaId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "esa", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /**
+   * Writes a message into the one way out (15, Phase 1 step 16).
+   *
+   * Every message starts here as a draft and leaves through the gate. Until
+   * now the only drafts were the sample ones, because nothing in Phase 1
+   * wrote to a client; the agreement is the first thing that does.
+   */
+  draftMessage(input: Omit<OpsMessage, "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt">): OpsMessage {
+    const db = load();
+    const row: OpsMessage = {
+      ...input,
+      id: id("msg"),
+      state: "draft",
+      approvedBy: null,
+      approvedAt: null,
+      sentAt: null,
+      providerMessageId: null,
+      note: null,
+      createdAt: Date.now(),
+    };
+    db.messages.push(row);
+    audit({
+      actorId: null,
+      action: "message.drafted",
+      subjectType: "message",
+      subjectId: row.id,
+      before: null,
+      after: row.channel + " to " + row.to.join(", "),
+      reason: row.templateKey,
+    });
+    save();
+    return row;
   },
 
   /* ── Meetings with a client ─────────────────────────────── */

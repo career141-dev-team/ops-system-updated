@@ -204,6 +204,30 @@ export default defineSchema({
     .index("by_lead", ["leadId"])
     .index("by_at", ["at"]),
 
+  /** The client agreement, one per client, versioned (15, Phase 2). */
+  opsEsa: defineTable({
+    leadId: v.string(),
+    clientTaId: v.union(v.string(), v.null()),
+    state: v.string(),
+    version: v.number(),
+    fields: v.any(),
+    draftFileId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    chaseStep: v.number(),
+    expiresAt: v.union(v.number(), v.null()),
+    signedAt: v.union(v.number(), v.null()),
+    signedFileId: v.union(v.string(), v.null()),
+    countersignedAt: v.union(v.number(), v.null()),
+    countersignedFileId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_lead", ["leadId"])
+    .index("by_state", ["state"]),
+
   opsTemplates: defineTable({
     key: v.string(),
     channel: messageChannel,

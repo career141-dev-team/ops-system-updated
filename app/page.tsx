@@ -25,6 +25,7 @@ function clockInWords(kind: string): string {
     "esa.send": "the agreement has to go out",
     "esa.chase": "chasing the agreement",
     "esa.decline": "two weeks with no signed agreement",
+    "esa.countersign": "the Director has to countersign",
     "meeting.reminder.day": "a client meeting tomorrow",
     "meeting.reminder.hour": "a client meeting in an hour",
     "meeting.rebook": "a meeting to book again",
