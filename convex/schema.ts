@@ -74,6 +74,23 @@ export default defineSchema({
    * The wording of what we send, so the ops lead can change a chase email
    * without waiting for a release (15, Phase 1 step 25).
    */
+  /** The file registry (15, Phase 1 step 23). The bytes live in R2, not here. */
+  opsFiles: defineTable({
+    kind: v.string(),
+    key: v.string(),
+    name: v.string(),
+    size: v.number(),
+    mime: v.string(),
+    sha256: v.string(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    madeFrom: v.union(v.string(), v.null()),
+    uploadedBy: v.union(v.string(), v.null()),
+    uploadedAt: v.number(),
+  })
+    .index("by_subject", ["subjectType", "subjectId"])
+    .index("by_uploaded", ["uploadedAt"]),
+
   opsTemplates: defineTable({
     key: v.string(),
     channel: messageChannel,

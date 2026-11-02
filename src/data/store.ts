@@ -18,6 +18,7 @@ import type {
   Id,
   OpsAuditEntry,
   OpsDatabase,
+  OpsFile,
   OpsInbound,
   OpsMember,
   OpsMessage,
@@ -287,6 +288,38 @@ export const repo = {
       reason: null,
     });
     save();
+  },
+
+  files(): OpsFile[] {
+    return [...load().files].sort((a, b) => b.uploadedAt - a.uploadedAt);
+  },
+
+  file(fileId: Id): OpsFile | null {
+    return load().files.find((f) => f.id === fileId) ?? null;
+  },
+
+  /**
+   * Records a file that has already been written to R2 or to the folder.
+   *
+   * The row is written second on purpose: a row with no bytes behind it is a
+   * broken link somebody will click a year from now, while bytes with no row
+   * are only wasted space.
+   */
+  addFile(input: Omit<OpsFile, "id" | "uploadedAt">): OpsFile {
+    const db = load();
+    const row: OpsFile = { ...input, id: id("f"), uploadedAt: Date.now() };
+    db.files.push(row);
+    audit({
+      actorId: input.uploadedBy,
+      action: input.madeFrom ? "file.converted" : "file.kept",
+      subjectType: "file",
+      subjectId: row.id,
+      before: null,
+      after: row.kind + " · " + row.name,
+      reason: null,
+    });
+    save();
+    return row;
   },
 
   /** A setting as a number, with the plan's value if somebody deleted the row. */

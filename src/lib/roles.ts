@@ -17,11 +17,12 @@ export type Capability =
   | "refund.decide"
   | "settings.manage"
   | "template.edit"
+  | "file.keep"
   | "advert.manage"
   | "report.read";
 
 const MATRIX: Record<OpsRole, Capability[]> = {
-  ops_owner: ["inbox.read", "task.do", "message.approve", "client.manage", "advert.manage", "report.read"],
+  ops_owner: ["inbox.read", "task.do", "message.approve", "client.manage", "advert.manage", "file.keep", "report.read"],
   ops_lead: [
     "inbox.read",
     "task.do",
@@ -32,11 +33,12 @@ const MATRIX: Record<OpsRole, Capability[]> = {
     "settings.manage",
     "template.edit",
     "advert.manage",
+    "file.keep",
     "report.read",
   ],
-  accounts: ["inbox.read", "task.do", "message.approve", "money.manage", "report.read"],
-  director_ops: ["inbox.read", "task.do", "money.manage", "refund.decide", "report.read"],
-  marketing: ["inbox.read", "task.do", "advert.manage"],
+  accounts: ["inbox.read", "task.do", "message.approve", "money.manage", "file.keep", "report.read"],
+  director_ops: ["inbox.read", "task.do", "money.manage", "refund.decide", "file.keep", "report.read"],
+  marketing: ["inbox.read", "task.do", "advert.manage", "file.keep"],
   director_ro: ["report.read"],
   ta_lead_ro: ["report.read"],
 };
@@ -57,6 +59,8 @@ export function refusal(capability: Capability): string {
       return "Only the ops lead can change the settings.";
     case "template.edit":
       return "Only the ops lead can change the wording we send.";
+    case "file.keep":
+      return "A read-only account cannot keep files. Ask the ops owner for this client.";
     case "task.reassign":
       return "Only the ops lead can pass a task to someone else.";
     case "client.manage":

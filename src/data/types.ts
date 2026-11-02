@@ -165,6 +165,28 @@ export interface OpsTemplate {
   updatedAt: number | null;
 }
 
+/**
+ * One kept file. The row is the record; the bytes are in R2, or in a folder on
+ * this machine while we build. `sha256` is what proves a year later that the
+ * file somebody opens is the file that went out.
+ */
+export interface OpsFile {
+  id: Id;
+  kind: string;
+  /** Where it lives in the bucket. Never built from the name alone. */
+  key: string;
+  name: string;
+  size: number;
+  mime: string;
+  sha256: string;
+  subjectType: string | null;
+  subjectId: Id | null;
+  /** The file this one was made from, for a PDF made out of a Word document. */
+  madeFrom: Id | null;
+  uploadedBy: Id | null;
+  uploadedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -174,5 +196,6 @@ export interface OpsDatabase {
   messages: OpsMessage[];
   inbound: OpsInbound[];
   templates: OpsTemplate[];
+  files: OpsFile[];
   audit: OpsAuditEntry[];
 }

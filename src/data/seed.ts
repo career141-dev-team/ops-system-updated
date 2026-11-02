@@ -46,6 +46,8 @@ export function seed(now = Date.now()): OpsDatabase {
      * chase, because the agreement and set wording is the owner’s to write and
      * arrives with the phase that sends it.
      */
+    // No sample files: a row with no bytes behind it would be a broken link.
+    files: [],
     templates: [
       {
         key: "task.notice",

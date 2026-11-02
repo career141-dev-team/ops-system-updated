@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  addFile,
   desk,
   editMessage,
+  fileIn,
   fileInbound,
   markInboundActioned,
   readTheMailboxes,
@@ -28,6 +30,19 @@ import { settingChange } from "@/lib/settingsRules";
 import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
+import { putBytes, readBytes } from "@/data/fileStore";
+import { docxToPdf } from "@/lib/docxToPdf";
+import {
+  type FileKind,
+  canBecomePdf,
+  isFileKind,
+  keyFor,
+  mimeFor,
+  pdfNameFor,
+  problemWithUpload,
+  safeName,
+  sha256,
+} from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { devSignInAllowed } from "@/lib/session";
 import { currentMember } from "@/lib/session";
@@ -281,4 +296,98 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   );
   revalidatePath("/");
   redirect(here + "?msg=" + encodeURIComponent(said ?? "Sent."));
+}
+
+/**
+ * Keeps a file (15, Phase 1 step 23).
+ *
+ * The bytes go to storage first and the registry row second, so a row in the
+ * list always leads to a file. The hash is taken as it arrives: it is what
+ * answers "is this the document we really sent" a year later.
+ */
+export async function keepFile(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/files?msg=" + encodeURIComponent(msg));
+  if (!can(member, "file.keep")) back(refusal("file.keep"));
+
+  const upload = formData.get("file");
+  if (!(upload instanceof File)) back("No file was chosen.");
+  const file = upload as File;
+  const problem = problemWithUpload({ name: file.name, size: file.size });
+  if (problem) back(problem);
+
+  const kindAsked = String(formData.get("kind") ?? "other");
+  const kind = isFileKind(kindAsked) ? kindAsked : "other";
+  const subjectType = String(formData.get("subjectType") ?? "").trim() || null;
+  const subjectId = String(formData.get("subjectId") ?? "").trim() || null;
+  // Half a label is no label: a subject needs both parts to find anything.
+  if ((subjectType && !subjectId) || (subjectId && !subjectType)) {
+    back("A file filed under something needs both what it belongs to and which one.");
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const key = keyFor(kind, subjectType, subjectId, file.name);
+  const mime = mimeFor(file.name);
+  await putBytes(key, bytes, mime);
+  await addFile({
+    kind,
+    key,
+    name: safeName(file.name),
+    size: bytes.length,
+    mime,
+    sha256: sha256(bytes),
+    subjectType,
+    subjectId,
+    madeFrom: null,
+    uploadedBy: member.id,
+  });
+  revalidatePath("/files");
+  back("Kept " + safeName(file.name) + ".");
+}
+
+/**
+ * Makes a PDF of a Word document and keeps that too.
+ *
+ * The Word file is left alone, because it is the template that was filled and
+ * the PDF is what goes out. On a machine without LibreOffice this says so
+ * plainly instead of failing.
+ */
+export async function makePdfOfFile(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/files?msg=" + encodeURIComponent(msg));
+  if (!can(member, "file.keep")) back(refusal("file.keep"));
+
+  const fileId = String(formData.get("fileId") ?? "");
+  const db = await desk();
+  const row = fileIn(db, fileId);
+  if (!row) back("That file is not in the list any more.");
+  const source = row as NonNullable<typeof row>;
+  if (!canBecomePdf(source.name)) back("A PDF can only be made from a Word document.");
+
+  const bytes = await readBytes(source.key);
+  if (!bytes) back("The file itself is missing from storage, so no PDF can be made.");
+
+  const made = await docxToPdf(bytes as Uint8Array, source.name);
+  if (!made.ok || !made.bytes) back(made.reason ?? "The conversion failed.");
+
+  const pdf = made.bytes as Uint8Array;
+  const name = pdfNameFor(source.name);
+  const key = keyFor(source.kind as FileKind, source.subjectType, source.subjectId, name);
+  await putBytes(key, pdf, "application/pdf");
+  await addFile({
+    kind: source.kind,
+    key,
+    name,
+    size: pdf.length,
+    mime: "application/pdf",
+    sha256: sha256(pdf),
+    subjectType: source.subjectType,
+    subjectId: source.subjectId,
+    madeFrom: source.id,
+    uploadedBy: member.id,
+  });
+  revalidatePath("/files");
+  back("Made " + name + ".");
 }

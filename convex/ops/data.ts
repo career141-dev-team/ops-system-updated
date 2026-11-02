@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, audit] = await Promise.all([
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, audit] = await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
       ctx.db.query("opsTemplates").collect(),
@@ -63,6 +63,8 @@ export const snapshot = internalQuery({
       ctx.db.query("opsTasks").collect(),
       ctx.db.query("opsMessages").collect(),
       ctx.db.query("opsInbound").withIndex("by_received").order("desc").take(100),
+      // The newest 200 files: the registry grows for ever, the screen does not.
+      ctx.db.query("opsFiles").withIndex("by_uploaded").order("desc").take(200),
       ctx.db.query("opsAudit").withIndex("by_at").order("desc").take(AUDIT_SHOWN),
     ]);
 
@@ -80,6 +82,7 @@ export const snapshot = internalQuery({
       tasks: tasks.map(row),
       messages: messages.map(row),
       inbound: inbound.map(row),
+      files: files.map(row),
       audit: audit.map(row),
     };
   },
@@ -239,6 +242,39 @@ export const seed = internalMutation({
     }
     await writeAudit(ctx, { actorId: null, action: "desk.seeded", subjectType: "desk", subjectId: "desk" });
     return { seeded: true, reason: null };
+  },
+});
+
+/**
+ * Records a file already written to R2 (15, Phase 1 step 23).
+ *
+ * The row comes second, after the bytes, so a link in the registry always
+ * leads somewhere.
+ */
+export const addFile = internalMutation({
+  args: {
+    kind: v.string(),
+    key: v.string(),
+    name: v.string(),
+    size: v.number(),
+    mime: v.string(),
+    sha256: v.string(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    madeFrom: v.union(v.string(), v.null()),
+    uploadedBy: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const uploadedAt = Date.now();
+    const id = await ctx.db.insert("opsFiles", { ...args, uploadedAt });
+    await writeAudit(ctx, {
+      actorId: args.uploadedBy,
+      action: args.madeFrom ? "file.converted" : "file.kept",
+      subjectType: "file",
+      subjectId: id as string,
+      after: args.kind + " · " + args.name,
+    });
+    return { ...args, id: id as string, uploadedAt };
   },
 });
 

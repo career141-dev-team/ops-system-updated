@@ -3,7 +3,7 @@ import "server-only";
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
 import { repo } from "./store";
 import { seed } from "./seed";
-import type { Id, OpsDatabase, OpsInbound, OpsMessage, OpsTask, OpsTemplate, OpsTimer } from "./types";
+import type { Id, OpsDatabase, OpsFile, OpsInbound, OpsMessage, OpsTask, OpsTemplate, OpsTimer } from "./types";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { tick } from "@/lib/tick";
@@ -326,6 +326,23 @@ export async function saveTemplate(
 /** One template by its key, or nothing when the wording has not been written yet. */
 export function templateFor(db: OpsDatabase, key: string): OpsTemplate | null {
   return db.templates.find((t) => t.key === key) ?? null;
+}
+
+/**
+ * Records a file that is already stored. Returns the row, because the screen
+ * needs its id to make a link.
+ */
+export async function addFile(input: Omit<OpsFile, "id" | "uploadedAt">): Promise<OpsFile> {
+  if (!usingConvex()) return repo.addFile(input);
+  return convexMutation<OpsFile>("ops/data:addFile", input);
+}
+
+export function fileIn(db: OpsDatabase, fileId: Id): OpsFile | null {
+  return db.files.find((f) => f.id === fileId) ?? null;
+}
+
+export function filesNewestFirst(db: OpsDatabase): OpsFile[] {
+  return [...db.files].sort((a, b) => b.uploadedAt - a.uploadedAt);
 }
 
 /* ── Reading one desk, without asking for it twice ───────────────────────── */
