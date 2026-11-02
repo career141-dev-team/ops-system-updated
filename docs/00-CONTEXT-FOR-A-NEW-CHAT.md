@@ -45,6 +45,7 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 
 | Need | File |
 |---|---|
+| **The brief to paste into a new chat, for a new teammate or tool** | [HANDOVER-PROMPT](HANDOVER-PROMPT.md) |
 | Start-up plan and current step | [01](01-STARTUP-PLAN.md) |
 | Architecture | [02](02-ARCHITECTURE.md) |
 | Ops ↔ TA connection (ownership, API, events) | [03](03-CONNECTION-TO-TA.md) |

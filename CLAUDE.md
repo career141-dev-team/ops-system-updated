@@ -1,5 +1,13 @@
 @AGENTS.md
 
+## Start here
+
+New to this project? Read [`docs/HANDOVER-PROMPT.md`](docs/HANDOVER-PROMPT.md) first, then
+[`docs/00-CONTEXT-FOR-A-NEW-CHAT.md`](docs/00-CONTEXT-FOR-A-NEW-CHAT.md) and the plan in
+[`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md). Do not ask the owner to explain the
+project: it is all written down. The plan is **not approved yet**, so no Ops code is
+written until the owner says to build.
+
 ## Claude Code specifics
 
 - The full Ops knowledge (flow, numbers, every planning card) is in the `/ops`
