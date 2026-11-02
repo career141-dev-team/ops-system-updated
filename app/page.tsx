@@ -5,7 +5,7 @@ import { repo } from "@/data/store";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
-import { startTestClock } from "./actions";
+import { runClocksNow, startTestClock } from "./actions";
 
 /**
  * Your day: the only screen an Ops person starts on (07, "inbox first").
@@ -14,9 +14,14 @@ import { startTestClock } from "./actions";
  * today, what is late, and which clock is running out. Every row opens its own
  * page; nothing opens over the top of this one.
  */
-export default async function InboxPage() {
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
+  const { msg } = await searchParams;
+
+  // The clocks run on every visit, so a deadline never waits for someone to
+  // press something. A real schedule replaces this when the backend lands.
+  repo.runClocks();
 
   const now = Date.now();
   const drafts = repo.draftsWaiting();
@@ -38,12 +43,23 @@ export default async function InboxPage() {
           <h1 className="text-[17px] font-medium">Your day</h1>
           <p className="mt-0.5 text-[13px] text-ink-soft">{colomboDate(now)} · Colombo</p>
         </div>
-        <form action={startTestClock}>
-          <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-            Start a two-hour test clock
-          </button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          <form action={runClocksNow}>
+            <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+              Run the clocks now
+            </button>
+          </form>
+          <form action={startTestClock}>
+            <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+              Start a two-hour test clock
+            </button>
+          </form>
+        </div>
       </div>
+
+      {msg && (
+        <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[

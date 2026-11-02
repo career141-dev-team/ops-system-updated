@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { repo } from "@/data/store";
 import { currentMember } from "@/lib/session";
-import { approveAndSend, saveDraft } from "@/app/actions";
+import { approveAndSend, recordReply, saveDraft } from "@/app/actions";
 
 /** One message, on its own page. Read it, change it, approve it. */
 export default async function MessagePage({
@@ -60,6 +60,22 @@ export default async function MessagePage({
           <p className="mt-2 whitespace-pre-wrap text-[13.5px] text-ink-soft">{message.body}</p>
           {message.note && <p className="mt-3 text-[12.5px] text-warning">{message.note}</p>}
         </div>
+      )}
+
+      {message.subjectType && message.subjectId && (
+        <form action={recordReply} className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+          <input type="hidden" name="subjectType" value={message.subjectType} />
+          <input type="hidden" name="subjectId" value={message.subjectId} />
+          <input type="hidden" name="back" value={"/messages/" + message.id} />
+          <p className="text-[13.5px] font-medium">Has the client answered?</p>
+          <p className="mt-1 text-[13px] text-ink-soft">
+            Saying so stops every chase for this one at once. The reader will do this by itself
+            once the Ops mailbox is connected.
+          </p>
+          <button className="mt-3 rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+            They answered, stop chasing
+          </button>
+        </form>
       )}
 
       {message.state === "draft" && (

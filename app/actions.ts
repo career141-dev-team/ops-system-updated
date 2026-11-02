@@ -7,6 +7,7 @@ import { repo } from "@/data/store";
 import { HOUR } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
+import { settingChange } from "@/lib/settingsRules";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -28,6 +29,59 @@ export async function startTestClock(): Promise<void> {
     payload: { label: "Test clock, started by " + member.name },
   });
   revalidatePath("/");
+}
+
+/** The clocks run on every visit to the inbox; this is the same pass by hand. */
+export async function runClocksNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const result = repo.runClocks();
+  revalidatePath("/");
+  const said =
+    result.fired || result.warned || result.escalated
+      ? result.fired + " clocks finished, " + result.warned + " are close, " + result.escalated + " tasks passed on."
+      : "Nothing was due.";
+  redirect("/?msg=" + encodeURIComponent(said));
+}
+
+/** The client answered, so the chasing stops. */
+export async function recordReply(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const subjectType = String(formData.get("subjectType") ?? "");
+  const subjectId = String(formData.get("subjectId") ?? "");
+  const back = String(formData.get("back") ?? "/");
+  const stopped = repo.recordReply(subjectType, subjectId, member.id);
+  revalidatePath("/");
+  redirect(
+    back +
+      "?msg=" +
+      encodeURIComponent(
+        stopped ? "Noted. " + stopped + " chase" + (stopped === 1 ? "" : "s") + " stopped." : "Noted. There was no chase running.",
+      ),
+  );
+}
+
+/** Only the ops lead, and never without saying why (owner's standing rule). */
+export async function changeSetting(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const key = String(formData.get("key") ?? "");
+  const raw = String(formData.get("value") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!can(member, "settings.manage")) {
+    redirect("/settings?msg=" + encodeURIComponent(refusal("settings.manage")));
+  }
+  const current = repo.setting(key);
+  if (!current) redirect("/settings?msg=" + encodeURIComponent("There is no setting called " + key + "."));
+
+  const decided = settingChange(key, current.value, raw, reason);
+  if (!decided.ok) redirect("/settings?msg=" + encodeURIComponent(decided.message));
+
+  repo.setSetting(key, decided.value, member.id, reason);
+  revalidatePath("/settings");
+  redirect("/settings?msg=" + encodeURIComponent(key + " is now " + String(decided.value) + "."));
 }
 
 export async function finishTask(formData: FormData): Promise<void> {

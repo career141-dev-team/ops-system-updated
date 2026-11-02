@@ -57,7 +57,7 @@ export function seed(now = Date.now()): OpsDatabase {
         state: "warned",
         firedAt: null,
         ownerId: "m_owner",
-        payload: { label: "Sample Client A, CV ownership window" },
+        payload: { label: "Sample Client A, set 2" },
       },
       {
         id: "t_guarantee",
@@ -70,7 +70,7 @@ export function seed(now = Date.now()): OpsDatabase {
         state: "warned",
         firedAt: null,
         ownerId: "m_owner",
-        payload: { label: "Sample Client B, guarantee ends today" },
+        payload: { label: "Sample Client B, Finance manager" },
       },
     ],
     tasks: [

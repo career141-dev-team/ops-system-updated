@@ -25,6 +25,9 @@ import type {
   OpsTimer,
 } from "./types";
 import { seed } from "./seed";
+import { tick } from "@/lib/tick";
+import { escalationFor } from "@/lib/escalation";
+import { cancelledByReply } from "@/lib/timers";
 
 const dir = process.env.OPS_DATA_DIR || path.join(process.cwd(), ".data");
 const file = path.join(dir, "ops.json");
@@ -210,6 +213,83 @@ export const repo = {
     if (state === "sent") message.sentAt = Date.now();
     audit({ actorId: by, action: "message." + state, subjectType: "message", subjectId: messageId, before, after: state, reason: note });
     save();
+  },
+
+  /** A setting as a number, with the plan's value if somebody deleted the row. */
+  number(key: string, fallback: number): number {
+    const value = load().settings.find((s) => s.key === key)?.value;
+    return typeof value === "number" ? value : fallback;
+  },
+
+  switchedOn(key: string): boolean {
+    return load().settings.find((s) => s.key === key)?.value === true;
+  },
+
+  /**
+   * One pass of the clocks (15, Phase 1 steps 13 and 15).
+   *
+   * Clocks warn, then fire and leave a task. Open tasks that nobody has done
+   * move up the ladder. The whole point is that neither depends on a person
+   * remembering, so this runs on every visit to the inbox and can also be
+   * pressed by hand while we are building.
+   */
+  runClocks(now = Date.now()): { warned: number; fired: number; escalated: number } {
+    const db = load();
+    if (!db.settings.some((s) => s.key === "switch.timersEnabled" && s.value === true)) {
+      return { warned: 0, fired: 0, escalated: 0 };
+    }
+
+    let warned = 0;
+    let fired = 0;
+    for (const action of tick(db.timers, now)) {
+      const timer = db.timers.find((t) => t.id === action.timerId);
+      if (!timer) continue;
+      timer.state = action.state;
+      if (action.state === "warned") {
+        warned += 1;
+        continue;
+      }
+      fired += 1;
+      timer.firedAt = now;
+      if (action.task) {
+        repo.createTask({ ...action.task, dueAt: now });
+      }
+      audit({ actorId: null, action: "timer.fired", subjectType: "timer", subjectId: timer.id, before: "running", after: "fired", reason: null });
+    }
+
+    const rules = {
+      leadAfterHours: repo.number("escalation.leadAfterHours", 24),
+      directorAfterHours: repo.number("escalation.directorAfterHours", 72),
+    };
+    let escalated = 0;
+    for (const task of db.tasks) {
+      const move = escalationFor(task, db.members, rules, now);
+      if (!move) continue;
+      const before = task.assigneeId;
+      task.assigneeId = move.toMemberId;
+      task.body = task.body + "\n\nPassed on: " + move.note;
+      escalated += 1;
+      audit({ actorId: null, action: "task.escalated", subjectType: "task", subjectId: task.id, before, after: move.toMemberId, reason: move.note });
+    }
+
+    if (warned || fired || escalated) save();
+    return { warned, fired, escalated };
+  },
+
+  /**
+   * The client answered. Every chase for that subject stops at once, which is
+   * what stops a client who has replied being chased again (15, step 17).
+   * Clocks that measure something real are left running.
+   */
+  recordReply(subjectType: string, subjectId: Id, by: Id): number {
+    const db = load();
+    const stopped = cancelledByReply(db.timers, subjectType, subjectId);
+    for (const timer of stopped) {
+      timer.state = "cancelled";
+      audit({ actorId: by, action: "timer.cancelled", subjectType: "timer", subjectId: timer.id, before: "running", after: "cancelled", reason: "The client replied." });
+    }
+    if (stopped.length) save();
+    return stopped.length;
   },
 
   audit(): OpsAuditEntry[] {
