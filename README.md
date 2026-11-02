@@ -17,11 +17,35 @@ with the client until the guarantee ends.
 
 | | |
 |---|---|
-| Phase | **0 · Project start-up** (started 28 Oct 2026) |
-| Done | Repository; everything collected and consolidated; the whole flow corrected with diagrams; architecture decided |
-| Next | **Agree the whole flow** with the owner and the Ops team, then decide the technology |
-| Built so far | No code yet |
-| Team | Binath and Sanjeev (Ops and TA), UI team (screens, later) |
+| Phase | **1 · Foundation** (building, from 2 Nov 2026) |
+| Done | Everything collected and consolidated; the whole flow corrected; architecture decided; the build plan written; the sheets replacement planned; the M1 feature plan written |
+| Building now | The skeleton: pick-your-name sign-in, the inbox in four parts, a real clock, a drafted message you approve, the window to the TA System, and a password-protected preview |
+| Decided 2 Nov | **Every feature ships with its screen**, in the TA System's look, minimal and with no overlays |
+| Team | Sanjeev and Binath; the owner approves every client-facing message and every live change |
+
+## Running it
+
+**Screens only, no backend.** Invented sample data, pick-your-name sign-in. The quickest way
+to look at the app.
+
+```sh
+npm install
+deploy/local/start-ui.sh     # http://localhost:3300
+```
+
+**With the Ops backend on this laptop.** Needs Docker. Its own Convex instance on port 3310
+and its own Postgres, so it cannot touch the TA System's local backend or anything live.
+
+```sh
+deploy/local/start.sh        # app 3300, backend 3310, dashboard 6891
+```
+
+## Checks
+
+```sh
+npm test            # the calendar, the clocks, the message gate, roles, the store
+npm run typecheck
+```
 
 ## Start here
 
@@ -43,6 +67,12 @@ with the client until the guarantee ends.
 | 11 | [People and roles](docs/11-PEOPLE-AND-ROLES.md) | Who does what today, and the proposed Ops roles |
 | 12 | [Glossary](docs/12-GLOSSARY.md) | Every term in plain words |
 | 13 | [Corrections log](docs/13-CORRECTIONS-LOG.md) | What was corrected from the canvas and earlier plans, and why |
+| 14 | [Diagram deep walkthrough](docs/14-DIAGRAM-DEEP-WALKTHROUGH.md) | All 250 steps of the owner's diagram c5237 |
+| 15 | [**The implementation plan**](docs/15-BUILD-PLAN.md) | Version 2: every problem and its solution, an Ops day and a TA day side by side, every table and link, the API and events, the TA changes, integrations and the calls decision, 8 phases of 20-25 steps, release and pilot, open decisions |
+| 16 | [Problem register](docs/16-PROBLEM-REGISTER.md) | Every problem line on the board (179), with its solution and where the plan builds it |
+| 17 | [Board coverage](docs/17-BOARD-COVERAGE.md) | All 59 cards checked against the plan; the 9 gaps found and added as Part K |
+| 18 | [Operations simulation and final plan](docs/18-OPERATIONS-SIMULATION.md) | The TA System as it really behaves (18 verified gaps), four roles, one simulated working day, every activity evaluated, TA improvements T20-T30, final technologies and the 26 connection points |
+| 19 | [**TA System improvement plan**](docs/19-TA-SYSTEM-IMPROVEMENT-PLAN.md) | Verified from seven code audits: the system as it is, the workflow map with exact rules, a day per role within real access, the permission matrix and its conflicts, difficulties, 19 manual activities, 15 automation opportunities with integration and risks, integration and UX improvements, 20 prioritised recommendations, technical notes, benefits |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).

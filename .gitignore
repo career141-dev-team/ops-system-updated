@@ -1,28 +1,11 @@
-# dependencies
 node_modules/
-
-# builds
 .next/
-out/
-dist/
-build/
-
-# secrets: never commit
+.data/
+.data-ui/
+*.log
 .env
 .env.*
 !.env.example
-*.pem
-*.key
-
-# convex local state
-.convex/
-
-# logs and OS files
-*.log
-npm-debug.log*
-.DS_Store
-Thumbs.db
-
-# editors
-.vscode/
-.idea/
+deploy/local/.env.backend.local
+tsconfig.tsbuildinfo
+next-env.d.ts
