@@ -121,6 +121,15 @@ export async function setSetting(key: string, value: string | number | boolean, 
   await convexMutation("ops/data:setSetting", { key, value, by, reason });
 }
 
+/** Remembers the last scheduled pass, so the health screen can show it. */
+export async function noteClockPass(value: string): Promise<void> {
+  if (!usingConvex()) {
+    repo.noteClockPass(value);
+    return;
+  }
+  await convexMutation("ops/data:noteClockPass", { value });
+}
+
 /**
  * One pass of the clocks. The decisions are made here, by the same rules the
  * tests cover, and the backend only applies them — so what fires on the laptop

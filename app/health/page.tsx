@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
 import { outboundLocked, sendingEnabled } from "@/lib/senders";
+import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
 import { desk, liveTimers, switchedOn } from "@/data/desk";
 import { usingConvex } from "@/data/convexClient";
 import { currentMember } from "@/lib/session";
@@ -21,6 +22,7 @@ export default async function HealthPage() {
   const ta = await people();
   const db = await desk();
   const audit = [...db.audit].sort((a, b) => b.at - a.at).slice(0, 10);
+  const lastClockPass = parsePass(db.settings.find((s) => s.key === CLOCK_PASS_KEY)?.value);
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
 
   return (
@@ -65,6 +67,10 @@ export default async function HealthPage() {
         <p className="mt-2 text-[13.5px]">
           {liveTimers(db).length} running, {db.timers.length} in all.
         </p>
+        <p className="mt-2 text-[13.5px]">
+          Running on their own: {clockSchedulerReady() ? "on" : "switched off (no OPS_CLOCK_KEY)"}
+        </p>
+        <p className="mt-1 text-[13px] text-ink-soft">{passInWords(lastClockPass)}</p>
       </section>
 
       <section className={card}>

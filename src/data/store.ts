@@ -114,6 +114,25 @@ export const repo = {
     save();
   },
 
+  /**
+   * Remembers the last scheduled pass of the clocks.
+   *
+   * Deliberately not audited: a pass happens every five minutes, and an entry
+   * each time would bury the ten changes a person actually wants to see on the
+   * health screen. The pass itself audits anything it did.
+   */
+  noteClockPass(value: string): void {
+    const db = load();
+    const row = db.settings.find((s) => s.key === "clock.lastPass");
+    if (row) {
+      row.value = value;
+      row.updatedAt = Date.now();
+    } else {
+      db.settings.push({ key: "clock.lastPass", value, updatedBy: null, updatedAt: Date.now() });
+    }
+    save();
+  },
+
   holidays(): string[] {
     return load().holidays.map((h) => h.date);
   },

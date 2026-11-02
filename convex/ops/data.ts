@@ -242,6 +242,23 @@ export const seed = internalMutation({
   },
 });
 
+/** The last scheduled clock pass. Not audited: it happens every five minutes. */
+export const noteClockPass = internalMutation({
+  args: { value: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("opsSettings")
+      .withIndex("by_key", (q) => q.eq("key", "clock.lastPass"))
+      .first();
+    if (row) {
+      await ctx.db.patch(row._id, { value: args.value, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("opsSettings", { key: "clock.lastPass", value: args.value, updatedBy: null, updatedAt: Date.now() });
+    }
+    return { ok: true };
+  },
+});
+
 export const setSetting = internalMutation({
   args: {
     key: v.string(),
