@@ -120,3 +120,27 @@ test("the domain is read from the last at-sign, and nonsense gives nothing", () 
   assert.equal(domainOf("odd@name@sample.test"), "sample.test");
   assert.equal(domainOf("not-an-address"), "");
 });
+
+/**
+ * The list of mailboxes (2 Nov). We read the boxes the desk already uses plus
+ * each ops person's own, so one box being unreadable must not hide the others:
+ * Microsoft answers 404 for a mailbox the app has not been allowed, and that is
+ * one address to fix, not a dead reader.
+ */
+test("every named mailbox is read, and one bad box does not silence the rest", async () => {
+  const { mailboxes, mailboxesInWords, readAllMailboxes } = await import("@/lib/graphMail");
+
+  process.env.OPS_MAILBOXES = " opsteam@example.test , someone@example.test ";
+  assert.deepEqual(mailboxes(), ["opsteam@example.test", "someone@example.test"]);
+  assert.match(mailboxesInWords(), /2 mailboxes/);
+
+  // Reading is off in a test run, so each box reports its own reason and the
+  // pass still returns rather than throwing.
+  const off = await readAllMailboxes();
+  assert.equal(off.mail.length, 0);
+  assert.equal(off.problems.length, 2, "one reason per box, not one for the lot");
+
+  process.env.OPS_MAILBOXES = "";
+  assert.equal(mailboxesInWords(), "no mailbox is named yet");
+  assert.match((await readAllMailboxes()).problems[0], /No mailbox is named yet/);
+});

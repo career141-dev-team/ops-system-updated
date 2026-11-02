@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { desk, inboundRecent, inboundWaiting } from "@/data/desk";
-import { mailbox, readerEnabled } from "@/lib/graphMail";
+import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 import { fileThisMail, markMailDone, pretendMailArrives, readMailNow } from "@/app/actions";
 
@@ -40,7 +40,8 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
         <div>
           <h1 className="text-[17px] font-medium">What came in</h1>
           <p className="mt-0.5 text-[13px] text-ink-soft">
-            {mailbox()} · {readerEnabled() ? "reading every two minutes" : "reading is switched off until the mailbox exists"}
+            {mailboxesInWords()} ·{" "}
+            {readerEnabled() ? "read every two minutes" : "reading is switched off until the mailboxes are named"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -71,7 +72,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <div key={mail.id} className="border-t border-rule py-3 first:border-t-0">
             <p className="text-[13.5px]">{mail.subject || "(no subject)"}</p>
             <p className="mt-0.5 text-[12.5px] text-ink-soft">
-              {mail.fromName || mail.from} · {when(mail.receivedAt)} · {mail.note}
+              {mail.fromName || mail.from} · to {mail.mailbox} · {when(mail.receivedAt)} · {mail.note}
             </p>
             <p className="mt-2 whitespace-pre-wrap text-[12.5px] text-ink-soft">{mail.body.slice(0, 300)}</p>
             <form action={fileThisMail} className="mt-3 flex flex-wrap items-center gap-2">

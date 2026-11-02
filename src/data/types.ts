@@ -107,6 +107,8 @@ export interface OpsMessage {
 export interface OpsInbound {
   id: Id;
   channel: "email" | "whatsapp";
+  /** Which of our mailboxes it arrived in (2 Nov: there are several). */
+  mailbox: string;
   from: string;
   fromName: string;
   receivedAt: number;

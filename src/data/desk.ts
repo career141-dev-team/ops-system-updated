@@ -7,7 +7,7 @@ import type { Id, OpsDatabase, OpsInbound, OpsMessage, OpsTask, OpsTimer } from 
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { tick } from "@/lib/tick";
-import { type InboundMail, readMailbox } from "@/lib/graphMail";
+import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 
 /**
@@ -166,13 +166,15 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
  * guessed at. Recording is keyed on the mail server's own id, so a second pass
  * over the same mailbox records nothing twice.
  */
-export async function readTheMailbox(
+export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
 ): Promise<{ ok: boolean; reason?: string; read: number; filed: number; waiting: number; chasesStopped: number }> {
-  const result = await readMailbox();
-  if (!result.ok) return { ok: false, reason: result.reason, read: 0, filed: 0, waiting: 0, chasesStopped: 0 };
-  return takeInbound(result.mail, by, now);
+  const { mail, problems } = await readAllMailboxes();
+  const taken = await takeInbound(mail, by, now);
+  // Some boxes may be readable and others not; say so rather than claiming
+  // either a clean run or a total failure.
+  return { ...taken, ok: problems.length === 0, reason: problems.join(" ") || undefined };
 }
 
 /** The same pass over mail from anywhere, so it can be tested and demonstrated. */
@@ -206,6 +208,7 @@ export async function takeInbound(
     const match = matchInbound(item, known);
     const row = {
       channel: "email" as const,
+      mailbox: item.mailbox,
       from: item.from,
       fromName: item.fromName,
       receivedAt: item.receivedAt,

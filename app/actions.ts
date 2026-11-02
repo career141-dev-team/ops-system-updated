@@ -8,7 +8,7 @@ import {
   editMessage,
   fileInbound,
   markInboundActioned,
-  readTheMailbox,
+  readTheMailboxes,
   takeInbound,
   finishTask as finishTaskWrite,
   numberOf,
@@ -106,10 +106,9 @@ export async function changeSetting(formData: FormData): Promise<void> {
 export async function readMailNow(): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const r = await readTheMailbox(member.id);
-  const said = r.ok
-    ? r.read + " read, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped."
-    : r.reason ?? "The mailbox could not be read.";
+  const r = await readTheMailboxes(member.id);
+  const counted = r.read + " read, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped.";
+  const said = r.ok ? counted : (r.reason ?? "The mailboxes could not be read.") + " " + counted;
   revalidatePath("/mail");
   redirect("/mail?msg=" + encodeURIComponent(said));
 }

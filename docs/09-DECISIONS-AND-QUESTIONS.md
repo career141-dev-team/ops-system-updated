@@ -26,6 +26,7 @@ over older documents.
 | 28 Oct | **Ops is a separate system:** own repository, backend and database, on the same server and Postgres as TA, connected to TA by API; TA only gets added endpoints | Owner |
 | 28 Oct | Backend first; the UI team designs the screens later | Owner |
 | 28 Oct | Order of work: agree the whole flow → decide technology → update documents → build, feature by feature | Owner |
+| 2 Nov | **Mail: we read the boxes the desk already uses, plus each ops person’s own box.** Nobody is asked to move to one address. A new `ops@career141.com` is still worth having as the address on messages the system sends, but it replaces nothing | Owner |
 
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 

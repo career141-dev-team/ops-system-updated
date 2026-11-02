@@ -143,6 +143,7 @@ export default defineSchema({
   /** One email that arrived. One way in, as opsMessages is the one way out. */
   opsInbound: defineTable({
     channel: v.union(v.literal("email"), v.literal("whatsapp")),
+    mailbox: v.string(),
     from: v.string(),
     fromName: v.string(),
     receivedAt: v.number(),

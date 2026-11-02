@@ -463,6 +463,7 @@ export const applyTick = internalMutation({
 export const recordInbound = internalMutation({
   args: {
     channel: v.union(v.literal("email"), v.literal("whatsapp")),
+    mailbox: v.string(),
     from: v.string(),
     fromName: v.string(),
     receivedAt: v.number(),

@@ -75,3 +75,33 @@ section 3. The diagrams in [04](04-OPS-FLOW.md) use the corrected labels. Exampl
 | Guarantee not tied to joining day | The guarantee end is already joining date + guarantee days; missing: ops owner, day-75, full-payment check, replace first |
 | (not on canvas) | Place redirects to a page that does not exist (TA bug) |
 | (not on canvas) | Ops cannot create clients in TA (`client.manage`) |
+
+## 2 Nov · One ops mailbox was the wrong answer
+
+Decision 11 of 1 Nov read as "a new mailbox `ops@career141.com`", and the first mail
+reader was written for that one address. Two things on the canvas say it is not enough.
+
+**The habit already exists.** The as-is ops flow (c719) shows every client email going
+from a person’s own Outlook with a shared box copied: the CV set as
+"CLIENT > ROLE > SET n" copying cv@, the interview invite from interviews@ copying
+opsteam@, the weekly report from joborders@, a website lead arriving at hello@, and the
+first client contact reaching joborders@ or opsteam@. So there is no new habit to teach
+and no box to force on anyone.
+
+**A copy is not the reply.** Copying a shared box shows the message we sent. The
+client’s answer follows the person who sent it, so a reader that watches only the
+shared box would see everything we already know and almost nothing we need. The TA
+System settled this months ago: its reply reader checks the signed-in person’s own
+mailbox, the shortlist inbox and job@ together (`src/app/actions.ts`). That also means
+Microsoft already permits this app to read staff mailboxes in this tenant, so there is
+no new consent to arrange.
+
+**What changed:** the reader takes a list (`OPS_MAILBOXES`), reads each box in turn, and
+every email it records remembers which box it arrived in. One box it is not allowed to
+read reports that one address and does not stop the others.
+
+**Still to do:** the house subject "CLIENT > ROLE > SET n" is already a form the TA
+System parses, and it would match hand-written set mail from Outlook. It is not built
+here yet, because matching by client needs the client contacts that arrive with the TA
+API.
+
