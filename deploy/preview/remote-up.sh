@@ -32,6 +32,20 @@ if grep -Eq '^CONVEX_SELF_HOSTED_URL=.*(api\.career141\.com|ta-system)' .env.pre
   exit 1
 fi
 
+# A Convex admin key begins with the name of the backend it belongs to. The TA
+# System's key here would let the preview write into the live database, so the
+# key is read before the app is started and anything but the preview's is
+# refused. (This is the same mistake the old CV-Processing repository could
+# have made against TA's backend.)
+KEY_LINE=$(grep -E '^CONVEX_SELF_HOSTED_ADMIN_KEY=' .env.preview | head -1 | cut -d= -f2- | tr -d '"')
+case "$KEY_LINE" in
+  ops-preview\|*) : ;;
+  *)
+    echo "Refusing: CONVEX_SELF_HOSTED_ADMIN_KEY in .env.preview is not an ops-preview key (it must start with 'ops-preview|')." >&2
+    exit 1
+    ;;
+esac
+
 echo "Pulling $IMAGE"
 docker pull "$IMAGE" >/dev/null
 

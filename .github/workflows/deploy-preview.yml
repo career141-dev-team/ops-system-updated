@@ -120,6 +120,20 @@ jobs:
         env:
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.PREVIEW_CONVEX_ADMIN_KEY }}
         run: |
+          # The one dangerous thing in this workflow: `convex deploy` replaces
+          # the functions of whatever backend it is pointed at. Pointed at the
+          # TA System's backend it would remove the functions the live app runs
+          # on - which is exactly how the old CV-Processing repository could
+          # have broken TA. A Convex admin key begins with its own instance
+          # name, so the key itself says which backend it can touch, and this
+          # refuses to run with any key but the preview's.
+          case "$CONVEX_SELF_HOSTED_ADMIN_KEY" in
+            ops-preview\|*) : ;;
+            *)
+              echo "::error::PREVIEW_CONVEX_ADMIN_KEY is not an ops-preview key. It must start with 'ops-preview|'. Refusing to deploy functions anywhere else."
+              exit 1
+              ;;
+          esac
           # The backend only listens on the server's loopback, so the deploy
           # reaches it down an SSH tunnel - it is never opened to the internet.
           ssh -f -N -L 3320:127.0.0.1:3320 deploy-target

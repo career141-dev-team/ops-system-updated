@@ -20,6 +20,68 @@ Nothing in this folder starts, stops or reads anything of TA's. The deploy
 names the preview's own containers explicitly, so it cannot restart the wrong
 thing.
 
+## What the live TA System shares with this, and what it does not
+
+The honest answer to "can the preview affect the live system": almost nothing
+is shared, but it is not nothing. Four things are the same machine's, and each
+is handled here.
+
+**The box's memory and disk.** The preview is capped at 2 GB for the backend,
+1 GB for the app and 512 MB for the dashboard, and in practice idles far below
+that. The image is about 1.5 GB on disk because of LibreOffice, and the
+preview's database grows with invented data. Check before and after:
+
+```bash
+free -m && df -h /
+```
+
+If memory is tight, lower the backend's `mem_limit` or do not run the
+dashboard - it is only for looking at rows and can be left stopped.
+
+**The Postgres server.** `CREATE DATABASE convex_ops_preview` adds a database
+beside TA's `convex_self_hosted`; it does not touch TA's data, and nothing in
+Ops can read it. What is shared is the server itself: connections, disk and
+some CPU. One person clicking through a preview is nothing next to the TA
+System's day, but it is worth knowing where to look:
+
+```bash
+docker exec -i career141-postgres-1 psql -U convex -c   "select datname, numbackends from pg_stat_database where datname in ('convex_self_hosted','convex_ops_preview');"
+docker exec -i career141-postgres-1 psql -U convex -c 'show max_connections;'
+```
+
+**The nightly backup.** If the backup script dumps every database rather than
+TA's by name, it will now dump the preview's invented data too - slower, bigger,
+for nothing. Worth a look at the script; `pg_dump convex_self_hosted` is
+unaffected either way.
+
+**Caddy.** This is the one step that can take the live site down, because TA's
+sites are in the same Caddyfile: a file that does not parse means a failed
+reload. So keep a copy, validate first, and only then reload - `caddy reload`
+is graceful and does not drop connections when the file is good:
+
+```bash
+cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-ops-preview
+caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+```
+
+If validate complains, change nothing and fix the block first. To undo, put the
+copy back and reload again.
+
+**What is not shared at all.** Different containers (`ops-preview-*`, their own
+compose project, so `docker compose down` in this folder cannot stop one of
+TA's), different ports (3320/3321/3322/6892 against TA's 3110/3210/3211/6791),
+a different Convex instance, a different database, and no path from Ops into
+TA's backend: the app's own backend address is the preview's, the TA link is on
+the stand-in, and reads and writes to TA's API are both off.
+
+**The one thing that could really hurt, and what stops it.** `convex deploy`
+replaces the functions of whatever backend it is pointed at - pointed at TA's,
+it would remove the functions the live app runs on. That is how the old
+CV-Processing repository could have broken TA. A Convex admin key begins with
+its own instance name, so both the workflow and `remote-up.sh` read the key and
+refuse to do anything unless it starts with `ops-preview|`. A TA key in either
+place stops the deploy with a message instead of touching TA.
+
 ## What is deliberately switched off
 
 The preview exists to be clicked on, not to do anything. In `.env.preview`:
