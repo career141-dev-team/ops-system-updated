@@ -7,7 +7,10 @@ import {
   addBaseline,
   addFile,
   addHolidays,
+  addLead,
   desk,
+  leadIn,
+  patchLead,
   editMessage,
   fileIn,
   logCall,
@@ -54,6 +57,17 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { parseHolidayLines } from "@/lib/holidays";
 import { MEASURES } from "@/lib/baseline";
+import {
+  type LeadState,
+  duplicateMatch,
+  flagIndustry,
+  nameKey,
+  neverInviteBack,
+  problemWithClosing,
+  problemWithNewLead,
+  routeLead,
+} from "@/lib/leads";
+import { clients as taClients } from "@/lib/ta";
 import { devSignInAllowed } from "@/lib/session";
 import { currentMember } from "@/lib/session";
 
@@ -563,4 +577,184 @@ export async function queueTestWrite(): Promise<void> {
   );
   revalidatePath("/ta");
   redirect("/ta?msg=" + encodeURIComponent("Queued. Its key is " + item.idempotencyKey + "; queueing it again changes nothing."));
+}
+
+/**
+ * A new lead (15, Phase 2 step 2).
+ *
+ * The lead is saved first and routed second, on purpose: a company that rang
+ * us exists whether or not we can reach the TA System to check whether they
+ * are already a client. The industry flag is proposed here from the words in
+ * front of us, and waits for a person - the owner's rule is that banking and
+ * finance are declined, not that a keyword declines them.
+ */
+export async function createLead(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/leads?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const input = {
+    company: String(formData.get("company") ?? "").trim(),
+    contactName: String(formData.get("contactName") ?? "").trim(),
+    contactEmail: String(formData.get("contactEmail") ?? "").trim(),
+    contactPhone: String(formData.get("contactPhone") ?? "").trim(),
+    source: String(formData.get("source") ?? ""),
+  };
+  const problem = problemWithNewLead(input);
+  if (problem) back(problem);
+
+  const industry = String(formData.get("industry") ?? "").trim();
+  const website = String(formData.get("website") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const flag = flagIndustry({ company: input.company, industry, website, notes });
+
+  const lead = await addLead({
+    ...input,
+    nameKey: nameKey(input.company),
+    industry,
+    website,
+    notes,
+    industryFlagged: flag.flagged,
+    industryBecause: flag.because,
+    industryConfirmedBy: null,
+    state: "new",
+    reason: null,
+    doNotInvite: false,
+    clientTaId: null,
+    // One ops person owns each client, and the person taking the lead owns it
+    // until the ops lead moves it (owner's rule).
+    ownerId: member.id,
+    createdBy: member.id,
+  });
+
+  revalidatePath("/leads");
+  redirect("/leads/" + lead.id + "?msg=" + encodeURIComponent("Saved. Now check the two things below."));
+}
+
+/**
+ * Is this company already ours? (15, Phase 2 step 3.)
+ *
+ * An exact match is linked; anything that merely looks similar is listed for a
+ * person to decide. Two client records for one company is how the same company
+ * ends up with two owners and two agreements.
+ */
+export async function checkLeadDuplicate(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const lead = leadIn(await desk(), leadId);
+  if (!lead) back("That lead is gone.");
+  const company = (lead as NonNullable<typeof lead>).company;
+
+  const answer = await taClients(company);
+  if (!answer.ok) back("Could not ask the TA System: " + answer.reason);
+
+  const found = duplicateMatch(
+    company,
+    (answer.ok ? answer.data : []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      nameKey: c.nameKey,
+      esaSignedAt: c.esaSignedAt,
+    })),
+  );
+
+  if (found.exact) {
+    const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing: found.exact });
+    await patchLead(
+      leadId,
+      { clientTaId: found.exact.id, state: routed.state },
+      member.id,
+      "lead.linkedToClient",
+      routed.because,
+    );
+    revalidatePath(here);
+    back("They are already our client. " + routed.because);
+  }
+
+  if (found.near.length) {
+    back(
+      "No exact match. These look close, so somebody has to decide: " +
+        found.near.map((c) => c.name).join(" · "),
+    );
+  }
+  back("Nobody like that in the TA System, so this is a new client.");
+}
+
+/**
+ * The industry decision (15, Phase 2 step 4).
+ *
+ * Confirming it declines the lead for good and marks it never to be invited
+ * back, which is the owner's standing rule. Saying it is not that industry
+ * clears the flag and says who cleared it, because that is a judgement
+ * somebody made.
+ */
+export async function decideLeadIndustry(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const confirmed = String(formData.get("decision") ?? "") === "confirm";
+  const lead = leadIn(await desk(), leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+
+  if (!confirmed) {
+    await patchLead(
+      leadId,
+      { industryFlagged: false, industryBecause: null, industryConfirmedBy: member.id },
+      member.id,
+      "lead.industryCleared",
+      "Not banking or finance: " + member.name + " looked.",
+    );
+    revalidatePath(here);
+    back("Cleared. This is not banking or finance.");
+  }
+
+  const routed = routeLead({ industryFlagged: true, industryConfirmed: true, existing: null });
+  const reason = "Banking and finance are declined, whatever the role" + (row.industryBecause ? " (" + row.industryBecause + ")" : "") + ".";
+  await patchLead(
+    leadId,
+    { state: routed.state, reason, doNotInvite: true, industryConfirmedBy: member.id },
+    member.id,
+    "lead.declinedIndustry",
+    reason,
+  );
+  revalidatePath(here);
+  revalidatePath("/leads");
+  back("Declined, and marked never to be invited back. The decline notice is drafted when the templates for it exist.");
+}
+
+/** Closes a lead, with a reason. Nothing closes without one (owner's rule). */
+export async function closeLead(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const state = String(formData.get("state") ?? "closed_other") as LeadState;
+  const reason = String(formData.get("reason") ?? "");
+  const problem = problemWithClosing(state, reason);
+  if (problem) back(problem);
+
+  await patchLead(
+    leadId,
+    { state, reason: reason.trim(), doNotInvite: neverInviteBack(state) },
+    member.id,
+    "lead.closed",
+    reason.trim(),
+  );
+  revalidatePath(here);
+  revalidatePath("/leads");
+  back("Closed, with the reason written down.");
 }

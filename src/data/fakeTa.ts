@@ -1,3 +1,5 @@
+import { nameKey } from "@/lib/leads";
+
 /**
  * A stand-in TA System (15, Phase 1 step 3).
  *
@@ -21,7 +23,10 @@ const CLIENTS = [
   {
     id: "ta_c1",
     name: "SAMPLE CLIENT",
-    nameKey: "sampleclient",
+    // Computed, not typed: the key had been written by hand as "sampleclient"
+    // while the TA System's own rule gives "sample client", so a lead for a
+    // company we already had came back as new. Found in the browser, 2 Nov.
+    nameKey: nameKey("SAMPLE CLIENT"),
     industry: "Manufacturing",
     esaSignedAt: Date.UTC(2026, 9, 1),
     status: "active",

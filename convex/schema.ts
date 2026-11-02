@@ -157,6 +157,33 @@ export default defineSchema({
     .index("by_taEventId", ["taEventId"])
     .index("by_received", ["receivedAt"]),
 
+  /** Leads: the front door (15, Phase 2). */
+  opsLeads: defineTable({
+    company: v.string(),
+    nameKey: v.string(),
+    contactName: v.string(),
+    contactEmail: v.string(),
+    contactPhone: v.string(),
+    source: v.string(),
+    industry: v.string(),
+    website: v.string(),
+    notes: v.string(),
+    industryFlagged: v.boolean(),
+    industryBecause: v.union(v.string(), v.null()),
+    industryConfirmedBy: v.union(v.string(), v.null()),
+    state: v.string(),
+    reason: v.union(v.string(), v.null()),
+    doNotInvite: v.boolean(),
+    clientTaId: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdBy: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_nameKey", ["nameKey"])
+    .index("by_state", ["state"])
+    .index("by_created", ["createdAt"]),
+
   opsTemplates: defineTable({
     key: v.string(),
     channel: messageChannel,

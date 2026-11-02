@@ -23,6 +23,7 @@ import type {
   OpsEvent,
   OpsFile,
   OpsInbound,
+  OpsLead,
   OpsOutboxItem,
   OpsTaCall,
   OpsMember,
@@ -334,6 +335,58 @@ export const repo = {
     });
     save();
     return row;
+  },
+
+  /* ── Leads: the front door ──────────────────────────────── */
+
+  leads(): OpsLead[] {
+    return [...load().leads].sort((a, b) => b.createdAt - a.createdAt);
+  },
+
+  lead(leadId: Id): OpsLead | null {
+    return load().leads.find((l) => l.id === leadId) ?? null;
+  },
+
+  addLead(input: Omit<OpsLead, "id" | "createdAt" | "updatedAt">): OpsLead {
+    const db = load();
+    const now = Date.now();
+    const row: OpsLead = { ...input, id: id("ld"), createdAt: now, updatedAt: now };
+    db.leads.push(row);
+    audit({
+      actorId: input.createdBy,
+      action: "lead.created",
+      subjectType: "lead",
+      subjectId: row.id,
+      before: null,
+      after: row.company + " · " + row.source,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  /**
+   * Changes one lead, and records what changed and why.
+   *
+   * Every move a lead makes goes through here, so "who decided this company
+   * was finance" and "why was this closed" always have an answer.
+   */
+  patchLead(leadId: Id, patch: Partial<OpsLead>, by: Id, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.leads.find((l) => l.id === leadId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "lead",
+      subjectId: row.id,
+      before,
+      after: row.state,
+      reason,
+    });
+    save();
   },
 
   /* ── Calls, by a person, never by the system ─────────────────────────── */

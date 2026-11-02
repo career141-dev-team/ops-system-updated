@@ -33,6 +33,9 @@ over older documents.
 | 2 Nov | **A write to the TA System is queued, never sent from a screen.** Every write carries a key built from the path and the body, so asking twice cannot make two openings; a write that cannot get through waits 1, 5, 15, 30 then 60 minutes, and after twelve tries it stops and says a person must do it by hand | Build decision |
 | 2 Nov | **A stand-in TA System (`OPS_TA_FAKE=on`) answers while the TA side of the API does not exist.** Recorded, obviously invented data, and every screen that uses it says so. The real API replaces it by switching the flag off | Build decision |
 | 2 Nov | **The events cursor only moves past events that were handled.** An event that cannot be handled stops the line rather than being skipped, because a skipped placement is the problem being fixed | Build decision |
+| 2 Nov | **A lead is saved first and routed second.** A company that rang us exists whether or not the TA System can be reached, so nothing about the check blocks writing the lead down. One way to reply (an email or a number) is required, because a lead nobody can answer is not a lead | Build decision |
+| 2 Nov | **The industry rule proposes; a person decides.** Banking and finance are flagged from the company name, what they say they do, their website and the notes, with the word that caused it shown. Confirming declines them for good and marks them never to be invited back (owner's standing rule); clearing it records who cleared it | Owner's rule, built |
+| 2 Nov | **An exact company-name match is linked; a near match is only offered.** The name is reduced exactly as the TA System reduces a client's name, so the two sides agree. "Lanka Hospitals" and "Lanka Hospital Diagnostics" are two companies, and guessing would put a lead on somebody else's client | Build decision |
 
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 

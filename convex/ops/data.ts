@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -66,6 +66,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsInbound").withIndex("by_received").order("desc").take(100),
       // The newest 200 files: the registry grows for ever, the screen does not.
       ctx.db.query("opsFiles").withIndex("by_uploaded").order("desc").take(200),
+      ctx.db.query("opsLeads").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -89,6 +90,7 @@ export const snapshot = internalQuery({
       messages: messages.map(row),
       inbound: inbound.map(row),
       files: files.map(row),
+      leads: leads.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -286,6 +288,70 @@ export const addFile = internalMutation({
       after: args.kind + " · " + args.name,
     });
     return { ...args, id: id as string, uploadedAt };
+  },
+});
+
+/** A new lead (15, Phase 2 step 2). */
+export const addLead = internalMutation({
+  args: {
+    company: v.string(),
+    nameKey: v.string(),
+    contactName: v.string(),
+    contactEmail: v.string(),
+    contactPhone: v.string(),
+    source: v.string(),
+    industry: v.string(),
+    website: v.string(),
+    notes: v.string(),
+    industryFlagged: v.boolean(),
+    industryBecause: v.union(v.string(), v.null()),
+    industryConfirmedBy: v.union(v.string(), v.null()),
+    state: v.string(),
+    reason: v.union(v.string(), v.null()),
+    doNotInvite: v.boolean(),
+    clientTaId: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdBy: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsLeads", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.createdBy,
+      action: "lead.created",
+      subjectType: "lead",
+      subjectId: id as string,
+      after: args.company + " · " + args.source,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+/** One change to a lead, with what changed and why. */
+export const patchLead = internalMutation({
+  args: {
+    leadId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId as Id<"opsLeads">);
+    if (!lead) return { ok: false };
+    await ctx.db.patch(lead._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(lead._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "lead",
+      subjectId: lead._id as string,
+      before: lead.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

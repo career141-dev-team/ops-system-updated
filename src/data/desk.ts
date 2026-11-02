@@ -11,6 +11,7 @@ import type {
   OpsEvent,
   OpsFile,
   OpsInbound,
+  OpsLead,
   OpsMessage,
   OpsOutboxItem,
   OpsTask,
@@ -373,6 +374,35 @@ export function fileIn(db: OpsDatabase, fileId: Id): OpsFile | null {
 
 export function filesNewestFirst(db: OpsDatabase): OpsFile[] {
   return [...db.files].sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+/* ── Leads: the front door (15, Phase 2) ───────────────────────── */
+
+export async function addLead(input: Omit<OpsLead, "id" | "createdAt" | "updatedAt">): Promise<OpsLead> {
+  if (!usingConvex()) return repo.addLead(input);
+  return convexMutation<OpsLead>("ops/data:addLead", input);
+}
+
+export async function patchLead(
+  leadId: Id,
+  patch: Partial<OpsLead>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchLead(leadId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchLead", { leadId, patch, by, what, reason });
+}
+
+export function leadIn(db: OpsDatabase, leadId: Id): OpsLead | null {
+  return db.leads.find((l) => l.id === leadId) ?? null;
+}
+
+export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
+  return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /* ── Calls, holidays and the baseline ─────────────────────────────── */

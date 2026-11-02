@@ -286,6 +286,42 @@ export interface OpsEvent {
   note: string;
 }
 
+/**
+ * A company that asked us to find somebody (15, Phase 2).
+ *
+ * The front door. It carries where it came from, who owns it, what we decided
+ * about the industry, and - if it is a company we already have - which TA
+ * client it is. Nothing about the search lives here; that is TA's.
+ */
+export interface OpsLead {
+  id: Id;
+  company: string;
+  /** The company name in the one shape we compare on, as TA does it. */
+  nameKey: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  source: string;
+  industry: string;
+  website: string;
+  notes: string;
+  /** Proposed by the words in front of us; a person confirms it. */
+  industryFlagged: boolean;
+  industryBecause: string | null;
+  industryConfirmedBy: Id | null;
+  state: string;
+  /** Why it closed. The owner's rule: nothing closes without one. */
+  reason: string | null;
+  /** Declined for the industry means never invited back. */
+  doNotInvite: boolean;
+  /** The TA client this is, once we know it is a company we already have. */
+  clientTaId: Id | null;
+  ownerId: Id;
+  createdBy: Id | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -296,6 +332,7 @@ export interface OpsDatabase {
   inbound: OpsInbound[];
   templates: OpsTemplate[];
   files: OpsFile[];
+  leads: OpsLead[];
   calls: OpsCallLog[];
   baseline: OpsBaseline[];
   taCalls: OpsTaCall[];

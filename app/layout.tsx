@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Link>
             <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-soft">
               <Link href="/" className="hover:text-ink">Your day</Link>
+              <Link href="/leads" className="hover:text-ink">Leads</Link>
               <Link href="/mail" className="hover:text-ink">Mail</Link>
               <Link href="/templates" className="hover:text-ink">What we send</Link>
               <Link href="/files" className="hover:text-ink">Files</Link>
