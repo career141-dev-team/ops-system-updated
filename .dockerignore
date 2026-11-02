@@ -1,0 +1,13 @@
+# What the image never needs. Keeps the build small and keeps local secrets and
+# local data out of it entirely.
+node_modules
+.next
+.git
+.data
+.data-ui
+.dev*.log
+.data-ui-dev.log
+deploy/local/.env*
+.env*
+tests
+docs

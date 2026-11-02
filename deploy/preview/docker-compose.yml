@@ -1,0 +1,79 @@
+# The Ops preview on the VPS: ops-preview.career141.com.
+#
+# Test data only, behind a password at Caddy, from day one (owner's UI rules,
+# 2 Nov). It shares the machine with the TA System and nothing else: its own
+# instance name, its own database, its own ports on 127.0.0.1, its own volumes.
+# Nothing in here can reach the TA System's backend or its database.
+#
+# What keeps the two apart, and why each line matters:
+#   * INSTANCE_NAME ops-preview, never the TA names
+#   * POSTGRES_URL points at the preview's own database (convex_ops_preview),
+#     created once by hand with CREATE DATABASE. TA's convex_self_hosted is not
+#     touched by anything here
+#   * ports 3320/3321/6892 on loopback, clear of TA (3210/3211) and of the
+#     laptop's own local run (3310/3311/6891)
+#   * the app listens on 127.0.0.1:3320 only; the internet reaches it through
+#     Caddy, which asks for the password first
+#
+#   deploy/preview/README.md has the once-only server setup and the runbook.
+
+name: ops-preview
+
+services:
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: ops-preview-convex
+    restart: unless-stopped
+    stop_grace_period: 20s
+    stop_signal: SIGINT
+    ports:
+      - "127.0.0.1:3320:3210"
+      - "127.0.0.1:3321:3211"
+    environment:
+      INSTANCE_NAME: ops-preview
+      INSTANCE_SECRET: ${PREVIEW_INSTANCE_SECRET:?set in .env.preview}
+      POSTGRES_URL: ${PREVIEW_POSTGRES_URL:?set in .env.preview}
+      DO_NOT_REQUIRE_SSL: "true"
+      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:3320
+      CONVEX_SITE_ORIGIN: http://127.0.0.1:3321
+      DISABLE_BEACON: "true"
+      RUST_LOG: info
+    volumes:
+      - ops-preview-convex-files:/convex/data
+    # The TA System's backend needs the memory on this box. The preview is one
+    # person clicking at a time, so it is given little and kept out of the way.
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:3210/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    image: ${OPS_IMAGE:?set by the deploy, e.g. ghcr.io/career141-dev/ops-system:<sha>}
+    container_name: ops-preview-app
+    restart: unless-stopped
+    depends_on:
+      convex:
+        condition: service_healthy
+    env_file:
+      - .env.preview
+    environment:
+      PORT: 3300
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:3322:3300"
+    mem_limit: 1g
+
+  dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: ops-preview-dashboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6892:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:3320
+    mem_limit: 512m
+
+volumes:
+  ops-preview-convex-files:

@@ -1,0 +1,141 @@
+name: Deploy preview
+
+# The Ops preview: https://ops-preview.career141.com, behind a password, with
+# invented data only. It shares the VPS with the TA System and touches nothing
+# of TA's: its own instance, its own database (convex_ops_preview), its own
+# ports on loopback, its own containers.
+#
+# Three locks before anything is touched, the same shape as the TA System's
+# release workflow:
+#   1. PREVIEW_ENABLED (repository variable) must be "true". It stays off until
+#      the server side exists — see deploy/preview/README.md.
+#   2. CI must pass on the commit being deployed.
+#   3. The "ops-preview" GitHub Environment requires a reviewer, so the owner
+#      approves each deploy, which is their standing rule for the preview.
+#
+# It is only ever started by hand. Nothing here deploys on a push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      components:
+        description: What to deploy
+        type: choice
+        options: [all, app, backend]
+        default: all
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ops-preview
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Checks before deploying
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: The preview is switched on
+        if: ${{ vars.PREVIEW_ENABLED != 'true' }}
+        run: |
+          echo "::error::Preview deploys are switched off (repository variable PREVIEW_ENABLED is not 'true'). deploy/preview/README.md says what the server needs first."
+          exit 1
+      - uses: actions/checkout@v4
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: Tests and types
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: ops-preview
+    needs: [gate, ci]
+    runs-on: ubuntu-latest
+    # The owner approves here. Set the environment up with a required reviewer.
+    environment: ops-preview
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image
+        if: ${{ inputs.components != 'backend' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ needs.gate.outputs.sha }}
+          build-args: |
+            APP_VERSION=${{ needs.gate.outputs.sha }}
+            NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.PREVIEW_SERVER_ACTIONS_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: SSH access
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          USER_NAME: ${{ secrets.VPS_USERNAME }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -t ed25519 "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          cat >> ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName $HOST
+            User $USER_NAME
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: The server is ready for this
+        run: |
+          ssh deploy-target "test -d '${{ vars.PREVIEW_DIR || '/opt/ops-preview' }}' && test -f '${{ vars.PREVIEW_DIR || '/opt/ops-preview' }}/.env.preview'" \
+            || { echo "::error::The preview folder or its .env.preview is missing on the server. deploy/preview/README.md step 1."; exit 1; }
+
+      - name: Send the compose file and the script
+        run: |
+          DIR='${{ vars.PREVIEW_DIR || '/opt/ops-preview' }}'
+          ssh deploy-target "mkdir -p '$DIR/.deploy'"
+          scp deploy/preview/docker-compose.yml "deploy-target:$DIR/docker-compose.yml"
+          scp deploy/preview/remote-up.sh "deploy-target:$DIR/.deploy/remote-up.sh"
+
+      - name: Put the backend's functions in place
+        if: ${{ inputs.components != 'app' }}
+        env:
+          CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.PREVIEW_CONVEX_ADMIN_KEY }}
+        run: |
+          # The backend only listens on the server's loopback, so the deploy
+          # reaches it down an SSH tunnel - it is never opened to the internet.
+          ssh -f -N -L 3320:127.0.0.1:3320 deploy-target
+          npm ci
+          CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3320 npx convex deploy -y
+
+      - name: Bring the app up
+        if: ${{ inputs.components != 'backend' }}
+        run: |
+          ssh deploy-target "bash '${{ vars.PREVIEW_DIR || '/opt/ops-preview' }}/.deploy/remote-up.sh' 'ghcr.io/${{ github.repository }}:${{ needs.gate.outputs.sha }}'"
+
+      - name: It answers from outside, and asks for the password
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://ops-preview.career141.com/ || true)
+          echo "ops-preview.career141.com answered $code"
+          if [ "$code" != "401" ]; then
+            echo "::error::The preview answered $code, not 401. It must ask for the password before anything else - check the Caddy block (deploy/preview/Caddyfile)."
+            exit 1
+          fi

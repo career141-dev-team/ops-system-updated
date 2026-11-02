@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # So the preview deploy can run the same checks before it deploys.
+  workflow_call:
 
 jobs:
   checks:
