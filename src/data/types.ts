@@ -146,6 +146,25 @@ export interface OpsAuditEntry {
   at: number;
 }
 
+export interface OpsTemplate {
+  /** Dotted and stable, because code asks for a template by key: `esa.chase.1`. */
+  key: string;
+  channel: MessageChannel;
+  /** What a person sees in the list. */
+  name: string;
+  /** Email only. WhatsApp and group posts have no subject. */
+  subject: string;
+  body: string;
+  /**
+   * Whether a routine notice from this template may go without anybody reading
+   * it. The owner's rule: only wording approved once, and only for notices —
+   * never for anything written to a client about one position.
+   */
+  approvedForAuto: boolean;
+  updatedBy: string | null;
+  updatedAt: number | null;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -154,5 +173,6 @@ export interface OpsDatabase {
   tasks: OpsTask[];
   messages: OpsMessage[];
   inbound: OpsInbound[];
+  templates: OpsTemplate[];
   audit: OpsAuditEntry[];
 }

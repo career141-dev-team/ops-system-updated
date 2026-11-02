@@ -41,6 +41,58 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "switch.taReadsEnabled", value: false, updatedBy: null, updatedAt: null },
       { key: "switch.taWritesEnabled", value: false, updatedBy: null, updatedAt: null },
     ],
+    /*
+     * The wording we start with. Phase 1 seeds only our own notices and one
+     * chase, because the agreement and set wording is the owner’s to write and
+     * arrives with the phase that sends it.
+     */
+    templates: [
+      {
+        key: "task.notice",
+        channel: "internal",
+        name: "Something needs you",
+        subject: "",
+        body: "{{taskTitle}} — due {{dueWhen}}.",
+        approvedForAuto: true,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "esa.chase.1",
+        channel: "email",
+        name: "Agreement chase 1",
+        subject: "{{client}} · {{position}} — our agreement",
+        body: `Dear {{contact}},
+
+We sent our agreement for the {{position}} role on {{date}}. Could you let us know where it stands?
+
+We can start the search as soon as it is signed.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "set.cover",
+        channel: "email",
+        name: "Sending a CV set",
+        subject: "{{client}} > {{position}} > SET {{setNumber}}",
+        body: `Dear {{contact}},
+
+{{cvCount}} CVs are attached for the {{position}} role.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+    ],
+
     holidays: [
       { date: "2026-11-24", name: "Sample holiday" },
       { date: "2026-12-25", name: "Christmas Day" },

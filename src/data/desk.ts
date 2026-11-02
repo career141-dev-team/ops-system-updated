@@ -3,7 +3,7 @@ import "server-only";
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
 import { repo } from "./store";
 import { seed } from "./seed";
-import type { Id, OpsDatabase, OpsInbound, OpsMessage, OpsTask, OpsTimer } from "./types";
+import type { Id, OpsDatabase, OpsInbound, OpsMessage, OpsTask, OpsTemplate, OpsTimer } from "./types";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { tick } from "@/lib/tick";
@@ -38,6 +38,14 @@ export async function desk(): Promise<OpsDatabase> {
       members: sample.members.map(({ name, email, role, active, taUserId }) => ({ name, email, role, active, taUserId })),
       settings: sample.settings.map(({ key, value }) => ({ key, value })),
       holidays: sample.holidays,
+      templates: sample.templates.map(({ key, channel, name, subject, body, approvedForAuto }) => ({
+        key,
+        channel,
+        name,
+        subject,
+        body,
+        approvedForAuto,
+      })),
       timers: sample.timers.map(({ id, ownerId, ...rest }) => ({ ...rest, ownerRole: roleOf(ownerId) })),
       tasks: sample.tasks.map(({ kind, title, body, assigneeId, dueAt, subjectType, subjectId, createdAt }) => ({
         kind,
@@ -291,6 +299,24 @@ export function inboundWaiting(db: OpsDatabase): OpsInbound[] {
 
 export function inboundRecent(db: OpsDatabase): OpsInbound[] {
   return [...db.inbound].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
+}
+
+/** Save a template's wording. Refused unless the screen checked the role first. */
+export async function saveTemplate(
+  key: string,
+  patch: { name: string; subject: string; body: string; approvedForAuto: boolean },
+  by: Id,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.saveTemplate(key, patch, by);
+    return;
+  }
+  await convexMutation("ops/data:saveTemplate", { key, ...patch, by });
+}
+
+/** One template by its key, or nothing when the wording has not been written yet. */
+export function templateFor(db: OpsDatabase, key: string): OpsTemplate | null {
+  return db.templates.find((t) => t.key === key) ?? null;
 }
 
 /* ── Reading one desk, without asking for it twice ───────────────────────── */

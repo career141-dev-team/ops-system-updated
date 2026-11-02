@@ -38,7 +38,16 @@ let cache: OpsDatabase | null = null;
 function load(): OpsDatabase {
   if (cache) return cache;
   try {
-    cache = JSON.parse(fs.readFileSync(file, "utf8")) as OpsDatabase;
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<OpsDatabase>;
+    // A file written before a collection existed has no key for it, and the
+    // screens would then crash on an undefined list. Each phase adds tables, so
+    // anything missing takes the sample's version rather than breaking the
+    // desk (2 Nov, found when templates arrived).
+    const fresh = seed();
+    cache = { ...fresh, ...onDisk } as OpsDatabase;
+    for (const key of Object.keys(fresh) as (keyof OpsDatabase)[]) {
+      if (!Array.isArray(cache[key])) (cache as unknown as Record<string, unknown>)[key] = fresh[key];
+    }
   } catch {
     cache = seed();
     save();
@@ -226,6 +235,38 @@ export const repo = {
     if (state === "sent") message.sentAt = Date.now();
     if (providerMessageId !== undefined) message.providerMessageId = providerMessageId;
     audit({ actorId: by, action: "message." + state, subjectType: "message", subjectId: messageId, before, after: state, reason: note });
+    save();
+  },
+
+  /**
+   * Save a template's wording. Only the ops lead gets here (the screen checks
+   * first), and the old wording is kept in the audit trail: "who changed the
+   * chase email, and to what" is a question that gets asked.
+   */
+  saveTemplate(
+    key: string,
+    patch: { name: string; subject: string; body: string; approvedForAuto: boolean },
+    by: Id,
+  ): void {
+    const db = load();
+    const row = db.templates.find((t) => t.key === key);
+    if (!row) return;
+    const before = row.subject + " / " + row.body.slice(0, 120);
+    row.name = patch.name;
+    row.subject = patch.subject;
+    row.body = patch.body;
+    row.approvedForAuto = patch.approvedForAuto;
+    row.updatedBy = by;
+    row.updatedAt = Date.now();
+    audit({
+      actorId: by,
+      action: "template.saved",
+      subjectType: "template",
+      subjectId: key,
+      before,
+      after: row.subject + " / " + row.body.slice(0, 120),
+      reason: null,
+    });
     save();
   },
 

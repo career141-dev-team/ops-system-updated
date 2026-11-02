@@ -52,9 +52,10 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, holidays, timers, tasks, messages, inbound, audit] = await Promise.all([
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, audit] = await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
+      ctx.db.query("opsTemplates").collect(),
       ctx.db.query("opsHolidays").collect(),
       // Finished clocks are history; the screens only ever show the live ones
       // and the ones that fired today.
@@ -73,6 +74,7 @@ export const snapshot = internalQuery({
         updatedBy: s.updatedBy,
         updatedAt: s.updatedAt,
       })),
+      templates: templates.map(row),
       holidays: holidays.map((h: Doc<"opsHolidays">) => ({ date: h.date, name: h.name })),
       timers: timers.map(row),
       tasks: tasks.map(row),
@@ -117,6 +119,16 @@ export const seed = internalMutation({
     ),
     settings: v.array(v.object({ key: v.string(), value: v.union(v.string(), v.number(), v.boolean()) })),
     holidays: v.array(v.object({ date: v.string(), name: v.string() })),
+    templates: v.array(
+      v.object({
+        key: v.string(),
+        channel: messageChannel,
+        name: v.string(),
+        subject: v.string(),
+        body: v.string(),
+        approvedForAuto: v.boolean(),
+      }),
+    ),
     timers: v.array(
       v.object({
         kind: v.string(),
@@ -203,6 +215,9 @@ export const seed = internalMutation({
         doneAt: null,
         createdAt: task.createdAt,
       });
+    }
+    for (const template of args.templates) {
+      await ctx.db.insert("opsTemplates", { ...template, updatedBy: null, updatedAt: null });
     }
     for (const message of args.messages) {
       await ctx.db.insert("opsMessages", {
@@ -392,6 +407,43 @@ export const settleMessage = internalMutation({
       before: row.state,
       after: args.state,
       reason: args.note,
+    });
+    return { ok: true };
+  },
+});
+
+/** The ops lead changes the wording; the old wording stays in the audit trail. */
+export const saveTemplate = internalMutation({
+  args: {
+    key: v.string(),
+    name: v.string(),
+    subject: v.string(),
+    body: v.string(),
+    approvedForAuto: v.boolean(),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("opsTemplates")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+    if (!row) return { ok: false };
+    await ctx.db.patch(row._id, {
+      name: args.name,
+      subject: args.subject,
+      body: args.body,
+      approvedForAuto: args.approvedForAuto,
+      updatedBy: args.by,
+      updatedAt: Date.now(),
+    });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "template.saved",
+      subjectType: "template",
+      subjectId: args.key,
+      before: row.subject + " / " + row.body.slice(0, 120),
+      after: args.subject + " / " + args.body.slice(0, 120),
+      reason: null,
     });
     return { ok: true };
   },

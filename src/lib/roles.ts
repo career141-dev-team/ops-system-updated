@@ -16,6 +16,7 @@ export type Capability =
   | "money.manage"
   | "refund.decide"
   | "settings.manage"
+  | "template.edit"
   | "advert.manage"
   | "report.read";
 
@@ -29,6 +30,7 @@ const MATRIX: Record<OpsRole, Capability[]> = {
     "client.manage",
     "money.manage",
     "settings.manage",
+    "template.edit",
     "advert.manage",
     "report.read",
   ],
@@ -53,6 +55,8 @@ export function refusal(capability: Capability): string {
       return "Only the Director of Operations decides a refund.";
     case "settings.manage":
       return "Only the ops lead can change the settings.";
+    case "template.edit":
+      return "Only the ops lead can change the wording we send.";
     case "task.reassign":
       return "Only the ops lead can pass a task to someone else.";
     case "client.manage":

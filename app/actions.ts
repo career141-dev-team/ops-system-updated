@@ -15,7 +15,9 @@ import {
   recordReply as recordReplyWrite,
   runClocks,
   setSetting,
+  saveTemplate,
   settleMessage,
+  templateFor,
   startTimer,
   switchedOn,
 } from "@/data/desk";
@@ -24,6 +26,7 @@ import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
 import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
+import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { referenceFor } from "@/lib/mailMatch";
 import { devSignInAllowed } from "@/lib/session";
@@ -157,6 +160,42 @@ export async function markMailDone(formData: FormData): Promise<void> {
   await markInboundActioned(String(formData.get("inboundId") ?? ""), member.id);
   revalidatePath("/mail");
   redirect("/mail?msg=" + encodeURIComponent("Marked as dealt with."));
+}
+
+/**
+ * Save a template's wording. The ops lead only, and refused outright when the
+ * wording could not work — an email with no subject, a blank nobody can fill —
+ * because the alternative is finding out when a client gets it.
+ */
+export async function saveTemplateWording(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const key = String(formData.get("key") ?? "");
+  const here = "/templates/" + encodeURIComponent(key);
+
+  if (!can(member, "template.edit")) {
+    redirect(here + "?msg=" + encodeURIComponent(refusal("template.edit")));
+  }
+
+  const db = await desk();
+  const template = templateFor(db, key);
+  if (!template) redirect("/templates?msg=" + encodeURIComponent("That wording no longer exists."));
+
+  const patch = {
+    name: String(formData.get("name") ?? "").trim(),
+    // A channel with nowhere to put a subject keeps the empty one it had.
+    subject: template.channel === "email" ? String(formData.get("subject") ?? "").trim() : "",
+    body: String(formData.get("body") ?? ""),
+    approvedForAuto: template.channel === "internal" ? true : formData.get("approvedForAuto") === "on",
+  };
+
+  const problem = problemWith({ ...patch, channel: template.channel });
+  if (problem) redirect(here + "?msg=" + encodeURIComponent(problem));
+
+  await saveTemplate(key, patch, member.id);
+  revalidatePath(here);
+  revalidatePath("/templates");
+  redirect(here + "?msg=" + encodeURIComponent("Saved. The next one sent uses this wording."));
 }
 
 export async function finishTask(formData: FormData): Promise<void> {

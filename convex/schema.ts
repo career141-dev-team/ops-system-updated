@@ -70,6 +70,22 @@ export default defineSchema({
     .index("by_role", ["role"]),
 
   /** Every number and switch. Nothing that matters is buried in the code. */
+  /**
+   * The wording of what we send, so the ops lead can change a chase email
+   * without waiting for a release (15, Phase 1 step 25).
+   */
+  opsTemplates: defineTable({
+    key: v.string(),
+    channel: messageChannel,
+    name: v.string(),
+    subject: v.string(),
+    body: v.string(),
+    /** Whether routine notices from this wording may go without a person. */
+    approvedForAuto: v.boolean(),
+    updatedBy: v.union(v.string(), v.null()),
+    updatedAt: v.union(v.number(), v.null()),
+  }).index("by_key", ["key"]),
+
   opsSettings: defineTable({
     key: v.string(),
     value: v.union(v.string(), v.number(), v.boolean()),
