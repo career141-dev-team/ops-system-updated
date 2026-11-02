@@ -4,10 +4,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  addBaseline,
   addFile,
+  addHolidays,
   desk,
   editMessage,
   fileIn,
+  logCall,
+  pushOutbox,
+  queueTaWrite,
+  readTaEvents,
+  removeHoliday,
   fileInbound,
   markInboundActioned,
   readTheMailboxes,
@@ -44,6 +51,9 @@ import {
   sha256,
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
+import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { parseHolidayLines } from "@/lib/holidays";
+import { MEASURES } from "@/lib/baseline";
 import { devSignInAllowed } from "@/lib/session";
 import { currentMember } from "@/lib/session";
 
@@ -126,7 +136,9 @@ export async function readMailNow(): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const r = await readTheMailboxes(member.id);
-  const counted = r.read + " read, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped.";
+  const counted =
+    r.read + " new, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped" +
+    (r.already ? ", " + r.already + " we had already" : "") + ".";
   const said = r.ok ? counted : (r.reason ?? "The mailboxes could not be read.") + " " + counted;
   revalidatePath("/mail");
   redirect("/mail?msg=" + encodeURIComponent(said));
@@ -390,4 +402,165 @@ export async function makePdfOfFile(formData: FormData): Promise<void> {
   });
   revalidatePath("/files");
   back("Made " + name + ".");
+}
+
+/**
+ * Writes down a call somebody made (15, Phase 1 step 24).
+ *
+ * Nothing here dials anything: the owner decided calls stay human, so this is
+ * the record of what a person did. If the call answers a call task, that task
+ * is finished with the same words, because writing it twice is how one of the
+ * two ends up empty.
+ */
+export async function recordCall(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/calls?msg=" + encodeURIComponent(msg));
+  if (!can(member, "task.do")) back(refusal("task.do"));
+
+  const input = {
+    to: String(formData.get("to") ?? "").trim(),
+    spokeTo: String(formData.get("spokeTo") ?? "").trim(),
+    outcome: String(formData.get("outcome") ?? "").trim(),
+  };
+  const problem = problemWithCall(input);
+  if (problem) back(problem);
+
+  const taskId = String(formData.get("taskId") ?? "").trim() || null;
+  const subjectType = String(formData.get("subjectType") ?? "").trim() || null;
+  const subjectId = String(formData.get("subjectId") ?? "").trim() || null;
+
+  await logCall({
+    taskId,
+    to: tidyPhone(input.to) ?? input.to,
+    toName: String(formData.get("toName") ?? "").trim(),
+    purpose: String(formData.get("purpose") ?? "other"),
+    spokeTo: input.spokeTo,
+    outcome: input.outcome,
+    subjectType,
+    subjectId,
+    by: member.id,
+  });
+
+  if (taskId) await finishTaskWrite(taskId, member.id, "Called " + input.spokeTo + ": " + input.outcome);
+  revalidatePath("/calls");
+  revalidatePath("/");
+  back("Written down." + (taskId ? " The call task is finished." : ""));
+}
+
+/** Adds the holidays somebody pasted in (15, Phase 1 step 10). */
+export async function addHolidayList(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/holidays?msg=" + encodeURIComponent(msg));
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+
+  const { days, problems } = parseHolidayLines(String(formData.get("pasted") ?? ""));
+  if (days.length === 0) {
+    back("Nothing in that could be read as a date. One line each: 2027-01-15, Thai Pongal.");
+  }
+  const added = await addHolidays(days, member.id);
+  revalidatePath("/holidays");
+  back(
+    added + " of " + days.length + " added." +
+      (problems.length ? " These lines were not dates: " + problems.slice(0, 3).join(" · ") : ""),
+  );
+}
+
+export async function dropHoliday(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/holidays?msg=" + encodeURIComponent(msg));
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+  const date = String(formData.get("date") ?? "");
+  await removeHoliday(date, member.id);
+  revalidatePath("/holidays");
+  back(date + " is a working day again.");
+}
+
+/**
+ * Records one of today's numbers (15, Phase 1 step 0).
+ *
+ * The owner's instruction was to measure before changing anything, so the
+ * weekly report can one day say what changed. These come out of the archive by
+ * hand: there is no system to read them from.
+ */
+export async function recordBaseline(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/baseline?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+
+  const measure = String(formData.get("measure") ?? "");
+  if (!MEASURES[measure]) back("Pick what is being measured.");
+  const period = String(formData.get("period") ?? "").trim();
+  if (!period) back("Say which months this covers, so a later number can be compared with it.");
+  const value = Number(String(formData.get("value") ?? ""));
+  if (!Number.isFinite(value) || value < 0) back("That is not a number.");
+
+  await addBaseline({
+    measure,
+    period,
+    value,
+    note: String(formData.get("note") ?? "").trim(),
+    by: member.id,
+  });
+  revalidatePath("/baseline");
+  back("Recorded. " + MEASURES[measure].name + " for " + period + ": " + value + " " + MEASURES[measure].unit + ".");
+}
+
+/** Tries every waiting write now, instead of waiting for the next pass. */
+export async function pushOutboxNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const result = await pushOutbox();
+  revalidatePath("/ta");
+  redirect(
+    "/ta?msg=" +
+      encodeURIComponent(
+        result.sent + " went, " + result.waiting + " are waiting, " + result.gaveUp + " given up on.",
+      ),
+  );
+}
+
+/** Reads the TA System's events now, instead of waiting for the next pass. */
+export async function readEventsNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const result = await readTaEvents();
+  revalidatePath("/ta");
+  redirect(
+    "/ta?msg=" +
+      encodeURIComponent(
+        result.reason ? result.reason : result.read + " read, " + result.kept + " new.",
+      ),
+  );
+}
+
+/**
+ * Queues a harmless write, to prove the outbox end to end.
+ *
+ * Phase 1 has no business writes yet - the first real one is "create the
+ * opening in TA" in Phase 3 - so without this there would be no way to show
+ * that queueing, trying, waiting and the key all work. It is a notice to
+ * ourselves, and it says so.
+ */
+export async function queueTestWrite(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  if (!can(member, "settings.manage")) {
+    redirect("/ta?msg=" + encodeURIComponent(refusal("settings.manage")));
+  }
+  const item = await queueTaWrite(
+    "/integrations/v1/notify",
+    {
+      userId: member.taUserId ?? "unknown",
+      type: "ops_test",
+      title: "Ops is talking to the TA System",
+      body: "A test write queued by " + member.name + " while building Phase 1.",
+    },
+    null,
+  );
+  revalidatePath("/ta");
+  redirect("/ta?msg=" + encodeURIComponent("Queued. Its key is " + item.idempotencyKey + "; queueing it again changes nothing."));
 }

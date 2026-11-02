@@ -17,9 +17,14 @@ import path from "node:path";
 import type {
   Id,
   OpsAuditEntry,
+  OpsBaseline,
+  OpsCallLog,
   OpsDatabase,
+  OpsEvent,
   OpsFile,
   OpsInbound,
+  OpsOutboxItem,
+  OpsTaCall,
   OpsMember,
   OpsMessage,
   OpsSetting,
@@ -123,13 +128,22 @@ export const repo = {
    * health screen. The pass itself audits anything it did.
    */
   noteClockPass(value: string): void {
+    repo.noteSystemSetting("clock.lastPass", value);
+  },
+
+  /**
+   * A setting the system keeps for itself: the last clock pass, the events
+   * cursor. Not audited, for the same reason as the pass - these change every
+   * few minutes and would bury the changes a person made.
+   */
+  noteSystemSetting(key: string, value: string): void {
     const db = load();
-    const row = db.settings.find((s) => s.key === "clock.lastPass");
+    const row = db.settings.find((s) => s.key === key);
     if (row) {
       row.value = value;
       row.updatedAt = Date.now();
     } else {
-      db.settings.push({ key: "clock.lastPass", value, updatedBy: null, updatedAt: Date.now() });
+      db.settings.push({ key, value, updatedBy: null, updatedAt: Date.now() });
     }
     save();
   },
@@ -322,6 +336,161 @@ export const repo = {
     return row;
   },
 
+  /* ── Calls, by a person, never by the system ─────────────────────────── */
+
+  calls(): OpsCallLog[] {
+    return [...load().calls].sort((a, b) => b.at - a.at);
+  },
+
+  logCall(input: Omit<OpsCallLog, "id" | "at">): OpsCallLog {
+    const db = load();
+    const row: OpsCallLog = { ...input, id: id("c"), at: Date.now() };
+    db.calls.push(row);
+    audit({
+      actorId: input.by,
+      action: "call.logged",
+      subjectType: "call",
+      subjectId: row.id,
+      before: null,
+      after: input.to,
+      reason: input.outcome,
+    });
+    save();
+    return row;
+  },
+
+  /* ── Holidays: the days the office is shut ───────────────────────────── */
+
+  holidayList(): { date: string; name: string }[] {
+    return [...load().holidays].sort((a, b) => a.date.localeCompare(b.date));
+  },
+
+  /** Adds days, skipping any already on the list. Returns how many were new. */
+  addHolidays(days: { date: string; name: string }[], by: Id): number {
+    const db = load();
+    let added = 0;
+    for (const day of days) {
+      if (db.holidays.some((h) => h.date === day.date)) continue;
+      db.holidays.push(day);
+      added += 1;
+    }
+    if (added) {
+      audit({ actorId: by, action: "holidays.added", subjectType: "holidays", subjectId: "list", before: null, after: String(added), reason: null });
+      save();
+    }
+    return added;
+  },
+
+  removeHoliday(date: string, by: Id): boolean {
+    const db = load();
+    const at = db.holidays.findIndex((h) => h.date === date);
+    if (at === -1) return false;
+    db.holidays.splice(at, 1);
+    audit({ actorId: by, action: "holiday.removed", subjectType: "holidays", subjectId: date, before: date, after: null, reason: null });
+    save();
+    return true;
+  },
+
+  /* ── The baseline: how bad it is today ──────────────────────────────── */
+
+  baseline(): OpsBaseline[] {
+    return [...load().baseline].sort((a, b) => b.at - a.at);
+  },
+
+  addBaseline(input: Omit<OpsBaseline, "id" | "at">): OpsBaseline {
+    const db = load();
+    const row: OpsBaseline = { ...input, id: id("b"), at: Date.now() };
+    db.baseline.push(row);
+    audit({ actorId: input.by, action: "baseline.recorded", subjectType: "baseline", subjectId: row.id, before: null, after: input.measure + " = " + input.value, reason: input.note || null });
+    save();
+    return row;
+  },
+
+  /* ── The window to the TA System ─────────────────────────────────────── */
+
+  /**
+   * Keeps the last hundred calls only. The screens ask "is it working now",
+   * which the newest few answer; keeping every call would grow for ever and
+   * tell nobody anything more.
+   */
+  logTaCall(input: Omit<OpsTaCall, "id" | "at">): void {
+    const db = load();
+    db.taCalls.push({ ...input, id: id("tc"), at: Date.now() });
+    if (db.taCalls.length > 100) db.taCalls.splice(0, db.taCalls.length - 100);
+    save();
+  },
+
+  taCalls(): OpsTaCall[] {
+    return [...load().taCalls].sort((a, b) => b.at - a.at);
+  },
+
+  outbox(): OpsOutboxItem[] {
+    return [...load().outbox].sort((a, b) => a.createdAt - b.createdAt);
+  },
+
+  queueWrite(input: Omit<OpsOutboxItem, "id" | "state" | "attempts" | "lastError" | "nextTryAt" | "createdAt" | "sentAt">): OpsOutboxItem {
+    const db = load();
+    // The same key twice is the same intention twice: the first row stands.
+    const already = db.outbox.find((o) => o.idempotencyKey === input.idempotencyKey);
+    if (already) return already;
+    const row: OpsOutboxItem = {
+      ...input,
+      id: id("o"),
+      state: "queued",
+      attempts: 0,
+      lastError: null,
+      nextTryAt: null,
+      createdAt: Date.now(),
+      sentAt: null,
+    };
+    db.outbox.push(row);
+    audit({ actorId: null, action: "outbox.queued", subjectType: "outbox", subjectId: row.id, before: null, after: input.path, reason: null });
+    save();
+    return row;
+  },
+
+  /** The result of one attempt. A write that is only waiting is not a failure. */
+  recordOutboxTry(itemId: Id, result: { ok: boolean; error?: string; nextTryAt?: number | null; state?: OpsOutboxItem["state"] }): void {
+    const db = load();
+    const row = db.outbox.find((o) => o.id === itemId);
+    if (!row) return;
+    row.attempts += 1;
+    if (result.ok) {
+      row.state = "sent";
+      row.sentAt = Date.now();
+      row.lastError = null;
+      row.nextTryAt = null;
+    } else {
+      row.state = result.state ?? "queued";
+      row.lastError = result.error ?? "The TA System could not be reached.";
+      row.nextTryAt = result.nextTryAt ?? null;
+    }
+    audit({
+      actorId: null,
+      action: result.ok ? "outbox.sent" : row.state === "failed" ? "outbox.givenUp" : "outbox.waiting",
+      subjectType: "outbox",
+      subjectId: row.id,
+      before: row.path,
+      after: String(row.attempts) + " tries",
+      reason: row.lastError,
+    });
+    save();
+  },
+
+  events(): OpsEvent[] {
+    return [...load().events].sort((a, b) => b.receivedAt - a.receivedAt);
+  },
+
+  /** Records an event once. The same TA event twice is kept once. */
+  addEvent(input: Omit<OpsEvent, "id" | "receivedAt">): OpsEvent | null {
+    const db = load();
+    if (db.events.some((e) => e.taEventId === input.taEventId)) return null;
+    const row: OpsEvent = { ...input, id: id("e"), receivedAt: Date.now() };
+    db.events.push(row);
+    save();
+    return row;
+  },
+
   /** A setting as a number, with the plan's value if somebody deleted the row. */
   number(key: string, fallback: number): number {
     const value = load().settings.find((s) => s.key === key)?.value;
@@ -447,7 +616,18 @@ export const repo = {
     save();
   },
 
+  /**
+   * Newest first, and two entries written in the same millisecond keep the
+   * order they happened in. Without that tiebreak the newest entry of a pair
+   * was whichever the sort happened to put first, which made the trail read
+   * backwards now and then - and made one test fail about once in twenty runs
+   * (2 Nov).
+   */
   audit(): OpsAuditEntry[] {
-    return [...load().audit].sort((a, b) => b.at - a.at);
+    const all = load().audit;
+    return all
+      .map((entry, order) => ({ entry, order }))
+      .sort((a, b) => b.entry.at - a.entry.at || b.order - a.order)
+      .map(({ entry }) => entry);
   },
 };

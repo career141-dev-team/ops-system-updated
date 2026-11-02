@@ -172,3 +172,25 @@ client gets the same email twice (TA, 2 Oct).
 text is drafted and a person posts it from their phone and ticks it off. The sender says so
 in those words rather than appearing to do nothing.
 
+## 2 Nov 2026 - two faults the Phase 1 run-through found
+
+The run-through (15, Phase 1 step 26) is the first test that drives the whole
+foundation in one go, and it found two things that every other test missed
+because each piece was right on its own.
+
+**A client who replied was chased anyway.** The list of "things we have written
+about", which a reply is matched against, lower-cased the kind of thing:
+`clientSet` became `clientset`. The match then came back naming `clientset`,
+and cancelling the chase looked for a clock on `clientset` - there was none, so
+the clock kept running and the client would have been chased after answering.
+The list now keeps the real case; the matcher already compared without case.
+
+**The mail screen counted emails it had already seen.** A pass reported every
+email handed to it as "read", including the ones it recognised and skipped.
+Since each pass deliberately overlaps the last, a screen could say "25 read"
+when nothing had arrived. A pass now reports what was new, and says separately
+how many it had already.
+
+Both are the same kind of fault: a piece that is correct alone and wrong when
+joined to the next one. Worth remembering when Phases 2 to 7 add handlers to
+this foundation.

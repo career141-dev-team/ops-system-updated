@@ -91,6 +91,72 @@ export default defineSchema({
     .index("by_subject", ["subjectType", "subjectId"])
     .index("by_uploaded", ["uploadedAt"]),
 
+  /** Calls a person made (15, Phase 1 step 24). No telephony: this is a record. */
+  opsCalls: defineTable({
+    taskId: v.union(v.string(), v.null()),
+    to: v.string(),
+    toName: v.string(),
+    purpose: v.string(),
+    spokeTo: v.string(),
+    outcome: v.string(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+    at: v.number(),
+  }).index("by_at", ["at"]),
+
+  /** How bad it is today, measured before we changed anything (step 0). */
+  opsBaseline: defineTable({
+    measure: v.string(),
+    period: v.string(),
+    value: v.number(),
+    note: v.string(),
+    by: v.string(),
+    at: v.number(),
+  }).index("by_measure", ["measure"]),
+
+  /** Every call to the TA System, so "is the window open" has an answer. */
+  opsTaCalls: defineTable({
+    direction: v.string(),
+    path: v.string(),
+    ok: v.boolean(),
+    status: v.union(v.number(), v.null()),
+    ms: v.number(),
+    note: v.union(v.string(), v.null()),
+    at: v.number(),
+  }).index("by_at", ["at"]),
+
+  /** Writes waiting to reach the TA System, with the key that makes a repeat safe. */
+  opsOutbox: defineTable({
+    path: v.string(),
+    body: v.any(),
+    idempotencyKey: v.string(),
+    state: v.union(v.literal("queued"), v.literal("sent"), v.literal("failed")),
+    attempts: v.number(),
+    lastError: v.union(v.string(), v.null()),
+    nextTryAt: v.union(v.number(), v.null()),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    sentAt: v.union(v.number(), v.null()),
+  })
+    .index("by_state", ["state"])
+    .index("by_key", ["idempotencyKey"]),
+
+  /** What the TA System told us, in order, each one kept once (Part E3). */
+  opsEvents: defineTable({
+    taEventId: v.string(),
+    type: v.string(),
+    data: v.any(),
+    receivedAt: v.number(),
+    handledAt: v.union(v.number(), v.null()),
+    attempts: v.number(),
+    lastError: v.union(v.string(), v.null()),
+    note: v.string(),
+  })
+    .index("by_taEventId", ["taEventId"])
+    .index("by_received", ["receivedAt"]),
+
   opsTemplates: defineTable({
     key: v.string(),
     channel: messageChannel,

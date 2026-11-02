@@ -3,12 +3,28 @@ import "server-only";
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
 import { repo } from "./store";
 import { seed } from "./seed";
-import type { Id, OpsDatabase, OpsFile, OpsInbound, OpsMessage, OpsTask, OpsTemplate, OpsTimer } from "./types";
+import type {
+  Id,
+  OpsBaseline,
+  OpsCallLog,
+  OpsDatabase,
+  OpsEvent,
+  OpsFile,
+  OpsInbound,
+  OpsMessage,
+  OpsOutboxItem,
+  OpsTask,
+  OpsTemplate,
+  OpsTimer,
+} from "./types";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { tick } from "@/lib/tick";
 import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
+import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
+import { cursorAfter, whatWeDoWithIt } from "@/lib/taEvents";
+import { eventsAfter, write as taWrite } from "@/lib/ta";
 
 /**
  * The desk, from wherever it is kept (2 Nov).
@@ -188,7 +204,7 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
 export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
-): Promise<{ ok: boolean; reason?: string; read: number; filed: number; waiting: number; chasesStopped: number }> {
+): Promise<{ ok: boolean; reason?: string; read: number; already: number; filed: number; waiting: number; chasesStopped: number }> {
   // Each box carries on from the newest thing we already have from it, so a
   // pass never re-reads and never skips. A box we have never read starts from
   // the reader's own short window.
@@ -208,7 +224,7 @@ export async function takeInbound(
   mail: InboundMail[],
   by: Id,
   now = Date.now(),
-): Promise<{ ok: boolean; read: number; filed: number; waiting: number; chasesStopped: number }> {
+): Promise<{ ok: boolean; read: number; already: number; filed: number; waiting: number; chasesStopped: number }> {
   const db = await desk();
   const known = {
     // Only messages whose real server id we kept. This used to make the id up
@@ -236,7 +252,12 @@ export async function takeInbound(
           .map((m) => [
             (m.subjectType as string) + "|" + (m.subjectId as string),
             {
-              subjectType: (m.subjectType as string).toLowerCase(),
+              // The real case, not a lower-cased copy. The matcher already
+              // compares case-insensitively, and a lower-cased "clientset"
+              // came back out of the match and then failed to find the
+              // "clientSet" clock it was supposed to stop - so a client who
+              // replied was chased anyway (found by the run-through, 2 Nov).
+              subjectType: m.subjectType as string,
               subjectId: m.subjectId as string,
               subject: m.subject,
             },
@@ -245,6 +266,8 @@ export async function takeInbound(
     ],
   };
 
+  let read = 0;
+  let already = 0;
   let filed = 0;
   let waiting = 0;
   let chasesStopped = 0;
@@ -271,7 +294,11 @@ export async function takeInbound(
     const saved = usingConvex()
       ? await convexMutation<{ id: string; already: boolean }>("ops/data:recordInbound", row)
       : repo.recordInbound(row);
-    if (saved.already) continue;
+    if (saved.already) {
+      already += 1;
+      continue;
+    }
+    read += 1;
 
     if (match.subjectId) filed += 1;
     else waiting += 1;
@@ -281,7 +308,10 @@ export async function takeInbound(
     }
   }
 
-  return { ok: true, read: mail.length, filed, waiting, chasesStopped };
+  // `read` is what was new, not what was handed in: the readers pass the same
+  // email again whenever a window overlaps, and a screen saying "read 25" when
+  // nothing arrived is a screen nobody can trust (found by the run-through).
+  return { ok: true, read, already, filed, waiting, chasesStopped };
 }
 
 export async function fileInbound(inboundId: Id, subjectType: string, subjectId: Id, by: Id): Promise<number> {
@@ -343,6 +373,177 @@ export function fileIn(db: OpsDatabase, fileId: Id): OpsFile | null {
 
 export function filesNewestFirst(db: OpsDatabase): OpsFile[] {
   return [...db.files].sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+/* ── Calls, holidays and the baseline ─────────────────────────────── */
+
+export async function logCall(input: Omit<OpsCallLog, "id" | "at">): Promise<void> {
+  if (!usingConvex()) {
+    repo.logCall(input);
+    return;
+  }
+  await convexMutation("ops/data:logCall", input);
+}
+
+export async function addHolidays(days: { date: string; name: string }[], by: Id): Promise<number> {
+  if (!usingConvex()) return repo.addHolidays(days, by);
+  return convexMutation<number>("ops/data:addHolidays", { days, by });
+}
+
+export async function removeHoliday(date: string, by: Id): Promise<void> {
+  if (!usingConvex()) {
+    repo.removeHoliday(date, by);
+    return;
+  }
+  await convexMutation("ops/data:removeHoliday", { date, by });
+}
+
+export async function addBaseline(input: Omit<OpsBaseline, "id" | "at">): Promise<void> {
+  if (!usingConvex()) {
+    repo.addBaseline(input);
+    return;
+  }
+  await convexMutation("ops/data:addBaseline", input);
+}
+
+/* ── Writes to the TA System, through the outbox ───────────────────── */
+
+/**
+ * Queues a write. Nothing is sent from here: the sending is a separate pass,
+ * so a screen is never left waiting on another machine, and a write is never
+ * lost because somebody closed a tab.
+ */
+export async function queueTaWrite(
+  path: string,
+  body: Record<string, unknown>,
+  subject: { type: string; id: Id } | null = null,
+): Promise<OpsOutboxItem> {
+  const input = {
+    path,
+    body,
+    idempotencyKey: outboxKeyFor(path, body),
+    subjectType: subject?.type ?? null,
+    subjectId: subject?.id ?? null,
+  };
+  if (!usingConvex()) return repo.queueWrite(input);
+  return convexMutation<OpsOutboxItem>("ops/data:queueWrite", input);
+}
+
+/**
+ * Tries every write that is due (15, Phase 1 step 21).
+ *
+ * Run by the same scheduled pass as the clocks. A write that cannot go stays
+ * queued with a longer wait each time; after twelve tries it stops and says a
+ * person has to do it by hand, because retrying silently for ever is how
+ * something gets forgotten.
+ */
+export async function pushOutbox(now = Date.now()): Promise<{ sent: number; waiting: number; gaveUp: number }> {
+  const db = await desk();
+  const due = dueNow(db.outbox, now);
+  let sent = 0;
+  let waiting = 0;
+  let gaveUp = 0;
+
+  for (const item of due) {
+    const outcome = await taWrite(item.path, item.body, item.idempotencyKey);
+    if (outcome.ok) {
+      sent += 1;
+      await recordOutboxTry(item.id, { ok: true });
+      continue;
+    }
+    const attempts = item.attempts + 1;
+    if (shouldGiveUp(attempts)) {
+      gaveUp += 1;
+      await recordOutboxTry(item.id, { ok: false, error: outcome.reason, state: "failed", nextTryAt: null });
+      continue;
+    }
+    waiting += 1;
+    await recordOutboxTry(item.id, { ok: false, error: outcome.reason, nextTryAt: nextTryAt(attempts, now) });
+  }
+  return { sent, waiting, gaveUp };
+}
+
+async function recordOutboxTry(
+  itemId: Id,
+  result: { ok: boolean; error?: string; nextTryAt?: number | null; state?: OpsOutboxItem["state"] },
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.recordOutboxTry(itemId, result);
+    return;
+  }
+  await convexMutation("ops/data:recordOutboxTry", {
+    itemId,
+    ok: result.ok,
+    error: result.error ?? null,
+    nextTryAt: result.nextTryAt ?? null,
+    state: result.state ?? null,
+  });
+}
+
+/* ── Events from the TA System ──────────────────────────────── */
+
+export const EVENTS_CURSOR = "ta.eventsCursor";
+export const EVENTS_READ_AT = "ta.eventsReadAt";
+
+/**
+ * One pass of the events reader (15, Part E3).
+ *
+ * Reads from where we got to, records each event once, and moves the cursor
+ * only as far as the events that were handled. In this phase handling means
+ * recording which phase will act on it, so the reader is proved now and the
+ * handlers can be added later without touching it.
+ */
+export async function readTaEvents(now = Date.now()): Promise<{ read: number; kept: number; reason: string | null }> {
+  const db = await desk();
+  const cursor = settingValue(db, EVENTS_CURSOR) ?? "";
+  const batch = await eventsAfter(cursor);
+  if (!batch.ok) return { read: 0, kept: 0, reason: batch.reason };
+
+  const handled: { taEventId: string; handledAt: number | null }[] = [];
+  let kept = 0;
+  for (const event of batch.data.events) {
+    const row = {
+      taEventId: event.id,
+      type: event.type,
+      data: event.data,
+      handledAt: now,
+      attempts: 1,
+      lastError: null,
+      note: whatWeDoWithIt(event.type),
+    };
+    const added = usingConvex()
+      ? await convexMutation<OpsEvent | null>("ops/data:addEvent", row)
+      : repo.addEvent(row);
+    if (added) kept += 1;
+    handled.push({ taEventId: event.id, handledAt: now });
+  }
+
+  const moved = cursorAfter(handled, cursor);
+  if (moved !== cursor) await noteSetting(EVENTS_CURSOR, moved);
+  await noteSetting(EVENTS_READ_AT, String(now));
+  return { read: batch.data.events.length, kept, reason: null };
+}
+
+/** A setting the system keeps for itself. Not audited: it changes every pass. */
+async function noteSetting(key: string, value: string): Promise<void> {
+  if (!usingConvex()) {
+    repo.noteSystemSetting(key, value);
+    return;
+  }
+  await convexMutation("ops/data:noteSystemSetting", { key, value });
+}
+
+export function outboxWaiting(db: OpsDatabase): OpsOutboxItem[] {
+  return db.outbox.filter((o) => o.state !== "sent").sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export function eventsNewestFirst(db: OpsDatabase): OpsEvent[] {
+  return [...db.events].sort((a, b) => b.receivedAt - a.receivedAt);
+}
+
+export function settingValue(db: OpsDatabase, key: string): string | null {
+  const value = db.settings.find((s) => s.key === key)?.value;
+  return value === undefined ? null : String(value);
 }
 
 /* ── Reading one desk, without asking for it twice ───────────────────────── */

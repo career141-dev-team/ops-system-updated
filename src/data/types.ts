@@ -187,6 +187,105 @@ export interface OpsFile {
   uploadedAt: number;
 }
 
+/**
+ * One call somebody made (15, Phase 1 step 24).
+ *
+ * Calls stay human by the owner's decision, so this is a record of what a
+ * person did, never something the system did: who was rung, who answered, and
+ * what was said.
+ */
+export interface OpsCallLog {
+  id: Id;
+  /** The call task this answers, when it came from one. */
+  taskId: Id | null;
+  to: string;
+  toName: string;
+  purpose: string;
+  spokeTo: string;
+  outcome: string;
+  subjectType: string | null;
+  subjectId: Id | null;
+  by: Id;
+  at: number;
+}
+
+/**
+ * How bad it is today, measured before we change anything (15, Phase 1 step 0).
+ *
+ * The owner's instruction was "strategy first: measure today's numbers", so
+ * the weekly report can one day say what changed. Entered by hand from the
+ * archive, because there is no system to read it out of.
+ */
+export interface OpsBaseline {
+  id: Id;
+  /** `esa.returnDays`, `set.clientWaitDays`, `hire.slippedCount`, or another. */
+  measure: string;
+  /** Which months it covers, in words: "May to October 2026". */
+  period: string;
+  value: number;
+  note: string;
+  by: Id;
+  at: number;
+}
+
+/** Every call to the TA System, so "is the window working" has an answer. */
+export interface OpsTaCall {
+  id: Id;
+  direction: "read" | "write" | "events";
+  path: string;
+  ok: boolean;
+  /** The HTTP status, or null when we never got that far. */
+  status: number | null;
+  ms: number;
+  note: string | null;
+  at: number;
+}
+
+export type OutboxState = "queued" | "sent" | "failed";
+
+/**
+ * A write waiting to reach the TA System (15, Phase 1 step 21).
+ *
+ * Ops never writes into TA's database; it asks the API. The API can be down,
+ * and an opening that was asked for must not be lost because of it, so every
+ * write is a row here first and is retried. The key makes a repeat harmless:
+ * asking twice must not create two openings.
+ */
+export interface OpsOutboxItem {
+  id: Id;
+  path: string;
+  body: Record<string, unknown>;
+  idempotencyKey: string;
+  state: OutboxState;
+  attempts: number;
+  lastError: string | null;
+  /** Not tried again before this. Empty while it has never been tried. */
+  nextTryAt: number | null;
+  subjectType: string | null;
+  subjectId: Id | null;
+  createdAt: number;
+  sentAt: number | null;
+}
+
+/**
+ * Something that happened in the TA System (15, Part E3).
+ *
+ * TA writes events; Ops reads them in order and never goes back. The cursor
+ * only moves past a batch that was handled, so nothing is skipped — which is
+ * the whole reason Asma learned of a January joining in March.
+ */
+export interface OpsEvent {
+  id: Id;
+  taEventId: string;
+  type: string;
+  data: Record<string, unknown>;
+  receivedAt: number;
+  handledAt: number | null;
+  attempts: number;
+  lastError: string | null;
+  note: string;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -197,5 +296,10 @@ export interface OpsDatabase {
   inbound: OpsInbound[];
   templates: OpsTemplate[];
   files: OpsFile[];
+  calls: OpsCallLog[];
+  baseline: OpsBaseline[];
+  taCalls: OpsTaCall[];
+  outbox: OpsOutboxItem[];
+  events: OpsEvent[];
   audit: OpsAuditEntry[];
 }

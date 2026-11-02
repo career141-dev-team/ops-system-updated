@@ -48,6 +48,13 @@ export function seed(now = Date.now()): OpsDatabase {
      */
     // No sample files: a row with no bytes behind it would be a broken link.
     files: [],
+    calls: [],
+    // Nothing invented here: the baseline is the real last six months, typed
+    // in by the Ops team, and a made-up number would be worse than none.
+    baseline: [],
+    taCalls: [],
+    outbox: [],
+    events: [],
     templates: [
       {
         key: "task.notice",

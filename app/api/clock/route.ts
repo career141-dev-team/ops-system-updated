@@ -1,4 +1,4 @@
-import { noteClockPass, runClocks } from "@/data/desk";
+import { noteClockPass, pushOutbox, readTaEvents, runClocks } from "@/data/desk";
 import { keyAccepted, onePass } from "@/lib/clockPass";
 
 /**
@@ -18,7 +18,17 @@ export async function POST(request: Request): Promise<Response> {
       { status: 401 },
     );
   }
-  const answer = await onePass(() => runClocks());
+  // One pass does all three things that must happen without anybody asking:
+  // the clocks, the writes waiting to reach the TA System, and the events it
+  // has for us. They are one pass because they share the "only one at a time"
+  // guard, and because a client reply read by one of them should stop a chase
+  // before the next clock pass sees it.
+  const answer = await onePass(async () => {
+    const clocks = await runClocks();
+    const out = await pushOutbox();
+    const events = await readTaEvents();
+    return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read };
+  });
   if (answer.pass) await noteClockPass(JSON.stringify(answer.pass));
   // 409 for "a pass is already going": the scheduler should come back, not
   // treat it as a fault and start alerting.

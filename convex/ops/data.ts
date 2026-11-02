@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { messageChannel, taskKind, timerState } from "../schema";
 
 /**
@@ -52,7 +52,8 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, audit] = await Promise.all([
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, calls, baseline, taCalls, outbox, events, audit] =
+      await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
       ctx.db.query("opsTemplates").collect(),
@@ -65,6 +66,11 @@ export const snapshot = internalQuery({
       ctx.db.query("opsInbound").withIndex("by_received").order("desc").take(100),
       // The newest 200 files: the registry grows for ever, the screen does not.
       ctx.db.query("opsFiles").withIndex("by_uploaded").order("desc").take(200),
+      ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
+      ctx.db.query("opsBaseline").collect(),
+      ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
+      ctx.db.query("opsOutbox").collect(),
+      ctx.db.query("opsEvents").withIndex("by_received").order("desc").take(200),
       ctx.db.query("opsAudit").withIndex("by_at").order("desc").take(AUDIT_SHOWN),
     ]);
 
@@ -83,6 +89,11 @@ export const snapshot = internalQuery({
       messages: messages.map(row),
       inbound: inbound.map(row),
       files: files.map(row),
+      calls: calls.map(row),
+      baseline: baseline.map(row),
+      taCalls: taCalls.map(row),
+      outbox: outbox.map(row),
+      events: events.map(row),
       audit: audit.map(row),
     };
   },
@@ -275,6 +286,225 @@ export const addFile = internalMutation({
       after: args.kind + " · " + args.name,
     });
     return { ...args, id: id as string, uploadedAt };
+  },
+});
+
+/** A call a person made (15, Phase 1 step 24). */
+export const logCall = internalMutation({
+  args: {
+    taskId: v.union(v.string(), v.null()),
+    to: v.string(),
+    toName: v.string(),
+    purpose: v.string(),
+    spokeTo: v.string(),
+    outcome: v.string(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsCalls", { ...args, at: Date.now() });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "call.logged",
+      subjectType: "call",
+      subjectId: id as string,
+      after: args.to,
+      reason: args.outcome,
+    });
+    return { ok: true };
+  },
+});
+
+/** Days the office is shut. Skips any already on the list; returns how many were new. */
+export const addHolidays = internalMutation({
+  args: { days: v.array(v.object({ date: v.string(), name: v.string() })), by: v.string() },
+  handler: async (ctx, args) => {
+    const have = await ctx.db.query("opsHolidays").collect();
+    let added = 0;
+    for (const day of args.days) {
+      if (have.some((h) => h.date === day.date)) continue;
+      await ctx.db.insert("opsHolidays", day);
+      added += 1;
+    }
+    if (added) {
+      await writeAudit(ctx, {
+        actorId: args.by,
+        action: "holidays.added",
+        subjectType: "holidays",
+        subjectId: "list",
+        after: String(added),
+      });
+    }
+    return added;
+  },
+});
+
+export const removeHoliday = internalMutation({
+  args: { date: v.string(), by: v.string() },
+  handler: async (ctx, args) => {
+    const row = (await ctx.db.query("opsHolidays").collect()).find((h) => h.date === args.date);
+    if (!row) return { ok: false };
+    await ctx.db.delete(row._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "holiday.removed",
+      subjectType: "holidays",
+      subjectId: args.date,
+      before: args.date,
+    });
+    return { ok: true };
+  },
+});
+
+/** Today's numbers, typed in from the archive before we change anything. */
+export const addBaseline = internalMutation({
+  args: {
+    measure: v.string(),
+    period: v.string(),
+    value: v.number(),
+    note: v.string(),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsBaseline", { ...args, at: Date.now() });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "baseline.recorded",
+      subjectType: "baseline",
+      subjectId: id as string,
+      after: args.measure + " = " + String(args.value),
+      reason: args.note || null,
+    });
+    return { ok: true };
+  },
+});
+
+/** One call to the TA System. Not audited, and only the last hundred are kept. */
+export const logTaCall = internalMutation({
+  args: {
+    direction: v.string(),
+    path: v.string(),
+    ok: v.boolean(),
+    status: v.union(v.number(), v.null()),
+    ms: v.number(),
+    note: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("opsTaCalls", { ...args, at: Date.now() });
+    const old = await ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").collect();
+    for (const row of old.slice(100)) await ctx.db.delete(row._id);
+    return { ok: true };
+  },
+});
+
+/** Queues a write to the TA System. The same key twice is the same intention. */
+export const queueWrite = internalMutation({
+  args: {
+    path: v.string(),
+    body: v.any(),
+    idempotencyKey: v.string(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const already = await ctx.db
+      .query("opsOutbox")
+      .withIndex("by_key", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (already) return row(already);
+    const createdAt = Date.now();
+    const id = await ctx.db.insert("opsOutbox", {
+      ...args,
+      state: "queued" as const,
+      attempts: 0,
+      lastError: null,
+      nextTryAt: null,
+      createdAt,
+      sentAt: null,
+    });
+    await writeAudit(ctx, {
+      actorId: null,
+      action: "outbox.queued",
+      subjectType: "outbox",
+      subjectId: id as string,
+      after: args.path,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+/** The result of one attempt. A write that is only waiting is not a failure. */
+export const recordOutboxTry = internalMutation({
+  args: {
+    itemId: v.string(),
+    ok: v.boolean(),
+    error: v.union(v.string(), v.null()),
+    nextTryAt: v.union(v.number(), v.null()),
+    state: v.union(v.literal("queued"), v.literal("failed"), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId as Id<"opsOutbox">);
+    if (!item) return { ok: false };
+    const attempts = item.attempts + 1;
+    const patch = args.ok
+      ? { state: "sent" as const, attempts, sentAt: Date.now(), lastError: null, nextTryAt: null }
+      : {
+          state: args.state ?? ("queued" as const),
+          attempts,
+          lastError: args.error ?? "The TA System could not be reached.",
+          nextTryAt: args.nextTryAt,
+        };
+    await ctx.db.patch(item._id, patch);
+    await writeAudit(ctx, {
+      actorId: null,
+      action: args.ok ? "outbox.sent" : patch.state === "failed" ? "outbox.givenUp" : "outbox.waiting",
+      subjectType: "outbox",
+      subjectId: item._id as string,
+      before: item.path,
+      after: String(attempts) + " tries",
+      reason: args.error,
+    });
+    return { ok: true };
+  },
+});
+
+/** Records a TA event once. The same event twice is kept once. */
+export const addEvent = internalMutation({
+  args: {
+    taEventId: v.string(),
+    type: v.string(),
+    data: v.any(),
+    handledAt: v.union(v.number(), v.null()),
+    attempts: v.number(),
+    lastError: v.union(v.string(), v.null()),
+    note: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const already = await ctx.db
+      .query("opsEvents")
+      .withIndex("by_taEventId", (q) => q.eq("taEventId", args.taEventId))
+      .first();
+    if (already) return null;
+    const receivedAt = Date.now();
+    const id = await ctx.db.insert("opsEvents", { ...args, receivedAt });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+/** A setting the system keeps for itself. Not audited: it changes every pass. */
+export const noteSystemSetting = internalMutation({
+  args: { key: v.string(), value: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("opsSettings")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { value: args.value, updatedAt: Date.now() });
+    else await ctx.db.insert("opsSettings", { key: args.key, value: args.value, updatedBy: null, updatedAt: Date.now() });
+    return { ok: true };
   },
 });
 
