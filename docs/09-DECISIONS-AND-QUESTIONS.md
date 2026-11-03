@@ -44,6 +44,11 @@ over older documents.
 | 2 Nov | **A signed copy needs a file and somebody saying they looked at it** — signed, dated and sealed. A copy came back unsealed once and had to be resent; we cannot tell a seal from a scan, so a person confirms | Owner's incident, built |
 | 2 Nov | **Settling an agreement stops every clock on it, not only the chases.** A signed agreement still had the two-week “nobody has signed” clock running, which would have fired a fortnight later on an agreement that was signed | Build fix |
 
+| 3 Nov | **The agreement document is the truth where it and our notes disagree.** The owner's own ESA was read out of the mailbox and made into a template; two numbers in it contradicted earlier decisions, and the owner said to go with the document | Owner (chat) |
+| 3 Nov | Refund when no replacement is found in 60 working days: **50%** of the fee, not 25%. The agreement's reviewer struck 25 and wrote 50 on 10 Sep | Owner (chat), from the agreement |
+| 3 Nov | Late payment: **1% a month, compounded**, and nothing charged on an invoice disputed in good faith - not 5% simple. This closes open question 12 on the late charge | Owner (chat), from the agreement |
+| 3 Nov | The agreement asks for the company registration number and what the client's business is, and never asks for a tax number. The field list follows the document | From the agreement |
+
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 
 | # | Topic | Settled as |

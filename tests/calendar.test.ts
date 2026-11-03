@@ -80,3 +80,13 @@ test("working hours are eight in the morning to eight at night, Colombo", () => 
   assert.equal(inWorkingHours(MON_10AM), true);
   assert.equal(inWorkingHours(Date.UTC(2026, 10, 2, 17, 30)), false);
 });
+
+test("an agreement's date reads as a date, not as a number", async () => {
+  const { colomboDateInWords } = await import("@/lib/calendar");
+  // The filled template said "made on this day of 2026-11-03" on its first
+  // run, which is how you can tell a machine wrote it (3 Nov).
+  assert.equal(colomboDateInWords(Date.UTC(2026, 10, 3, 4, 0)), "3 November 2026");
+  // 23:00 UTC is already the next day in Colombo.
+  assert.equal(colomboDateInWords(Date.UTC(2026, 10, 3, 23, 0)), "4 November 2026");
+  assert.equal(colomboDateInWords(Date.UTC(2027, 0, 1, 6, 0)), "1 January 2027");
+});

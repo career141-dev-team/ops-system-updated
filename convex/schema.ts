@@ -327,6 +327,7 @@ export default defineSchema({
     providerMessageId: v.union(v.string(), v.null()),
     /** Why it was blocked or failed, in words a person can act on. */
     note: v.union(v.string(), v.null()),
+    attachmentFileIds: v.optional(v.array(v.string())),
     createdAt: v.number(),
   })
     .index("by_state", ["state"])

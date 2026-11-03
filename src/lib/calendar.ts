@@ -20,6 +20,32 @@ export function colomboDate(at: number): string {
 }
 
 /** The hour of the Colombo day, 0 to 23. */
+/**
+ * The date as an agreement writes it: "3 November 2026" (3 Nov).
+ *
+ * A contract that says "made on this day of 2026-11-03" reads as a machine
+ * wrote it, which is what the filled template said on the first run.
+ */
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+export function colomboDateInWords(at: number): string {
+  const day = new Date(at + COLOMBO_OFFSET_MS);
+  return day.getUTCDate() + " " + MONTHS[day.getUTCMonth()] + " " + day.getUTCFullYear();
+}
+
 export function colomboHour(at: number): number {
   return new Date(at + COLOMBO_OFFSET_MS).getUTCHours();
 }

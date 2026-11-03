@@ -32,6 +32,8 @@ const filled = (): EsaFields => ({
   taxNo: "123456789",
   signatoryName: "Sample contact",
   signatoryEmail: "hr@example.test",
+  signatoryTitle: "Head of HR",
+  signatoryPhone: "+94 77 000 0000",
   feeMonths: "1",
   feeBasis: "gross",
   guaranteeDays: "90",
@@ -55,10 +57,11 @@ test("a blank required field blocks the draft, and is named", () => {
 });
 
 test("an optional field being blank changes nothing", () => {
-  // The tax number is one of these: the agreement never asks for it, and that
-  // was only found when the real template was read (3 Nov).
-  const noTitle = { ...filled(), signatoryTitle: "", notes: "", taxNo: "", signatoryPhone: "" };
-  assert.equal(problemWithDraft(noTitle), null);
+  // The tax number and the call notes are the only optional ones left: every
+  // other field is a hole in the real template, and a hole nothing fills stops
+  // the document being made at all (3 Nov).
+  const noTax = { ...filled(), notes: "", taxNo: "" };
+  assert.equal(problemWithDraft(noTax), null);
 });
 
 test("the numbers start from the settings", () => {

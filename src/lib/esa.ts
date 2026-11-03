@@ -78,15 +78,15 @@ export const ESA_FIELDS: EsaField[] = [
   { key: "clientBusiness", label: "What their business is", required: true, why: "“involved in the business of …”, in their words." },
   { key: "signatoryName", label: "Who signs for them", required: true, why: "The person we chase." },
   { key: "signatoryEmail", label: "Their email", required: true, why: "Where it is sent and chased." },
-  { key: "signatoryTitle", label: "Their title", required: false, why: "Shown under the signature." },
-  { key: "signatoryPhone", label: "Their number", required: false, why: "On the signature page, and for the WhatsApp chase." },
+  { key: "signatoryTitle", label: "Their title", required: true, why: "A hole in the agreement: it signs under their designation." },
+  { key: "signatoryPhone", label: "Their number", required: true, why: "A hole in the agreement, on the signature page, and the WhatsApp chase needs it." },
   { key: "taxNo", label: "Tax number (VAT/TIN)", required: false, why: "Not in the document; kept for the invoice." },
   { key: "feeMonths", label: "Fee: months of salary", required: true, why: "One month is standard." },
   { key: "feeBasis", label: "Fee on gross or basic", required: true, why: "Basic only for selected clients." },
   { key: "guaranteeDays", label: "Guarantee, in days", required: true, why: "90 days from joining." },
   { key: "paymentDays", label: "Payment, in days", required: true, why: "30 days from the first working day." },
   { key: "replacementWorkingDays", label: "Replacement, working days", required: true, why: "60 working days." },
-  { key: "refundPct", label: "Refund, per cent", required: true, why: "25%, and only by decision." },
+  { key: "refundPct", label: "Refund, per cent", required: true, why: "50% in the agreement, and only by decision." },
   { key: "notes", label: "Anything agreed on the call", required: false, why: "Kept with the version." },
 ];
 

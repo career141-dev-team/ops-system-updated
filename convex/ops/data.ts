@@ -483,6 +483,7 @@ export const draftMessage = internalMutation({
     templateKey: v.union(v.string(), v.null()),
     subjectType: v.union(v.string(), v.null()),
     subjectId: v.union(v.string(), v.null()),
+    attachmentFileIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("opsMessages", {

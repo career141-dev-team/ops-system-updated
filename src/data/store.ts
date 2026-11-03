@@ -481,10 +481,16 @@ export const repo = {
    * now the only drafts were the sample ones, because nothing in Phase 1
    * wrote to a client; the agreement is the first thing that does.
    */
-  draftMessage(input: Omit<OpsMessage, "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt">): OpsMessage {
+  draftMessage(
+    input: Omit<
+      OpsMessage,
+      "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt" | "attachmentFileIds"
+    > & { attachmentFileIds?: Id[] },
+  ): OpsMessage {
     const db = load();
     const row: OpsMessage = {
       ...input,
+      attachmentFileIds: input.attachmentFileIds ?? [],
       id: id("msg"),
       state: "draft",
       approvedBy: null,

@@ -647,7 +647,10 @@ export function agreementIn(db: OpsDatabase, esaId: Id): OpsEsa | null {
 
 /** Writes a message into the one way out, as a draft for somebody to approve. */
 export async function draftMessage(
-  input: Omit<OpsMessage, "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt">,
+  input: Omit<
+    OpsMessage,
+    "id" | "state" | "approvedBy" | "approvedAt" | "sentAt" | "providerMessageId" | "note" | "createdAt" | "attachmentFileIds"
+  > & { attachmentFileIds?: Id[] },
 ): Promise<OpsMessage> {
   if (!usingConvex()) return repo.draftMessage(input);
   return convexMutation<OpsMessage>("ops/data:draftMessage", input);

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 
-import { desk } from "@/data/desk";
+import { desk, fileIn } from "@/data/desk";
 import { currentMember } from "@/lib/session";
 import { approveAndSend, recordReply, saveDraft } from "@/app/actions";
 
@@ -18,8 +18,12 @@ export default async function MessagePage({
   if (!member) redirect("/sign-in");
   const { id } = await params;
   const { msg } = await searchParams;
-  const message = (await desk()).messages.find((m) => m.id === id);
+  const db = await desk();
+  const message = db.messages.find((m) => m.id === id);
   if (!message) notFound();
+  // What it carries, by name: an agreement goes out as its PDF, and a person
+  // approving the email has to be able to see that it is there.
+  const carries = (message.attachmentFileIds ?? []).map((fileId) => fileIn(db, fileId)).filter((f) => f !== null);
 
   const input = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
 
@@ -35,6 +39,21 @@ export default async function MessagePage({
 
       {msg && (
         <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
+      )}
+
+      {carries.length > 0 && (
+        <p className="mt-3 text-[13px] text-ink-soft">
+          Attached:{" "}
+          {carries.map((file, i) => (
+            <span key={file.id}>
+              {i > 0 && ", "}
+              <Link href={"/api/files/" + file.id} className="text-brand hover:underline">
+                {file.name}
+              </Link>{" "}
+              <span className="text-ink-faint">({Math.max(1, Math.round(file.size / 1024))} KB)</span>
+            </span>
+          ))}
+        </p>
       )}
 
       {message.state === "draft" ? (

@@ -50,7 +50,7 @@ import {
   startTimer,
   switchedOn,
 } from "@/data/desk";
-import { HOUR, nextNineAm } from "@/lib/calendar";
+import { HOUR, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
@@ -58,6 +58,7 @@ import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWith
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
+import { fillDocx, problemWithFill } from "@/lib/docxFill";
 import { docxToPdf } from "@/lib/docxToPdf";
 import {
   type FileKind,
@@ -93,6 +94,7 @@ import {
   defaultFields,
   expiresAt as esaExpiresAt,
   nextChaseAt,
+  ESA_FIELDS,
   problemWithChanges,
   problemWithDraft,
   problemWithSigned,
@@ -349,7 +351,16 @@ export async function approveAndSend(formData: FormData): Promise<void> {
       ? groupPostIsManual()
       : message.channel === "whatsapp"
         ? await sendWhatsApp({ to: verdict.to[0], body: message.body, templateKey: message.templateKey })
-        : await sendEmail({ from: member.email, to: verdict.to, subject, body: message.body });
+        : await sendEmail({
+            from: member.email,
+            to: verdict.to,
+            subject,
+            body: message.body,
+            // The agreement, the invoice and the offer letter travel with
+            // their message. A file whose bytes are gone stops the send
+            // rather than sending the covering note alone.
+            attachments: await filesFor(db, message.attachmentFileIds),
+          });
 
   // Test mode's note matters as much as the sender's, so both are kept.
   const said = [verdict.note, outcome.reason].filter(Boolean).join(" ") || null;
@@ -1165,11 +1176,62 @@ export async function sendAgreement(formData: FormData): Promise<void> {
     );
   }
 
+  const now = Date.now();
+
+  // The document itself (step 10). The template's holes are filled from the
+  // fields, and a hole nothing fills stops the whole thing: the owner's
+  // incident is a draft that went to a client with placeholders still in it.
+  const templateBytes = await readBytes(template!.key);
+  if (!templateBytes) back("The template file is registered but its bytes are gone. Upload it again on the Files screen.");
+  const fill = await fillDocx(Buffer.from(templateBytes!), {
+    ...row.fields,
+    effectiveDate: colomboDateInWords(now),
+  });
+  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
+  if (holeProblem) back(holeProblem);
+
+  const base = "Agreement - " + safeName(String(row.fields.companyName ?? "client")) + " - v" + (again ? row.version + 1 : row.version);
+  const wordKey = keyFor("esa_draft", "esa", esaId, base + ".docx", now);
+  await putBytes(wordKey, fill.bytes!, mimeFor(base + ".docx"));
+  const wordFile = await addFile({
+    kind: "esa_draft",
+    key: wordKey,
+    name: base + ".docx",
+    size: fill.bytes!.byteLength,
+    mime: mimeFor(base + ".docx"),
+    sha256: sha256(fill.bytes!),
+    subjectType: "esa",
+    subjectId: esaId,
+    madeFrom: template!.id,
+    uploadedBy: member.id,
+  });
+
+  // A client gets the PDF, never the Word file: a Word file can be edited by
+  // whoever receives it. No LibreOffice means no agreement goes out from here,
+  // which is the right answer on a laptop.
+  const pdf = await docxToPdf(fill.bytes!, base + ".docx");
+  if (!pdf.ok) back("The agreement was filled in but no PDF could be made. " + (pdf.reason ?? ""));
+  const pdfKey = keyFor("esa_draft", "esa", esaId, base + ".pdf", now);
+  await putBytes(pdfKey, pdf.bytes!, "application/pdf");
+  const pdfFile = await addFile({
+    kind: "esa_draft",
+    key: pdfKey,
+    name: base + ".pdf",
+    size: pdf.bytes!.byteLength,
+    mime: "application/pdf",
+    sha256: sha256(pdf.bytes!),
+    subjectType: "esa",
+    subjectId: esaId,
+    madeFrom: wordFile.id,
+    uploadedBy: member.id,
+  });
+
   const cover = templateFor(db, "esa.cover");
   const to = String(row.fields.signatoryEmail ?? "").trim();
   const message = await draftMessage({
     channel: "email",
     to: [to],
+    attachmentFileIds: [pdfFile.id],
     subject: cover?.subject?.replace("{{client}}", row.fields.companyName ?? "") || "Our agreement",
     body:
       (cover?.body ?? "Dear {{contact}},\n\nOur agreement is attached.\n\nKind regards,\nCareer 141")
@@ -1180,7 +1242,6 @@ export async function sendAgreement(formData: FormData): Promise<void> {
     subjectId: esaId,
   });
 
-  const now = Date.now();
   const days = numberOf(db, "esa.declineDays", 14);
   if (again) await cancelClocksFor(db, "esa", esaId, member.id, "A new version of the agreement is going out.");
   await patchAgreement(
@@ -1188,6 +1249,7 @@ export async function sendAgreement(formData: FormData): Promise<void> {
     {
       state: "sent",
       version,
+      draftFileId: pdfFile.id,
       chaseStep: 0,
       sentAt: now,
       sentMessageId: message.id,
@@ -1468,6 +1530,22 @@ export async function declineAgreement(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/leads");
   back("Declined, and the team has been told the search is blocked.");
+}
+
+/** The bytes of the files a message carries, in the order they were added. */
+async function filesFor(
+  db: Awaited<ReturnType<typeof desk>>,
+  fileIds: string[],
+): Promise<{ name: string; mime: string; bytes: Uint8Array }[]> {
+  const out: { name: string; mime: string; bytes: Uint8Array }[] = [];
+  for (const fileId of fileIds ?? []) {
+    const file = fileIn(db, fileId);
+    if (!file) continue;
+    const bytes = await readBytes(file.key);
+    if (!bytes) continue;
+    out.push({ name: file.name, mime: file.mime, bytes });
+  }
+  return out;
 }
 
 /* ── The client record (15, Phase 2 step 19) ─────────────────── */

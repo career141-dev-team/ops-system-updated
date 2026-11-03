@@ -194,3 +194,26 @@ how many it had already.
 Both are the same kind of fault: a piece that is correct alone and wrong when
 joined to the next one. Worth remembering when Phases 2 to 7 add handlers to
 this foundation.
+
+## The agreement, read at last (3 November)
+
+Three things in the plan were my own guesses, and the real document corrected
+them.
+
+**The fee fields.** The field list asked for a tax number as a required field
+and never asked for the company registration number or the client's line of
+business. The agreement is the other way round: the registration number and
+the business are named in its first clauses, and a tax number appears nowhere
+in it.
+
+**The refund.** The plan said 25%, from the owner's canvas. The agreement, as
+reviewed on 10 September, says 50%. The owner settled it on 3 November: the
+document is the truth.
+
+**The late payment charge.** The plan said 5% per unpaid month, simple. The
+agreement says 1% a month, compounded, with nothing charged on an invoice
+disputed in good faith. Same decision: the document.
+
+The lesson is the ordinary one and it cost nothing this time, because the
+numbers all live in the settings: a rule read off a card is a guess until the
+document that a client signs has been read.

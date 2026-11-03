@@ -120,7 +120,18 @@ export interface EmailToSend {
   to: string[];
   subject: string;
   body: string;
+  /** Files that go with it, read from the file registry (3 Nov). */
+  attachments?: { name: string; mime: string; bytes: Uint8Array }[];
 }
+
+/**
+ * The biggest file Microsoft takes in one go.
+ *
+ * Over this a send needs an upload session, which is a different dance. An
+ * agreement is a few hundred kilobytes, so rather than build the dance now
+ * this refuses and says so.
+ */
+export const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 /**
  * Sends as a draft and then sends the draft, rather than Graph's one-step
@@ -165,6 +176,32 @@ export async function sendEmail(mail: EmailToSend): Promise<SendOutcome> {
     }
     const created = (await draft.json()) as { id?: string; internetMessageId?: string };
     if (!created.id) return { ok: false, providerMessageId: null, reason: "Microsoft made a draft without naming it." };
+
+    // The files go onto the draft, before it is sent. If one will not attach the
+    // send stops: a cover email with no agreement attached is worse than none.
+    for (const file of mail.attachments ?? []) {
+      if (file.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+        return {
+          ok: false,
+          providerMessageId: null,
+          reason: file.name + " is too big to attach (over " + MAX_ATTACHMENT_BYTES / 1024 / 1024 + " MB).",
+        };
+      }
+      const added = await fetch(mailbox + "/messages/" + encodeURIComponent(created.id) + "/attachments", {
+        method: "POST",
+        headers: auth,
+        body: JSON.stringify({
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: file.name,
+          contentType: file.mime,
+          contentBytes: Buffer.from(file.bytes).toString("base64"),
+        }),
+        signal: stop,
+      });
+      if (!added.ok) {
+        return { ok: false, providerMessageId: null, reason: "Microsoft would not take " + file.name + " (" + added.status + ")." };
+      }
+    }
 
     const sent = await fetch(mailbox + "/messages/" + encodeURIComponent(created.id) + "/send", {
       method: "POST",

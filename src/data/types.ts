@@ -107,6 +107,13 @@ export interface OpsMessage {
   providerMessageId: string | null;
   /** Why it was blocked or failed, in words a person can act on. */
   note: string | null;
+  /**
+   * The files that go with it, from the file registry (3 Nov).
+   *
+   * The agreement is the first message that has to carry something: a cover
+   * email with nothing attached is worse than no email.
+   */
+  attachmentFileIds: Id[];
   createdAt: number;
 }
 
