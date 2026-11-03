@@ -73,6 +73,10 @@ over older documents.
 | 3 Nov | **Nothing TA already does is rebuilt in Ops**: CV reading and scoring, matching and search ranking, the JD draft, Research and Suggestions, the candidate reply reader. Ops asks through the API | Build decision |
 | 3 Nov | **Every AI run is costed and recorded** (`opsAiRuns`), with a daily budget and a weekly accuracy sample; a task whose proposals are changed more than half the time switches itself off. The Claude subscription is a limited pool - it ran down on 3 Nov with nobody at a keyboard, because the live TA System spends it by itself | Build decision, from what 3 Nov showed |
 
+| 3 Nov | **Everything after a set counts from the day the client received it**, not from the day we sent it: the ownership window, the feedback chase, the two weeks before a hold, and the three months before an unreported hire is asked about. The received date is editable for that reason | Build decision, from the agreement's wording |
+| 3 Nov | **A CV claim lives on the candidate in the set, not in a table of its own.** There is exactly one claim per candidate per set, so `opsOwnershipClaims` would hold the same row twice. It is recorded with the verdict and the sentence the client is told | Build decision (docs/15 Phase 4 step 1 named a table) |
+| 3 Nov | **A client who answers about one candidate is not a silent client.** The silence count resets on anything they say, and any decision or claim stops the chase clocks - but never the ownership window, which is a promise in the agreement rather than a chase | Build decision |
+
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 
 | # | Topic | Settled as |

@@ -9,6 +9,7 @@ import type {
   OpsCallLog,
   OpsClient,
   OpsClientSet,
+  OpsHold,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -27,6 +28,14 @@ import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
+import {
+  HOLD_AFTER_DAYS,
+  OWNERSHIP_WORKING_DAYS,
+  holdDueAt,
+  nextFeedbackStep,
+  ownershipWindow,
+  silentDays,
+} from "@/lib/clientFeedback";
 import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
@@ -222,6 +231,16 @@ export async function runClocks(now = Date.now()): Promise<{ warned: number; fir
 const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void>> = {
   "esa.chase": async (timer, now) => {
     await chaseTheAgreement(timer.subjectId, timer.ownerId, now);
+  },
+  // The client has said nothing about a set for a day: ask once, in writing,
+  // and draft it so a person only reads and approves (15, Phase 4 step 10).
+  "feedback.chase": async (timer, now) => {
+    await chaseTheFeedback(timer.subjectId, timer.ownerId, now);
+  },
+  // Two weeks of silence: the notice is drafted and a hold proposed. Nothing
+  // goes on hold, and nothing is sent, until a person approves (step 12).
+  "silence.hold": async (timer, now) => {
+    await proposeTheHold(timer.subjectId, timer.ownerId, now);
   },
 };
 
@@ -535,6 +554,249 @@ export function leadIn(db: OpsDatabase, leadId: Id): OpsLead | null {
 
 export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
   return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Ask the client for their feedback (15, Phase 4 step 10).
+ *
+ * Drafted, never sent: it goes to the same people the set went to, and a
+ * person approves it like every other client message. After the owner's stop
+ * day nothing more is drafted - a silent client is left to the hold clock
+ * rather than chased for ever - and the next step is a call by a person,
+ * because that is what the owner's ladder says.
+ */
+export async function chaseTheFeedback(
+  setId: Id,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; messageId: Id | null }> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return { ok: false, what: "That set is gone.", messageId: null };
+  if (set.state !== "sent") return { ok: false, what: "That set has not gone out.", messageId: null };
+  if (set.receivedAt === null) return { ok: false, what: "We do not know when they received it.", messageId: null };
+  // Anything the client has decided counts as having heard from them.
+  const heardAt = set.candidates.reduce<number | null>((latest, c) => {
+    const at = c.decidedAt ?? c.claimedAt ?? null;
+    return at && (!latest || at > latest) ? at : latest;
+  }, null);
+
+  const silent = silentDays(set.receivedAt, heardAt, now);
+  const step = nextFeedbackStep(silent, {
+    chaseDays: numberOf(db, "feedback.chaseDays", 1),
+    stopAfterSilentDays: numberOf(db, "feedback.stopAfterSilentDays", 4),
+  });
+
+  if (step.what === "wait") return { ok: false, what: step.because, messageId: null };
+
+  if (step.what === "stop") {
+    await createTask({
+      kind: "check",
+      title: "Stopped chasing: " + set.name,
+      body: step.because + " The hold clock is still running and will propose a notice.",
+      assigneeId: set.ownerId,
+      dueAt: now,
+      subjectType: "clientSet",
+      subjectId: setId,
+      link: "/sets/" + setId,
+    });
+    return { ok: true, what: step.because, messageId: null };
+  }
+
+  if (step.what === "call") {
+    await createTask({
+      kind: "call",
+      title: "Ring them about the feedback: " + set.name,
+      body: step.because + " Write down what they say; that is what records the feedback.",
+      assigneeId: set.ownerId,
+      dueAt: now,
+      subjectType: "clientSet",
+      subjectId: setId,
+      link: "/sets/" + setId,
+    });
+    // One more day and the ops lead is told, which is the owner's escalation.
+    await startTimer({
+      kind: "feedback.call",
+      subjectType: "clientSet",
+      subjectId: setId,
+      startsAt: now,
+      dueAt: now + numberOf(db, "feedback.callAfterDays", 1) * 86_400_000,
+      warnAt: null,
+      ownerId: db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? set.ownerId,
+      payload: { label: set.name },
+    });
+    return { ok: true, what: step.because, messageId: null };
+  }
+
+  const wording = templateFor(db, "feedback.chase");
+  const to = set.sentTo;
+  if (!to.length) return { ok: false, what: "Nobody is recorded as having been sent the set.", messageId: null };
+  const client = set.clientId ? clientIn(db, set.clientId) : null;
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? set.name.split(" > ")[0])
+      .replace(/\{\{position\}\}/g, set.role)
+      .replace(/\{\{setNumber\}\}/g, String(set.setNumber))
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{opsPerson\}\}/g, member(db, set.ownerId)?.name ?? "Career 141");
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}"),
+    body: fill(wording?.body ?? ["Dear all,", "", "Any feedback on the CVs we sent?", "", "Career 141"].join("\n")),
+    templateKey: "feedback.chase",
+    subjectType: "clientSet",
+    subjectId: setId,
+  });
+  await createTask({
+    kind: "approve",
+    title: "Approve the feedback chase: " + set.name,
+    body: step.because,
+    assigneeId: set.ownerId,
+    dueAt: now,
+    subjectType: "message",
+    subjectId: message.id,
+    link: "/messages/" + message.id,
+  });
+  return { ok: true, what: step.because, messageId: message.id };
+}
+
+/**
+ * Two weeks of silence (15, Phase 4 step 12).
+ *
+ * The notice is drafted and a hold is proposed; neither takes effect until a
+ * person approves the message. The owner's decision 6: a hold never closes by
+ * itself, so it also sets the thirty-day review from the start.
+ */
+export async function proposeTheHold(
+  setId: Id,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; holdId: Id | null }> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return { ok: false, what: "That set is gone.", holdId: null };
+  if (liveHoldFor(db, set.openingTaId)) {
+    return { ok: false, what: "That position is already on hold.", holdId: null };
+  }
+  const heard = set.candidates.some((c) => c.decidedAt || c.claimedAt);
+  if (heard) return { ok: false, what: "The client has answered, so there is nothing to hold.", holdId: null };
+
+  const hold = await addHold({
+    openingTaId: set.openingTaId,
+    setId,
+    clientId: set.clientId,
+    state: "proposed",
+    reason: "Two weeks from the day they received " + set.name + " with nothing back.",
+    liftedReason: null,
+    noticeMessageId: null,
+    proposedAt: now,
+    heldAt: null,
+    liftedAt: null,
+    reviewAt: null,
+    ownerId: set.ownerId,
+  });
+  await createTask({
+    kind: "decide",
+    title: "Put it on hold? " + set.name,
+    body:
+      "Two weeks since they received the set and nothing has come back. Approving the notice puts the position on hold and tells the client; it never closes by itself.",
+    assigneeId: set.ownerId,
+    dueAt: now,
+    subjectType: "hold",
+    subjectId: hold.id,
+    link: "/holds/" + hold.id,
+  });
+  return { ok: true, what: "A hold is proposed, with its notice to approve.", holdId: hold.id };
+}
+
+/* ── Holds: a position the client has gone quiet on (step 12) ── */
+
+export async function addHold(input: Omit<OpsHold, "id" | "createdAt" | "updatedAt">): Promise<OpsHold> {
+  if (!usingConvex()) return repo.addHold(input);
+  return (await convexMutation<OpsHold>("ops/data:addHold", input)) as OpsHold;
+}
+
+export async function patchHold(
+  holdId: Id,
+  patch: Partial<OpsHold>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchHold(holdId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchHold", { holdId, patch, by, what, reason });
+}
+
+export function holdIn(db: OpsDatabase, holdId: Id): OpsHold | null {
+  return db.holds.find((h) => h.id === holdId) ?? null;
+}
+
+export function liveHoldFor(db: OpsDatabase, openingTaId: string): OpsHold | null {
+  return db.holds.find((h) => h.openingTaId === openingTaId && h.state !== "lifted") ?? null;
+}
+
+export function holdsNewestFirst(db: OpsDatabase): OpsHold[] {
+  return [...db.holds].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * The clocks that start when the client receives a set (step 6).
+ *
+ * They all count from receipt, never from sending, and they start in one place
+ * so a corrected receipt date can restart them together.
+ */
+export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, receivedAt: number): Promise<void> {
+  const holidays = db.holidays.map((h) => h.date);
+  const window = ownershipWindow(receivedAt, holidays, numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS));
+  const label = set.name;
+
+  await startTimer({
+    kind: "set.ownership",
+    subjectType: "clientSet",
+    subjectId: set.id,
+    startsAt: receivedAt,
+    dueAt: window.closesAt,
+    warnAt: window.warnAt,
+    ownerId: set.ownerId,
+    payload: { label },
+  });
+  await startTimer({
+    kind: "feedback.chase",
+    subjectType: "clientSet",
+    subjectId: set.id,
+    startsAt: receivedAt,
+    dueAt: receivedAt + numberOf(db, "feedback.chaseDays", 1) * 86_400_000,
+    warnAt: null,
+    ownerId: set.ownerId,
+    payload: { label },
+  });
+  await startTimer({
+    kind: "silence.hold",
+    subjectType: "clientSet",
+    subjectId: set.id,
+    startsAt: receivedAt,
+    dueAt: holdDueAt(receivedAt, numberOf(db, "hold.afterDays", HOLD_AFTER_DAYS)),
+    warnAt: null,
+    ownerId: set.ownerId,
+    payload: { label },
+  });
+  // Three months, and the agreement's 50% surcharge if they hired from it
+  // without telling us (step 18).
+  await startTimer({
+    kind: "hire.unreported",
+    subjectType: "clientSet",
+    subjectId: set.id,
+    startsAt: receivedAt,
+    dueAt: receivedAt + 90 * 86_400_000,
+    warnAt: null,
+    ownerId: set.ownerId,
+    payload: { label },
+  });
 }
 
 /* ── Client sets: what the client is sent (15, Phase 4) ───────── */

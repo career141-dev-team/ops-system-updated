@@ -449,6 +449,18 @@ export interface OpsClientSet {
     name: string;
     fileId: Id | null;
     problem: string | null;
+    /**
+     * The client said they already had this one (step 7). Kept on the
+     * candidate rather than in a table of its own: there is exactly one claim
+     * per candidate per set, and a table would only hold the same row.
+     */
+    claimedAt?: number | null;
+    claimVerdict?: string | null;
+    claimReason?: string | null;
+    /** What the client decided about them, once they say (step 9). */
+    decision?: string | null;
+    decisionReason?: string | null;
+    decidedAt?: number | null;
   }[];
   /** Due at the client, counted from the day the agreement was signed. */
   dueAt: number | null;
@@ -459,6 +471,35 @@ export interface OpsClientSet {
   receivedAt: number | null;
   /** Why it was pulled back. */
   reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A position held because the client went quiet (15, Phase 4 steps 12 and 13).
+ *
+ * The owner's decision 6: a hold never closes by itself. It is proposed by a
+ * clock, approved by a person with a notice the client actually receives, and
+ * reviewed every thirty days until somebody ends it.
+ */
+export interface OpsHold {
+  id: Id;
+  /** The opening in TA this hold is about, and the set that went quiet. */
+  openingTaId: string;
+  setId: Id | null;
+  clientId: Id | null;
+  state: string;
+  /** Why it went on hold, and why it was lifted. */
+  reason: string;
+  liftedReason: string | null;
+  /** The notice the client was sent, once it is approved. */
+  noticeMessageId: Id | null;
+  proposedAt: number;
+  heldAt: number | null;
+  liftedAt: number | null;
+  /** When the owner is asked about it again. */
+  reviewAt: number | null;
   ownerId: Id;
   createdAt: number;
   updatedAt: number;
@@ -477,6 +518,7 @@ export interface OpsDatabase {
   leads: OpsLead[];
   clients: OpsClient[];
   clientSets: OpsClientSet[];
+  holds: OpsHold[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];
