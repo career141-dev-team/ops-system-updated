@@ -15,13 +15,17 @@ with the client until the guarantee ends.
 
 ## Status
 
-| | |
-|---|---|
-| Phase | **1 · Foundation** (building, from 2 Nov 2026) |
-| Done | Everything collected and consolidated; the whole flow corrected; architecture decided; the build plan written; the sheets replacement planned; the M1 feature plan written |
-| Building now | The skeleton: pick-your-name sign-in, the inbox in four parts, a real clock, a drafted message you approve, the window to the TA System, and a password-protected preview |
-| Decided 2 Nov | **Every feature ships with its screen**, in the TA System's look, minimal and with no overlays |
-| Team | Sanjeev and Binath; the owner approves every client-facing message and every live change |
+**Phases 1 and 2 are built, tested and merged** (3 November 2026): the foundation, and
+client onboarding from a lead to a countersigned agreement and a client record. Phase 3
+is next. One page says exactly what exists and where each piece lives:
+[`docs/STATUS.md`](docs/STATUS.md).
+
+The link to the TA System is still a stand-in (`OPS_TA_FAKE=on`) until TA's own API is
+built, which is a pull request in that repository.
+
+Waiting on a person rather than on code: the agreement template read and uploaded, the
+preview server's once-only setup, Microsoft 365 permission for the mailboxes, the website
+form pointed at `/api/leads/website`, and the holiday list.
 
 ## Running it
 
