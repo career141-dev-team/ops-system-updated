@@ -59,6 +59,14 @@ data, because the TA side of the API does not exist yet. Making it real is a
 pull request in the TA repository (Part E of the plan), API only, adding
 endpoints and never changing what TA already has.
 
+## Planned, and worth reading before anything AI is built
+
+[21](21-AI-OPPORTUNITIES.md) and Phase 9 of [15](15-BUILD-PLAN.md), added 3 November:
+the AI productivity layer - dictation into our own fields, reading what arrives,
+improving the drafts we already make, summaries, and one ask box - with what the TA
+System already does (and so is never rebuilt here), what is refused and why, the cost
+and accuracy machinery, and the priority order. Nothing of it is built.
+
 ## Waiting on a person, not on code
 
 - The agreement template read and corrected, then uploaded on the Files screen

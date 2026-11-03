@@ -67,6 +67,12 @@ over older documents.
 | 3 Nov | Late payment: **1% a month, compounded**, and nothing charged on an invoice disputed in good faith - not 5% simple. This closes open question 12 on the late charge | Owner (chat), from the agreement |
 | 3 Nov | The agreement asks for the company registration number and what the client's business is, and never asks for a tax number. The field list follows the document | From the agreement |
 
+| 3 Nov | **AI becomes Phase 9: one productivity layer over the finished system**, not a chatbot and not a new module. Written as Phase 9 of [15](15-BUILD-PLAN.md), with the register in [21](21-AI-OPPORTUNITIES.md). It comes after the pilot, because the desk must run on rules first; dictation and draft-improve may ride earlier | Owner (chat) |
+| 3 Nov | **Voice means dictation into our own fields, not calls.** The owner's decision 7 (calls stay human) and TA's suspended voice worker both stand. The speech-to-text half of TA's voice machinery is reused; the calling half stays off | Owner's decision 7, restated |
+| 3 Nov | **AI proposes; a person decides** - no AI send, no AI reject or hold, no AI write to the TA System, no AI money figure, and no chatbot as the only way to do something that has a screen | Owner's standing rules, applied to AI |
+| 3 Nov | **Nothing TA already does is rebuilt in Ops**: CV reading and scoring, matching and search ranking, the JD draft, Research and Suggestions, the candidate reply reader. Ops asks through the API | Build decision |
+| 3 Nov | **Every AI run is costed and recorded** (`opsAiRuns`), with a daily budget and a weekly accuracy sample; a task whose proposals are changed more than half the time switches itself off. The Claude subscription is a limited pool - it ran down on 3 Nov with nobody at a keyboard, because the live TA System spends it by itself | Build decision, from what 3 Nov showed |
+
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 
 | # | Topic | Settled as |
