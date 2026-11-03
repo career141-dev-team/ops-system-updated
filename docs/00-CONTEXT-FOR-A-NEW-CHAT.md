@@ -45,6 +45,7 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 
 | Need | File |
 |---|---|
+| **The brief to paste into a new chat, for a new teammate or tool** | [HANDOVER-PROMPT](HANDOVER-PROMPT.md) |
 | Start-up plan and current step | [01](01-STARTUP-PLAN.md) |
 | Architecture | [02](02-ARCHITECTURE.md) |
 | Ops ↔ TA connection (ownership, API, events) | [03](03-CONNECTION-TO-TA.md) |
@@ -59,6 +60,12 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 | Glossary | [12](12-GLOSSARY.md) |
 | What was corrected from the canvas, and why | [13](13-CORRECTIONS-LOG.md) |
 | The owner's diagram c5237, all 250 steps, read deeply | [14](14-DIAGRAM-DEEP-WALKTHROUGH.md) |
+| **The build plan** for the whole backend, stage by stage | [15](15-BUILD-PLAN.md) |
+| Every problem on the board with its solution | [16](16-PROBLEM-REGISTER.md) |
+| Every card checked against the plan | [17](17-BOARD-COVERAGE.md) |
+| The simulated working day, verified TA gaps, final technologies and connection points | [18](18-OPERATIONS-SIMULATION.md) |
+| **The TA System improvement plan** (verified, 12 sections) | [19](19-TA-SYSTEM-IMPROVEMENT-PLAN.md) |
+| **Replacing the Ops sheets** the way TA replaced its Master Sheet | [20](20-SHEETS-TO-SYSTEM.md) |
 | Source material (analysis, 26 connection points, diagrams as step lists) | [`reference/`](reference/) |
 
 ## 5. Sources and how reliable they are
@@ -88,6 +95,11 @@ system flows > older mapping tables.
   them into this repository.
 
 ## 7. The next step
+
+**Now (1 Nov):** the owner reviews the build plan in [15](15-BUILD-PLAN.md), asks questions,
+and approves it. Then building starts at stage S0.
+
+Earlier plan:
 
 Walk the owner through the flow in [04](04-OPS-FLOW.md), phase by phase (A to I), and
 record every answer in [09](09-DECISIONS-AND-QUESTIONS.md). When the flow is agreed,

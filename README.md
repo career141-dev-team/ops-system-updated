@@ -44,6 +44,11 @@ with the client until the guarantee ends.
 | 12 | [Glossary](docs/12-GLOSSARY.md) | Every term in plain words |
 | 13 | [Corrections log](docs/13-CORRECTIONS-LOG.md) | What was corrected from the canvas and earlier plans, and why |
 | 14 | [Diagram deep walkthrough](docs/14-DIAGRAM-DEEP-WALKTHROUGH.md) | All 250 steps of the owner's diagram c5237, phase by phase, with owners, arrows, labels and connection points |
+| 15 | [**The implementation plan**](docs/15-BUILD-PLAN.md) | Version 2: every problem and its solution, an Ops day and a TA day side by side, every table and link, the API and events, the TA changes, integrations and the calls decision, 8 phases of 20-25 steps, release and pilot, open decisions |
+| 16 | [Problem register](docs/16-PROBLEM-REGISTER.md) | Every problem line on the board (179), with its solution and where the plan builds it |
+| 17 | [Board coverage](docs/17-BOARD-COVERAGE.md) | All 59 cards checked against the plan; the 9 gaps found and added as Part K |
+| 18 | [Operations simulation and final plan](docs/18-OPERATIONS-SIMULATION.md) | The TA System as it really behaves (18 verified gaps), four roles, one simulated working day, every activity evaluated, TA improvements T20-T30, final technologies and the 26 connection points |
+| 19 | [**TA System improvement plan**](docs/19-TA-SYSTEM-IMPROVEMENT-PLAN.md) | Verified from seven code audits: the system as it is, the workflow map with exact rules, a day per role within real access, the permission matrix and its conflicts, difficulties, 19 manual activities, 15 automation opportunities with integration and risks, integration and UX improvements, 20 prioritised recommendations, technical notes, benefits |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).

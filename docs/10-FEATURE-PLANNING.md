@@ -6,6 +6,9 @@ Ops team, and only then build it. Each feature gets its own plan file in
 
 ## Before any feature: agree the whole flow
 
+Since 2 Nov each feature plan also lists **its screens**: the UI is built and connected as
+the backend part is built, not after it (see [07](07-SCREENS.md) "How the screens are built").
+
 Feature planning starts only after the owner has walked through the whole flow in
 [04](04-OPS-FLOW.md) (phases A to I) and the technology is decided ([06](06-FEATURES-AND-TECHNOLOGY.md)).
 Each feature plan then takes its part of the agreed flow.
@@ -17,7 +20,7 @@ other feature uses them.
 
 | # | Feature | Plan file | Depends on | Status |
 |---|---|---|---|---|
-| 1 | M1 Foundations (roles, inbox, timers, messages, TA connection) | `features/M01-foundations.md` | — | To plan |
+| 1 | M1 Foundations (roles, inbox, timers, messages, TA connection) | [`features/M01-foundations.md`](features/M01-foundations.md) | — | **Planned 2 Nov; with its screens, awaiting the owner's read** |
 | 2 | TA API for Ops (in the TA repository) | `features/TA-API.md` | M1 | To plan |
 | 3 | M2 Leads | `features/M02-leads.md` | M1 | To plan |
 | 4 | M3 Client agreement (ESA) | `features/M03-esa.md` | M1, M2 | To plan |
