@@ -12,6 +12,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -30,6 +31,7 @@ import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
+import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
 import {
   HOLD_AFTER_DAYS,
   OWNERSHIP_WORKING_DAYS,
@@ -243,6 +245,11 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   // goes on hold, and nothing is sent, until a person approves (step 12).
   "silence.hold": async (timer, now) => {
     await proposeTheHold(timer.subjectId, timer.ownerId, now);
+  },
+  // Tuesday morning: this week's Talent Pulse is compiled and the next
+  // Tuesday's clock is set, so the rhythm keeps itself (step 14).
+  "talentpulse.compile": async (timer, now) => {
+    await compileTalentPulse(timer.ownerId, now);
   },
 };
 
@@ -921,6 +928,8 @@ export async function takeOpeningCreated(data: Record<string, unknown>, now = Da
     hundredPercentDay: null,
     taStatus: "open",
     jdApprovedAt: null,
+    linkedInUrl: null,
+    linkedInPostedAt: null,
     handedOverAt: now,
     closedAt: null,
     ownerId: client.ownerId,
@@ -981,6 +990,97 @@ export async function takeOpeningUpdate(type: string, data: Record<string, unkno
       status,
     );
   }
+}
+
+/* ── Talent Pulse, every Tuesday (15, Phase 3 step 14) ────────── */
+
+export async function addIssue(input: Omit<OpsTalentPulseIssue, "id" | "createdAt" | "updatedAt">): Promise<OpsTalentPulseIssue> {
+  if (!usingConvex()) return repo.addIssue(input);
+  return (await convexMutation<OpsTalentPulseIssue>("ops/data:addIssue", input)) as OpsTalentPulseIssue;
+}
+
+export async function patchIssue(
+  issueId: Id,
+  patch: Partial<OpsTalentPulseIssue>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchIssue(issueId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchIssue", { issueId, patch, by, what, reason });
+}
+
+export function issueIn(db: OpsDatabase, issueId: Id): OpsTalentPulseIssue | null {
+  return db.talentPulse.find((i) => i.id === issueId) ?? null;
+}
+
+export function issuesNewestFirst(db: OpsDatabase): OpsTalentPulseIssue[] {
+  return [...db.talentPulse].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Compile this week's Talent Pulse (step 14).
+ *
+ * Every position being searched goes in, with the line the TA writes about it
+ * left empty on purpose: the newsletter is nothing without those lines, and
+ * an empty one is a question for the TA rather than something to invent.
+ *
+ * One issue per Tuesday. Asking twice gives the issue that already exists, so
+ * the clock and the button cannot make two.
+ */
+export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsTalentPulseIssue | null> {
+  const db = await desk();
+  const week = weekOf(now);
+  const already = db.talentPulse.find((i) => i.weekOf === week);
+  if (already) return already;
+
+  const open = db.positions.filter((p) => p.stage === "searching");
+  const owner = db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? by;
+  const issue = await addIssue({
+    weekOf: week,
+    state: "compiling",
+    lines: open.map((p) => ({
+      positionId: p.id,
+      openingTaId: p.openingTaId,
+      title: p.title,
+      client: (p.clientId ? clientIn(db, p.clientId)?.name : null) ?? p.clientTaId,
+      note: "",
+      applyAddress: "",
+    })),
+    postedAt: null,
+    postedBy: null,
+    ownerId: owner,
+  });
+
+  await createTask({
+    kind: "record",
+    title: "Talent Pulse for " + week + ": " + open.length + (open.length === 1 ? " position" : " positions"),
+    body:
+      open.length === 0
+        ? "Nothing is being searched this week, so there is nothing to put in it."
+        : "Each role needs one line from its TA, and an apply address so a CV knows which role it came from. Then it goes to marketing to post tomorrow.",
+    assigneeId: owner,
+    dueAt: now,
+    subjectType: "talentPulse",
+    subjectId: issue.id,
+    link: "/talent-pulse",
+  });
+
+  // Next Tuesday, from this one: the rhythm keeps itself.
+  await startTimer({
+    kind: "talentpulse.compile",
+    subjectType: "talentPulse",
+    subjectId: issue.id,
+    startsAt: now,
+    dueAt: nextTuesdayNineAm(now),
+    warnAt: null,
+    ownerId: owner,
+    payload: { label: "Talent Pulse" },
+  });
+  return issue;
 }
 
 /* ── Client sets: what the client is sent (15, Phase 4) ───────── */

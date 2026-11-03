@@ -142,6 +142,8 @@ test("TA's own event is what gives a position its opening id", async () => {
     hundredPercentDay: null,
     taStatus: null,
     jdApprovedAt: null,
+    linkedInUrl: null,
+    linkedInPostedAt: null,
     handedOverAt: now,
     closedAt: null,
     ownerId: "m_owner",

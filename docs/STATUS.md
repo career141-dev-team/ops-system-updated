@@ -60,9 +60,12 @@ code is invented.
 | What TA says afterwards | `takeOpeningUpdate` | the JD approved, the working stage, the closing |
 | The primary TA and the 100% day | `setPositionTeam`, screens `app/positions` | the TA lead decides; Ops records it and tells TA |
 
-Still to come in phase 3: the adverts — LinkedIn recorded, TopJobs requested,
-made live and closed after two weeks, Talent Pulse every Tuesday — and the
-weekly report builder.
+| The LinkedIn post recorded | `recordLinkedInPost`, `src/lib/adverts.ts` | only a real LinkedIn post address is taken (a wrong link looks done), the share tail is cut, and TA is told because that is what unlocks Live |
+| Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
+
+Still to come in phase 3: **TopJobs** — requested, the flyer, the order, live,
+and closed after two weeks — which the owner paused on 3 Nov because it is the
+one with money in it. Then the weekly report builder.
 
 ## Built: phase 4, the first four steps
 
@@ -94,7 +97,7 @@ invoice engine is Phase 6).
 
 ## Not built
 
-The adverts half of phase 3, the last of phase 4, and phases 5 to 8:
+TopJobs, the last of phase 4, and phases 5 to 8:
 interviews, placement and the invoice, the guarantee and the close, then
 hardening and the pilot.
 

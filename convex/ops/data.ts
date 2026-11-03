@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -74,6 +74,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsHolds").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsRequirements").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsPositions").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsTalentPulse").withIndex("by_created").order("desc").take(60),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -105,6 +106,7 @@ export const snapshot = internalQuery({
       holds: holds.map(row),
       requirements: requirements.map(row),
       positions: positions.map(row),
+      talentPulse: talentPulse.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -560,6 +562,8 @@ export const addPosition = internalMutation({
     hundredPercentDay: v.union(v.string(), v.null()),
     taStatus: v.union(v.string(), v.null()),
     jdApprovedAt: v.union(v.number(), v.null()),
+    linkedInUrl: v.union(v.string(), v.null()),
+    linkedInPostedAt: v.union(v.number(), v.null()),
     handedOverAt: v.number(),
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
@@ -576,6 +580,57 @@ export const addPosition = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** One week's Talent Pulse (15, Phase 3 step 14). */
+export const addIssue = internalMutation({
+  args: {
+    weekOf: v.string(),
+    state: v.string(),
+    lines: v.any(),
+    postedAt: v.union(v.number(), v.null()),
+    postedBy: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsTalentPulse", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "talentPulse.compiled",
+      subjectType: "talentPulse",
+      subjectId: id as string,
+      after: args.weekOf,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchIssue = internalMutation({
+  args: {
+    issueId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.issueId as Id<"opsTalentPulse">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "talentPulse",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

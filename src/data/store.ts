@@ -24,6 +24,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -589,6 +590,40 @@ export const repo = {
     const before = row.stage;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "position", subjectId: row.id, before, after: row.stage, reason });
+    save();
+  },
+
+  /* ── Talent Pulse (15, Phase 3 steps 14 and 15) ─────────── */
+
+  issueIn(issueId: Id): OpsTalentPulseIssue | null {
+    return load().talentPulse.find((i) => i.id === issueId) ?? null;
+  },
+
+  addIssue(input: Omit<OpsTalentPulseIssue, "id" | "createdAt" | "updatedAt">): OpsTalentPulseIssue {
+    const db = load();
+    const now = Date.now();
+    const row: OpsTalentPulseIssue = { ...input, id: id("tp"), createdAt: now, updatedAt: now };
+    db.talentPulse.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "talentPulse.compiled",
+      subjectType: "talentPulse",
+      subjectId: row.id,
+      before: null,
+      after: row.weekOf + ", " + row.lines.length + " positions",
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchIssue(issueId: Id, patch: Partial<OpsTalentPulseIssue>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.talentPulse.find((i) => i.id === issueId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

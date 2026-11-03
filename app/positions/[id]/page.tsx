@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { setPositionTeam } from "@/app/actions";
+import { recordLinkedInPost, setPositionTeam } from "@/app/actions";
 import {
   clientIn,
   desk,
@@ -137,6 +137,37 @@ export default async function PositionPage({
             <button className={plain}>Record it</button>
           </form>
         )}
+      </section>
+
+      <section className={card}>
+        <h2 className="text-[14.5px] font-medium">Where it is advertised</h2>
+        {position.linkedInUrl ? (
+          <p className="mt-1 text-[13px]">
+            On LinkedIn since {position.linkedInPostedAt ? whenLocal(position.linkedInPostedAt) : "—"} ·{" "}
+            <a href={position.linkedInUrl} target="_blank" rel="noreferrer" className="text-brand hover:underline">
+              the post
+            </a>
+          </p>
+        ) : (
+          <p className="mt-1 text-[13px] text-ink-soft">
+            No LinkedIn post recorded. The TA posts it — it is the first advert and it is mandatory — and the TA System
+            will not let the opening go Live until the link is on it.
+          </p>
+        )}
+        {can(me, "advert.manage") && (
+          <form action={recordLinkedInPost} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="positionId" value={position.id} />
+            <label className="flex min-w-[280px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
+              The link to the LinkedIn post
+              <input name="url" placeholder="https://www.linkedin.com/jobs/view/..." className={field} />
+            </label>
+            <button className={plain}>Record it</button>
+          </form>
+        )}
+        <p className="mt-2 text-[12px] text-ink-faint">
+          TopJobs and Talent Pulse are the other two. Talent Pulse compiles itself every Tuesday; TopJobs is paused
+          until the owner says otherwise, because it is the one that costs money.
+        </p>
       </section>
 
       <section className={card}>
