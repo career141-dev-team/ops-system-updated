@@ -10,9 +10,11 @@ separate system from the **TA System** (`career141-dev/ta-system`), which is
 **live production** at https://ta-system.career141.com with 78,000+ real
 candidates. Ops talks to TA **only through TA's API**.
 
-Status: **Phase 1, Foundation, building from 2 Nov 2026.** The plan is
-[`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md) and the feature being built is
-[`docs/features/M01-foundations.md`](docs/features/M01-foundations.md).
+**Status: phases 1 and 2 are built, tested and merged (3 Nov 2026).** Read
+[`docs/STATUS.md`](docs/STATUS.md) first - it is the one page that says what exists,
+where each piece lives and what is still only a plan. The eight phases are planned in
+[`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md); phase 3 is next and nothing of it is
+written yet.
 
 Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's look, and
 **no overlays, modals or drawers** — one page per thing, edit in place. The rules are in
@@ -43,6 +45,39 @@ Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's loo
    and review (its `merge-teammate` skill), and only by adding: new API endpoints
    and events, never changing or removing what TA already has.
 
+## Running it, and checking it
+
+```bash
+sh deploy/local/start-ui.sh     # the screens on http://127.0.0.1:3300, invented data,
+                                # a JSON file for a store, nothing can be sent
+node tests/run.mjs              # all 24 suites, each in its own process
+node tests/run.mjs esa          # one suite
+npx tsc --noEmit                # types
+```
+
+Both checks must be green before a pull request. The local run never points at
+anything live: it uses its own folder (`.data-ui`) and a stand-in TA System.
+
+A laptop has no LibreOffice and no Microsoft or Meta credentials, so making a PDF
+and sending anything answer with a plain sentence saying why, instead of failing.
+That is deliberate - do not "fix" it by removing the guard.
+
+## Where things are
+
+| | |
+|---|---|
+| Screens | `app/<thing>/page.tsx`, one page per thing. Every form posts to a server action |
+| Every action | `app/actions.ts` - the only place a screen writes anything |
+| Doors from outside | `app/api/clock` (the scheduler), `app/api/leads/website` (the website form), `app/api/files/[id]` (a download) |
+| The desk | `src/data/desk.ts` - one API over two stores: a JSON file while building, the Ops Convex backend on a server. A screen never knows which |
+| The stores | `src/data/store.ts` (JSON), `convex/ops/data.ts` + `convex/schema.ts` (backend), `src/data/fileStore.ts` (bytes: a folder, or R2) |
+| The rules | `src/lib/*.ts`, each one pure: no database, nothing sent, so every case is testable. `desk.ts` only reads and writes |
+| Tests | `tests/<name>.test.ts`, run by `tests/run.mjs` |
+| The server side | `Dockerfile`, `deploy/local`, `deploy/preview`, `.github/workflows` |
+
+New rules go in `src/lib`, not in a screen and not in the store. A rule with no
+test is not finished.
+
 ## Working with the documents
 
 - The plan lives in `docs/`. When a decision changes, update the document in the
@@ -56,7 +91,13 @@ Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's loo
 
 Match the TA System: Next.js 16 + self-hosted Convex, TypeScript. Comments explain
 *why*, often with the date and the incident. User-facing copy is plain, specific
-and active ("Saved", "Could not send — the email address is missing").
+and active ("Saved", "Could not send - the email address is missing").
+
+The rules this system actually enforces, and the incident behind each, are listed in
+[`docs/STATUS.md`](docs/STATUS.md). Do not weaken one to make a feature easier:
+nothing closes without a reason, nothing reaches a client without a person
+approving it, a document never goes out with a hole in it, a client who replies is
+not chased, and one company has one record with one owner.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
