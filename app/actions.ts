@@ -13,6 +13,7 @@ import {
   addMeeting,
   agreementForLead,
   agreementIn,
+  chaseTheAgreement,
   draftMessage,
   patchAgreement,
   cancelMeetingClocks,
@@ -1206,65 +1207,13 @@ export async function draftNextChase(formData: FormData): Promise<void> {
   const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
-  const row = esa as NonNullable<typeof esa>;
 
-  const step = chaseStep(row.chaseStep + 1);
-  if (!step) back("The chase has run out. Somebody has to call them.");
-  const plan = step as NonNullable<typeof step>;
-
-  if (plan.channel === "call") {
-    await createTask({
-      kind: "call",
-      title: "Call about the agreement: " + (row.fields.companyName ?? "a client"),
-      body: "Five written chases and no signature. The owner's plan says a call now.",
-      assigneeId: row.ownerId,
-      dueAt: Date.now(),
-      subjectType: "esa",
-      subjectId: esaId,
-      link: "/leads/" + row.leadId,
-    });
-    await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, member.id, "esa.chaseCall", plan.what);
-    revalidatePath(here);
-    back("A call task is on your list. Write down what they say.");
-  }
-
-  const wording = templateFor(db, plan.templateKey);
-  const to =
-    plan.channel === "email"
-      ? String(row.fields.signatoryEmail ?? "").trim()
-      : String(row.fields.signatoryPhone ?? leadIn(db, row.leadId)?.contactPhone ?? "").trim();
-  if (!to) back(plan.channel === "email" ? "No email address on the agreement." : "No phone number for this client.");
-
-  const message = await draftMessage({
-    channel: plan.channel as "email" | "whatsapp",
-    to: [to],
-    subject: plan.channel === "email" ? wording?.subject?.replace("{{client}}", row.fields.companyName ?? "") || "Our agreement" : "",
-    body:
-      (wording?.body ?? "Dear {{contact}},\n\nCould you let us know where our agreement stands?\n\nKind regards,\nCareer 141")
-        .replace("{{contact}}", row.fields.signatoryName ?? "")
-        .replace("{{client}}", row.fields.companyName ?? ""),
-    templateKey: plan.templateKey,
-    subjectType: "esa",
-    subjectId: esaId,
-  });
-
-  const now = Date.now();
-  await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, member.id, "esa.chaseDrafted", plan.what);
-  const following = nextChaseAt(plan.step, now);
-  if (following) {
-    await startTimer({
-      kind: "esa.chase",
-      subjectType: "esa",
-      subjectId: esaId,
-      startsAt: now,
-      dueAt: following.dueAt,
-      warnAt: null,
-      ownerId: row.ownerId,
-      payload: { label: String(row.fields.companyName ?? ""), step: String(following.step) },
-    });
-  }
+  // The drafting itself is in `chaseTheAgreement`, because the clock does
+  // exactly the same thing when it fires (3 Nov). This is only the door.
+  const answer = await chaseTheAgreement(esaId, member.id);
   revalidatePath(here);
-  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent(plan.what + " is drafted. Read it, then approve it."));
+  if (!answer.ok || !answer.messageId) back(answer.what);
+  redirect("/messages/" + answer.messageId + "?msg=" + encodeURIComponent(answer.what));
 }
 
 /**

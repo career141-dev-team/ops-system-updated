@@ -201,3 +201,32 @@ export function problemWithSigned(input: { fileId: string | null; checked: boole
   if (!input.checked) return "Tick that you have looked at the copy: signed, dated and sealed.";
   return null;
 }
+
+/**
+ * The words of one written chase (3 Nov).
+ *
+ * The screen's button and the clock both draft the same thing, so the wording
+ * lives here once rather than in whichever door was built first. A missing
+ * address is a problem to say out loud, not a message sent nowhere.
+ */
+export function chaseDraft(
+  plan: ChaseStep,
+  fields: EsaFields,
+  wording: { subject: string | null; body: string | null } | null,
+  fallbackPhone: string | null,
+): { to: string; subject: string; body: string } | { problem: string } {
+  const client = fields.companyName ?? "";
+  const to =
+    plan.channel === "email"
+      ? String(fields.signatoryEmail ?? "").trim()
+      : String(fields.signatoryPhone ?? fallbackPhone ?? "").trim();
+  if (!to) return { problem: plan.channel === "email" ? "No email address on the agreement." : "No phone number for this client." };
+
+  return {
+    to,
+    subject: plan.channel === "email" ? wording?.subject?.replace("{{client}}", client) || "Our agreement" : "",
+    body: (wording?.body ?? "Dear {{contact}},\n\nCould you let us know where our agreement stands?\n\nKind regards,\nCareer 141")
+      .replace("{{contact}}", fields.signatoryName ?? "")
+      .replace("{{client}}", client),
+  };
+}

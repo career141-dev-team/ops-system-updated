@@ -22,7 +22,8 @@ import type {
 } from "./types";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
-import { tick } from "@/lib/tick";
+import { type TickAction, tick } from "@/lib/tick";
+import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
@@ -166,12 +167,22 @@ export async function noteClockPass(value: string): Promise<void> {
  * and what fires on the server cannot drift apart.
  */
 export async function runClocks(now = Date.now()): Promise<{ warned: number; fired: number; escalated: number }> {
-  if (!usingConvex()) return repo.runClocks(now);
+  // The desk is read before the pass writes anything, so we know which clocks
+  // are about to fire. That is what lets a clock draft its own chase instead
+  // of only leaving a task for somebody to remember (3 Nov).
+  const before = await desk();
+  const firing = switchedOn(before, "switch.timersEnabled")
+    ? tick(before.timers, now).filter((a) => a.state === "fired")
+    : [];
 
-  const db = await convexQuery<OpsDatabase>("ops/data:snapshot");
-  if (!db.settings.some((s) => s.key === "switch.timersEnabled" && s.value === true)) {
-    return { warned: 0, fired: 0, escalated: 0 };
+  if (!usingConvex()) {
+    const answer = repo.runClocks(now);
+    await afterFired(before.timers, firing, now);
+    return answer;
   }
+
+  const db = before;
+  if (!switchedOn(db, "switch.timersEnabled")) return { warned: 0, fired: 0, escalated: 0 };
 
   const actions = tick(db.timers, now);
   const rules = {
@@ -187,13 +198,118 @@ export async function runClocks(now = Date.now()): Promise<{ warned: number; fir
 
   if (!actions.length && !escalations.length) return { warned: 0, fired: 0, escalated: 0 };
 
-  return convexMutation<{ warned: number; fired: number; escalated: number }>("ops/data:applyTick", {
+  const answer = await convexMutation<{ warned: number; fired: number; escalated: number }>("ops/data:applyTick", {
     warned: actions.filter((a) => a.state === "warned").map((a) => a.timerId),
     fired: actions.filter((a) => a.state === "fired").map((a) => a.timerId),
     firedAt: now,
     tasks: actions.map((a) => a.task).filter((t): t is NonNullable<typeof t> => t !== null),
     escalations,
   });
+  await afterFired(db.timers, firing, now);
+  return answer;
+}
+
+/**
+ * What a fired clock does for you, beyond leaving a task (3 Nov).
+ *
+ * One line per kind of clock. Everything a clock can do by itself goes here,
+ * so the clock pass stays one pass and a person is left with the thing to
+ * read rather than the thing to remember. Phases 3 to 7 each add their own.
+ */
+const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void>> = {
+  "esa.chase": async (timer, now) => {
+    await chaseTheAgreement(timer.subjectId, timer.ownerId, now);
+  },
+};
+
+async function afterFired(timers: OpsTimer[], firing: TickAction[], now: number): Promise<void> {
+  for (const action of firing) {
+    const timer = timers.find((t) => t.id === action.timerId);
+    const handler = timer ? AFTER_FIRED[timer.kind] : undefined;
+    if (!timer || !handler) continue;
+    try {
+      await handler(timer, now);
+    } catch {
+      // A handler that cannot finish must not stop the rest of the pass. The
+      // clock has already fired and left its task, so the work is still in
+      // front of a person; it is only the drafting that did not happen.
+    }
+  }
+}
+
+/**
+ * Draft the next chase on an agreement (15, Phase 2 step 13).
+ *
+ * Two doors, one road: the button on the lead page and the clock when it
+ * fires. Until 3 Nov only the button existed, so a chase sat waiting for
+ * somebody to remember it - which is the one thing the clocks are for.
+ */
+export async function chaseTheAgreement(
+  esaId: Id,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; messageId: Id | null }> {
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  if (!esa) return { ok: false, what: "That agreement is gone.", messageId: null };
+  // A signed, declined or expired agreement is not chased. Its clocks are
+  // cancelled when it settles, but a pass already in flight must not write to
+  // a finished agreement.
+  if (esa.state !== "sent" && esa.state !== "chasing") {
+    return { ok: false, what: "That agreement is not waiting for a signature.", messageId: null };
+  }
+
+  const plan = chaseStep(esa.chaseStep + 1);
+  if (!plan) return { ok: false, what: "The chase has run out. Somebody has to call them.", messageId: null };
+
+  if (plan.channel === "call") {
+    await createTask({
+      kind: "call",
+      title: "Call about the agreement: " + (esa.fields.companyName ?? "a client"),
+      body: "Five written chases and no signature. The owner's plan says a call now.",
+      assigneeId: esa.ownerId,
+      dueAt: now,
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + esa.leadId,
+    });
+    await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, by, "esa.chaseCall", plan.what);
+    return { ok: true, what: "A call task is on your list. Write down what they say.", messageId: null };
+  }
+
+  const draft = chaseDraft(
+    plan,
+    esa.fields,
+    templateFor(db, plan.templateKey),
+    leadIn(db, esa.leadId)?.contactPhone ?? null,
+  );
+  if ("problem" in draft) return { ok: false, what: draft.problem, messageId: null };
+
+  const message = await draftMessage({
+    channel: plan.channel,
+    to: [draft.to],
+    subject: draft.subject,
+    body: draft.body,
+    templateKey: plan.templateKey,
+    subjectType: "esa",
+    subjectId: esaId,
+  });
+
+  await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, by, "esa.chaseDrafted", plan.what);
+  const following = nextChaseAt(plan.step, now);
+  if (following) {
+    await startTimer({
+      kind: "esa.chase",
+      subjectType: "esa",
+      subjectId: esaId,
+      startsAt: now,
+      dueAt: following.dueAt,
+      warnAt: null,
+      ownerId: esa.ownerId,
+      payload: { label: String(esa.fields.companyName ?? ""), step: String(following.step) },
+    });
+  }
+  return { ok: true, what: plan.what + " is drafted. Read it, then approve it.", messageId: message.id };
 }
 
 /** The client answered, so every chase for that subject stops. */

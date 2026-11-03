@@ -149,3 +149,121 @@ test("a settled agreement leaves no clocks running", async () => {
   assert.equal(repo.liveTimers().filter((t) => t.subjectId === "esa_x").length, 0);
   assert.equal(repo.audit()[0].reason, "It is signed.");
 });
+
+test("the clock drafts the chase itself when it fires", async () => {
+  // Until 3 Nov a fired chase clock only left a task, so the chase waited for
+  // somebody to press a button. The clock is what is supposed to remember.
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-chase-"));
+  process.env.OPS_STORE = "json";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const now = Date.now();
+  const lead = repo.addLead({
+    company: "SAMPLE CLIENT (Pvt) Ltd",
+    nameKey: "sample client (pvt) ltd",
+    contactName: "Sample contact",
+    contactEmail: "hr@example.test",
+    contactPhone: "+94 77 000 0000",
+    source: "email",
+    industry: "Manufacturing",
+    website: "",
+    notes: "",
+    industryFlagged: false,
+    industryBecause: null,
+    industryConfirmedBy: null,
+    state: "waiting_agreement",
+    reason: null,
+    doNotInvite: false,
+    clientTaId: null,
+    ownerId: "m_owner",
+    createdBy: "m_owner",
+  });
+  const esa = repo.addAgreement({
+    leadId: lead.id,
+    clientTaId: null,
+    state: "sent",
+    version: 1,
+    fields: { ...filled() },
+    draftFileId: null,
+    sentAt: now - 3 * DAY,
+    sentMessageId: null,
+    chaseStep: 0,
+    expiresAt: now + 11 * DAY,
+    signedAt: null,
+    signedFileId: null,
+    countersignedAt: null,
+    countersignedFileId: null,
+    reason: null,
+    ownerId: "m_owner",
+  });
+  repo.startTimer({
+    kind: "esa.chase",
+    subjectType: "esa",
+    subjectId: esa.id,
+    startsAt: now - 2 * DAY,
+    dueAt: now - 1_000,
+    warnAt: null,
+    ownerId: "m_owner",
+    payload: { label: "SAMPLE CLIENT", step: "1" },
+  });
+
+  const pass = await desk.runClocks(now);
+  assert.equal(pass.fired >= 1, true, "the overdue chase clock fired");
+
+  const drafts = repo.all().messages.filter((m) => m.subjectId === esa.id && m.state === "draft");
+  assert.equal(drafts.length, 1, "the chase is drafted, not only remembered");
+  assert.equal(drafts[0].channel, "email", "step 1 of the owner's plan is an email");
+  assert.deepEqual(drafts[0].to, ["hr@example.test"]);
+  assert.match(drafts[0].subject, /SAMPLE CLIENT/, "the client's name is filled in");
+  assert.doesNotMatch(drafts[0].body + drafts[0].subject, /\{\{/, "no hole is left unfilled");
+
+  const after = repo.all().agreements.find((e) => e.id === esa.id);
+  assert.equal(after?.state, "chasing");
+  assert.equal(after?.chaseStep, 1);
+
+  // And the one after it is already waiting, so the plan carries on by itself.
+  const next = repo.liveTimers().filter((t) => t.subjectId === esa.id && t.kind === "esa.chase");
+  assert.equal(next.length, 1, "the next chase has its own clock");
+  assert.equal(next[0].dueAt, now + 2 * DAY, "two days to the WhatsApp message");
+});
+
+test("a settled agreement is not chased, even by a clock already in flight", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-chase-settled-"));
+  process.env.OPS_STORE = "json";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const now = Date.now();
+  const esa = repo.addAgreement({
+    leadId: "ld_gone",
+    clientTaId: null,
+    state: "signed",
+    version: 1,
+    fields: { ...filled() },
+    draftFileId: null,
+    sentAt: now - 5 * DAY,
+    sentMessageId: null,
+    chaseStep: 2,
+    expiresAt: now + 9 * DAY,
+    signedAt: now,
+    signedFileId: "f_1",
+    countersignedAt: null,
+    countersignedFileId: null,
+    reason: null,
+    ownerId: "m_owner",
+  });
+
+  const answer = await desk.chaseTheAgreement(esa.id, "m_owner", now);
+  assert.equal(answer.ok, false);
+  assert.match(answer.what, /not waiting for a signature/i);
+  assert.equal(repo.all().messages.filter((m) => m.subjectId === esa.id).length, 0);
+});
