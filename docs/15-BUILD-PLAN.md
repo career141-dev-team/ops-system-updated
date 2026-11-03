@@ -943,6 +943,12 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 
 ## Phase 5 · Interviews and reference
 
+**Built 3 November**, steps 1 to 18 bar three pieces: the Teams meeting made
+from the Ops mailbox (step 8 - a calendar permission the owner has yet to
+grant; the link is pasted in by a person, and `interviews.setLink` is that),
+reading a client's reply for its times (step 3's AI half, which is Phase 9),
+and the ICS export (step 18). The reference is `opsReferences` as planned.
+
 1. Tables `opsInterviews`, `opsReferenceRequests`.
 2. `interviews.start(appTaId, scheduler)`: `us` or `client`; a row in state `slots`.
 3. We schedule: `interviews.requestSlots` → email `interview.slots_request` drafted → sent;

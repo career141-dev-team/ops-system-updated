@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -76,6 +76,8 @@ export const snapshot = internalQuery({
       ctx.db.query("opsPositions").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsTalentPulse").withIndex("by_created").order("desc").take(60),
       ctx.db.query("opsReports").withIndex("by_created").order("desc").take(26),
+      ctx.db.query("opsInterviews").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsReferences").withIndex("by_created").order("desc").take(100),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -109,6 +111,8 @@ export const snapshot = internalQuery({
       positions: positions.map(row),
       talentPulse: talentPulse.map(row),
       reports: reports.map(row),
+      interviews: interviews.map(row),
+      references: references.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -586,6 +590,130 @@ export const addPosition = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** One interview, the client's side of it (15, Phase 5). */
+export const addInterview = internalMutation({
+  args: {
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    scheduler: v.string(),
+    state: v.string(),
+    round: v.number(),
+    slots: v.array(v.number()),
+    slotLoops: v.number(),
+    at: v.union(v.number(), v.null()),
+    format: v.string(),
+    interviewers: v.array(v.string()),
+    whereOrLink: v.string(),
+    interviewTaId: v.union(v.string(), v.null()),
+    inviteMessageId: v.union(v.string(), v.null()),
+    attendedAt: v.union(v.number(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    decisionReason: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    candidateFeedback: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsInterviews", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "interview.started",
+      subjectType: "interview",
+      subjectId: id as string,
+      after: args.candidateName + ", round " + args.round,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchInterview = internalMutation({
+  args: {
+    interviewId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.interviewId as Id<"opsInterviews">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "interview",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** A reference check (15, Phase 5 step 17). */
+export const addReference = internalMutation({
+  args: {
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    candidateName: v.string(),
+    state: v.string(),
+    report: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    reportedAt: v.union(v.number(), v.null()),
+    relayMessageId: v.union(v.string(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsReferences", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "reference.requested",
+      subjectType: "reference",
+      subjectId: id as string,
+      after: args.candidateName,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchReference = internalMutation({
+  args: {
+    referenceId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.referenceId as Id<"opsReferences">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "reference",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

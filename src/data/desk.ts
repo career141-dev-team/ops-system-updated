@@ -12,6 +12,8 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsInterview,
+  OpsReferenceRequest,
   OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
@@ -27,12 +29,19 @@ import type {
   OpsTemplate,
   OpsTimer,
 } from "./types";
+import { colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import {
+  NOTICE_DAYS,
+  NOTICE_HOURS,
+  noticeStanding,
+  reconfirmAt,
+} from "@/lib/interviews";
 import {
   type ReportRowRecord,
   daysBetween,
@@ -278,6 +287,11 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   // (Phase 7 step 9).
   "report.weekly": async (timer, now) => {
     await buildWeeklyReport(timer.ownerId, now);
+  },
+  // The day before an interview: the client's reminder is drafted and the TA
+  // is asked to reconfirm the candidate (Phase 5 step 10).
+  "interview.reconfirm": async (timer, now) => {
+    await remindAboutInterview(timer.subjectId, now);
   },
 };
 
@@ -1115,6 +1129,353 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
   return issue;
 }
 
+/* ── Interviews and references (15, Phase 5) ───────────────────── */
+
+export async function addInterview(
+  input: Omit<OpsInterview, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsInterview> {
+  if (!usingConvex()) return repo.addInterview(input);
+  return (await convexMutation<OpsInterview>("ops/data:addInterview", input)) as OpsInterview;
+}
+
+export async function patchInterview(
+  interviewId: Id,
+  patch: Partial<OpsInterview>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchInterview(interviewId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchInterview", { interviewId, patch, by, what, reason });
+}
+
+export function interviewIn(db: OpsDatabase, interviewId: Id): OpsInterview | null {
+  return db.interviews.find((i) => i.id === interviewId) ?? null;
+}
+
+export function interviewsNewestFirst(db: OpsDatabase): OpsInterview[] {
+  return [...db.interviews].sort((a, b) => (b.at ?? b.createdAt) - (a.at ?? a.createdAt));
+}
+
+/** The live interview for one application, if there is one. */
+export function liveInterviewFor(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
+  return (
+    db.interviews.find(
+      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && i.state !== "cancelled",
+    ) ?? null
+  );
+}
+
+export async function addReference(
+  input: Omit<OpsReferenceRequest, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsReferenceRequest> {
+  if (!usingConvex()) return repo.addReference(input);
+  return (await convexMutation<OpsReferenceRequest>("ops/data:addReference", input)) as OpsReferenceRequest;
+}
+
+export async function patchReference(
+  referenceId: Id,
+  patch: Partial<OpsReferenceRequest>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchReference(referenceId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchReference", { referenceId, patch, by, what, reason });
+}
+
+export function referenceIn(db: OpsDatabase, referenceId: Id): OpsReferenceRequest | null {
+  return db.references.find((r) => r.id === referenceId) ?? null;
+}
+
+export function referenceForApplication(db: OpsDatabase, applicationTaId: string): OpsReferenceRequest | null {
+  return [...db.references].reverse().find((r) => r.applicationTaId === applicationTaId) ?? null;
+}
+
+/**
+ * The clocks a booked interview starts (step 10).
+ *
+ * Two, and they do different work. The day before at nine the client is
+ * reminded and the TA is asked to reconfirm the candidate - the owner's rule,
+ * because a candidate who has gone quiet is better found the day before than
+ * on the morning. At the interview time itself somebody is asked whether it
+ * actually happened, or an interview nobody attended is only noticed when the
+ * client complains.
+ */
+export async function startInterviewClocks(interview: OpsInterview, now = Date.now()): Promise<void> {
+  if (!interview.at) return;
+  const label = interview.candidateName + ", round " + interview.round;
+  const reconfirm = reconfirmAt(interview.at);
+  if (reconfirm > now) {
+    await startTimer({
+      kind: "interview.reconfirm",
+      subjectType: "interview",
+      subjectId: interview.id,
+      startsAt: now,
+      dueAt: reconfirm,
+      warnAt: null,
+      ownerId: interview.ownerId,
+      payload: { label },
+    });
+  }
+  await startTimer({
+    kind: "interview.day",
+    subjectType: "interview",
+    subjectId: interview.id,
+    startsAt: now,
+    dueAt: interview.at,
+    warnAt: null,
+    ownerId: interview.ownerId,
+    payload: { label },
+  });
+}
+
+/**
+ * The day before: remind the client, and ask the TA about the candidate.
+ *
+ * The reminder to the client is drafted like everything else. The TA's half is
+ * a task, because reconfirming the candidate is the TA's own work and their
+ * channels, never ours.
+ */
+export async function remindAboutInterview(
+  interviewId: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone." };
+  if (interview.state !== "booked" && interview.state !== "reconfirmed") {
+    return { ok: false, what: "That interview is not booked any more." };
+  }
+
+  const wording = templateFor(db, "interview.reminder");
+  const when = interview.at ? colomboDateInWords(interview.at) : "tomorrow";
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{when\}\}/g, when)
+      .replace(/\{\{whereOrLink\}\}/g, interview.whereOrLink);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "Tomorrow: {{candidate}}"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\n{{candidate}} is with you {{when}}.\n\n{{whereOrLink}}\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.reminder",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await createTask({
+    kind: "check",
+    title: "Ask the TA to reconfirm: " + interview.candidateName,
+    body:
+      "The interview is tomorrow. The TA reconfirms the candidate through their own channels - we never write to a candidate.\n\nIf the candidate has gone quiet, the client has to be told today, not in the morning.",
+    assigneeId: interview.ownerId,
+    dueAt: now,
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/interviews/" + interviewId,
+  });
+  return { ok: true, what: "The client's reminder is drafted and the TA has been asked. Message " + message.id };
+}
+
+/**
+ * Draft the drop-out notice (step 11).
+ *
+ * Raised by TA's own event when a candidate pulls out, and by the button when
+ * somebody hears it first. The notice goes whatever the hour, but how late it
+ * is said in the task, because the owner's promise is a day's warning.
+ */
+export async function noticeCandidateOut(
+  interviewId: Id,
+  reason: string,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; messageId: Id | null }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone.", messageId: null };
+  if (interview.state === "cancelled" || interview.state === "attended") {
+    return { ok: false, what: "That interview is already finished.", messageId: null };
+  }
+
+  const standing = interview.at
+    ? noticeStanding(interview.at, now, numberOf(db, "interview.noticeDays", NOTICE_DAYS), numberOf(db, "interview.noticeHours", NOTICE_HOURS))
+    : { ok: true, late: false, what: "No time was agreed yet, so nobody is waiting for them." };
+
+  const wording = templateFor(db, "interview.dropout_notice");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{when\}\}/g, interview.at ? colomboDateInWords(interview.at) : "the agreed time")
+      .replace(/\{\{reason\}\}/g, reason);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "{{candidate}} - interview {{when}}"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\n{{candidate}} is no longer able to attend {{when}}. We are sorry for the short notice and are putting a back-up in front of you.\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.dropout_notice",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(
+    interviewId,
+    { state: "cancelled", reason: reason },
+    by,
+    "interview.candidateOut",
+    reason,
+  );
+  await cancelClocksFor(db, "interview", interviewId, by ?? interview.ownerId, "The candidate came out of it.", null);
+  await createTask({
+    kind: "check",
+    title: "A back-up for " + interview.candidateName,
+    body:
+      standing.what +
+      "\n\nThe notice to the client is drafted and waiting for you. Then ask the TA for the back-up they kept: the position cannot sit on one candidate.",
+    assigneeId: interview.ownerId,
+    dueAt: now,
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/messages/" + message.id,
+  });
+  return { ok: true, what: standing.what, messageId: message.id };
+}
+
+/**
+ * The candidate's feedback, which TA collects, drafted for the client (step 15).
+ *
+ * The TA phones the candidate after five; this is what we do with what they
+ * say. Drafted, never sent by itself, and the owner approves it the next
+ * morning rather than at night.
+ */
+export async function draftCandidateFeedback(
+  interviewId: Id,
+  feedback: string,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone." };
+
+  const wording = templateFor(db, "interview.client_feedback");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{feedback\}\}/g, feedback)
+      .replace(/\{\{round\}\}/g, String(interview.round));
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "{{candidate}} - after the interview"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\nWe spoke to {{candidate}} after round {{round}}.\n\n{{feedback}}\n\nMay we have your own feedback when you have it?\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.client_feedback",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(interviewId, { candidateFeedback: feedback }, null, "interview.candidateFeedback", null);
+  await createTask({
+    kind: "approve",
+    title: "The candidate's feedback, for the client: " + interview.candidateName,
+    body: "The TA has spoken to the candidate. The message to the client is drafted - read it in the morning, then approve it.",
+    assigneeId: interview.ownerId,
+    dueAt: nextNineAm(now),
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/messages/" + message.id,
+  });
+  return { ok: true, what: "Drafted for the client, waiting for the morning." };
+}
+
+/**
+ * What TA tells us about an interview (steps 11, 12, 15 and 17).
+ *
+ * Matched on TA's own application id, because that is the one thing both
+ * sides agree on. An event about an interview we do not have is recorded and
+ * left alone: TA may have booked it itself, and inventing a row from one
+ * event would mean two interviews for one meeting.
+ */
+export async function takeInterviewEvent(
+  type: string,
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<void> {
+  const applicationTaId = String(data.applicationId ?? "").trim();
+  if (!applicationTaId) return;
+  const db = await desk();
+
+  if (type === "reference.reported") {
+    const asked = referenceForApplication(db, applicationTaId);
+    const report = String(data.report ?? "").trim();
+    if (!asked || !report) return;
+    await patchReference(asked.id, { state: "reported", report, reportedAt: now }, null, "reference.reported", null);
+    await createTask({
+      kind: "approve",
+      title: "A reference is back: " + asked.candidateName,
+      body: "The TA has spoken to the referee. Read what was said, then pass it to the client as it is.",
+      assigneeId: asked.ownerId,
+      dueAt: now,
+      subjectType: "reference",
+      subjectId: asked.id,
+      link: "/interviews?reference=" + asked.id,
+    });
+    return;
+  }
+
+  const interview = liveInterviewFor(db, applicationTaId);
+  if (!interview) return;
+
+  if (type === "interview.confirmed") {
+    await patchInterview(interview.id, { state: "reconfirmed" }, null, "interview.reconfirmed", "TA reconfirmed the candidate.");
+    return;
+  }
+  if (type === "interview.candidate_out") {
+    await noticeCandidateOut(
+      interview.id,
+      String(data.reason ?? "").trim() || "The candidate withdrew.",
+      null,
+      now,
+    );
+    return;
+  }
+  if (type === "interview.feedback") {
+    const said = String(data.feedback ?? "").trim();
+    if (said) await draftCandidateFeedback(interview.id, said, now);
+    return;
+  }
+  if (type === "interview.outcome") {
+    const outcome = String(data.outcome ?? "").trim();
+    if (outcome === "no_show" || outcome === "attended") {
+      await patchInterview(
+        interview.id,
+        { state: outcome, attendedAt: outcome === "attended" ? now : null },
+        null,
+        "interview." + outcome,
+        "From the TA System.",
+      );
+    }
+  }
+}
+
 /* ── The weekly report (15, Phase 3 step 18, Phase 7 step 9) ───── */
 
 export async function addReport(input: Omit<OpsReport, "id" | "createdAt" | "updatedAt">): Promise<OpsReport> {
@@ -1815,6 +2176,12 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
       const db2 = await desk();
       const position = opening ? positionForOpening(db2, opening) : null;
       if (position) await evaluateDepth(position.id, now);
+    }
+    // What TA tells us about an interview (Phase 5 steps 11, 12 and 15). Ops
+    // never writes to a candidate, so each of these is either a state we
+    // record or a message to the client that a person then approves.
+    if (event.type.startsWith("interview.") || event.type === "reference.reported") {
+      await takeInterviewEvent(event.type, event.data, now);
     }
     if (
       event.type === "opening.updated" ||

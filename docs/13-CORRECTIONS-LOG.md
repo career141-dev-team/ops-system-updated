@@ -267,3 +267,22 @@ Three wordings were wrong because they were borrowed:
 
 The lesson: words written for the people who did the work do not travel to the
 person who only reads about it.
+
+## 3 November 2026 - an empty list cancelled nothing
+
+`cancelClocksFor(db, type, id, by, reason, kinds)` takes the kinds to cancel,
+and `null` means every clock on the thing. Phase 5 passed `[]` instead,
+meaning "only these kinds", of which there were none - so a cancelled
+interview kept its day-of clock, and an approved report kept the clock that
+built it. Found by a test that counted the clocks afterwards.
+
+Where an argument means "everything" when it is missing, an empty list is the
+one value that quietly means the opposite.
+
+## 3 November 2026 - an entity printed as itself
+
+One of the interview lists read "Nothing waiting on a client&rsquo;s
+decision." on the screen. `&rsquo;` is HTML, and the string was a value passed
+to a function rather than text in the page, so nothing turned it into an
+apostrophe. The character itself goes in a string; the entity only works where
+the page is written.

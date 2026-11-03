@@ -99,11 +99,35 @@ Still to come in phase 4: the inbound reader that proposes a client's decisions
 instead of them being typed (that is Phase 9 step 8), and the surcharge invoice
 an unreported hire leads to (the invoice engine is Phase 6).
 
+## Built: phase 5, interviews and the reference
+
+The TA System keeps the candidate: it invites them, phones them afterwards and
+holds their feedback. All of this is the client's side.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Who schedules, us or the client | `startInterview` in `app/actions.ts` | asked once at the start, because the two are different work; a client who books it themselves gets a clock that asks for the date |
+| The times, asked and agreed | `requestInterviewSlots`, `recordInterviewSlots`, `recordCandidatePick` | the client's times are typed in (reading them is Phase 9); the candidate is asked by the TA, through their channels, and we record which they took |
+| The slot loop that stops | `problemWithNewSlots` in `src/lib/interviews.ts` | three rounds with nothing agreed and the TA is asked for a back-up instead of another email |
+| Booking it | `bookInterview` | refuses an online interview with no link and an onsite one with no address; tells TA through the outbox, drafts the invite to the interviewers, starts both clocks |
+| The day before | `interview.reconfirm` → `remindAboutInterview` in `src/data/desk.ts` | nine in the morning the day before: the client's reminder drafted, and a task to have the TA reconfirm the candidate |
+| The interview itself | `interview.day` clock, `markInterviewAttendance` | somebody is asked whether it happened; a no-show needs a reason and TA is told |
+| A candidate pulling out | `noticeCandidateOut`, and TA's `interview.candidate_out` event | the notice is drafted whatever the hour, and how late it is said in plain words - a day is the promise, three hours the floor |
+| The client cancelling or moving it | `cancelInterview` | rebooking keeps the round, so a candidate at round two stays at round two |
+| What the candidate said afterwards | TA's `interview.feedback` event → `draftCandidateFeedback` | drafted for the client and due the next morning, not sent at night |
+| The client's decision | `recordRoundDecision` | another round, selected, or rejected with their own words; a rejection re-counts the shortlist |
+| The reference | `requestReference`, `recordReferenceReport`, `relayReference`, `recordReferenceDecision` | only when the client asks; no form and no score (the owner, 26 Oct); passed on word for word; a dropped candidate re-counts the shortlist |
+| Screens | `app/interviews`, `app/interviews/[id]` | agreeing a time, booked, held and waiting on the client; everything about one interview on its own page |
+
+Still to come in phase 5: the **Teams meeting made from the Ops mailbox** (a
+calendar permission the owner has yet to grant - the link is pasted in by a
+person until then), reading a client's reply for its times by itself (Phase 9),
+and the ICS export.
+
 ## Not built
 
-TopJobs, the last of phase 4, and phases 5 to 8:
-interviews, placement and the invoice, the guarantee and the close, then
-hardening and the pilot.
+TopJobs, and phases 6 to 8: placement and the invoice, the guarantee and the
+close, then hardening and the pilot.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -150,7 +174,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 30 suites, each in its own process
+node tests/run.mjs        # all 31 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

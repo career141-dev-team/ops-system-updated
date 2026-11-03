@@ -49,6 +49,16 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "Talent Pulse: it is Tuesday",
     body: "This week's issue is compiled. Each role needs its line from the TA, then it goes to marketing for tomorrow.",
   },
+  "interview.day": {
+    kind: "record",
+    title: "Did the interview happen?",
+    body: "Mark whether they came. A no-show the client hears about from us is better than one they tell us about.",
+  },
+  "interview.report": {
+    kind: "check",
+    title: "The client booked an interview and has not told us the date",
+    body: "They said they would book it themselves. Ask them when it is, or nothing after it can be tracked.",
+  },
   "report.weekly": {
     kind: "record",
     title: "The weekly report: it is Monday",
@@ -102,7 +112,7 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   "interview.reconfirm": {
     kind: "check",
     title: "An interview is tomorrow",
-    body: "The client's reminder has gone. The TA is reconfirming the candidate.",
+    body: "The client's reminder is drafted. The TA reconfirms the candidate - if they have gone quiet, the client is told today, not in the morning.",
   },
   "meeting.reminder.day": {
     kind: "remind",

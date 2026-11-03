@@ -655,6 +655,76 @@ export interface ReportRowRecord {
   advertised: boolean;
 }
 
+/**
+ * One interview, the client's side of it (15, Phase 5).
+ *
+ * TA owns the candidate's side and keeps its own interview row; this is what
+ * Ops has to answer the client with. `interviewTaId` is TA's row once TA has
+ * taken the booking, exactly as a position waits for `openingTaId`.
+ */
+export interface OpsInterview {
+  id: Id;
+  /** TA's application, and the opening it belongs to. */
+  applicationTaId: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  candidateName: string;
+  /** Who agrees the time: "us" or "client". */
+  scheduler: string;
+  state: string;
+  round: number;
+  /** The times the client offered, and the one everybody agreed. */
+  slots: number[];
+  slotLoops: number;
+  at: number | null;
+  format: string;
+  /** Addresses of the people interviewing, who get the invite. */
+  interviewers: string[];
+  /** The meeting link, or the address for one at the office. */
+  whereOrLink: string;
+  interviewTaId: string | null;
+  /** Each message this interview has caused, newest last. */
+  inviteMessageId: Id | null;
+  attendedAt: number | null;
+  /** What the client decided after it: next, selected or rejected. */
+  decision: string | null;
+  decisionReason: string | null;
+  decidedAt: number | null;
+  /** What the TA heard from the candidate afterwards, as TA worded it. */
+  candidateFeedback: string | null;
+  /** Why it was cancelled, or why the candidate came out of it. */
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A reference check, which happens only when the client asks (step 17).
+ *
+ * No form and no score: the owner settled that on 26 October. The TA phones
+ * the referee, writes down what was said, and Ops passes it on as it is.
+ */
+export interface OpsReferenceRequest {
+  id: Id;
+  applicationTaId: string;
+  openingTaId: string;
+  candidateName: string;
+  state: string;
+  /** What the TA reported, in the TA's own words. */
+  report: string | null;
+  requestedAt: number;
+  reportedAt: number | null;
+  relayMessageId: Id | null;
+  /** Cleared or dropped, and why if dropped. */
+  decision: string | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -673,6 +743,8 @@ export interface OpsDatabase {
   positions: OpsPosition[];
   talentPulse: OpsTalentPulseIssue[];
   reports: OpsReport[];
+  interviews: OpsInterview[];
+  references: OpsReferenceRequest[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

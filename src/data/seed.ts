@@ -34,6 +34,11 @@ export function seed(now = Date.now()): OpsDatabase {
       // Who the Monday report goes to. Addresses, separated by commas; the
       // Director's real address is the owner's to put in.
       { key: "report.recipients", value: "", updatedBy: null, updatedAt: null },
+      // Interviews (15, Phase 5 step 19 and the owner's notice rule).
+      { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
+      { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },
+      { key: "interview.noticeDays", value: 1, updatedBy: null, updatedAt: null },
+      { key: "interview.noticeHours", value: 3, updatedBy: null, updatedAt: null },
       { key: "hold.afterDays", value: 14, updatedBy: null, updatedAt: null },
       { key: "hold.reviewDays", value: 30, updatedBy: null, updatedAt: null },
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
@@ -79,6 +84,8 @@ export function seed(now = Date.now()): OpsDatabase {
     positions: [],
     talentPulse: [],
     reports: [],
+    interviews: [],
+    references: [],
     leads: [
       {
         id: "ld_new",
@@ -366,6 +373,115 @@ Career 141`,
         body: `{{client}} > {{position}} > SET {{setNumber}}
 
 {{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.slots_request",
+        channel: "email",
+        name: "Asking the client for interview times",
+        subject: "{{candidate}} - interview times",
+        body: `Dear {{contact}},
+
+Could you give us two or three times that suit you for {{candidate}} ({{position}})? We will agree one with the candidate and confirm it back to you.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.invite",
+        channel: "email",
+        name: "The interview invite to the client's people",
+        subject: "Interview: {{candidate}}, {{when}}",
+        body: `Dear all,
+
+{{candidate}} is confirmed for {{when}}, round {{round}}.
+
+{{whereOrLink}}
+
+The TA has invited the candidate. Anything to change, tell us and we will move it.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.reminder",
+        channel: "email",
+        name: "The day-before reminder to the client",
+        subject: "Tomorrow: {{candidate}}",
+        body: `Dear all,
+
+{{candidate}} is with you {{when}}.
+
+{{whereOrLink}}
+
+Kind regards,
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.dropout_notice",
+        channel: "email",
+        name: "A candidate can no longer attend",
+        subject: "{{candidate}} - interview {{when}}",
+        body: `Dear all,
+
+{{candidate}} is no longer able to attend {{when}}. We are sorry for the short notice.
+
+We are putting a back-up in front of you and will confirm a new time.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.client_feedback",
+        channel: "email",
+        name: "What the candidate said after the interview",
+        subject: "{{candidate}} - after the interview",
+        body: `Dear all,
+
+We spoke to {{candidate}} after round {{round}}.
+
+{{feedback}}
+
+May we have your own feedback when you have it?
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "reference.relay",
+        channel: "email",
+        name: "Passing a reference on to the client",
+        subject: "{{candidate}} - reference",
+        body: `Dear all,
+
+We spoke to the referee for {{candidate}}. This is what was said, as it was said:
+
+{{report}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

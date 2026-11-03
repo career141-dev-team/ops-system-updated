@@ -332,6 +332,58 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** One interview, the client's side of it (15, Phase 5). */
+  opsInterviews: defineTable({
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    scheduler: v.string(),
+    state: v.string(),
+    round: v.number(),
+    slots: v.array(v.number()),
+    slotLoops: v.number(),
+    at: v.union(v.number(), v.null()),
+    format: v.string(),
+    interviewers: v.array(v.string()),
+    whereOrLink: v.string(),
+    interviewTaId: v.union(v.string(), v.null()),
+    inviteMessageId: v.union(v.string(), v.null()),
+    attendedAt: v.union(v.number(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    decisionReason: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    candidateFeedback: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationTaId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_at", ["at"])
+    .index("by_created", ["createdAt"]),
+
+  /** A reference check, only when the client asks (15, Phase 5 step 17). */
+  opsReferences: defineTable({
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    candidateName: v.string(),
+    state: v.string(),
+    report: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    reportedAt: v.union(v.number(), v.null()),
+    relayMessageId: v.union(v.string(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationTaId"])
+    .index("by_created", ["createdAt"]),
+
   /** One weekly report, kept as it was built (15, Phase 7 step 9). */
   opsReports: defineTable({
     kind: v.string(),

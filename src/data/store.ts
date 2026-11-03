@@ -24,6 +24,8 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsInterview,
+  OpsReferenceRequest,
   OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
@@ -625,6 +627,84 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Interviews and references (15, Phase 5) ────────────── */
+
+  interviewIn(interviewId: Id): OpsInterview | null {
+    return load().interviews.find((i) => i.id === interviewId) ?? null;
+  },
+
+  addInterview(input: Omit<OpsInterview, "id" | "createdAt" | "updatedAt">): OpsInterview {
+    const db = load();
+    const now = Date.now();
+    const row: OpsInterview = { ...input, id: id("int"), createdAt: now, updatedAt: now };
+    db.interviews.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "interview.started",
+      subjectType: "interview",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName + ", round " + row.round,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchInterview(
+    interviewId: Id,
+    patch: Partial<OpsInterview>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.interviews.find((i) => i.id === interviewId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "interview", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  referenceIn(referenceId: Id): OpsReferenceRequest | null {
+    return load().references.find((r) => r.id === referenceId) ?? null;
+  },
+
+  addReference(input: Omit<OpsReferenceRequest, "id" | "createdAt" | "updatedAt">): OpsReferenceRequest {
+    const db = load();
+    const now = Date.now();
+    const row: OpsReferenceRequest = { ...input, id: id("ref"), createdAt: now, updatedAt: now };
+    db.references.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "reference.requested",
+      subjectType: "reference",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchReference(
+    referenceId: Id,
+    patch: Partial<OpsReferenceRequest>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.references.find((r) => r.id === referenceId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "reference", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 
