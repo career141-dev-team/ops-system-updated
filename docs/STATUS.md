@@ -47,6 +47,23 @@ code is invented.
 | The client record | `src/lib/clients.ts`, `app/clients` | made by the system, never typed; one company, one record, one owner |
 | The desk's two morning views | top of `app/leads/page.tsx` | meetings booked; agreements not back yet |
 
+## Built: phase 3, the hand-over
+
+| Piece | Where | Notes |
+|---|---|---|
+| The requirement meeting | `bookRequirementMeeting` in `app/actions.ts` | refused until the agreement is signed; the same reminders and rebooks as the intro call |
+| The requirement written down | `src/lib/requirements.ts`, on the lead page | six required fields; "the requirement was in the TA lead's head" is the fault it exists for |
+| The brief TA reads | `briefText` | labelled lines, the client's own words kept |
+| The role too low for the salary | `markRoleImpractical` | a drafted reply, the lead closed with its reason, and a clock to invite them back |
+| Handing it to TA | `handOverToTa` | refused before the agreement is signed and refused on a half-written requirement; the opening is **queued**, never created here |
+| TA confirming the opening | `takeOpeningCreated` in `src/data/desk.ts` | from TA's own event; a TA opening one by hand for our client becomes a position with "link a requirement" |
+| What TA says afterwards | `takeOpeningUpdate` | the JD approved, the working stage, the closing |
+| The primary TA and the 100% day | `setPositionTeam`, screens `app/positions` | the TA lead decides; Ops records it and tells TA |
+
+Still to come in phase 3: the adverts — LinkedIn recorded, TopJobs requested,
+made live and closed after two weeks, Talent Pulse every Tuesday — and the
+weekly report builder.
+
 ## Built: phase 4, the first four steps
 
 The owner asked for these before phase 3, so they stand on the stand-in TA
@@ -77,8 +94,7 @@ invoice engine is Phase 6).
 
 ## Not built
 
-Phase 3 of [15](15-BUILD-PLAN.md) (the requirement meeting and the opening
-created in TA, the adverts), the rest of phase 4, and phases 5 to 8:
+The adverts half of phase 3, the last of phase 4, and phases 5 to 8:
 interviews, placement and the invoice, the guarantee and the close, then
 hardening and the pilot.
 

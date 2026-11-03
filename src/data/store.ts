@@ -22,6 +22,8 @@ import type {
   OpsClient,
   OpsClientSet,
   OpsHold,
+  OpsPosition,
+  OpsRequirement,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -513,6 +515,80 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "hold", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Requirements and positions (15, Phase 3) ───────────── */
+
+  requirementIn(requirementId: Id): OpsRequirement | null {
+    return load().requirements.find((r) => r.id === requirementId) ?? null;
+  },
+
+  addRequirement(input: Omit<OpsRequirement, "id" | "createdAt" | "updatedAt">): OpsRequirement {
+    const db = load();
+    const now = Date.now();
+    const row: OpsRequirement = { ...input, id: id("req"), createdAt: now, updatedAt: now };
+    db.requirements.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "requirement.saved",
+      subjectType: "requirement",
+      subjectId: row.id,
+      before: null,
+      after: "version " + row.version,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchRequirement(requirementId: Id, patch: Partial<OpsRequirement>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.requirements.find((r) => r.id === requirementId);
+    if (!row) return;
+    const before = row.practical ? "practical" : "not practical";
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "requirement",
+      subjectId: row.id,
+      before,
+      after: row.practical ? "practical" : "not practical",
+      reason,
+    });
+    save();
+  },
+
+  positionIn(positionId: Id): OpsPosition | null {
+    return load().positions.find((p) => p.id === positionId) ?? null;
+  },
+
+  addPosition(input: Omit<OpsPosition, "id" | "createdAt" | "updatedAt">): OpsPosition {
+    const db = load();
+    const now = Date.now();
+    const row: OpsPosition = { ...input, id: id("pos"), createdAt: now, updatedAt: now };
+    db.positions.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "position.handedOver",
+      subjectType: "position",
+      subjectId: row.id,
+      before: null,
+      after: row.title,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchPosition(positionId: Id, patch: Partial<OpsPosition>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.positions.find((p) => p.id === positionId);
+    if (!row) return;
+    const before = row.stage;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "position", subjectId: row.id, before, after: row.stage, reason });
     save();
   },
 

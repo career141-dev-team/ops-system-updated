@@ -3,6 +3,10 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   bookIntroCall,
+  bookRequirementMeeting,
+  handOverToTa,
+  markRoleImpractical,
+  saveRequirement,
   declineAgreement,
   draftNextChase,
   recordAgreementCountersigned,
@@ -17,7 +21,7 @@ import {
   markMeetingHeld,
   markMeetingNotHeld,
 } from "@/app/actions";
-import { agreementForLead, desk, leadIn, meetingsForLead } from "@/data/desk";
+import { agreementForLead, desk, leadIn, meetingsForLead, requirementForLead } from "@/data/desk";
 import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
@@ -27,6 +31,10 @@ import {
   type MeetingState,
 } from "@/lib/meetings";
 import { people as taPeople } from "@/lib/ta";
+import {
+  REQUIREMENT_FIELDS,
+  missingFields as requirementBlanksOf,
+} from "@/lib/requirements";
 import {
   ESA_FIELDS,
   type EsaState,
@@ -80,6 +88,15 @@ export default async function LeadPage({
   const esaMissing = esa ? missingFields(esa.fields) : [];
   const esaTemplate = db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null) ?? null;
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
+  // Phase 3: the requirement, and whether it has gone to TA yet.
+  const agreementDone = esa?.state === "signed" || esa?.state === "countersigned";
+  const requirementMeeting = meetingsForLead(db, lead.id).find((m) => m.kind === "requirement") ?? null;
+  const requirement = requirementForLead(db, lead.id);
+  const requirementBlanks = requirement ? requirementBlanksOf(requirement.fields) : [];
+  const position = requirement
+    ? db.positions.find((p) => p.requirementId === requirement.id) ?? null
+    : null;
+  const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
   const signedFiles = db.files.filter((f) => f.kind === "esa_signed");
   const countersignedFiles = db.files.filter((f) => f.kind === "esa_countersigned");
   const when = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ");
@@ -452,6 +469,167 @@ export default async function LeadPage({
             )}
           </section>
 
+          <section className={card}>
+            <h2 className="text-[14.5px] font-medium">The requirement, and handing it over</h2>
+
+            {!agreementDone && (
+              <p className="mt-1 text-[13px] text-ink-soft">
+                Nothing starts here until the agreement is signed. That is the owner&apos;s rule, and it is also what
+                stops us working for nothing.
+              </p>
+            )}
+
+            {agreementDone && (
+              <>
+                {!requirementMeeting && (
+                  <>
+                    <p className="mt-1 text-[13px] text-ink-soft">
+                      The requirement meeting is next, with a TA lead on it. No work starts on a position until it has
+                      actually happened.
+                    </p>
+                    {mayManage && (
+                      <form action={bookRequirementMeeting} className="mt-3 flex flex-wrap items-end gap-3">
+                        <input type="hidden" name="leadId" value={lead.id} />
+                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                          When (Colombo time)
+                          <input type="datetime-local" name="at" required className={field_cls} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                          Which TA lead is joining
+                          <select name="taLeadId" className={field_cls}>
+                            {taPeopleList.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button className={button}>Book the requirement meeting</button>
+                      </form>
+                    )}
+                  </>
+                )}
+
+                {requirementMeeting && (
+                  <p className="mt-1 text-[13px] text-ink-soft">
+                    The requirement meeting is {MEETING_STATES[requirementMeeting.state as MeetingState] ?? requirementMeeting.state}
+                    {" · "}
+                    {whenLocal(requirementMeeting.at)}
+                    {requirementMeeting.brief ? " · the brief is written down" : ""}
+                  </p>
+                )}
+
+                {mayManage && (
+                  <form action={saveRequirement} className="mt-3 flex flex-col gap-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {REQUIREMENT_FIELDS.map((f) => (
+                        <label key={f.key} className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                          {f.label}
+                          {f.required ? "" : " (optional)"}
+                          {f.key === "jdNotes" || f.key === "insights" ? (
+                            <textarea
+                              name={"field." + f.key}
+                              rows={3}
+                              defaultValue={requirement?.fields[f.key] ?? ""}
+                              className={field_wide}
+                            />
+                          ) : (
+                            <input
+                              name={"field." + f.key}
+                              defaultValue={requirement?.fields[f.key] ?? ""}
+                              className={field_cls}
+                            />
+                          )}
+                          <span className="text-[11.5px] text-ink-faint">{f.why}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button className={button}>Save the requirement</button>
+                    <p className="text-[12px] text-ink-faint">
+                      The opening in the TA System is built from these fields and nothing else. &ldquo;The requirement
+                      was in the TA lead&apos;s head&rdquo; is the fault this exists for.
+                    </p>
+                  </form>
+                )}
+
+                {requirementBlanks.length > 0 && (
+                  <p className="mt-2 text-[12.5px] text-ink-faint">
+                    Still blank: {requirementBlanks.map((f) => f.label.toLowerCase()).join(", ")}. It cannot go to the
+                    TA System until these are in.
+                  </p>
+                )}
+
+                {requirement && !requirement.practical && (
+                  <p className="mt-2 text-[13px]">
+                    Not practical at that package: {requirement.reason}
+                    {requirement.inviteBackAt ? " · inviting them back on " + whenLocal(requirement.inviteBackAt) : ""}
+                  </p>
+                )}
+
+                {requirement && requirement.openedAt === null && requirement.practical && mayManage && (
+                  <>
+                    <form action={handOverToTa} className="mt-4 flex flex-wrap items-end gap-3 border-t border-rule pt-3">
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                        Primary TA (the TA lead decides)
+                        <select name="primaryTaId" className={field_cls} defaultValue="">
+                          <option value="">— not yet —</option>
+                          {taPeopleList.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.fullName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                        The 100% day
+                        <input type="date" name="hundredPercentDay" className={field_cls} />
+                      </label>
+                      <button className={button}>Hand it to the TA System</button>
+                    </form>
+                    <p className="mt-2 text-[12px] text-ink-faint">
+                      The opening is queued for the TA System, not created here: TA owns openings, and its own event
+                      tells us the opening id. The brief goes exactly as written above.
+                    </p>
+                  </>
+                )}
+
+                {requirement?.openedAt && (
+                  <p className="mt-3 text-[13px]">
+                    Handed over on {whenLocal(requirement.openedAt)}
+                    {position && (
+                      <>
+                        {" · "}
+                        <Link href={"/positions/" + position.id} className="text-brand hover:underline">
+                          the position
+                        </Link>
+                      </>
+                    )}
+                  </p>
+                )}
+
+                {requirement && requirement.practical && requirement.openedAt === null && mayManage && (
+                  <form action={markRoleImpractical} className="mt-4 flex flex-col gap-2 border-t border-rule pt-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                      Or: the role cannot be filled at that package — why?
+                      <textarea name="reason" rows={2} className={field_wide} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                      Ask them again on
+                      <input type="date" name="inviteBackAt" className={field_cls} />
+                    </label>
+                    <button className={button}>Not practical at that package</button>
+                    <p className="text-[12px] text-ink-faint">
+                      A polite reply is drafted, the lead closes with its reason, and we are reminded to go back to
+                      them. A no today is not a no for ever.
+                    </p>
+                  </form>
+                )}
+              </>
+            )}
+          </section>
           <section className={card}>
             <h2 className="text-[14.5px] font-medium">Close this lead</h2>
             {mayManage ? (

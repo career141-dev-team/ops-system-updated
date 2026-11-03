@@ -271,6 +271,47 @@ export default defineSchema({
     .index("by_state", ["state"])
     .index("by_created", ["createdAt"]),
 
+  /** What the client said they want (15, Phase 3). */
+  opsRequirements: defineTable({
+    leadId: v.string(),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    meetingId: v.union(v.string(), v.null()),
+    version: v.number(),
+    fields: v.any(),
+    practical: v.boolean(),
+    reason: v.union(v.string(), v.null()),
+    inviteBackAt: v.union(v.number(), v.null()),
+    openedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_lead", ["leadId"])
+    .index("by_created", ["createdAt"]),
+
+  /** Our side of an opening in the TA System (15, Phase 3). */
+  opsPositions: defineTable({
+    requirementId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    openingTaId: v.union(v.string(), v.null()),
+    title: v.string(),
+    stage: v.string(),
+    primaryTaId: v.union(v.string(), v.null()),
+    hundredPercentDay: v.union(v.string(), v.null()),
+    taStatus: v.union(v.string(), v.null()),
+    jdApprovedAt: v.union(v.number(), v.null()),
+    handedOverAt: v.number(),
+    closedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_stage", ["stage"])
+    .index("by_created", ["createdAt"]),
+
   opsEsa: defineTable({
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),

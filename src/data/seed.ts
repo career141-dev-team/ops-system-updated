@@ -69,6 +69,8 @@ export function seed(now = Date.now()): OpsDatabase {
     // No sample sets: one arrives when TA says a round is ready.
     clientSets: [],
     holds: [],
+    requirements: [],
+    positions: [],
     leads: [
       {
         id: "ld_new",
@@ -252,6 +254,26 @@ Career 141`,
 We sent our agreement for the {{position}} role on {{date}}. Could you let us know where it stands?
 
 We can start the search as soon as it is signed.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "role.impractical.reply",
+        channel: "email",
+        name: "A role we cannot fill at that package",
+        subject: "{{client}} · the role we discussed",
+        body: `Dear {{contact}},
+
+Thank you for your time on the {{position}} role.
+
+Having looked at the market for that package, we do not think we can find you somebody who would both suit the role and accept it, and we would rather say so than take the search and disappoint you.
+
+If the package changes, or if the role changes shape, we would be glad to look again - we will come back to you ourselves in a few months in any case.
 
 Kind regards,
 {{opsPerson}}

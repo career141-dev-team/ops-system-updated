@@ -10,6 +10,8 @@ import type {
   OpsClient,
   OpsClientSet,
   OpsHold,
+  OpsPosition,
+  OpsRequirement,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -799,6 +801,188 @@ export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, rec
   });
 }
 
+/* ── Requirements and positions (15, Phase 3) ─────────────────── */
+
+export async function addRequirement(input: Omit<OpsRequirement, "id" | "createdAt" | "updatedAt">): Promise<OpsRequirement> {
+  if (!usingConvex()) return repo.addRequirement(input);
+  return (await convexMutation<OpsRequirement>("ops/data:addRequirement", input)) as OpsRequirement;
+}
+
+export async function patchRequirement(
+  requirementId: Id,
+  patch: Partial<OpsRequirement>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchRequirement(requirementId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchRequirement", { requirementId, patch, by, what, reason });
+}
+
+export function requirementIn(db: OpsDatabase, requirementId: Id): OpsRequirement | null {
+  return db.requirements.find((r) => r.id === requirementId) ?? null;
+}
+
+export function requirementForLead(db: OpsDatabase, leadId: Id): OpsRequirement | null {
+  return db.requirements.filter((r) => r.leadId === leadId).sort((a, b) => b.version - a.version)[0] ?? null;
+}
+
+export async function addPosition(input: Omit<OpsPosition, "id" | "createdAt" | "updatedAt">): Promise<OpsPosition> {
+  if (!usingConvex()) return repo.addPosition(input);
+  return (await convexMutation<OpsPosition>("ops/data:addPosition", input)) as OpsPosition;
+}
+
+export async function patchPosition(
+  positionId: Id,
+  patch: Partial<OpsPosition>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchPosition(positionId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchPosition", { positionId, patch, by, what, reason });
+}
+
+export function positionIn(db: OpsDatabase, positionId: Id): OpsPosition | null {
+  return db.positions.find((p) => p.id === positionId) ?? null;
+}
+
+export function positionForOpening(db: OpsDatabase, openingTaId: string): OpsPosition | null {
+  return db.positions.find((p) => p.openingTaId === openingTaId) ?? null;
+}
+
+export function positionsNewestFirst(db: OpsDatabase): OpsPosition[] {
+  return [...db.positions].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * TA says an opening exists (15, Phase 3 step 7).
+ *
+ * Two cases, and they must not be confused. Either we handed a requirement
+ * over and this is TA confirming it — then the position we already have gains
+ * its opening id — or a TA created an opening by hand for a client we know,
+ * and somebody has to link a requirement to it. Either way Ops never invents
+ * an opening id.
+ */
+export async function takeOpeningCreated(data: Record<string, unknown>, now = Date.now()): Promise<OpsPosition | null> {
+  const openingTaId = String(data.openingId ?? "").trim();
+  const clientTaId = String(data.clientId ?? "").trim();
+  if (!openingTaId) return null;
+
+  const db = await desk();
+  if (positionForOpening(db, openingTaId)) return null;
+
+  const title = String(data.title ?? "").trim();
+  // Ours, if we handed one over for this client and it is still waiting for an
+  // id. The oldest waiting one, because they were handed over in order.
+  const waiting = db.positions
+    .filter((p) => p.openingTaId === null && p.clientTaId === clientTaId)
+    .sort((a, b) => a.handedOverAt - b.handedOverAt)[0];
+
+  if (waiting) {
+    await patchPosition(
+      waiting.id,
+      { openingTaId, stage: "searching", taStatus: "open" },
+      null,
+      "position.openingConfirmed",
+      "TA created opening " + openingTaId,
+    );
+    await createTask({
+      kind: "check",
+      title: "The opening is live in TA: " + (title || waiting.title),
+      body: "TA has created it from our requirement. Nothing to do unless the TA asks something.",
+      assigneeId: waiting.ownerId,
+      dueAt: now,
+      subjectType: "position",
+      subjectId: waiting.id,
+      link: "/positions/" + waiting.id,
+    });
+    return { ...waiting, openingTaId, stage: "searching" };
+  }
+
+  // Not ours: a TA opened it directly. We still want it on the client's page,
+  // with somebody asked to link a requirement so the brief is not lost.
+  const client = db.clients.find((c) => c.taClientId === clientTaId) ?? null;
+  if (!client) return null;
+  const made = await addPosition({
+    requirementId: null,
+    clientId: client.id,
+    clientTaId,
+    openingTaId,
+    title: title || openingTaId,
+    stage: "searching",
+    primaryTaId: data.primaryRecruiterId ? String(data.primaryRecruiterId) : null,
+    hundredPercentDay: null,
+    taStatus: "open",
+    jdApprovedAt: null,
+    handedOverAt: now,
+    closedAt: null,
+    ownerId: client.ownerId,
+  });
+  await createTask({
+    kind: "record",
+    title: "Link a requirement: " + made.title,
+    body:
+      "A TA created this opening in the TA System for a client of ours, so Ops has no requirement behind it. Write down what the client asked for, or link the meeting it came from.",
+    assigneeId: client.ownerId,
+    dueAt: now,
+    subjectType: "position",
+    subjectId: made.id,
+    link: "/positions/" + made.id,
+  });
+  return made;
+}
+
+/**
+ * TA has told us something about an opening we hold (step 8).
+ *
+ * Only the facts Ops shows a client are kept: the stage, whether the JD is
+ * approved, and when it closed. TA stays the owner of the opening.
+ */
+export async function takeOpeningUpdate(type: string, data: Record<string, unknown>, now = Date.now()): Promise<void> {
+  const openingTaId = String(data.openingId ?? "").trim();
+  if (!openingTaId) return;
+  const db = await desk();
+  const position = positionForOpening(db, openingTaId);
+  if (!position) return;
+
+  if (type === "opening.jd_approved") {
+    await patchPosition(position.id, { jdApprovedAt: now }, null, "position.jdApproved", null);
+    return;
+  }
+  if (type === "opening.closed") {
+    await patchPosition(
+      position.id,
+      { stage: "closed", taStatus: "closed", closedAt: now },
+      null,
+      "position.closed",
+      String(data.reason ?? "") || null,
+    );
+    return;
+  }
+  if (type === "opening.working_stage_changed") {
+    const stage = String(data.workingStage ?? "");
+    await patchPosition(position.id, { taStatus: stage || position.taStatus }, null, "position.workingStage", stage || null);
+    return;
+  }
+  const status = String(data.status ?? "").trim();
+  if (status) {
+    await patchPosition(
+      position.id,
+      { taStatus: status, stage: status === "on_hold" ? "on_hold" : status === "closed" ? "closed" : "searching" },
+      null,
+      "position.updated",
+      status,
+    );
+  }
+}
+
 /* ── Client sets: what the client is sent (15, Phase 4) ───────── */
 
 export async function addClientSet(input: Omit<OpsClientSet, "id" | "createdAt" | "updatedAt">): Promise<OpsClientSet> {
@@ -1263,6 +1447,17 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
     // Some events are not only recorded: a set TA says is ready becomes a set
     // on our side, with its due date and its clock (15, Phase 4 step 2).
     if (event.type === "client_set.ready") await takeClientSetReady(event.data, now);
+    // TA owns the openings, so Ops learns about them here rather than
+    // guessing (15, Phase 3 steps 7 and 8).
+    if (event.type === "opening.created") await takeOpeningCreated(event.data, now);
+    if (
+      event.type === "opening.updated" ||
+      event.type === "opening.jd_approved" ||
+      event.type === "opening.closed" ||
+      event.type === "opening.working_stage_changed"
+    ) {
+      await takeOpeningUpdate(event.type, event.data, now);
+    }
     handled.push({ taEventId: event.id, handledAt: now });
   }
 

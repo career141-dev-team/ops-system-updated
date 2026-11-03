@@ -30,6 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/" className="hover:text-ink">Your day</Link>
               <Link href="/leads" className="hover:text-ink">Leads</Link>
               <Link href="/clients" className="hover:text-ink">Clients</Link>
+              <Link href="/positions" className="hover:text-ink">Positions</Link>
               <Link href="/sets" className="hover:text-ink">CV sets</Link>
               <Link href="/holds" className="hover:text-ink">Holds</Link>
               <Link href="/mail" className="hover:text-ink">Mail</Link>

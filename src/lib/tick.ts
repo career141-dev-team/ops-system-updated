@@ -44,6 +44,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "The CV ownership window has closed",
     body: "After today a claim on any CV in this set is refused. Nothing more to do unless the client claims one.",
   },
+  "lead.inviteBack": {
+    kind: "call",
+    title: "Time to go back to a client we turned down",
+    body: "The package was wrong for the role when we last spoke. Ask them whether anything has changed.",
+  },
   "feedback.call": {
     kind: "call",
     title: "Still no feedback - ring them",
