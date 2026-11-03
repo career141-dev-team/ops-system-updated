@@ -42,7 +42,7 @@ export const STATE_MEANINGS: Record<LeadState, string> = {
   new: "Just arrived, nobody has looked yet",
   intro_call: "An intro call is the next thing",
   waiting_agreement: "Waiting on the agreement",
-  requirement: "Agreement already signed — straight to the requirement meeting",
+  requirement: "Agreement done — the requirement meeting is next",
   declined_industry: "Declined: banking or finance",
   closed_silent: "Closed: they stopped answering",
   closed_other: "Closed for another reason",

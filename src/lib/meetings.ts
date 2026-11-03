@@ -164,3 +164,36 @@ export function missingFromHeld(notes: HeldNotes): string[] {
 export function agreementDueAt(heldAt: number, hours: number): number {
   return heldAt + hours * HOUR;
 }
+
+/**
+ * The booked meetings in the days ahead (15, Phase 2 step 20).
+ *
+ * The view the desk actually asks for every morning: who are we talking to,
+ * and when. Soonest first, and a meeting whose time has passed while nobody
+ * marked it held or not held stays in the list rather than disappearing — that
+ * is exactly the one somebody has to chase.
+ */
+export function meetingsAhead<T extends { at: number; state: string }>(
+  meetings: T[],
+  now: number,
+  withinDays = 7,
+): T[] {
+  const until = now + withinDays * 86_400_000;
+  return meetings
+    .filter((m) => m.state === "booked" && m.at <= until)
+    .sort((a, b) => a.at - b.at);
+}
+
+/** "Tomorrow at 10:30", in Colombo, or how long ago it should have happened. */
+export function whenInWords(at: number, now: number): string {
+  const day = (t: number) => new Date(t + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const time = new Date(at + 5.5 * 3_600_000).toISOString().slice(11, 16);
+  const days = Math.round((Date.parse(day(at)) - Date.parse(day(now))) / 86_400_000);
+  if (days < 0) {
+    const ago = -days;
+    return (ago === 1 ? "Yesterday" : ago + " days ago") + " at " + time + " — was it held?";
+  }
+  if (days === 0) return "Today at " + time;
+  if (days === 1) return "Tomorrow at " + time;
+  return day(at) + " at " + time;
+}

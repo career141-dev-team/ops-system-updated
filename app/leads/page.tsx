@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createLead } from "@/app/actions";
-import { desk, leadsNewestFirst } from "@/data/desk";
+import { desk, leadIn, leadsNewestFirst, member as memberIn } from "@/data/desk";
+import { whereItStands } from "@/lib/esa";
+import { KIND_MEANINGS, type MeetingKind, meetingsAhead, whenInWords } from "@/lib/meetings";
 import { LEAD_SOURCES, SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -29,6 +31,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const waiting = leads.filter((l) => l.state === "new");
   const working = leads.filter((l) => ["intro_call", "waiting_agreement", "requirement"].includes(l.state));
   const closed = leads.filter((l) => l.state.startsWith("closed") || l.state === "declined_industry");
+  // The two views the desk asks for every morning (step 20): who are we
+  // meeting, and which agreements are still not back. Both are the whole
+  // desk's, not one person's - anybody can see that something has stalled.
+  const now = Date.now();
+  const ahead = meetingsAhead(db.meetings, now);
+  const unsigned = db.agreements
+    .filter((e) => ["sent", "chasing", "negotiating", "expired"].includes(e.state))
+    .sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const nameOf = (id: string) => db.members.find((m) => m.id === id)?.name ?? "somebody";
 
@@ -57,10 +67,74 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <h1 className="text-[17px] font-medium">Leads</h1>
       <p className="mt-1 text-[13.5px] text-ink-soft">
         A company has asked us to find somebody. Four things get checked: are they already ours, are they banking or
-        finance, do they have a signed agreement, and who owns them.
+        finance, do they have a signed agreement, and who owns them. At the top: what is booked, and what has not come
+        back.
       </p>
 
       {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+        <h2 className="text-[14.5px] font-medium">
+          Meetings booked
+          <span className="ml-2 text-[12px] font-normal text-ink-faint">{ahead.length}</span>
+        </h2>
+        {ahead.length === 0 && (
+          <p className="mt-2 text-[13px] text-ink-soft">Nothing booked in the next week.</p>
+        )}
+        {ahead.map((meeting) => {
+          const theirLead = leadIn(db, meeting.leadId);
+          const late = meeting.at < now;
+          return (
+            <div
+              key={meeting.id}
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0"
+            >
+              <span className={"text-[12.5px] " + (late ? "text-danger" : "text-ink-soft")}>
+                {whenInWords(meeting.at, now)}
+              </span>
+              <Link href={"/leads/" + (theirLead?.id ?? "")} className="text-[13.5px] text-brand hover:underline">
+                {theirLead?.company ?? "a lead that is gone"}
+              </Link>
+              <span className="text-[12px] text-ink-faint">
+                {KIND_MEANINGS[meeting.kind as MeetingKind] ?? meeting.kind}
+              </span>
+              <span className="ml-auto text-[12px] text-ink-faint">
+                {theirLead ? nameOf(theirLead.ownerId) : ""}
+              </span>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+        <h2 className="text-[14.5px] font-medium">
+          Agreements not back yet
+          <span className="ml-2 text-[12px] font-normal text-ink-faint">{unsigned.length}</span>
+        </h2>
+        {unsigned.length === 0 && (
+          <p className="mt-2 text-[13px] text-ink-soft">Nothing waiting on a signature.</p>
+        )}
+        {unsigned.map((esa) => {
+          const theirLead = leadIn(db, esa.leadId);
+          const over = esa.expiresAt !== null && esa.expiresAt < now;
+          return (
+            <div key={esa.id} className="border-t border-rule py-3 first:border-t-0">
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <Link href={"/leads/" + esa.leadId} className="text-[13.5px] text-brand hover:underline">
+                  {theirLead?.company ?? String(esa.fields.companyName ?? "a client")}
+                </Link>
+                <span className="text-[12px] text-ink-faint">version {esa.version}</span>
+                <span className="ml-auto text-[12px] text-ink-faint">
+                  {memberIn(db, esa.ownerId)?.name ?? "nobody"}
+                </span>
+              </div>
+              <p className={"mt-0.5 text-[12.5px] " + (over ? "text-danger" : "text-ink-soft")}>
+                {whereItStands({ ...esa, state: esa.state as Parameters<typeof whereItStands>[0]["state"] }, now)}
+              </p>
+            </div>
+          );
+        })}
+      </section>
 
       <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
         <h2 className="text-[14.5px] font-medium">
@@ -77,7 +151,21 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           <span className="ml-2 text-[12px] font-normal text-ink-faint">{working.length}</span>
         </h2>
         {working.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing in hand.</p>}
-        {working.map(row)}
+        {/* By the state it is in: waiting on a call is not the same work as
+            waiting on a signature, and one list hid the difference. */}
+        {(["intro_call", "waiting_agreement", "requirement"] as LeadState[]).map((state) => {
+          const theirs = working.filter((l) => l.state === state);
+          if (!theirs.length) return null;
+          return (
+            <div key={state} className="mt-3 first:mt-2">
+              <p className="text-[12.5px] text-ink-soft">
+                {STATE_MEANINGS[state]}
+                <span className="ml-2 text-ink-faint">{theirs.length}</span>
+              </p>
+              {theirs.map(row)}
+            </div>
+          );
+        })}
       </section>
 
       <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">

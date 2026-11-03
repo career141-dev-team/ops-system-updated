@@ -94,3 +94,37 @@ test("the role and the package are asked for, and what is missing is said", () =
 test("the agreement is due two hours after the call", () => {
   assert.equal(agreementDueAt(MONDAY_10, 2), MONDAY_10 + 2 * HOUR);
 });
+
+test("the week ahead keeps a meeting whose time has passed", async () => {
+  // The one somebody has to chase is exactly the meeting that went by with
+  // nobody marking it held, so it stays in the list (step 20).
+  const { meetingsAhead } = await import("@/lib/meetings");
+  const now = Date.UTC(2026, 10, 3, 4, 0);
+  const rows = [
+    { id: "m1", at: now + 2 * DAY, state: "booked" },
+    { id: "m2", at: now - 1 * DAY, state: "booked" },
+    { id: "m3", at: now + 20 * DAY, state: "booked" },
+    { id: "m4", at: now + 1 * DAY, state: "held" },
+    { id: "m5", at: now + 1 * DAY, state: "cancelled" },
+  ];
+  assert.deepEqual(
+    meetingsAhead(rows, now).map((m) => m.id),
+    ["m2", "m1"],
+    "soonest first, the one already gone at the top, and nothing settled",
+  );
+  assert.deepEqual(
+    meetingsAhead(rows, now, 30).map((m) => m.id),
+    ["m2", "m1", "m3"],
+  );
+});
+
+test("when a meeting is says itself in plain words", async () => {
+  const { whenInWords } = await import("@/lib/meetings");
+  // 09:30 Colombo is 04:00 UTC.
+  const today = Date.UTC(2026, 10, 3, 4, 0);
+  assert.match(whenInWords(today, today), /^Today at 09:30$/);
+  assert.match(whenInWords(today + 86_400_000, today), /^Tomorrow at 09:30$/);
+  assert.match(whenInWords(today - 86_400_000, today), /^Yesterday at 09:30 — was it held\?$/);
+  assert.match(whenInWords(today - 3 * 86_400_000, today), /^3 days ago at 09:30 — was it held\?$/);
+  assert.match(whenInWords(today + 5 * 86_400_000, today), /^2026-11-08 at 09:30$/);
+});
