@@ -250,6 +250,27 @@ export default defineSchema({
     .index("by_state", ["state"])
     .index("by_created", ["createdAt"]),
 
+  /** A position held because the client went quiet (15, Phase 4). */
+  opsHolds: defineTable({
+    openingTaId: v.string(),
+    setId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    reason: v.string(),
+    liftedReason: v.union(v.string(), v.null()),
+    noticeMessageId: v.union(v.string(), v.null()),
+    proposedAt: v.number(),
+    heldAt: v.union(v.number(), v.null()),
+    liftedAt: v.union(v.number(), v.null()),
+    reviewAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_state", ["state"])
+    .index("by_created", ["createdAt"]),
+
   opsEsa: defineTable({
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),

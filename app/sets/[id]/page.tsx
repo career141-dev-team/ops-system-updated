@@ -1,9 +1,26 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { dropFromClientSet, recordSetReceived, reviewClientSet, sendClientSet } from "@/app/actions";
-import { clientIn, clientSetIn, desk, fileIn, member as memberIn } from "@/data/desk";
+import {
+  dropFromClientSet,
+  recordClientDecision,
+  recordCvClaim,
+  recordSetReceived,
+  reviewClientSet,
+  sendClientSet,
+} from "@/app/actions";
+import { clientIn, clientSetIn, desk, fileIn, liveHoldFor, member as memberIn, numberOf } from "@/data/desk";
 import { MIN_CVS, STATE_MEANINGS, type SetState, dueInWords, whereItStands } from "@/lib/clientSets";
+import {
+  CLIENT_DECISIONS,
+  DECISION_MEANINGS,
+  type ClientDecision,
+  OWNERSHIP_WORKING_DAYS,
+  nextFeedbackStep,
+  ownershipWindow,
+  silentDays,
+  windowInWords,
+} from "@/lib/clientFeedback";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -30,6 +47,25 @@ export default async function SetPage({
   const missing = set.candidates.filter((c) => !c.fileId);
   const ready = set.candidates.length >= MIN_CVS && missing.length === 0;
   const theirAudit = db.audit.filter((a) => a.subjectType === "clientSet" && a.subjectId === set.id);
+  // Everything after the set counts from the day the client received it.
+  const holidays = db.holidays.map((h) => h.date);
+  const window =
+    set.receivedAt === null
+      ? null
+      : ownershipWindow(set.receivedAt, holidays, numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS));
+  const heardAt = set.candidates.reduce<number | null>((latest, c) => {
+    const at = c.decidedAt ?? c.claimedAt ?? null;
+    return at && (!latest || at > latest) ? at : latest;
+  }, null);
+  const silent = set.receivedAt === null ? 0 : silentDays(set.receivedAt, heardAt, now);
+  const feedback =
+    set.state === "sent"
+      ? nextFeedbackStep(silent, {
+          chaseDays: numberOf(db, "feedback.chaseDays", 1),
+          stopAfterSilentDays: numberOf(db, "feedback.stopAfterSilentDays", 4),
+        })
+      : null;
+  const hold = liveHoldFor(db, set.openingTaId);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
@@ -84,6 +120,49 @@ export default async function SetPage({
               <span className="ml-auto text-[11.5px] text-ink-faint">{who.applicationTaId}</span>
               {/* A candidate with no prepared CV has to come out, or the set
                   waits for TA for ever. It needs a reason, like every drop. */}
+              {who.decision && (
+                <span className="w-full text-[12.5px] text-ink-soft">
+                  {DECISION_MEANINGS[who.decision as ClientDecision] ?? who.decision}
+                  {who.decisionReason ? " · “" + who.decisionReason + "”" : ""}
+                </span>
+              )}
+              {who.claimedAt && (
+                <span
+                  className={
+                    "w-full text-[12.5px] " + (who.claimVerdict === "dropped" ? "text-ink-soft" : "text-danger")
+                  }
+                >
+                  {who.claimVerdict === "dropped" ? "Theirs: " : "Claim refused: "}
+                  {who.claimReason}
+                </span>
+              )}
+              {mayManage && set.state === "sent" && !who.decision && !who.claimedAt && (
+                <div className="flex w-full flex-col gap-2 pt-1">
+                  <form action={recordClientDecision} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="setId" value={set.id} />
+                    <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                    <select name="decision" className={field} defaultValue="shortlisted">
+                      {CLIENT_DECISIONS.map((d) => (
+                        <option key={d} value={d}>
+                          {DECISION_MEANINGS[d]}
+                        </option>
+                      ))}
+                    </select>
+                    <input name="reason" placeholder="what the client said" className={field + " flex-1"} />
+                    <button className={plain}>Record what they said</button>
+                  </form>
+                  <form action={recordCvClaim} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="setId" value={set.id} />
+                    <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                    <button className={plain}>They say this one was already theirs</button>
+                    <span className="text-[11.5px] text-ink-faint">
+                      {window && now <= window.closesAt
+                        ? "Inside the window, so the candidate comes out of the set"
+                        : "The window has closed, so this would be refused"}
+                    </span>
+                  </form>
+                </div>
+              )}
               {mayManage && !who.fileId && set.state !== "sent" && (
                 <form action={dropFromClientSet} className="flex w-full flex-wrap items-center gap-2 pt-1">
                   <input type="hidden" name="setId" value={set.id} />
@@ -131,6 +210,32 @@ export default async function SetPage({
               <input type="hidden" name="setId" value={set.id} />
               <button className={button}>Draft the email and send</button>
             </form>
+          )}
+        </section>
+      )}
+
+      {set.state === "sent" && window && (
+        <section className={card}>
+          <h2 className="text-[14.5px] font-medium">The clocks this set started</h2>
+          <p className={"mt-1 text-[13px] " + (now > window.closesAt ? "text-ink-soft" : "")}>
+            {windowInWords(window, now, holidays)}. After it, a claim that a candidate was already theirs is refused.
+          </p>
+          <p className="mt-1 text-[13px] text-ink-soft">
+            {heardAt === null
+              ? silent === 0
+                ? "Nothing back from them yet."
+                : silent + (silent === 1 ? " day" : " days") + " of silence."
+              : "Last heard from them " + (silent === 0 ? "today" : silent + (silent === 1 ? " day ago" : " days ago")) + "."}{" "}
+            {feedback?.because}
+          </p>
+          {hold && (
+            <p className="mt-1 text-[13px]">
+              <Link href={"/holds/" + hold.id} className="text-brand hover:underline">
+                {hold.state === "proposed" ? "A hold is proposed on this position" : "This position is on hold"}
+              </Link>
+              {" · "}
+              {hold.reason}
+            </p>
           )}
         </section>
       )}

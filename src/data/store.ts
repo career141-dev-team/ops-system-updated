@@ -21,6 +21,7 @@ import type {
   OpsCallLog,
   OpsClient,
   OpsClientSet,
+  OpsHold,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -478,6 +479,40 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "clientSet", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Holds (15, Phase 4 steps 12 and 13) ────────────────── */
+
+  holdIn(holdId: Id): OpsHold | null {
+    return load().holds.find((h) => h.id === holdId) ?? null;
+  },
+
+  addHold(input: Omit<OpsHold, "id" | "createdAt" | "updatedAt">): OpsHold {
+    const db = load();
+    const now = Date.now();
+    const row: OpsHold = { ...input, id: id("hold"), createdAt: now, updatedAt: now };
+    db.holds.push(row);
+    audit({
+      actorId: null,
+      action: "hold.proposed",
+      subjectType: "hold",
+      subjectId: row.id,
+      before: null,
+      after: row.openingTaId,
+      reason: row.reason,
+    });
+    save();
+    return row;
+  },
+
+  patchHold(holdId: Id, patch: Partial<OpsHold>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.holds.find((h) => h.id === holdId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "hold", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

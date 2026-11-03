@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -71,6 +71,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsEsa").collect(),
       ctx.db.query("opsClients").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsClientSets").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsHolds").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -99,6 +100,7 @@ export const snapshot = internalQuery({
       agreements: agreements.map(row),
       clients: clients.map(row),
       clientSets: clientSets.map(row),
+      holds: holds.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -453,6 +455,64 @@ export const addClientSet = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** A position held because the client went quiet (15, Phase 4 step 12). */
+export const addHold = internalMutation({
+  args: {
+    openingTaId: v.string(),
+    setId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    reason: v.string(),
+    liftedReason: v.union(v.string(), v.null()),
+    noticeMessageId: v.union(v.string(), v.null()),
+    proposedAt: v.number(),
+    heldAt: v.union(v.number(), v.null()),
+    liftedAt: v.union(v.number(), v.null()),
+    reviewAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsHolds", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: null,
+      action: "hold.proposed",
+      subjectType: "hold",
+      subjectId: id as string,
+      after: args.openingTaId,
+      reason: args.reason,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchHold = internalMutation({
+  args: {
+    holdId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const hold = await ctx.db.get(args.holdId as Id<"opsHolds">);
+    if (!hold) return { ok: false };
+    await ctx.db.patch(hold._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(hold._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "hold",
+      subjectId: hold._id as string,
+      before: hold.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

@@ -27,6 +27,9 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "set.ownershipWorkingDays", value: 7, updatedBy: null, updatedAt: null },
       { key: "feedback.chaseDays", value: 1, updatedBy: null, updatedAt: null },
       { key: "feedback.stopAfterSilentDays", value: 4, updatedBy: null, updatedAt: null },
+      { key: "feedback.callAfterDays", value: 1, updatedBy: null, updatedAt: null },
+      { key: "hold.afterDays", value: 14, updatedBy: null, updatedAt: null },
+      { key: "hold.reviewDays", value: 30, updatedBy: null, updatedAt: null },
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
       // From the agreement itself, which the owner said is the truth (3 Nov):
       // 1% a month, compounded, and nothing on an invoice disputed in good
@@ -65,6 +68,7 @@ export function seed(now = Date.now()): OpsDatabase {
     clients: [],
     // No sample sets: one arrives when TA says a round is ready.
     clientSets: [],
+    holds: [],
     leads: [
       {
         id: "ld_new",
@@ -252,6 +256,86 @@ We can start the search as soon as it is signed.
 Kind regards,
 {{opsPerson}}
 Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "feedback.chase",
+        channel: "email",
+        name: "Asking a client for their feedback",
+        subject: "{{client}} > {{position}} > SET {{setNumber}}",
+        body: `Dear {{contact}},
+
+Have you had a chance to look at the CVs we sent? Any feedback, even a line each, lets us carry on in the right direction.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "claim.noted",
+        channel: "email",
+        name: "A claimed CV, inside the window",
+        subject: "{{client}} > {{position}} > SET {{setNumber}}",
+        body: `Dear {{contact}},
+
+Thank you for letting us know about {{candidate}}. We have taken them out of this set; the rest of it stands.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "claim.refused",
+        channel: "email",
+        name: "A claimed CV, after the window",
+        subject: "{{client}} > {{position}} > SET {{setNumber}}",
+        body: `Dear {{contact}},
+
+Thank you for your note about {{candidate}}. Our agreement gives seven working days from receiving a set to tell us a candidate was already yours, and that period closed on {{closedOn}}, so {{candidate}} stays with us for this role.
+
+We are happy to go through it with you.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "inactive.notice",
+        channel: "email",
+        name: "Putting a position on hold",
+        subject: "{{client}} > {{position}} - on hold",
+        body: `Dear {{contact}},
+
+We have not heard back about the CVs for {{position}}, so we are putting the search on hold for now rather than keep sending.
+
+Tell us whenever you are ready and we will start again from where we left off; nothing is lost.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "set.group_post",
+        channel: "group_post",
+        name: "The set, for the client's WhatsApp group",
+        subject: "",
+        body: `{{client}} > {{position}} > SET {{setNumber}}
+
+{{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

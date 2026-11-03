@@ -62,9 +62,18 @@ System rather than on an opening Ops created itself.
 | The day they received it, correctable | `recordSetReceived` | everything after the set counts from this |
 | Screens | `app/sets`, `app/sets/[id]` | waiting to go, soonest due first; then sent |
 
-Still to come in phase 4: the client WhatsApp group post, the seven-working-day
-ownership window and its claims, the feedback chase and its escalation, the
-silence hold, the client's decisions read back into TA, and the depth rules.
+| The clocks a set starts, all from the day they received it | `startReceiptClocks` in `src/data/desk.ts` | ownership, feedback chase, the two weeks before a hold, and three months for an unreported hire |
+| The seven-working-day CV ownership window | `ownershipWindow` in `src/lib/clientFeedback.ts` | working days and holidays, exactly as the agreement words it |
+| A claim: theirs inside the window, refused after it | `recordCvClaim` in `app/actions.ts` | the reply is drafted either way; TA is told when a candidate becomes theirs |
+| The feedback chase: ask, then call, then stop | `chaseTheFeedback` in `src/data/desk.ts`, from the clock | the chase is drafted for approval; after the stop day nothing more is drafted |
+| What the client decided, in their own words | `recordClientDecision` | a rejection without their words is refused; TA is told so it moves the stage |
+| The silence hold, and lifting it | `proposeTheHold`, `approveTheHold`, `liftTheHold`; screens `app/holds` | proposed by a clock, held only when a person approves the notice, reviewed every thirty days, and never closing by itself |
+
+Still to come in phase 4: the client WhatsApp group post, the depth rules
+("three left means search again", "five shortlisted means hold"), the inbound
+reader that proposes a client's decisions instead of them being typed (that is
+Phase 9 step 8), and the surcharge invoice an unreported hire leads to (the
+invoice engine is Phase 6).
 
 ## Not built
 

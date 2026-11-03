@@ -17,7 +17,10 @@ import {
   clientFromLead,
   clientIn,
   clientSetIn,
+  holdIn,
   patchClientSet,
+  patchHold,
+  startReceiptClocks,
   clientsNewestFirst,
   patchClient,
   draftMessage,
@@ -61,6 +64,15 @@ import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
+import {
+  HOLD_REVIEW_DAYS,
+  OWNERSHIP_WORKING_DAYS,
+  claimVerdict,
+  ownershipWindow,
+  problemWithDecision,
+  problemWithHold,
+  problemWithLift,
+} from "@/lib/clientFeedback";
 import {
   MIN_CVS,
   type SetState,
@@ -1801,6 +1813,10 @@ export async function sendClientSet(formData: FormData): Promise<void> {
     null,
   );
   await cancelClocksFor(db, "clientSet", setId, member.id, "The set has gone.", ["set.due"]);
+  // Everything after a set counts from the day the client received it (step 6):
+  // seven working days of CV ownership, the feedback chase, the two weeks before
+  // a hold, and the three months before an unreported hire is asked about.
+  await startReceiptClocks(db, { ...row, state: "sent", receivedAt: now }, now);
   await queueTaWrite(
     "/integrations/v1/client-sets/" + row.taRoundId + "/sent",
     { sentAt: now, receivedAt: now, sentTo: to },
@@ -1885,4 +1901,277 @@ export async function dropFromClientSet(formData: FormData): Promise<void> {
         ? "It is now short of " + minimum + ", so it cannot go until TA adds somebody."
         : "The set can still go: " + left.length + " CVs."),
   );
+}
+
+/* ── After the set has gone (15, Phase 4 steps 7 to 13) ──────── */
+
+/**
+ * The client says they already had this candidate (step 7).
+ *
+ * Inside the seven working days we take their word and the candidate comes out
+ * of the set — their record against ours, and arguing costs more than the fee.
+ * After the window it is refused, which is the whole point of counting it. The
+ * reply is drafted either way, and TA is told when a candidate becomes theirs.
+ */
+export async function recordCvClaim(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const who = String(formData.get("applicationTaId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (row.receivedAt === null) back("We do not know when they received this set, so the window cannot be counted.");
+
+  const taken = row.candidates.find((c) => c.applicationTaId === who);
+  if (!taken) back("Nobody in this set by that id.");
+  if (taken?.claimedAt) back("That claim is already recorded.");
+
+  const now = Date.now();
+  const window = ownershipWindow(
+    row.receivedAt as number,
+    db.holidays.map((h) => h.date),
+    numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS),
+  );
+  const answer = claimVerdict(window.closesAt, now);
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+
+  const candidates = row.candidates.map((c) =>
+    c.applicationTaId === who
+      ? { ...c, claimedAt: now, claimVerdict: answer.verdict, claimReason: answer.because }
+      : c,
+  );
+  await patchClientSet(setId, { candidates }, member.id, "clientSet.claim." + answer.verdict, answer.because);
+
+  // Their candidate now, so TA must know: the search must not keep working on
+  // somebody the client owns.
+  if (answer.verdict === "dropped") {
+    await queueTaWrite(
+      "/integrations/v1/applications/" + who + "/client-owned",
+      { claimedAt: now, setId, because: answer.because },
+      { type: "clientSet", id: setId },
+    );
+  }
+
+  const wording = templateFor(db, answer.templateKey);
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? row.name.split(" > ")[0])
+      .replace(/\{\{position\}\}/g, row.role)
+      .replace(/\{\{setNumber\}\}/g, String(row.setNumber))
+      .replace(/\{\{candidate\}\}/g, taken?.name ?? "the candidate")
+      .replace(/\{\{closedOn\}\}/g, colomboDateInWords(window.closesAt))
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: row.sentTo,
+    subject: fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}"),
+    body: fill(wording?.body ?? "Dear all,"),
+    templateKey: answer.templateKey,
+    subjectType: "clientSet",
+    subjectId: setId,
+  });
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        answer.verdict === "dropped"
+          ? "Recorded as theirs, and the TA System will be told. The reply is drafted - read it, then approve it."
+          : "Recorded as refused: the window had closed. The reply is drafted - read it before it goes.",
+      ),
+  );
+}
+
+/**
+ * What the client decided about one candidate (step 9).
+ *
+ * Typed in by a person for now, from a group message, a call or an email. The
+ * reason is the client's own words, which is what the owner's rule means, and
+ * TA is told so it can move the stage and send its own rejection notice.
+ */
+export async function recordClientDecision(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const who = String(formData.get("applicationTaId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+
+  const decision = String(formData.get("decision") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithDecision(decision, reason);
+  if (problem) back(problem);
+  if (!row.candidates.some((c) => c.applicationTaId === who)) back("Nobody in this set by that id.");
+
+  const now = Date.now();
+  const candidates = row.candidates.map((c) =>
+    c.applicationTaId === who ? { ...c, decision, decisionReason: reason, decidedAt: now } : c,
+  );
+  await patchClientSet(setId, { candidates }, member.id, "clientSet.decision." + decision, reason);
+
+  // The client has spoken, so nothing about this set is chased any more.
+  const stopped = await cancelClocksFor(db, "clientSet", setId, member.id, "The client has answered.", [
+    "feedback.chase",
+    "feedback.call",
+    "silence.hold",
+  ]);
+
+  await queueTaWrite(
+    "/integrations/v1/applications/" + who + "/client-decision",
+    { decision, reason, decidedAt: now, setId, roundId: row.taRoundId },
+    { type: "clientSet", id: setId },
+  );
+  revalidatePath(here);
+  back(
+    "Recorded in their words, and the TA System will be told." +
+      (stopped ? " " + stopped + (stopped === 1 ? " clock" : " clocks") + " stopped: they have answered." : ""),
+  );
+}
+
+/**
+ * Approve the hold, which is what puts it on (step 12).
+ *
+ * The notice to the client is drafted here, and the position only counts as
+ * held once a person has approved it. The thirty-day review starts at the same
+ * time, because the owner's rule is that a hold never closes by itself.
+ */
+export async function approveTheHold(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const holdId = String(formData.get("holdId") ?? "");
+  const here = "/holds/" + holdId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const hold = holdIn(db, holdId);
+  if (!hold) redirect("/holds?msg=" + encodeURIComponent("That hold is gone."));
+  const row = hold as NonNullable<typeof hold>;
+  if (row.state !== "proposed") back("That hold is not waiting to be approved.");
+
+  const reason = String(formData.get("reason") ?? "").trim() || row.reason;
+  const problem = problemWithHold(reason);
+  if (problem) back(problem);
+
+  const set = row.setId ? clientSetIn(db, row.setId) : null;
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const wording = templateFor(db, "inactive.notice");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{position\}\}/g, set?.role ?? "the role")
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: set?.sentTo ?? [],
+    subject: fill(wording?.subject ?? "{{client}} > {{position}} - on hold"),
+    body: fill(wording?.body ?? "Dear all,"),
+    templateKey: "inactive.notice",
+    subjectType: "hold",
+    subjectId: holdId,
+  });
+
+  const now = Date.now();
+  await patchHold(
+    holdId,
+    {
+      state: "on_hold",
+      reason,
+      heldAt: now,
+      noticeMessageId: message.id,
+      reviewAt: now + numberOf(db, "hold.reviewDays", HOLD_REVIEW_DAYS) * 86_400_000,
+    },
+    member.id,
+    "hold.held",
+    reason,
+  );
+  // TA stops working the opening, and is told why.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/status",
+    { status: "on_hold", reason: "client inactive: " + reason },
+    { type: "hold", id: holdId },
+  );
+  await startTimer({
+    kind: "hold.review",
+    subjectType: "hold",
+    subjectId: holdId,
+    startsAt: now,
+    dueAt: now + numberOf(db, "hold.reviewDays", HOLD_REVIEW_DAYS) * 86_400_000,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: set?.name ?? row.openingTaId },
+  });
+  revalidatePath(here);
+  revalidatePath("/holds");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("On hold, and the TA System will be told. The notice is drafted - read it, then approve it."),
+  );
+}
+
+/** The client came back, or somebody decided: the search is on again (step 13). */
+export async function liftTheHold(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const holdId = String(formData.get("holdId") ?? "");
+  const here = "/holds/" + holdId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const hold = holdIn(db, holdId);
+  if (!hold) redirect("/holds?msg=" + encodeURIComponent("That hold is gone."));
+  const row = hold as NonNullable<typeof hold>;
+  if (row.state === "lifted") back("That hold is already lifted.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithLift(reason);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchHold(
+    holdId,
+    { state: "lifted", liftedReason: reason, liftedAt: now, reviewAt: null },
+    member.id,
+    "hold.lifted",
+    reason,
+  );
+  await cancelClocksFor(db, "hold", holdId, member.id, "The hold is lifted.");
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/status",
+    { status: "open", reason: "hold lifted: " + reason },
+    { type: "hold", id: holdId },
+  );
+  // The feedback chase starts again from today, as it would after a new set.
+  const set = row.setId ? clientSetIn(db, row.setId) : null;
+  if (set) {
+    await startTimer({
+      kind: "feedback.chase",
+      subjectType: "clientSet",
+      subjectId: set.id,
+      startsAt: now,
+      dueAt: now + numberOf(db, "feedback.chaseDays", 1) * 86_400_000,
+      warnAt: null,
+      ownerId: set.ownerId,
+      payload: { label: set.name },
+    });
+  }
+  revalidatePath(here);
+  revalidatePath("/holds");
+  back("Lifted. The TA System will be told, and the feedback chase starts again from today.");
 }

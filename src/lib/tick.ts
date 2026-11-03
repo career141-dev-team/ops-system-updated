@@ -44,6 +44,26 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "The CV ownership window has closed",
     body: "After today a claim on any CV in this set is refused. Nothing more to do unless the client claims one.",
   },
+  "feedback.call": {
+    kind: "call",
+    title: "Still no feedback - ring them",
+    body: "Asked in writing and heard nothing. Call today, then write down what they said.",
+  },
+  "silence.hold": {
+    kind: "decide",
+    title: "Two weeks of silence on a set",
+    body: "The notice is drafted. Approve it and the position goes on hold; it never closes by itself.",
+  },
+  "hold.review": {
+    kind: "decide",
+    title: "A position has been on hold for thirty days",
+    body: "The owner's rule: somebody looks at it every thirty days. Lift it, or leave it and be asked again.",
+  },
+  "hire.unreported": {
+    kind: "decide",
+    title: "Three months since the set went, and no hire reported",
+    body: "If they hired somebody from it without telling us, the agreement adds a 50% surcharge. Check, then decide.",
+  },
   "feedback.chase": {
     kind: "call",
     title: "No feedback from the client yet",
