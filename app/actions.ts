@@ -89,6 +89,7 @@ import {
   defaultFields,
   expiresAt as esaExpiresAt,
   nextChaseAt,
+  problemWithChanges,
   problemWithDraft,
   problemWithSigned,
 } from "@/lib/esa";
@@ -1124,6 +1125,14 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   const row = esa as NonNullable<typeof esa>;
 
   if (!canMoveTo(row.state as EsaState, "sent")) back("An agreement in that state cannot be sent.");
+  // A client who wanted changes gets the next version, not the same document
+  // again: the version number moves, the chase starts from the beginning, and
+  // the clocks of the version before it stop (3 Nov).
+  const again = row.state === "negotiating";
+  // Worked out before the patch: `row` is the record the patch writes to, so
+  // reading row.version after it has moved said "version 3" on a version 2
+  // (3 Nov, found by walking it).
+  const version = again ? row.version + 1 : row.version;
   const problem = problemWithDraft(row.fields);
   if (problem) back(problem);
 
@@ -1154,12 +1163,20 @@ export async function sendAgreement(formData: FormData): Promise<void> {
 
   const now = Date.now();
   const days = numberOf(db, "esa.declineDays", 14);
+  if (again) await cancelClocksFor(db, "esa", esaId, member.id, "A new version of the agreement is going out.");
   await patchAgreement(
     esaId,
-    { state: "sent", sentAt: now, sentMessageId: message.id, expiresAt: esaExpiresAt(now, days) },
+    {
+      state: "sent",
+      version,
+      chaseStep: 0,
+      sentAt: now,
+      sentMessageId: message.id,
+      expiresAt: esaExpiresAt(now, days),
+    },
     member.id,
-    "esa.sent",
-    null,
+    again ? "esa.sentAgain" : "esa.sent",
+    again ? "Version " + version : null,
   );
 
   const first = nextChaseAt(0, now);
@@ -1187,7 +1204,64 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   });
 
   revalidatePath(here);
-  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("The cover email is drafted. Read it, then approve it to send."));
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        again
+          ? "Version " + version + " is drafted, with the two weeks and the chase starting again. Read it, then approve it."
+          : "The cover email is drafted. Read it, then approve it to send.",
+      ),
+  );
+}
+
+/**
+ * They want changes (15, Phase 2 step 16).
+ *
+ * The chase stops, because a client who is talking to us is not a client who
+ * is ignoring us, and a meeting goes on the owner's list so the terms are
+ * agreed by a person and written down. The two weeks keep running: they are
+ * the outer limit from sending, and if they run out somebody decides.
+ */
+export async function recordChangesWanted(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const what = String(formData.get("what") ?? "").trim();
+  const problem = problemWithChanges(what);
+  if (problem) back(problem);
+  if (!canMoveTo(row.state as EsaState, "negotiating")) back("An agreement in that state is not being negotiated.");
+
+  await patchAgreement(esaId, { state: "negotiating", reason: what }, member.id, "esa.negotiating", what);
+  const stopped = await cancelClocksFor(db, "esa", esaId, member.id, "The client wants changes.", ["esa.chase"]);
+  await createTask({
+    kind: "record",
+    title: "Agree the changes: " + String(row.fields.companyName ?? "a client"),
+    body:
+      "They want changes before signing: " +
+      what +
+      "\n\nAgree the terms with them, write them into the fields, then send the next version.",
+    assigneeId: row.ownerId,
+    dueAt: Date.now(),
+    subjectType: "esa",
+    subjectId: esaId,
+    link: "/leads/" + row.leadId,
+  });
+  revalidatePath(here);
+  back(
+    stopped
+      ? "Noted, and the chasing has stopped. Change the fields, then send the next version."
+      : "Noted. Change the fields, then send the next version.",
+  );
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   expiresAt,
   missingFields,
   nextChaseAt,
+  problemWithChanges,
   problemWithDraft,
   problemWithSigned,
   whereItStands,
@@ -92,6 +93,16 @@ test("the agreement can only move where it is allowed to", () => {
   assert.equal(canMoveTo("countersigned", "sent"), false, "a finished agreement does not reopen");
   assert.equal(canMoveTo("declined", "sent"), false);
   assert.equal(canMoveTo("expired", "sent"), true, "an expired one can be sent again if they come back");
+  assert.equal(canMoveTo("chasing", "negotiating"), true, "a client can ask for changes mid-chase");
+  assert.equal(canMoveTo("negotiating", "sent"), true, "the next version goes out");
+  assert.equal(canMoveTo("negotiating", "signed"), true, "they can also just sign it as it is");
+  assert.equal(canMoveTo("signed", "negotiating"), false, "a signed agreement is not reopened");
+});
+
+test("what the client wants changed has to be written down", () => {
+  assert.match(problemWithChanges("  ") ?? "", /write down what they want/i);
+  assert.match(problemWithChanges("fee") ?? "", /write down what they want/i);
+  assert.equal(problemWithChanges("Fee of one month on basic, not gross."), null);
 });
 
 test("where it stands reads as a sentence, at every stage", () => {
@@ -266,4 +277,47 @@ test("a settled agreement is not chased, even by a clock already in flight", asy
   assert.equal(answer.ok, false);
   assert.match(answer.what, /not waiting for a signature/i);
   assert.equal(repo.all().messages.filter((m) => m.subjectId === esa.id).length, 0);
+});
+
+test("a negotiation stops the chasing, and only the chasing", async () => {
+  // The two weeks are the outer limit from sending, so they keep running while
+  // the terms are agreed; if they run out, a person decides.
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-negotiate-"));
+  process.env.OPS_STORE = "json";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const now = Date.now();
+  for (const kind of ["esa.chase", "esa.decline"]) {
+    repo.startTimer({
+      kind,
+      subjectType: "esa",
+      subjectId: "esa_n",
+      startsAt: now,
+      dueAt: now + 2 * DAY,
+      warnAt: null,
+      ownerId: "m_owner",
+      payload: {},
+    });
+  }
+
+  const stopped = await desk.cancelClocksFor(
+    await desk.desk(),
+    "esa",
+    "esa_n",
+    "m_owner",
+    "The client wants changes.",
+    ["esa.chase"],
+  );
+  assert.equal(stopped, 1);
+  const left = repo.liveTimers().filter((t) => t.subjectId === "esa_n");
+  assert.deepEqual(
+    left.map((t) => t.kind),
+    ["esa.decline"],
+    "the two-week clock is still running",
+  );
 });

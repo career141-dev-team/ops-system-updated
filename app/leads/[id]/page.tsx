@@ -6,6 +6,7 @@ import {
   declineAgreement,
   draftNextChase,
   recordAgreementCountersigned,
+  recordChangesWanted,
   recordAgreementSigned,
   saveAgreementFields,
   sendAgreement,
@@ -312,7 +313,7 @@ export default async function LeadPage({
                 <p className="mt-1 text-[13px] text-ink-soft">{whereItStands({ ...esa, state: esa.state as EsaState }, Date.now())}</p>
                 {esa.reason && <p className="mt-1 text-[13px]">{esa.reason}</p>}
 
-                {esa.state === "draft" && (
+                {(esa.state === "draft" || esa.state === "negotiating") && (
                   <>
                     {!esaTemplate && (
                       <p className="mt-3 rounded-lg border border-rule bg-paper px-3 py-2 text-[13px]">
@@ -351,7 +352,17 @@ export default async function LeadPage({
                     {mayManage && (
                       <form action={sendAgreement} className="mt-3">
                         <input type="hidden" name="esaId" value={esa.id} />
-                        <button className={button}>Draft the cover email and send</button>
+                        <button className={button}>
+                          {esa.state === "negotiating"
+                            ? "Draft the cover email and send version " + (esa.version + 1)
+                            : "Draft the cover email and send"}
+                        </button>
+                        {esa.state === "negotiating" && (
+                          <p className="mt-2 text-[12px] text-ink-faint">
+                            The version number moves on, the chase starts from the beginning, and the two weeks start
+                            again from this send.
+                          </p>
+                        )}
                       </form>
                     )}
                   </>
@@ -389,6 +400,18 @@ export default async function LeadPage({
                         </span>
                       </label>
                       <button className={button}>It is signed</button>
+                    </form>
+
+                    <form action={recordChangesWanted} className="flex flex-col gap-2 border-t border-rule pt-3">
+                      <input type="hidden" name="esaId" value={esa.id} />
+                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                        They want changes before signing — what, exactly?
+                        <textarea name="what" rows={2} className={field_wide} />
+                      </label>
+                      <button className={button}>They want changes</button>
+                      <p className="text-[12px] text-ink-faint">
+                        The chasing stops, a meeting goes on your list, and the two weeks keep running.
+                      </p>
                     </form>
 
                     <form action={declineAgreement} className="flex flex-col gap-2 border-t border-rule pt-3">

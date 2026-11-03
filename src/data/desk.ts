@@ -616,9 +616,12 @@ export async function cancelClocksFor(
   subjectId: Id,
   by: Id,
   reason: string,
+  /** Only these kinds, when some clocks have to keep running. */
+  kinds: string[] | null = null,
 ): Promise<number> {
   const live = db.timers
     .filter((t) => t.subjectType === subjectType && t.subjectId === subjectId)
+    .filter((t) => !kinds || kinds.includes(t.kind))
     .filter((t) => t.state === "running" || t.state === "warned");
   if (!live.length) return 0;
   if (!usingConvex()) {

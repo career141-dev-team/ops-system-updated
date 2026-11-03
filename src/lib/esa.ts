@@ -230,3 +230,15 @@ export function chaseDraft(
       .replace("{{client}}", client),
   };
 }
+
+/**
+ * The client wants changes (15, Phase 2 step 16).
+ *
+ * What they want has to be written down, because the next version is drafted
+ * from it and because a negotiation nobody recorded is how a term the client
+ * never agreed to ends up in a signed agreement.
+ */
+export function problemWithChanges(what: string): string | null {
+  if (what.trim().length < 10) return "Write down what they want changed. The next version is drafted from this.";
+  return null;
+}
