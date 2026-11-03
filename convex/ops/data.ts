@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -70,6 +70,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsMeetings").withIndex("by_at").order("desc").take(300),
       ctx.db.query("opsEsa").collect(),
       ctx.db.query("opsClients").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsClientSets").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -97,6 +98,7 @@ export const snapshot = internalQuery({
       meetings: meetings.map(row),
       agreements: agreements.map(row),
       clients: clients.map(row),
+      clientSets: clientSets.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -416,6 +418,67 @@ export const addClient = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** One round of CVs for a client (15, Phase 4 step 2). */
+export const addClientSet = internalMutation({
+  args: {
+    taRoundId: v.string(),
+    openingTaId: v.string(),
+    setNumber: v.number(),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    name: v.string(),
+    role: v.string(),
+    state: v.string(),
+    candidates: v.any(),
+    dueAt: v.union(v.number(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    sentTo: v.array(v.string()),
+    receivedAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsClientSets", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: null,
+      action: "clientSet.ready",
+      subjectType: "clientSet",
+      subjectId: id as string,
+      after: args.name,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchClientSet = internalMutation({
+  args: {
+    setId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const set = await ctx.db.get(args.setId as Id<"opsClientSets">);
+    if (!set) return { ok: false };
+    await ctx.db.patch(set._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(set._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "clientSet",
+      subjectId: set._id as string,
+      before: set.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

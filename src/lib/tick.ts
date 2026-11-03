@@ -34,6 +34,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "Two weeks with no signed agreement",
     body: "Decide whether to mark the agreement declined. The search stays blocked until you do.",
   },
+  "set.due": {
+    kind: "approve",
+    title: "A set is due at the client today",
+    body: "The agreement promised it by now. Send it, or say on the set why it is late.",
+  },
   "set.ownership": {
     kind: "check",
     title: "The CV ownership window has closed",

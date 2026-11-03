@@ -225,6 +225,31 @@ export default defineSchema({
     .index("by_stage", ["stage"])
     .index("by_created", ["createdAt"]),
 
+  /** One round of CVs sent to a client (15, Phase 4). */
+  opsClientSets: defineTable({
+    taRoundId: v.string(),
+    openingTaId: v.string(),
+    setNumber: v.number(),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    name: v.string(),
+    role: v.string(),
+    state: v.string(),
+    candidates: v.any(),
+    dueAt: v.union(v.number(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    sentTo: v.array(v.string()),
+    receivedAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_round", ["taRoundId"])
+    .index("by_state", ["state"])
+    .index("by_created", ["createdAt"]),
+
   opsEsa: defineTable({
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),

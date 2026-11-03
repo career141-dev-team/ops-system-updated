@@ -30,6 +30,7 @@ function clockInWords(kind: string): string {
     "meeting.reminder.hour": "a client meeting in an hour",
     "meeting.rebook": "a meeting to book again",
     "feedback.chase": "waiting on client feedback",
+    "set.due": "a set due at the client",
     "set.ownership": "the CV ownership window",
     "invoice.chase": "an unpaid invoice",
     "guarantee.warn": "the guarantee, fifteen days left",

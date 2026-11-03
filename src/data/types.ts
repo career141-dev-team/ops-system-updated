@@ -424,6 +424,46 @@ export interface OpsClient {
   updatedAt: number;
 }
 
+/**
+ * One round of CVs sent to a client (15, Phase 4 steps 2 to 4).
+ *
+ * TA decides what is in it and numbers it; Ops decides when it goes, keeps a
+ * copy of exactly what went, and owns everything that happens afterwards.
+ */
+export interface OpsClientSet {
+  id: Id;
+  /** TA's own id for the round, and the opening it belongs to. */
+  taRoundId: string;
+  openingTaId: string;
+  setNumber: number;
+  /** Our client record, when we have one, and TA's client either way. */
+  clientId: Id | null;
+  clientTaId: string;
+  /** "CLIENT > ROLE > SET n", as the desk already writes it. */
+  name: string;
+  role: string;
+  state: string;
+  /** Who it is for, and our copy of each prepared CV. */
+  candidates: {
+    applicationTaId: string;
+    name: string;
+    fileId: Id | null;
+    problem: string | null;
+  }[];
+  /** Due at the client, counted from the day the agreement was signed. */
+  dueAt: number | null;
+  sentAt: number | null;
+  sentMessageId: Id | null;
+  sentTo: string[];
+  /** When the client got it. The clocks that follow count from this. */
+  receivedAt: number | null;
+  /** Why it was pulled back. */
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -436,6 +476,7 @@ export interface OpsDatabase {
   files: OpsFile[];
   leads: OpsLead[];
   clients: OpsClient[];
+  clientSets: OpsClientSet[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

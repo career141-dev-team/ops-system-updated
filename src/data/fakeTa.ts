@@ -31,6 +31,41 @@ const CLIENTS = [
     esaSignedAt: Date.UTC(2026, 9, 1),
     status: "active",
     opsOwnerId: null,
+    // A set goes to the people whose role is "hr"; the rest are copied.
+    contacts: [
+      { name: "SAMPLE HR MANAGER", email: "hr@example.test", role: "hr", phone: "+94 11 000 0000" },
+      { name: "SAMPLE FINANCE HEAD", email: "finance@example.test", role: "finance", phone: null },
+    ],
+  },
+];
+
+/**
+ * One round of CVs, ready to go to the client (15, Phase 4 step 2).
+ *
+ * Five, because TA will not let a client set go out with fewer; the names are
+ * obviously invented, and each one has a prepared CV the stand-in can hand
+ * over as bytes.
+ */
+const CLIENT_SETS = [
+  {
+    id: "ta_round1",
+    setNumber: 1,
+    openingId: "ta_j1",
+    applicationIds: ["ta_a1", "ta_a2", "ta_a3", "ta_a4", "ta_a5", "ta_a6"],
+    applications: [
+      { id: "ta_a1", name: "SAMPLE CANDIDATE ONE", preparedCv: true },
+      { id: "ta_a2", name: "SAMPLE CANDIDATE TWO", preparedCv: true },
+      { id: "ta_a3", name: "SAMPLE CANDIDATE THREE", preparedCv: true },
+      { id: "ta_a4", name: "SAMPLE CANDIDATE FOUR", preparedCv: true },
+      { id: "ta_a5", name: "SAMPLE CANDIDATE FIVE", preparedCv: true },
+      // One without a prepared CV, because that is the usual case on the real
+      // desk: the set still has to be able to go out.
+      { id: "ta_a6", name: "SAMPLE CANDIDATE SIX", preparedCv: false },
+    ],
+    dispatch: "ready",
+    status: "ready",
+    sentAt: null,
+    receivedAt: null,
   },
 ];
 
@@ -57,6 +92,38 @@ const EVENTS = [
 
 export type FakeAnswer<T> = { ok: true; data: T } | { ok: false; reason: string };
 
+/**
+ * A file the stand-in hands over: the smallest thing that is really a PDF.
+ *
+ * It opens in a reader and says which candidate it stands for, so a set sent
+ * in the preview can be looked at without anybody mistaking it for a real CV.
+ */
+export function fakeFile(path: string): FakeAnswer<{ bytes: Uint8Array; mime: string }> {
+  const match = /\/applications\/([^/]+)\/prepared-cv$/.exec(path);
+  if (!match) return { ok: false, reason: "The stand-in TA System has no file for " + path + "." };
+  const who = CLIENT_SETS[0].applications.find((a) => a.id === match[1]);
+  if (!who) return { ok: false, reason: "The stand-in has no application " + match[1] + "." };
+  if (!who.preparedCv) return { ok: false, reason: "No prepared CV for " + who.name + " yet." };
+  const text = "SAMPLE CV - " + who.name + " - invented, for testing only";
+  // A PDF has to be assembled by hand here: a line break inside it is part of
+  // the format, not of this file.
+  const body = "BT /F1 14 Tf 60 760 Td (" + text + ") Tj ET";
+  const pdf = [
+    "%PDF-1.4",
+    "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj",
+    "4 0 obj<</Length " + body.length + ">>stream",
+    body,
+    "endstream endobj",
+    "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj",
+    "trailer<</Root 1 0 R>>",
+    "%%EOF",
+    "",
+  ].join("\n");
+  return { ok: true, data: { bytes: new TextEncoder().encode(pdf), mime: "application/pdf" } };
+}
+
 export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
   const [where, query] = path.split("?");
   const give = (data: unknown) => ({ ok: true as const, data: data as T });
@@ -65,7 +132,12 @@ export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
   if (where.endsWith("/clients")) return give(CLIENTS);
   if (/\/openings\/[^/]+$/.test(where)) return give(OPENINGS[0]);
   if (where.endsWith("/openings")) return give(OPENINGS);
-  if (where.endsWith("/client-sets")) return give([]);
+  if (/\/client-sets\/\d+$/.test(where)) {
+    const n = Number(where.split("/").pop());
+    const found = CLIENT_SETS.find((r) => r.setNumber === n);
+    return found ? give(found) : { ok: false, reason: "The stand-in has no set " + n + "." };
+  }
+  if (where.endsWith("/client-sets")) return give(CLIENT_SETS);
   if (where.endsWith("/events")) {
     const after = new URLSearchParams(query ?? "").get("after") ?? "";
     // The cursor is the last event's id, exactly as the real API works.

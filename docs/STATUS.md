@@ -47,12 +47,31 @@ code is invented.
 | The client record | `src/lib/clients.ts`, `app/clients` | made by the system, never typed; one company, one record, one owner |
 | The desk's two morning views | top of `app/leads/page.tsx` | meetings booked; agreements not back yet |
 
+## Built: phase 4, the first four steps
+
+The owner asked for these before phase 3, so they stand on the stand-in TA
+System rather than on an opening Ops created itself.
+
+| Piece | Where | Notes |
+|---|---|---|
+| The set arrives when TA says it is ready | `takeClientSetReady` in `src/data/desk.ts` | from the `client_set.ready` event; the same event twice is one set |
+| Due from the day the agreement was signed | `dueFromEsa` in `src/lib/clientSets.ts` | 7 days for the first set, 14 for a later one, and a `set.due` clock |
+| Every prepared CV fetched once and kept | `reviewClientSet` in `app/actions.ts`, `preparedCv` in `src/lib/ta.ts` | so what the client received can be read back a year later |
+| A candidate with no CV taken out, with a reason | `dropFromClientSet` | the set still has to hold the minimum afterwards |
+| Sent to the client's own "hr" contacts, CVs attached | `sendClientSet` | at least 5 CVs, every one present, or it refuses and says which |
+| The day they received it, correctable | `recordSetReceived` | everything after the set counts from this |
+| Screens | `app/sets`, `app/sets/[id]` | waiting to go, soonest due first; then sent |
+
+Still to come in phase 4: the client WhatsApp group post, the seven-working-day
+ownership window and its claims, the feedback chase and its escalation, the
+silence hold, the client's decisions read back into TA, and the depth rules.
+
 ## Not built
 
-Phases 3 to 8 of [15](15-BUILD-PLAN.md): the requirement meeting and the opening
-created in TA, the adverts, the client side of the search, interviews,
-placement and the invoice, the guarantee and the close, then hardening and the
-pilot.
+Phase 3 of [15](15-BUILD-PLAN.md) (the requirement meeting and the opening
+created in TA, the adverts), the rest of phase 4, and phases 5 to 8:
+interviews, placement and the invoice, the guarantee and the close, then
+hardening and the pilot.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
