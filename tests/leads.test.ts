@@ -35,13 +35,28 @@ test("banking and finance are flagged, with the word that caused it", () => {
     { company: "Sampath Bank PLC" },
     { company: "Some Company", industry: "Insurance" },
     { company: "LB Finance" },
-    { company: "A Firm", notes: "they do micro finance in the north" },
+    { company: "A Firm", industry: "micro finance" },
     { company: "X", website: "www.xleasing.lk" },
   ]) {
     const flag = flagIndustry(text);
     assert.equal(flag.flagged, true, JSON.stringify(text));
     assert.ok(flag.because);
   }
+});
+
+test("what they want hiring is never read as what they do", () => {
+  // A tile maker whose website enquiry said "we need a finance manager" was
+  // flagged as a finance company (3 Nov). Once the form posts leads by itself,
+  // that would have happened to every finance vacancy we are sent.
+  const flag = flagIndustry({
+    company: "WEBFORM TILES (Pvt) Ltd",
+    industry: "tiles",
+    notes: "We need a finance manager, urgently.",
+  });
+  assert.equal(flag.flagged, false);
+  assert.equal(flag.because, null);
+  // The company itself still decides it, whatever the enquiry says.
+  assert.equal(flagIndustry({ company: "LB Finance", notes: "we need a driver" }).flagged, true);
 });
 
 test("a word that only looks like it is not flagged", () => {

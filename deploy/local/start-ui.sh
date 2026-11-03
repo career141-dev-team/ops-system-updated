@@ -12,5 +12,6 @@ export OPS_DEV_SIGNIN=on
 export OPS_TA_FAKE=on
 # The clocks, the waiting writes and the events can be asked for by hand.
 export OPS_CLOCK_KEY="${OPS_CLOCK_KEY:-local-ui-only-clock-key}"
+export OPS_WEB_LEAD_KEY="${OPS_WEB_LEAD_KEY:-local-ui-only-lead-key}"
 export OPS_SESSION_SECRET="${OPS_SESSION_SECRET:-local-ui-only}"
 exec npx next dev -p "${PORT:-3300}" --webpack

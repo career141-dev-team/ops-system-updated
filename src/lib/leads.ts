@@ -21,7 +21,7 @@ export const LEAD_SOURCES = ["website", "whatsapp", "call", "email", "referral",
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 export const SOURCE_MEANINGS: Record<LeadSource, string> = {
-  website: "The website form, through hello@",
+  website: "The website form",
   whatsapp: "WhatsApp",
   call: "A phone call",
   email: "An email to one of us",
@@ -102,9 +102,15 @@ export function flagIndustry(text: {
   company: string;
   industry?: string;
   website?: string;
+  /** Read no more: what they want hiring says nothing about their business. */
   notes?: string;
 }): IndustryFlag {
-  const prose = [text.company, text.industry, text.notes].filter(Boolean).join(" ").toLowerCase();
+  // The company's name and what they say they do - never what they are asking
+  // for. A tile maker whose enquiry says "we need a finance manager" was
+  // flagged as a finance company, and once the website form started posting
+  // leads by itself that was going to happen to every finance vacancy
+  // (3 Nov, found by walking it).
+  const prose = [text.company, text.industry].filter(Boolean).join(" ").toLowerCase();
   // A web address has no spaces in it - "xleasing.lk", "lbfinance.lk" - so the
   // word is looked for inside it rather than as a word of its own.
   const web = (text.website ?? "").toLowerCase();
