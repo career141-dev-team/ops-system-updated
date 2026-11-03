@@ -1146,6 +1146,114 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     click-to-dial/recorded calls, per-owner mailboxes, accounting export format, Talent
     Pulse analytics, hold-limit and other ⚪ items once decided.
 
+## Phase 9 · The AI productivity layer (added 3 Nov)
+
+Added at the owner's request. It is **one layer across the finished system**, not a
+chatbot bolted on, and it comes after the pilot because the desk has to run on rules
+before anything starts proposing. Two pieces are cheap and may ride earlier: see the
+priorities at the end.
+
+The register of every opportunity, module by module, with what already exists and what
+is refused, is [21](21-AI-OPPORTUNITIES.md).
+
+**Five principles, which every step below obeys.**
+
+- **AI proposes; a person decides.** Nothing a model writes reaches a client, a
+  candidate, the TA System or a money field without the approval this system already
+  demands (F7, and the owner's standing rule).
+- **Voice means dictation into our own fields** — not a bot talking to anybody. AI phone
+  calls stay refused: the owner's decision 7, and TA's voice worker is suspended.
+- **Nothing is rebuilt that TA already has.** CV reading, scoring, matching, search
+  ranking, the JD draft, Research and Suggestions, and the candidate reply reader stay in
+  TA; Ops asks through the API (Part E).
+- **Every run is recorded**: task, model, cost, what it read, what it proposed, and what
+  the person did with it. Accuracy and spend are read off that, not guessed.
+- **Cheap by default, and budgeted.** DeepSeek v4 flash first, the Claude subscription
+  only where judgment is needed — that subscription is a limited pool, as 3 Nov showed,
+  so no AI work runs while a page renders or inside a loop.
+
+1. Tables `opsAiRuns` (task, model, tokens, cost, ms, what it read, what it proposed,
+   what the person did, by, at) and `opsAiFeedback` (the edit a person made to a
+   proposal); settings `ai.<task>` on or off, `ai.dailyBudget`, `ai.modelFor.<task>`.
+2. The router `src/lib/ai.ts`: `modelFor(task)` in the house order, a hard timeout, one
+   retry, and a budget guard that switches the layer off for the day at the cap. Called
+   only from an action a person pressed or from the clock pass — never while a screen
+   renders.
+3. **Structured output or nothing.** Every task has a schema; output is validated before
+   it reaches a screen. A failed parse records the run and proposes nothing, which is a
+   normal answer and not an error to hide.
+4. One **proposal** shape for the whole system: what it suggests, which records it read,
+   how sure it is, and two buttons — use it, or ignore it. No AI text enters a record
+   without one of those presses.
+5. Dictation, the first piece: `POST /api/ai/dictate` takes a clip of at most sixty
+   seconds and gives back text with punctuation. The clip is kept against the record, so
+   what was written can be checked against what was said. English first; Sinhala and
+   Tamil next, each proved before it is offered.
+6. Dictation where the desk types most, in this order: the intro-call brief, the
+   requirement meeting, a call outcome, the client's feedback on a candidate, and the
+   reason on any decline, hold or drop. One microphone beside the field; the text lands
+   in the field, editable, and nothing saves itself.
+7. Dictation into **fields**: a spoken brief becomes the meeting's role, package and
+   brief, or the requirement's fields, as a proposal with every field shown. What was not
+   said is asked for in one line ("no salary was said") and never invented.
+8. The **inbound reader**, which Phase 2 step 14 and Phase 4 step 9 already need: an
+   email matched to a subject is classified — agreement signed / changes wanted /
+   declined; per candidate shortlisted or rejected, with the client's own words as the
+   reason; a slot offered; a CV claimed; a cancellation — into a task "confirm what the
+   client said" carrying the proposal per candidate. The reason the owner requires is the
+   client's wording, not ours.
+9. **Draft and improve, on the one way out.** Every drafted message gains rewrite,
+   shorter, warmer, more formal, regenerate; each makes a new draft version, and the
+   approved text is what sends. The template stays the first draft, so nothing is written
+   from nothing.
+10. Reply drafting: a client's email plus the record gives a drafted reply — subject and
+    body — with the facts it used listed beside it.
+11. Summaries where a person reads a lot: a client's whole history, one thread, an
+    agreement's negotiation, a set's feedback. Every summary names and links the records
+    it read.
+12. "What first" on the day screen: the desk's own tasks, clocks and drafts put in order
+    **by the rules**, with AI writing only the one-line reason. A broken model must never
+    change what is urgent.
+13. The **ask box**, not a chatbot-first screen: one box on every page, read-only to
+    begin with, answering from the desk's own data inside the person's permissions, every
+    answer linking the rows it used.
+14. Then **doing**: the box may run only actions that already exist, one at a time, each
+    through the same confirmation a person would have seen. It never writes to TA, never
+    sends, never closes anything, and never touches money.
+15. The weekly report (Phase 7 step 16): the numbers from the data, the prose from AI,
+    and the TA lead approves it before the Director sees it.
+16. **Accuracy, not impressions.** A weekly sample of each task compares the proposal
+    with what the person did; a task whose proposals are changed more than half the time
+    switches off until its prompt is fixed. The switch is a setting, not a deploy.
+17. **Cost.** A daily budget in the settings, every run costed, and the health screen
+    showing today's spend by task. At the cap the layer stops rather than quietly
+    spending.
+18. **Privacy by task.** The layer reads only what the person could read, and each task
+    is given the least it needs: a score needs the CV, a reply does not. A client's
+    agreement text goes to no model unless the owner says so.
+19. **Audit.** Every proposal, acceptance and edit goes in the audit trail with the model
+    and the prompt version, so a year later we can say why a record says what it says.
+20. What Ops **does not** build here, because TA has it: CV reading and scoring,
+    candidate matching and search ranking, the JD draft, Research and Suggestions, the
+    candidate reply reader. An improvement to any of them is a TA pull request under
+    Track A rules.
+21. What is **refused**, with the reason: AI phone calls to anybody (decision 7); AI
+    deciding a reject, a hold or a decline; AI sending anything to a client or a
+    candidate; AI writing to the TA System; AI setting any money figure; and a chatbot as
+    the only way to do something that has a screen.
+22. Phase test: dictate a brief, fields proposed, corrected, saved; an inbound
+    classified, decisions confirmed, the TA write queued; a set email improved twice and
+    approved; the ask box answering from data, then running one action with its
+    confirmation; the budget cap reached, the layer off, and the desk still working.
+
+**Priorities, and what may ride earlier.**
+
+| Priority | What | When |
+|---|---|---|
+| 1 | Dictation on the five fields (5 to 7) and draft-improve on the one way out (9), with 1 to 4 beneath them | May ride with Phase 5 if the owner wants it sooner: no new decision, nothing client-facing changes |
+| 2 | The inbound reader (8), summaries (11), reply drafting (10), "what first" (12); 16 to 19 land with these at the latest | After the pilot |
+| 3 | The ask box read-only (13), then doing (14), the weekly report's prose (15) | Last, because it is the only part that can act |
+
 ---
 
 # Part H · Testing, release and operations (summary of what the phases contain)
