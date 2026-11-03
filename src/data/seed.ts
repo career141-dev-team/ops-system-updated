@@ -55,6 +55,8 @@ export function seed(now = Date.now()): OpsDatabase {
     // which is where a person starts.
     agreements: [],
     meetings: [],
+    // No sample clients: one is made the moment an agreement is countersigned.
+    clients: [],
     leads: [
       {
         id: "ld_new",

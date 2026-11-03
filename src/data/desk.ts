@@ -7,6 +7,7 @@ import type {
   Id,
   OpsBaseline,
   OpsCallLog,
+  OpsClient,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -532,6 +533,87 @@ export function leadIn(db: OpsDatabase, leadId: Id): OpsLead | null {
 
 export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
   return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/* ── Clients: the company, once they are ours (step 19) ───────── */
+
+export async function addClient(input: Omit<OpsClient, "id" | "createdAt" | "updatedAt">): Promise<OpsClient> {
+  if (!usingConvex()) return repo.addClient(input);
+  return (await convexMutation<OpsClient>("ops/data:addClient", input)) as OpsClient;
+}
+
+export async function patchClient(
+  clientId: Id,
+  patch: Partial<OpsClient>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchClient(clientId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchClient", { clientId, patch, by, what, reason });
+}
+
+export function clientIn(db: OpsDatabase, clientId: Id): OpsClient | null {
+  return db.clients.find((c) => c.id === clientId) ?? null;
+}
+
+export function clientForLead(db: OpsDatabase, leadId: Id): OpsClient | null {
+  return db.clients.find((c) => c.leadId === leadId) ?? null;
+}
+
+export function clientsNewestFirst(db: OpsDatabase): OpsClient[] {
+  return [...db.clients].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * The client record, made once and then found (step 19).
+ *
+ * Two things make a client: an exact match against a company the TA System
+ * already has, and an agreement countersigned. Both can happen to the same
+ * lead, in either order, so this never makes a second record for a company we
+ * already hold - two records would mean two owners and two agreements, which
+ * is the fault on the board.
+ */
+export async function clientFromLead(
+  db: OpsDatabase,
+  lead: OpsLead,
+  stage: string,
+  by: Id,
+): Promise<OpsClient> {
+  const already =
+    clientForLead(db, lead.id) ??
+    db.clients.find((c) => c.nameKey === lead.nameKey) ??
+    (lead.clientTaId ? db.clients.find((c) => c.taClientId === lead.clientTaId) : undefined) ??
+    null;
+  if (already) {
+    // The stage only ever moves forward here; a person moves it back.
+    const patch: Partial<OpsClient> = {};
+    if (already.taClientId === null && lead.clientTaId) patch.taClientId = lead.clientTaId;
+    if (already.leadId === null) patch.leadId = lead.id;
+    if (already.stage !== stage && stage === "active") patch.stage = stage;
+    if (Object.keys(patch).length) {
+      // The audit says what happened, not that something did: a client turning
+      // active is the countersignature, and reads that way a year later.
+      await patchClient(already.id, patch, by, patch.stage ? "client.agreementDone" : "client.updated", null);
+    }
+    return { ...already, ...patch };
+  }
+  return addClient({
+    leadId: lead.id,
+    taClientId: lead.clientTaId,
+    name: lead.company,
+    nameKey: lead.nameKey,
+    stage,
+    billingName: "",
+    billingEmail: "",
+    groupName: "",
+    notes: "",
+    reason: null,
+    ownerId: lead.ownerId,
+  });
 }
 
 /* ── The client agreement ───────────────────────────────────── */

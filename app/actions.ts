@@ -14,6 +14,10 @@ import {
   agreementForLead,
   agreementIn,
   chaseTheAgreement,
+  clientFromLead,
+  clientIn,
+  clientsNewestFirst,
+  patchClient,
   draftMessage,
   patchAgreement,
   cancelMeetingClocks,
@@ -93,6 +97,12 @@ import {
   problemWithDraft,
   problemWithSigned,
 } from "@/lib/esa";
+import {
+  type ClientStage,
+  STAGE_MEANINGS,
+  problemWithBilling,
+  problemWithStageMove,
+} from "@/lib/clients";
 import {
   afterNotHeld,
   agreementDueAt,
@@ -707,7 +717,16 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
       "lead.linkedToClient",
       routed.because,
     );
+    // They are a company we already have, so the client record starts here
+    // rather than waiting for an agreement they may already have signed.
+    await clientFromLead(
+      await desk(),
+      { ...(lead as NonNullable<typeof lead>), clientTaId: found.exact.id },
+      found.exact.esaSignedAt ? "active" : "lead",
+      member.id,
+    );
     revalidatePath(here);
+    revalidatePath("/clients");
     back("They are already our client. " + routed.because);
   }
 
@@ -1179,6 +1198,11 @@ export async function sendAgreement(formData: FormData): Promise<void> {
     again ? "Version " + version : null,
   );
 
+  // The company becomes a record of its own the moment an agreement is out:
+  // onboarding, not yet a client we work for.
+  const theirLead = leadIn(db, row.leadId);
+  if (theirLead) await clientFromLead(db, theirLead, "onboarding", member.id);
+
   const first = nextChaseAt(0, now);
   if (first) {
     await startTimer({
@@ -1377,6 +1401,13 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
   );
   await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is countersigned.");
   await patchLead(row.leadId, { state: "requirement" }, member.id, "lead.agreementDone", null);
+  // Signed by both: they are a client we work for, and everything from the
+  // requirement meeting on hangs off this record.
+  const signedLead = leadIn(db, row.leadId);
+  if (signedLead) {
+    await clientFromLead(db, { ...signedLead, clientTaId: row.clientTaId ?? signedLead.clientTaId }, "active", member.id);
+    revalidatePath("/clients");
+  }
 
   const message = await draftMessage({
     channel: "email",
@@ -1437,4 +1468,114 @@ export async function declineAgreement(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/leads");
   back("Declined, and the team has been told the search is blocked.");
+}
+
+/* ── The client record (15, Phase 2 step 19) ─────────────────── */
+
+/**
+ * Who we invoice, and which WhatsApp group is theirs.
+ *
+ * Both of these live in somebody's inbox today, which is why an invoice has
+ * gone to the wrong person and a set has been posted in the wrong group.
+ */
+export async function saveClientDetails(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  if (!clientIn(db, clientId)) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
+
+  const details = {
+    billingName: String(formData.get("billingName") ?? "").trim(),
+    billingEmail: String(formData.get("billingEmail") ?? "").trim(),
+    groupName: String(formData.get("groupName") ?? "").trim(),
+  };
+  const problem = problemWithBilling(details);
+  if (problem) back(problem);
+
+  await patchClient(
+    clientId,
+    { ...details, notes: String(formData.get("notes") ?? "").trim() },
+    member.id,
+    "client.detailsSaved",
+    null,
+  );
+  revalidatePath(here);
+  back("Saved.");
+}
+
+/** Live, quiet or finished. Going quiet needs a reason, like closing does. */
+export async function moveClientStage(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
+  const row = client as NonNullable<typeof client>;
+
+  const to = String(formData.get("stage") ?? "") as ClientStage;
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithStageMove(row.stage as ClientStage, to, reason);
+  if (problem) back(problem);
+
+  await patchClient(clientId, { stage: to, reason: reason || null }, member.id, "client.stageMoved", reason || null);
+  revalidatePath(here);
+  revalidatePath("/clients");
+  back("Moved. " + STAGE_MEANINGS[to] + ".");
+}
+
+/**
+ * One ops person owns each client, and only the ops lead moves them.
+ *
+ * The TA System has to be told, because it shows the ops owner beside the
+ * client: it goes in the outbox, so a TA System that is down does not stop the
+ * move here.
+ */
+export async function moveClientOwner(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "task.reassign")) back("Only the ops lead moves a client to another owner.");
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
+  const row = client as NonNullable<typeof client>;
+
+  const toId = String(formData.get("ownerId") ?? "");
+  const to = db.members.find((m) => m.id === toId && m.active);
+  if (!to) back("Pick somebody who is here.");
+  if (toId === row.ownerId) back("They already own this client.");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why it is moving. The last owner will want to know.");
+
+  await patchClient(clientId, { ownerId: toId }, member.id, "client.ownerMoved", reason);
+  await createTask({
+    kind: "check",
+    title: "You now own " + row.name,
+    body: "Moved to you by " + member.name + ": " + reason,
+    assigneeId: toId,
+    dueAt: Date.now(),
+    subjectType: "client",
+    subjectId: clientId,
+    link: here,
+  });
+  if (row.taClientId) {
+    await queueTaWrite(
+      "/integrations/v1/clients/" + row.taClientId,
+      { opsOwnerEmail: to?.email ?? "", opsOwnerName: to?.name ?? "" },
+      { type: "client", id: clientId },
+    );
+  }
+  revalidatePath(here);
+  revalidatePath("/clients");
+  back("Moved to " + (to?.name ?? "them") + ", and the TA System will be told.");
 }

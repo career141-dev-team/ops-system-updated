@@ -386,6 +386,37 @@ export interface OpsEsa {
   updatedAt: number;
 }
 
+/**
+ * A company we work for (15, Phase 2 step 19).
+ *
+ * Made when they become ours - an exact match against a TA client, or the
+ * agreement countersigned - and from then on it carries the things that live
+ * in somebody's memory today: the one ops owner, who we invoice, and which
+ * WhatsApp group is theirs.
+ */
+export interface OpsClient {
+  id: Id;
+  /** The lead they came in as, which keeps the whole history reachable. */
+  leadId: Id | null;
+  /** The same company in the TA System, once we know which one it is. */
+  taClientId: Id | null;
+  name: string;
+  /** The name reduced the way TA reduces it, so a match is a match. */
+  nameKey: string;
+  stage: string;
+  /** Who we send the invoice to. Often not known while onboarding. */
+  billingName: string;
+  billingEmail: string;
+  /** Their WhatsApp group, by its name: the sets and feedback go there. */
+  groupName: string;
+  notes: string;
+  /** Why they are quiet or closed. */
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -397,6 +428,7 @@ export interface OpsDatabase {
   templates: OpsTemplate[];
   files: OpsFile[];
   leads: OpsLead[];
+  clients: OpsClient[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

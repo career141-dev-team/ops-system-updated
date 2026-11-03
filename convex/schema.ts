@@ -205,6 +205,26 @@ export default defineSchema({
     .index("by_at", ["at"]),
 
   /** The client agreement, one per client, versioned (15, Phase 2). */
+  /** A company we work for (15, Phase 2 step 19). */
+  opsClients: defineTable({
+    leadId: v.union(v.string(), v.null()),
+    taClientId: v.union(v.string(), v.null()),
+    name: v.string(),
+    nameKey: v.string(),
+    stage: v.string(),
+    billingName: v.string(),
+    billingEmail: v.string(),
+    groupName: v.string(),
+    notes: v.string(),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_nameKey", ["nameKey"])
+    .index("by_stage", ["stage"])
+    .index("by_created", ["createdAt"]),
+
   opsEsa: defineTable({
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),

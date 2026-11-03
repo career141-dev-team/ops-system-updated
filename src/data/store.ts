@@ -19,6 +19,7 @@ import type {
   OpsAuditEntry,
   OpsBaseline,
   OpsCallLog,
+  OpsClient,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -399,6 +400,50 @@ export const repo = {
 
   agreement(esaId: Id): OpsEsa | null {
     return load().agreements.find((e) => e.id === esaId) ?? null;
+  },
+
+  /* ── Clients (15, Phase 2 step 19) ─────────────────────── */
+
+  clientIn(clientId: Id): OpsClient | null {
+    return load().clients.find((c) => c.id === clientId) ?? null;
+  },
+
+  addClient(input: Omit<OpsClient, "id" | "createdAt" | "updatedAt">): OpsClient {
+    const db = load();
+    const now = Date.now();
+    const row: OpsClient = { ...input, id: id("cl"), createdAt: now, updatedAt: now };
+    db.clients.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "client.created",
+      subjectType: "client",
+      subjectId: row.id,
+      before: null,
+      after: row.name + " · " + row.stage,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchClient(clientId: Id, patch: Partial<OpsClient>, by: Id, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.clients.find((c) => c.id === clientId);
+    if (!row) return;
+    // An owner move is the one change where the stage is not the story.
+    const before = row.stage;
+    const wasOwner = row.ownerId;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "client",
+      subjectId: row.id,
+      before: patch.ownerId ? wasOwner : before,
+      after: patch.ownerId ? row.ownerId : row.stage,
+      reason,
+    });
+    save();
   },
 
   addAgreement(input: Omit<OpsEsa, "id" | "createdAt" | "updatedAt">): OpsEsa {

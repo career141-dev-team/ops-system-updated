@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -69,6 +69,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsLeads").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsMeetings").withIndex("by_at").order("desc").take(300),
       ctx.db.query("opsEsa").collect(),
+      ctx.db.query("opsClients").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -95,6 +96,7 @@ export const snapshot = internalQuery({
       leads: leads.map(row),
       meetings: meetings.map(row),
       agreements: agreements.map(row),
+      clients: clients.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -384,6 +386,64 @@ export const addAgreement = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** A company we work for (15, Phase 2 step 19). */
+export const addClient = internalMutation({
+  args: {
+    leadId: v.union(v.string(), v.null()),
+    taClientId: v.union(v.string(), v.null()),
+    name: v.string(),
+    nameKey: v.string(),
+    stage: v.string(),
+    billingName: v.string(),
+    billingEmail: v.string(),
+    groupName: v.string(),
+    notes: v.string(),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsClients", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "client.created",
+      subjectType: "client",
+      subjectId: id as string,
+      after: args.name + " · " + args.stage,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchClient = internalMutation({
+  args: {
+    clientId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const client = await ctx.db.get(args.clientId as Id<"opsClients">);
+    if (!client) return { ok: false };
+    await ctx.db.patch(client._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(client._id);
+    // An owner move is the one change where the stage is not the story.
+    const movingOwner = typeof args.patch?.ownerId === "string";
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "client",
+      subjectId: client._id as string,
+      before: movingOwner ? client.ownerId : client.stage,
+      after: (movingOwner ? after?.ownerId : after?.stage) ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 
