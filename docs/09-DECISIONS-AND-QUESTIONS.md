@@ -7,6 +7,12 @@ over older documents.
 
 | Date | Decision | By |
 |---|---|---|
+| 2 Nov | **Every feature ships with its screen.** The UI is built and connected as each backend part is built, not after it; the owner must be able to click every feature. Replaces "backend first, UI later" (28 Oct) | Owner (chat) |
+| 2 Nov | The Ops screens use **the same look as the TA System**, and are **minimal with no overlays**: no modals or drawers, one page per thing, edit in place, plain wording (rules in [07](07-SCREENS.md)) | Owner (chat) |
+| 2 Nov | Build starts with a **thin end-to-end skeleton** (sign in, inbox, one clock, one drafted message, one TA read), then fills in Phase 1 | Owner (chat) |
+| 2 Nov | A **live preview link from day one** on the VPS (own port and subdomain). Guarded: password on the whole site at the proxy, no search indexing, **test data only** while sign-in is the simple dev one; each deploy needs the owner's go-ahead | Owner (chat), guard conditions by Claude |
+| 2 Nov | The preview lives at **ops-preview.career141.com** (A record to 94.136.189.48, the owner adds it), https with a password at the proxy, **only the owner may open it** for now | Owner (chat) |
+| 2 Nov | Sign-in while building is a **simple dev sign-in** (pick your name, as TA's local run does); real Clerk sign-in comes once the screens are agreed | Owner (chat) |
 | 20-26 Oct | Two systems, two teams, connected wherever relevant (not only openings, interviews, offer) | Owner (canvas) |
 | 20-26 Oct | Client and Director processes stay as they are (email, WhatsApp groups). Client and Director emails: system drafts, a person approves, system sends. Routine notices from one approved template go automatically | Owner (canvas) |
 | 20-26 Oct | Everything lives in the system; the master, client, job and interview sheets and the placement WhatsApp posts are dropped | Owner (canvas) |
@@ -26,6 +32,18 @@ over older documents.
 | 28 Oct | **Ops is a separate system:** own repository, backend and database, on the same server and Postgres as TA, connected to TA by API; TA only gets added endpoints | Owner |
 | 28 Oct | Backend first; the UI team designs the screens later | Owner |
 | 28 Oct | Order of work: agree the whole flow → decide technology → update documents → build, feature by feature | Owner |
+| 1 Nov | Ops owners see all clients; each inbox shows only their own clients' work | Owner |
+| 1 Nov | Website enquiries post directly to the Ops system (webhook from the form) | Owner |
+| 1 Nov | After one unanswered reminder (countersign, Director set, client report), the ops lead is told after 1 more day | Owner |
+| 1 Nov | A TA may have up to five 100% positions a day (TA's rule of 27 Oct stays) | Owner |
+| 1 Nov | Talent Pulse: each role gets its own apply email address; no tracked link | Owner |
+| 1 Nov | A position on hold for a silent client never closes automatically; a task to the owner every 30 days | Owner |
+| 1 Nov | Calls stay human: the system creates the call task with the number and records the outcome; no AI calls, no phone system | Owner |
+| 1 Nov | Late charge: simple 5% of the fee per unpaid month | Owner |
+| 1 Nov | Offer with no answer: no automatic timeout; the TA decides | Owner |
+| 1 Nov | Guarantee warning at day 75; after a no-show the client has 5 working days to choose replace or stop | Owner |
+| 1 Nov | Ops mail from a new `ops@career141.com` mailbox | Owner |
+| 1 Nov | WhatsApp from a new Ops number with its own templates | Owner |
 | 2 Nov | **Mail: we read the boxes the desk already uses, plus each ops person’s own box.** Nobody is asked to move to one address. A new `ops@career141.com` is still worth having as the address on messages the system sends, but it replaces nothing | Owner |
 | 2 Nov | **The clocks run themselves every five minutes.** The Ops backend's own scheduler asks the app for one pass through `/api/clock`, with a shared key; one pass at a time, and a pass that hangs is given up on after twenty seconds. Five minutes because the shortest thing we promise anybody is counted in hours. The health screen shows the last pass and says so when the scheduler looks stopped | Build decision, no owner input needed |
 | 2 Nov | **Files: R2 on the server, a folder on the machine while we build.** Nothing is public: a download is a signed link that lasts ten minutes, or our own screen, which asks who you are. A file is never overwritten — the time is in its key — and its SHA-256 is kept, so a year later we can prove which version went out. Documents, spreadsheets and pictures only, up to 25 MB. A Word document becomes a PDF through LibreOffice, as in TA; a machine without LibreOffice says so plainly | Build decision, no owner input needed |
@@ -55,19 +73,19 @@ over older documents.
 |---|---|---|
 | 1 | Silent client | One clock: 14 calendar days after profiles shared (ESA) → hold with reason; inside it, chase after 1 day, call the next day, stop after 3-4 silent days |
 | 2 | ESA decline | 14 calendar days after sending; any reply stops the chase |
-| 3 | Guarantee start and validity | Clock from the joining day; replacement or refund only if the fee is fully paid; unpaid = no guarantee |
+| 3 | ~~Guarantee start and validity~~ Decided 1 Nov: all visible, own inbox | Clock from the joining day; replacement or refund only if the fee is fully paid; unpaid = no guarantee |
 | 4 | 90 days or 3 months | 90 days from the first working day (ESA) |
 | 5 | Invoice timing | Invoice on the joining day; due 30 calendar days after the first working day |
 | 6 | Late charge | 5% per month; ESA says compounded: ⚪ owner or legal to confirm |
-| 7 | Fee basis | Stored per client agreement (months of gross, basis, nationality rule) instead of a percentage |
-| 8 | Position close | Search stops at offer; posts close at the close checklist; position closes at guarantee end, refund or write-off |
-| 9 | Reference check | 26 Oct rule: phone, only when the client asks |
+| 7 | ~~Fee basis~~ Decided 1 Nov: webhook | Stored per client agreement (months of gross, basis, nationality rule) instead of a percentage |
+| 8 | ~~Position close~~ Decided 1 Nov: up to five | Search stops at offer; posts close at the close checklist; position closes at guarantee end, refund or write-off |
+| 9 | ~~Reference check~~ Decided 1 Nov: new Ops number; templates listed in 15 F2 | 26 Oct rule: phone, only when the client asks |
 | 10 | Director rejection reason | No reason needed |
-| 11 | Client WhatsApp groups | Groups stay; the system drafts the post text and logs it; ops posts |
-| 12 | Who tracks the joining date | The TA makes the calls; the ops owner owns the record and the guarantee; both are alerted |
-| 13 | Rejection notices | Automatic from one approved template |
-| 14 | 100% position | The TA lead sets the daily 100%, also on a returning job |
-| 15 | Interview invites | Sent automatically; the ops owner handles exceptions |
+| 11 | ~~Client WhatsApp groups~~ Decided 1 Nov: no timeout | Groups stay; the system drafts the post text and logs it; ops posts |
+| 12 | ~~Who tracks the joining date~~ Decided 1 Nov: simple 5%; numbering, tax, bank details still ⚪ | The TA makes the calls; the ops owner owns the record and the guarantee; both are alerted |
+| 13 | ~~Rejection notices~~ Decided 1 Nov: warn at 75; 5 working days | Automatic from one approved template |
+| 14 | ~~100% position~~ Decided 1 Nov: never automatically | The TA lead sets the daily 100%, also on a returning job |
+| 15 | ~~Interview invites~~ Decided 1 Nov: ops lead after 1 day | Sent automatically; the ops owner handles exceptions |
 | 16 | Replacement billing | No invoice; new 90-day guarantee |
 | 17 | Talent Pulse link | ⚪ open: one tracked apply link per role? |
 
@@ -99,5 +117,5 @@ confirm each one while walking the flow.
 | 16 | Surcharge invoice: chase and payment path | M10 |
 | 17 | Who maintains the Sri Lankan holiday list? | M1 |
 | 18 | Import the current sheets (master, client, interview) or start clean at go-live? | Go-live |
-| 19 | Talent Pulse: one tracked apply link per role? | M5 |
+| 19 | ~~Talent Pulse: one tracked apply link per role?~~ Decided 1 Nov: own address per role | M5 |
 | 20 | What does "DLA" stand for (attends intro calls)? | M2 |

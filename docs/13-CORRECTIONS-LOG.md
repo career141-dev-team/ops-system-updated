@@ -2,6 +2,13 @@
 
 Everything corrected while consolidating the plan, with the reason. Newest first.
 
+## 1 Nov 2026 · Deep read of the diagram
+
+**Canvas re-read:** all 59 cards byte-for-byte identical to 28 Oct (every diagram's steps,
+arrows and text hash the same). New document [14](14-DIAGRAM-DEEP-WALKTHROUGH.md): all 250
+steps of c5237 with owner, arrows, corrected labels and connection points; the 12 end steps
+judged; the 27 floating labels placed.
+
 ## 28 Oct 2026 · Consolidation pass (this repository)
 
 **Canvas re-read:** all 59 cards present; every diagram has the same steps and arrows as
