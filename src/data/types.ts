@@ -505,6 +505,64 @@ export interface OpsHold {
   updatedAt: number;
 }
 
+/**
+ * What the client said they want (15, Phase 3 steps 3 to 5).
+ *
+ * The fault this record exists for is on the owner's board in his own words:
+ * "the requirement was in the TA lead's head". The opening in TA is built from
+ * these fields and nothing else.
+ */
+export interface OpsRequirement {
+  id: Id;
+  leadId: Id;
+  clientId: Id | null;
+  clientTaId: string;
+  /** The meeting it came out of, which is the only other copy. */
+  meetingId: Id | null;
+  version: number;
+  fields: Record<string, string>;
+  /** Worth searching for at that package? A no ends in a kind reply. */
+  practical: boolean;
+  /** Why it is not practical, and when to ask them again. */
+  reason: string | null;
+  inviteBackAt: number | null;
+  /** When it was handed to TA. */
+  openedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Our side of an opening in the TA System (15, Phase 3 steps 6 to 9).
+ *
+ * TA owns the opening; this is what Ops needs to know about it: which
+ * requirement it came from, who the primary TA is, which day it is the 100%
+ * position, and what stage it is at. The TA id is empty until TA confirms it,
+ * because a write to TA is queued and may take a while.
+ */
+export interface OpsPosition {
+  id: Id;
+  requirementId: Id | null;
+  clientId: Id | null;
+  clientTaId: string;
+  /** TA's own opening id, once TA has told us. */
+  openingTaId: string | null;
+  title: string;
+  stage: string;
+  /** The TA who owns the search, and the day it is the 100% position. */
+  primaryTaId: string | null;
+  hundredPercentDay: string | null;
+  /** What TA has told us about it, in words, for the client view. */
+  taStatus: string | null;
+  jdApprovedAt: number | null;
+  handedOverAt: number;
+  closedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -519,6 +577,8 @@ export interface OpsDatabase {
   clients: OpsClient[];
   clientSets: OpsClientSet[];
   holds: OpsHold[];
+  requirements: OpsRequirement[];
+  positions: OpsPosition[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

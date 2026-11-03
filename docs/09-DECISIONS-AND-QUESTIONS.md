@@ -77,6 +77,10 @@ over older documents.
 | 3 Nov | **A CV claim lives on the candidate in the set, not in a table of its own.** There is exactly one claim per candidate per set, so `opsOwnershipClaims` would hold the same row twice. It is recorded with the verdict and the sentence the client is told | Build decision (docs/15 Phase 4 step 1 named a table) |
 | 3 Nov | **A client who answers about one candidate is not a silent client.** The silence count resets on anything they say, and any decision or claim stops the chase clocks - but never the ownership window, which is a promise in the agreement rather than a chase | Build decision |
 
+| 3 Nov | **Ops never creates an opening in the TA System; it queues one and waits for TA's own event to give it the id.** The position exists in Ops the moment it is handed over, with no opening id and the screen saying so, because a queued write may take a while and an invented id would be a lie | Build decision |
+| 3 Nov | **No opening before the agreement is signed, and none from a half-written requirement.** Both are refusals with the missing field named, not warnings. Signed is enough - the Director's countersignature follows | Owner's rule, built |
+| 3 Nov | **A TA who opens a position by hand for a client of ours gets a position record and a task to link a requirement.** Otherwise the brief exists only in that TA's head, which is the fault this phase is for | Build decision |
+
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
 
 | # | Topic | Settled as |

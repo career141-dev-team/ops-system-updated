@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -72,6 +72,8 @@ export const snapshot = internalQuery({
       ctx.db.query("opsClients").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsClientSets").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsHolds").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsRequirements").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsPositions").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -101,6 +103,8 @@ export const snapshot = internalQuery({
       clients: clients.map(row),
       clientSets: clientSets.map(row),
       holds: holds.map(row),
+      requirements: requirements.map(row),
+      positions: positions.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -487,6 +491,117 @@ export const addHold = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** What the client said they want (15, Phase 3 step 3). */
+export const addRequirement = internalMutation({
+  args: {
+    leadId: v.string(),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    meetingId: v.union(v.string(), v.null()),
+    version: v.number(),
+    fields: v.any(),
+    practical: v.boolean(),
+    reason: v.union(v.string(), v.null()),
+    inviteBackAt: v.union(v.number(), v.null()),
+    openedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsRequirements", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "requirement.saved",
+      subjectType: "requirement",
+      subjectId: id as string,
+      after: "version " + String(args.version),
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchRequirement = internalMutation({
+  args: {
+    requirementId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.requirementId as Id<"opsRequirements">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "requirement",
+      subjectId: found._id as string,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** Our side of an opening in the TA System (15, Phase 3 step 6). */
+export const addPosition = internalMutation({
+  args: {
+    requirementId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    clientTaId: v.string(),
+    openingTaId: v.union(v.string(), v.null()),
+    title: v.string(),
+    stage: v.string(),
+    primaryTaId: v.union(v.string(), v.null()),
+    hundredPercentDay: v.union(v.string(), v.null()),
+    taStatus: v.union(v.string(), v.null()),
+    jdApprovedAt: v.union(v.number(), v.null()),
+    handedOverAt: v.number(),
+    closedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsPositions", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "position.handedOver",
+      subjectType: "position",
+      subjectId: id as string,
+      after: args.title,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchPosition = internalMutation({
+  args: {
+    positionId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.positionId as Id<"opsPositions">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "position",
+      subjectId: found._id as string,
+      before: found.stage,
+      after: after?.stage ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

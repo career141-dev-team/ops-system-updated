@@ -12,6 +12,8 @@ import {
   addLead,
   addMeeting,
   agreementForLead,
+  addPosition,
+  addRequirement,
   agreementIn,
   chaseTheAgreement,
   clientFromLead,
@@ -20,6 +22,10 @@ import {
   holdIn,
   patchClientSet,
   patchHold,
+  patchPosition,
+  patchRequirement,
+  positionIn,
+  requirementForLead,
   startReceiptClocks,
   clientsNewestFirst,
   patchClient,
@@ -64,6 +70,12 @@ import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
+import {
+  briefText,
+  problemWithHandover,
+  problemWithImpractical,
+  problemWithRequirement,
+} from "@/lib/requirements";
 import {
   HOLD_REVIEW_DAYS,
   OWNERSHIP_WORKING_DAYS,
@@ -2174,4 +2186,323 @@ export async function liftTheHold(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/holds");
   back("Lifted. The TA System will be told, and the feedback chase starts again from today.");
+}
+
+/* ── The requirement, and handing it to TA (15, Phase 3) ─────── */
+
+/**
+ * Book the requirement meeting (step 2).
+ *
+ * The same machinery as the intro call - a TA lead on it, two reminders, three
+ * unanswered attempts closing the lead - because it is the same kind of
+ * meeting with a different purpose. The owner's rule: no work starts on a
+ * position until this has actually happened.
+ */
+export async function bookRequirementMeeting(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+
+  const esa = agreementForLead(db, leadId);
+  if (esa?.state !== "signed" && esa?.state !== "countersigned") {
+    back("No requirement meeting until the agreement is signed: that is where the search begins.");
+  }
+
+  const at = Date.parse(String(formData.get("at") ?? "") + ":00+05:30");
+  const taLeadId = String(formData.get("taLeadId") ?? "");
+  const problem = problemWithBooking({ at, taLeadId }, Date.now());
+  if (problem) back(problem);
+
+  const meeting = await addMeeting({
+    leadId,
+    kind: "requirement",
+    at,
+    state: "booked",
+    taLeadId,
+    rebookCount: 0,
+    brief: "",
+    role: "",
+    packageSaid: "",
+    reason: null,
+    bookedBy: member.id,
+    heldAt: null,
+  });
+
+  for (const reminder of remindersFor(at, Date.now())) {
+    await startTimer({
+      kind: reminder.kind,
+      subjectType: "meeting",
+      subjectId: meeting.id,
+      startsAt: Date.now(),
+      dueAt: reminder.dueAt,
+      warnAt: null,
+      ownerId: row.ownerId,
+      payload: { label: row.company + ", the requirement meeting" },
+    });
+  }
+  await queueTaWrite(
+    "/integrations/v1/notify",
+    {
+      toUserId: taLeadId,
+      title: "Requirement meeting booked: " + row.company,
+      body: "The client has signed. The requirement meeting is on " + colomboDateInWords(at) + ".",
+    },
+    { type: "meeting", id: meeting.id },
+  );
+
+  const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
+  revalidatePath(here);
+  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+}
+
+/**
+ * Write down what the client asked for (step 3).
+ *
+ * Saved whether or not it is complete, because a half-written requirement is
+ * still better than a remembered one - but it cannot be handed to TA until
+ * every required field is in, and the screen names what is missing.
+ */
+export async function saveRequirement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+
+  const fields: Record<string, string> = {};
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value).trim();
+  }
+
+  const already = requirementForLead(db, leadId);
+  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const held = meetingsForLead(db, leadId).find((m) => m.kind === "requirement" && m.state === "held") ?? null;
+
+  if (already) {
+    await patchRequirement(already.id, { fields }, member.id, "requirement.saved", null);
+  } else {
+    await addRequirement({
+      leadId,
+      clientId: client?.id ?? null,
+      clientTaId: row.clientTaId ?? client?.taClientId ?? "",
+      meetingId: held?.id ?? null,
+      version: 1,
+      fields,
+      practical: true,
+      reason: null,
+      inviteBackAt: null,
+      openedAt: null,
+      ownerId: row.ownerId,
+    });
+  }
+  revalidatePath(here);
+  const problem = problemWithRequirement(fields);
+  back(problem ? "Saved. " + problem : "Saved. It can go to the TA System now.");
+}
+
+/**
+ * The role cannot be filled at that package (step 4).
+ *
+ * A polite reply is drafted, the lead closes with its reason, and a date is
+ * set to ask them again - because a salary that is wrong today is often right
+ * next year, and the board's complaint is that we simply never went back.
+ */
+export async function markRoleImpractical(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const inviteBackAt = Date.parse(String(formData.get("inviteBackAt") ?? "") + "T09:00:00+05:30");
+  const now = Date.now();
+  const problem = problemWithImpractical(reason, Number.isFinite(inviteBackAt) ? inviteBackAt : null, now);
+  if (problem) back(problem);
+
+  const requirement = requirementForLead(db, leadId);
+  if (requirement) {
+    await patchRequirement(
+      requirement.id,
+      { practical: false, reason, inviteBackAt },
+      member.id,
+      "requirement.impractical",
+      reason,
+    );
+  }
+
+  const wording = templateFor(db, "role.impractical.reply");
+  const message = await draftMessage({
+    channel: "email",
+    to: [row.contactEmail].filter(Boolean),
+    subject: (wording?.subject ?? "{{client}} · the role we discussed").replace(/\{\{client\}\}/g, row.company),
+    body: (wording?.body ?? ["Dear {{contact}},", "", "Thank you for your time.", "", "Kind regards", "Career 141"].join("\n"))
+      .replace(/\{\{contact\}\}/g, row.contactName)
+      .replace(/\{\{client\}\}/g, row.company),
+    templateKey: "role.impractical.reply",
+    subjectType: "lead",
+    subjectId: leadId,
+  });
+
+  await patchLead(leadId, { state: "closed_other", reason: "Role not practical: " + reason }, member.id, "lead.closedImpractical", reason);
+  await startTimer({
+    kind: "lead.inviteBack",
+    subjectType: "lead",
+    subjectId: leadId,
+    startsAt: now,
+    dueAt: inviteBackAt,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: row.company },
+  });
+  revalidatePath(here);
+  revalidatePath("/leads");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        "Closed with its reason, and we will be asked to invite them back on " + colomboDateInWords(inviteBackAt) + ". The reply is drafted - read it before it goes.",
+      ),
+  );
+}
+
+/**
+ * Hand the requirement to the TA System (step 6).
+ *
+ * Two refusals first, and they are the point of the whole phase: no opening
+ * before the agreement is signed, and no opening from a half-written
+ * requirement. Then the write is **queued** - Ops never creates an opening
+ * itself and never invents TA's id for it. TA's own `opening.created` event
+ * fills the id in, which is also how a TA creating one by hand is noticed.
+ */
+export async function handOverToTa(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  const requirement = requirementForLead(db, leadId);
+  if (!requirement) back("Write the requirement down first.");
+  const req = requirement as NonNullable<typeof requirement>;
+  if (req.openedAt) back("This requirement has already gone to the TA System.");
+
+  const esa = agreementForLead(db, leadId);
+  const problem = problemWithHandover(esa?.state ?? null, req.fields);
+  if (problem) back(problem);
+
+  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const now = Date.now();
+  const title = (req.fields.title ?? "").trim();
+
+  // Our side of the opening, with no TA id yet: TA answers with that, through
+  // its event, and the screen says so plainly in the meantime.
+  const position = await addPosition({
+    requirementId: req.id,
+    clientId: client?.id ?? null,
+    clientTaId: req.clientTaId || client?.taClientId || "",
+    openingTaId: null,
+    title,
+    stage: "handed_over",
+    primaryTaId: String(formData.get("primaryTaId") ?? "") || null,
+    hundredPercentDay: String(formData.get("hundredPercentDay") ?? "") || null,
+    taStatus: null,
+    jdApprovedAt: null,
+    handedOverAt: now,
+    closedAt: null,
+    ownerId: row.ownerId,
+  });
+
+  await queueTaWrite(
+    "/integrations/v1/openings",
+    {
+      clientId: req.clientTaId || client?.taClientId || "",
+      title,
+      brief: briefText(req.fields),
+      headcount: Number(req.fields.headcount ?? 1) || 1,
+      level: req.fields.level ?? "",
+      locations: req.fields.locations ?? "",
+      package: req.fields.salary ?? "",
+      primaryRecruiterId: position.primaryTaId,
+      hundredPercentDay: position.hundredPercentDay,
+      requirementReceivedAt: req.createdAt,
+      opsPositionId: position.id,
+    },
+    { type: "position", id: position.id },
+  );
+
+  await patchRequirement(req.id, { openedAt: now }, member.id, "requirement.handedOver", null);
+  await patchLead(leadId, { state: "handed_over" }, member.id, "lead.handedOver", null);
+  revalidatePath(here);
+  revalidatePath("/positions");
+  back(
+    "Handed over. The opening is queued for the TA System; it appears on the position the moment TA confirms it, and the brief goes exactly as written.",
+  );
+}
+
+/** The TA lead picks the primary TA and the 100% day; Ops records it (step 5). */
+export async function setPositionTeam(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const primaryTaId = String(formData.get("primaryTaId") ?? "").trim() || null;
+  const hundredPercentDay = String(formData.get("hundredPercentDay") ?? "").trim() || null;
+  if (!primaryTaId && !hundredPercentDay) back("Nothing to change.");
+
+  await patchPosition(
+    positionId,
+    { primaryTaId: primaryTaId ?? row.primaryTaId, hundredPercentDay: hundredPercentDay ?? row.hundredPercentDay },
+    member.id,
+    "position.teamSet",
+    null,
+  );
+  // The TA lead's decision belongs in TA, which is where the TAs read it.
+  if (row.openingTaId) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/team",
+      { primaryRecruiterId: primaryTaId, hundredPercentDay },
+      { type: "position", id: positionId },
+    );
+  }
+  revalidatePath(here);
+  back(
+    row.openingTaId
+      ? "Recorded, and the TA System will be told."
+      : "Recorded. It goes to the TA System with the opening once TA confirms it.",
+  );
 }

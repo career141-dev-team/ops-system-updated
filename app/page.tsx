@@ -31,6 +31,7 @@ function clockInWords(kind: string): string {
     "meeting.rebook": "a meeting to book again",
     "feedback.chase": "waiting on client feedback",
     "feedback.call": "a client to ring about feedback",
+    "lead.inviteBack": "a client to invite back",
     "silence.hold": "two weeks of client silence",
     "hold.review": "a hold to look at again",
     "hire.unreported": "a possible unreported hire",
