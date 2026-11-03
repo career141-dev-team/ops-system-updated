@@ -26,7 +26,9 @@ const DAY = 86_400_000;
 
 const filled = (): EsaFields => ({
   companyName: "SAMPLE CLIENT (Pvt) Ltd",
+  registrationNo: "PV 123456",
   companyAddress: "1 Sample Road, Colombo",
+  clientBusiness: "manufacturing tiles",
   taxNo: "123456789",
   signatoryName: "Sample contact",
   signatoryEmail: "hr@example.test",
@@ -41,17 +43,21 @@ const filled = (): EsaFields => ({
 test("a blank required field blocks the draft, and is named", () => {
   assert.equal(problemWithDraft(filled()), null);
 
-  const noTax = { ...filled(), taxNo: "  " };
-  assert.deepEqual(missingFields(noTax).map((f) => f.key), ["taxNo"]);
-  assert.match(problemWithDraft(noTax) ?? "", /still blank: tax number/i);
+  // The registration number is in the first clause of the real template, so a
+  // blank one makes the document wrong, not merely incomplete (3 Nov).
+  const noReg = { ...filled(), registrationNo: "  " };
+  assert.deepEqual(missingFields(noReg).map((f) => f.key), ["registrationNo"]);
+  assert.match(problemWithDraft(noReg) ?? "", /still blank: company registration no/i);
 
   const empty = problemWithDraft({});
   assert.match(empty ?? "", /company, as it signs/i);
-  assert.match(empty ?? "", /tax number/i);
+  assert.match(empty ?? "", /what their business is/i);
 });
 
 test("an optional field being blank changes nothing", () => {
-  const noTitle = { ...filled(), signatoryTitle: "", notes: "" };
+  // The tax number is one of these: the agreement never asks for it, and that
+  // was only found when the real template was read (3 Nov).
+  const noTitle = { ...filled(), signatoryTitle: "", notes: "", taxNo: "", signatoryPhone: "" };
   assert.equal(problemWithDraft(noTitle), null);
 });
 

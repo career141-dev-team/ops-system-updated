@@ -61,18 +61,26 @@ export interface EsaField {
 /**
  * What the agreement is filled from.
  *
- * The required ones are those that make the document wrong rather than
- * incomplete: a company with no name or no tax number is not a party to
- * anything, and a fee rule nobody wrote down is the argument three months
- * later when the invoice goes out.
+ * Every one of these is a hole in the real template, which was read out of the
+ * owner's own agreement on 3 Nov: `{{companyName}}`, `{{registrationNo}}` and
+ * the rest. The required ones are those that make the document wrong rather
+ * than incomplete - a company with no name or no registration number is not a
+ * party to anything, and a fee rule nobody wrote down is the argument three
+ * months later when the invoice goes out.
+ *
+ * The tax number is not asked for anywhere in the document, so it is kept but
+ * optional; that was my guess before the template was in front of us.
  */
 export const ESA_FIELDS: EsaField[] = [
   { key: "companyName", label: "Company, as it signs", required: true, why: "The party to the agreement." },
+  { key: "registrationNo", label: "Company registration no.", required: true, why: "Named in the first clause." },
   { key: "companyAddress", label: "Registered address", required: true, why: "The document needs one." },
-  { key: "taxNo", label: "Tax number (VAT/TIN)", required: true, why: "Asked for on every agreement." },
+  { key: "clientBusiness", label: "What their business is", required: true, why: "“involved in the business of …”, in their words." },
   { key: "signatoryName", label: "Who signs for them", required: true, why: "The person we chase." },
   { key: "signatoryEmail", label: "Their email", required: true, why: "Where it is sent and chased." },
   { key: "signatoryTitle", label: "Their title", required: false, why: "Shown under the signature." },
+  { key: "signatoryPhone", label: "Their number", required: false, why: "On the signature page, and for the WhatsApp chase." },
+  { key: "taxNo", label: "Tax number (VAT/TIN)", required: false, why: "Not in the document; kept for the invoice." },
   { key: "feeMonths", label: "Fee: months of salary", required: true, why: "One month is standard." },
   { key: "feeBasis", label: "Fee on gross or basic", required: true, why: "Basic only for selected clients." },
   { key: "guaranteeDays", label: "Guarantee, in days", required: true, why: "90 days from joining." },

@@ -2,6 +2,8 @@ node_modules/
 .next/
 .data/
 .data-ui/
+# Real client documents (the agreement template) stay off the repository.
+.local/
 *.log
 .env
 .env.*
