@@ -16,6 +16,8 @@ import {
   chaseTheAgreement,
   clientFromLead,
   clientIn,
+  clientSetIn,
+  patchClientSet,
   clientsNewestFirst,
   patchClient,
   draftMessage,
@@ -59,6 +61,12 @@ import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
+import {
+  MIN_CVS,
+  type SetState,
+  canMoveTo as canMoveSetTo,
+  problemWithSending,
+} from "@/lib/clientSets";
 import { docxToPdf } from "@/lib/docxToPdf";
 import {
   type FileKind,
@@ -85,7 +93,7 @@ import {
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
-import { clients as taClients } from "@/lib/ta";
+import { clients as taClients, preparedCv } from "@/lib/ta";
 import {
   type EsaFields,
   type EsaState,
@@ -1656,4 +1664,225 @@ export async function moveClientOwner(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/clients");
   back("Moved to " + (to?.name ?? "them") + ", and the TA System will be told.");
+}
+
+/* ── The CVs that go to the client (15, Phase 4 steps 3 and 4) ── */
+
+/**
+ * Read the set before it goes (step 3).
+ *
+ * Every prepared CV is fetched from TA once and kept as our own file. The
+ * email the client gets has to be reproducible a year later: TA can replace a
+ * prepared CV, and what the client actually received must not change with it.
+ *
+ * A CV already kept is not fetched again. A candidate TA has no prepared CV
+ * for is named on the screen rather than quietly dropped.
+ */
+export async function reviewClientSet(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (row.state === "sent") back("That set has gone already.");
+
+  const now = Date.now();
+  let fetched = 0;
+  const candidates = [];
+  for (const who of row.candidates) {
+    if (who.fileId && fileIn(db, who.fileId)) {
+      candidates.push(who);
+      continue;
+    }
+    const answer = await preparedCv(who.applicationTaId);
+    if (!answer.ok) {
+      candidates.push({ ...who, fileId: null, problem: answer.reason });
+      continue;
+    }
+    const name = safeName(who.name) + " - Career 141.pdf";
+    const key = keyFor("cv", "clientSet", setId, name, now);
+    await putBytes(key, answer.data.bytes, answer.data.mime);
+    const kept = await addFile({
+      kind: "cv",
+      key,
+      name,
+      size: answer.data.bytes.byteLength,
+      mime: answer.data.mime,
+      sha256: sha256(answer.data.bytes),
+      subjectType: "clientSet",
+      subjectId: setId,
+      madeFrom: null,
+      uploadedBy: member.id,
+    });
+    fetched += 1;
+    candidates.push({ ...who, fileId: kept.id, problem: null });
+  }
+
+  await patchClientSet(
+    setId,
+    { candidates, state: row.state === "ready" ? "reviewing" : row.state },
+    member.id,
+    "clientSet.reviewed",
+    null,
+  );
+  revalidatePath(here);
+  const missing = candidates.filter((c) => !c.fileId).length;
+  back(
+    (fetched ? fetched + (fetched === 1 ? " CV" : " CVs") + " kept. " : "Nothing new to fetch. ") +
+      (missing ? missing + " still has no CV; see below." : "Every CV is here."),
+  );
+}
+
+/**
+ * Send the set to the client (step 4).
+ *
+ * It goes to the client's own people - whoever TA has marked "hr" - with the
+ * ops owner copied, as a drafted email a person approves. The CVs travel with
+ * it. The clock the client's seven working days run on starts from the day
+ * they received it, which defaults to today and can be corrected.
+ *
+ * TA is told the round has gone, through the outbox, so a TA System that is
+ * down does not stop the client being served.
+ */
+export async function sendClientSet(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (!canMoveSetTo(row.state as SetState, "sent")) back("A set in that state cannot be sent.");
+
+  const answer = await taClients(row.clientTaId ? row.name.split(" > ")[0] : "");
+  const theirs = answer.ok ? answer.data.find((c) => c.id === row.clientTaId) : undefined;
+  const to = (theirs?.contacts ?? [])
+    .filter((c) => (c.role ?? "").toLowerCase() === "hr" && c.email.trim())
+    .map((c) => c.email.trim());
+
+  const problem = problemWithSending(row.candidates, to, numberOf(db, "set.minCvs", MIN_CVS));
+  if (problem) back(problem);
+
+  const wording = templateFor(db, "set.cover");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, theirs?.name ?? row.name.split(" > ")[0])
+      .replace(/\{\{position\}\}/g, row.role)
+      .replace(/\{\{setNumber\}\}/g, String(row.setNumber))
+      .replace(/\{\{cvCount\}\}/g, String(row.candidates.length))
+      .replace(/\{\{contact\}\}/g, (theirs?.contacts ?? []).find((c) => (c.role ?? "") === "hr")?.name ?? "all")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}"),
+    body: fill(wording?.body ?? "Dear {{contact}},\n\n{{cvCount}} CVs are attached.\n\nKind regards\nCareer 141"),
+    templateKey: "set.cover",
+    subjectType: "clientSet",
+    subjectId: setId,
+    attachmentFileIds: row.candidates.map((c) => c.fileId).filter((id): id is string => id !== null),
+  });
+
+  const now = Date.now();
+  await patchClientSet(
+    setId,
+    { state: "sent", sentAt: now, sentMessageId: message.id, sentTo: to, receivedAt: now },
+    member.id,
+    "clientSet.sent",
+    null,
+  );
+  await cancelClocksFor(db, "clientSet", setId, member.id, "The set has gone.", ["set.due"]);
+  await queueTaWrite(
+    "/integrations/v1/client-sets/" + row.taRoundId + "/sent",
+    { sentAt: now, receivedAt: now, sentTo: to },
+    { type: "clientSet", id: setId },
+  );
+  revalidatePath(here);
+  revalidatePath("/sets");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The set is drafted with " + row.candidates.length + " CVs attached. Read it, then approve it."),
+  );
+}
+
+/** The client got it on a different day; the clocks after it count from this. */
+export async function recordSetReceived(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+
+  const when = Date.parse(String(formData.get("receivedAt") ?? "") + ":00+05:30");
+  if (!Number.isFinite(when)) back("Give the day and time they received it.");
+  if (when > Date.now() + HOUR) back("That is in the future.");
+  if (row.sentAt && when < row.sentAt - HOUR) back("They cannot have received it before it was sent.");
+
+  await patchClientSet(setId, { receivedAt: when }, member.id, "clientSet.received", null);
+  revalidatePath(here);
+  back("Noted. Everything after this counts from then.");
+}
+
+/**
+ * Take a candidate out of the set (15, Phase 4 step 3).
+ *
+ * The usual reason is that TA has no prepared CV for them, and the set must
+ * not wait for one. Taking them out needs a reason, like everything else that
+ * drops somebody, and the set still has to hold the minimum afterwards.
+ */
+export async function dropFromClientSet(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const who = String(formData.get("applicationTaId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (row.state === "sent") back("That set has gone already; this one is history.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why they are coming out of the set.");
+  const taken = row.candidates.find((c) => c.applicationTaId === who);
+  if (!taken) back("Nobody in this set by that id.");
+
+  // Worked out before the patch: the store hands back the same record the
+  // patch writes to, so counting afterwards counts the new list and the
+  // message said "short of 5" about a set of exactly five (3 Nov).
+  const left = row.candidates.filter((c) => c.applicationTaId !== who);
+  const minimum = numberOf(db, "set.minCvs", MIN_CVS);
+  await patchClientSet(
+    setId,
+    { candidates: left },
+    member.id,
+    "clientSet.candidateDropped",
+    (taken?.name ?? who) + ": " + reason,
+  );
+  revalidatePath(here);
+  back(
+    (taken?.name ?? "They") +
+      " is out of this set. " +
+      (left.length < minimum
+        ? "It is now short of " + minimum + ", so it cannot go until TA adds somebody."
+        : "The set can still go: " + left.length + " CVs."),
+  );
 }

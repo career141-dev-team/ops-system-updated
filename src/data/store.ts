@@ -20,6 +20,7 @@ import type {
   OpsBaseline,
   OpsCallLog,
   OpsClient,
+  OpsClientSet,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -443,6 +444,40 @@ export const repo = {
       after: patch.ownerId ? row.ownerId : row.stage,
       reason,
     });
+    save();
+  },
+
+  /* ── Client sets (15, Phase 4) ──────────────────────────── */
+
+  clientSetIn(setId: Id): OpsClientSet | null {
+    return load().clientSets.find((r) => r.id === setId) ?? null;
+  },
+
+  addClientSet(input: Omit<OpsClientSet, "id" | "createdAt" | "updatedAt">): OpsClientSet {
+    const db = load();
+    const now = Date.now();
+    const row: OpsClientSet = { ...input, id: id("set"), createdAt: now, updatedAt: now };
+    db.clientSets.push(row);
+    audit({
+      actorId: null,
+      action: "clientSet.ready",
+      subjectType: "clientSet",
+      subjectId: row.id,
+      before: null,
+      after: row.name,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchClientSet(setId: Id, patch: Partial<OpsClientSet>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.clientSets.find((r) => r.id === setId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "clientSet", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

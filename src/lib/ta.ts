@@ -21,6 +21,14 @@ export interface TaPerson {
   isActive: boolean;
 }
 
+export interface TaContact {
+  name: string;
+  email: string;
+  /** "hr" is who a set is sent to; the rest are copied or kept for reference. */
+  role: string | null;
+  phone?: string | null;
+}
+
 export interface TaClient {
   id: string;
   name: string;
@@ -29,6 +37,22 @@ export interface TaClient {
   esaSignedAt: number | null;
   status: string;
   opsOwnerId: string | null;
+  /** The client's own people, kept on TA's client record (Part E, GET clients). */
+  contacts?: TaContact[];
+}
+
+/** One round of CVs sent to a client, as TA keeps it (Part E, GET client-sets). */
+export interface TaClientSet {
+  id: string;
+  setNumber: number;
+  openingId: string;
+  applicationIds: string[];
+  /** Per application: who it is and whether the prepared CV exists. */
+  applications: { id: string; name: string; preparedCv: boolean }[];
+  dispatch: string;
+  status: string;
+  sentAt: number | null;
+  receivedAt: number | null;
 }
 
 export interface TaOpening {
@@ -143,6 +167,56 @@ async function call<T>(
   }
 }
 
+/**
+ * The same call, for a read that answers with a file instead of JSON.
+ *
+ * Everything about it is the same - the switches, the stand-in, the timing
+ * written to the log - so there is one door to the TA System and not two.
+ */
+async function callBytes(
+  direction: "read" | "write" | "events",
+  path: string,
+): Promise<TaResult<{ bytes: Uint8Array; mime: string }>> {
+  const started = Date.now();
+  const give = async (reason: string, status: number | null = null): Promise<TaResult<{ bytes: Uint8Array; mime: string }>> => {
+    await note({ direction, path, ok: false, status, ms: Date.now() - started, note: reason });
+    return { ok: false, reason };
+  };
+
+  if (fakeTa()) {
+    const { fakeFile } = await import("@/data/fakeTa");
+    const answer = fakeFile(path);
+    if (!answer.ok) return give(answer.reason);
+    await note({ direction, path, ok: true, status: 200, ms: 0, note: "stand-in" });
+    return { ok: true, data: answer.data, ms: 0 };
+  }
+
+  if (!readsEnabled()) return give("Reading the TA System is switched off.");
+  const root = base();
+  if (!root) return give("No TA System address is set yet.");
+  const token = (process.env.OPS_TA_TOKEN ?? "").trim();
+  if (!token) return give("No TA System token is set yet.");
+
+  try {
+    const response = await fetch(root.replace(/\/$/, "") + path, {
+      headers: { authorization: "Bearer " + token },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return give("The TA System answered " + response.status + ".", response.status);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const mime = response.headers.get("content-type") ?? "application/pdf";
+    await note({ direction, path, ok: true, status: response.status, ms: Date.now() - started, note: null });
+    return { ok: true, data: { bytes, mime }, ms: Date.now() - started };
+  } catch (error) {
+    return give(
+      error instanceof Error && error.name === "TimeoutError"
+        ? "The TA System did not answer in twenty seconds."
+        : "The TA System could not be reached.",
+    );
+  }
+}
+
 /* ── Reads (Part E2) ──────────────────────────────────────────────────── */
 
 /** The desk's people. The first read we use, because it proves the window works. */
@@ -165,8 +239,28 @@ export function opening(openingId: string): Promise<TaResult<TaOpening>> {
 }
 
 /** What a client has been sent and what came back, for one opening. */
-export function clientSets(openingId: string): Promise<TaResult<unknown[]>> {
-  return call<unknown[]>("read", "/integrations/v1/openings/" + encodeURIComponent(openingId) + "/client-sets");
+export function clientSets(openingId: string): Promise<TaResult<TaClientSet[]>> {
+  return call<TaClientSet[]>("read", "/integrations/v1/openings/" + encodeURIComponent(openingId) + "/client-sets");
+}
+
+/** One round, by its number on the opening (15, Phase 4 step 2). */
+export function clientSet(openingId: string, setNumber: number): Promise<TaResult<TaClientSet>> {
+  return call<TaClientSet>(
+    "read",
+    "/integrations/v1/openings/" + encodeURIComponent(openingId) + "/client-sets/" + setNumber,
+  );
+}
+
+/**
+ * The prepared CV of one application, as bytes (15, Phase 4 step 3).
+ *
+ * TA streams the file rather than describing it, so this is the one read that
+ * is not JSON. It is fetched once and kept, because the email we send has to
+ * be reproducible a year later: TA may replace a prepared CV, and what the
+ * client actually received must not change with it.
+ */
+export async function preparedCv(applicationId: string): Promise<TaResult<{ bytes: Uint8Array; mime: string }>> {
+  return callBytes("read", "/integrations/v1/applications/" + encodeURIComponent(applicationId) + "/prepared-cv");
 }
 
 /* ── Writes (Part E2), always from the outbox and never from a screen ──── */

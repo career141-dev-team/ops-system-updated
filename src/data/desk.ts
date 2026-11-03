@@ -8,6 +8,7 @@ import type {
   OpsBaseline,
   OpsCallLog,
   OpsClient,
+  OpsClientSet,
   OpsDatabase,
   OpsEsa,
   OpsEvent,
@@ -25,11 +26,12 @@ import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
+import { dueFromEsa, setName } from "@/lib/clientSets";
 import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
 import { cursorAfter, whatWeDoWithIt } from "@/lib/taEvents";
-import { eventsAfter, write as taWrite } from "@/lib/ta";
+import { clientSet as taClientSet, eventsAfter, opening as taOpening, write as taWrite } from "@/lib/ta";
 
 /**
  * The desk, from wherever it is kept (2 Nov).
@@ -535,6 +537,123 @@ export function leadsNewestFirst(db: OpsDatabase): OpsLead[] {
   return [...db.leads].sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/* ── Client sets: what the client is sent (15, Phase 4) ───────── */
+
+export async function addClientSet(input: Omit<OpsClientSet, "id" | "createdAt" | "updatedAt">): Promise<OpsClientSet> {
+  if (!usingConvex()) return repo.addClientSet(input);
+  return (await convexMutation<OpsClientSet>("ops/data:addClientSet", input)) as OpsClientSet;
+}
+
+export async function patchClientSet(
+  setId: Id,
+  patch: Partial<OpsClientSet>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchClientSet(setId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchClientSet", { setId, patch, by, what, reason });
+}
+
+export function clientSetIn(db: OpsDatabase, setId: Id): OpsClientSet | null {
+  return db.clientSets.find((r) => r.id === setId) ?? null;
+}
+
+export function clientSetsNewestFirst(db: OpsDatabase): OpsClientSet[] {
+  return [...db.clientSets].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * TA says a round is ready (15, Phase 4 step 2).
+ *
+ * The round itself is read from TA, because the event carries only its
+ * numbers. The due date comes from the day the agreement was signed - that is
+ * what the client was promised - and a clock watches it, so a set nobody sends
+ * becomes somebody's task instead of a quiet failure.
+ *
+ * Nothing here throws: the events reader must not stop because one set could
+ * not be fetched. A second event for the same round changes nothing.
+ */
+export async function takeClientSetReady(data: Record<string, unknown>, now = Date.now()): Promise<OpsClientSet | null> {
+  const openingTaId = String(data.openingId ?? "").trim();
+  const setNumber = Number(data.setNumber ?? 0);
+  if (!openingTaId || !setNumber) return null;
+
+  const db = await desk();
+  const already = db.clientSets.find((r) => r.openingTaId === openingTaId && r.setNumber === setNumber);
+  if (already) return already;
+
+  const [round, job] = await Promise.all([taClientSet(openingTaId, setNumber), taOpening(openingTaId)]);
+  if (!round.ok || !job.ok) return null;
+
+  const client = db.clients.find((c) => c.taClientId === job.data.clientId) ?? null;
+  const esa = client?.leadId ? agreementForLead(db, client.leadId) : null;
+  const signedAt = esa?.signedAt ?? esa?.sentAt ?? null;
+  const dueAt = signedAt
+    ? dueFromEsa(signedAt, setNumber, numberOf(db, "set.firstDays", 7), numberOf(db, "set.laterDays", 14))
+    : null;
+  // Whoever owns the client owns the set. With no client record yet - the
+  // agreement may have been signed before Ops existed - it goes to the ops
+  // lead rather than to nobody.
+  const ownerId =
+    client?.ownerId ?? db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? db.members[0]?.id ?? "";
+
+  const row = await addClientSet({
+    taRoundId: round.data.id,
+    openingTaId,
+    setNumber,
+    clientId: client?.id ?? null,
+    clientTaId: job.data.clientId,
+    name: setName(client?.name ?? job.data.clientId, job.data.title, setNumber),
+    role: job.data.title,
+    state: "ready",
+    candidates: (round.data.applications ?? []).map((a) => ({
+      applicationTaId: a.id,
+      name: a.name,
+      fileId: null,
+      problem: a.preparedCv ? null : "TA has no prepared CV for this one yet.",
+    })),
+    dueAt,
+    sentAt: null,
+    sentMessageId: null,
+    sentTo: [],
+    receivedAt: null,
+    reason: null,
+    ownerId,
+  });
+
+  if (dueAt) {
+    await startTimer({
+      kind: "set.due",
+      subjectType: "clientSet",
+      subjectId: row.id,
+      startsAt: now,
+      dueAt,
+      warnAt: dueAt - 86_400_000,
+      ownerId,
+      payload: { label: row.name },
+    });
+  }
+  await createTask({
+    kind: "approve",
+    title: "A set is ready to go: " + row.name,
+    body:
+      "TA has prepared " +
+      row.candidates.length +
+      " CVs. Read them, then send the set to the client." +
+      (dueAt ? "" : "\n\nNo due date: this client has no signed agreement on our side."),
+    assigneeId: ownerId,
+    dueAt: now,
+    subjectType: "clientSet",
+    subjectId: row.id,
+    link: "/sets/" + row.id,
+  });
+  return row;
+}
+
 /* ── Clients: the company, once they are ours (step 19) ───────── */
 
 export async function addClient(input: Omit<OpsClient, "id" | "createdAt" | "updatedAt">): Promise<OpsClient> {
@@ -879,6 +998,9 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
       ? await convexMutation<OpsEvent | null>("ops/data:addEvent", row)
       : repo.addEvent(row);
     if (added) kept += 1;
+    // Some events are not only recorded: a set TA says is ready becomes a set
+    // on our side, with its due date and its clock (15, Phase 4 step 2).
+    if (event.type === "client_set.ready") await takeClientSetReady(event.data, now);
     handled.push({ taEventId: event.id, handledAt: now });
   }
 

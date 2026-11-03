@@ -63,6 +63,8 @@ export function seed(now = Date.now()): OpsDatabase {
     meetings: [],
     // No sample clients: one is made the moment an agreement is countersigned.
     clients: [],
+    // No sample sets: one arrives when TA says a round is ready.
+    clientSets: [],
     leads: [
       {
         id: "ld_new",
