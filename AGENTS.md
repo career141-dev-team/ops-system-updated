@@ -10,7 +10,13 @@ separate system from the **TA System** (`career141-dev/ta-system`), which is
 **live production** at https://ta-system.career141.com with 78,000+ real
 candidates. Ops talks to TA **only through TA's API**.
 
-Status: Phase 0, start-up. No code yet. See [`docs/01-STARTUP-PLAN.md`](docs/01-STARTUP-PLAN.md).
+Status: **Phase 1, Foundation, building from 2 Nov 2026.** The plan is
+[`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md) and the feature being built is
+[`docs/features/M01-foundations.md`](docs/features/M01-foundations.md).
+
+Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's look, and
+**no overlays, modals or drawers** — one page per thing, edit in place. The rules are in
+[`docs/07-SCREENS.md`](docs/07-SCREENS.md).
 
 ## Hard rules
 
@@ -51,3 +57,13 @@ Status: Phase 0, start-up. No code yet. See [`docs/01-STARTUP-PLAN.md`](docs/01-
 Match the TA System: Next.js 16 + self-hosted Convex, TypeScript. Comments explain
 *why*, often with the date and the incident. User-facing copy is plain, specific
 and active ("Saved", "Could not send — the email address is missing").
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

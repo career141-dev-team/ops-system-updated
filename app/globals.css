@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/*
+ * The TA System's look, in one place (owner's decision, 2 Nov): quiet paper,
+ * one ink, one brand green, hairline rules. No overlays anywhere in this app,
+ * so there are no dialog or backdrop styles to define.
+ */
+@theme {
+  --color-paper: #faf9f5;
+  --color-surface: #ffffff;
+  --color-ink: #1d1c1a;
+  --color-ink-soft: #55534e;
+  --color-ink-faint: #8b8880;
+  --color-rule: #e6e3da;
+  --color-rule-strong: #cfcbc0;
+  --color-brand: #1f6f54;
+  --color-danger: #a32d2d;
+  --color-warning: #854f0b;
+  --color-bg-warning: #faeeda;
+  --color-bg-danger: #fcebeb;
+  --color-bg-ok: #eaf3de;
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}

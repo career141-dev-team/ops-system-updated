@@ -17,11 +17,35 @@ with the client until the guarantee ends.
 
 | | |
 |---|---|
-| Phase | **0 · Project start-up** (started 28 Oct 2026) |
-| Done | Repository; everything collected and consolidated; the whole flow corrected with diagrams; architecture decided |
-| Next | **Agree the whole flow** with the owner and the Ops team, then decide the technology |
-| Built so far | No code yet |
-| Team | Binath and Sanjeev (Ops and TA), UI team (screens, later) |
+| Phase | **1 · Foundation** (building, from 2 Nov 2026) |
+| Done | Everything collected and consolidated; the whole flow corrected; architecture decided; the build plan written; the sheets replacement planned; the M1 feature plan written |
+| Building now | The skeleton: pick-your-name sign-in, the inbox in four parts, a real clock, a drafted message you approve, the window to the TA System, and a password-protected preview |
+| Decided 2 Nov | **Every feature ships with its screen**, in the TA System's look, minimal and with no overlays |
+| Team | Sanjeev and Binath; the owner approves every client-facing message and every live change |
+
+## Running it
+
+**Screens only, no backend.** Invented sample data, pick-your-name sign-in. The quickest way
+to look at the app.
+
+```sh
+npm install
+deploy/local/start-ui.sh     # http://localhost:3300
+```
+
+**With the Ops backend on this laptop.** Needs Docker. Its own Convex instance on port 3310
+and its own Postgres, so it cannot touch the TA System's local backend or anything live.
+
+```sh
+deploy/local/start.sh        # app 3300, backend 3310, dashboard 6891
+```
+
+## Checks
+
+```sh
+npm test            # the calendar, the clocks, the message gate, roles, the store
+npm run typecheck
+```
 
 ## Start here
 

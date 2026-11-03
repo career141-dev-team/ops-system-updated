@@ -1,28 +1,14 @@
-# dependencies
 node_modules/
-
-# builds
 .next/
-out/
-dist/
-build/
-
-# secrets: never commit
+.data/
+.data-ui/
+# Real client documents (the agreement template) stay off the repository.
+.local/
+*.log
 .env
 .env.*
 !.env.example
-*.pem
-*.key
-
-# convex local state
-.convex/
-
-# logs and OS files
-*.log
-npm-debug.log*
-.DS_Store
-Thumbs.db
-
-# editors
-.vscode/
-.idea/
+!deploy/preview/.env.preview.example
+deploy/local/.env.backend.local
+tsconfig.tsbuildinfo
+next-env.d.ts

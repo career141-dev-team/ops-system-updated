@@ -82,3 +82,145 @@ section 3. The diagrams in [04](04-OPS-FLOW.md) use the corrected labels. Exampl
 | Guarantee not tied to joining day | The guarantee end is already joining date + guarantee days; missing: ops owner, day-75, full-payment check, replace first |
 | (not on canvas) | Place redirects to a page that does not exist (TA bug) |
 | (not on canvas) | Ops cannot create clients in TA (`client.manage`) |
+
+## 2 Nov · One ops mailbox was the wrong answer
+
+Decision 11 of 1 Nov read as "a new mailbox `ops@career141.com`", and the first mail
+reader was written for that one address. Two things on the canvas say it is not enough.
+
+**The habit already exists.** The as-is ops flow (c719) shows every client email going
+from a person’s own Outlook with a shared box copied: the CV set as
+"CLIENT > ROLE > SET n" copying cv@, the interview invite from interviews@ copying
+opsteam@, the weekly report from joborders@, a website lead arriving at hello@, and the
+first client contact reaching joborders@ or opsteam@. So there is no new habit to teach
+and no box to force on anyone.
+
+**A copy is not the reply.** Copying a shared box shows the message we sent. The
+client’s answer follows the person who sent it, so a reader that watches only the
+shared box would see everything we already know and almost nothing we need. The TA
+System settled this months ago: its reply reader checks the signed-in person’s own
+mailbox, the shortlist inbox and job@ together (`src/app/actions.ts`). That also means
+Microsoft already permits this app to read staff mailboxes in this tenant, so there is
+no new consent to arrange.
+
+**What changed:** the reader takes a list (`OPS_MAILBOXES`), reads each box in turn, and
+every email it records remembers which box it arrived in. One box it is not allowed to
+read reports that one address and does not stop the others.
+
+**Still to do:** the house subject "CLIENT > ROLE > SET n" is already a form the TA
+System parses, and it would match hand-written set mail from Outlook. It is not built
+here yet, because matching by client needs the client contacts that arrive with the TA
+API.
+
+## 2 Nov · Two holes in the reply matching, closed
+
+**The sent-message id was invented.** `desk.ts` built it from our own row id as
+`<…@ops.career141.com>` — a domain that does not exist, and not what a mail server
+calls a message. Microsoft gives the real `internetMessageId` back when it sends, and a
+client’s reply quotes that. So the thread rule could never have matched a single real
+reply. The message record now keeps `providerMessageId`, null until a sender fills it,
+and the thread rule reads only messages whose real id we kept.
+
+**The desk’s own subject was not read.** The matcher looked only for our
+`[C141-…]` reference, which appears on mail the system sent — and the desk has typed
+"CLIENT > ROLE > SET n" by hand in Outlook for years (c719), which is what almost every
+client is replying to today. Both rules now run, reference first: a hybrid, not a swap.
+
+The house rule is the looser one, so it is held to three conditions. It must name a set
+number, or "your shortlist, thanks" could be read as a company and a role. It must lead
+to exactly one thing we know about, otherwise it is held for a person — the mistake the
+TA System made when it matched candidate mail on subject text alone. And names are
+compared without case, spacing or punctuation, so "A.B.C. Holdings (Pvt) Ltd" and
+"abc holdings pvt ltd" are one company. Reply prefixes, a "REVISED -" marker and our
+own reference are stripped before parsing, because a real reply carries all three.
+
+Both forms are read: "CLIENT > ROLE > SET 02" and "SET 2 - CLIENT - ROLE - 5 CVs", the
+latter being what the TA app already sends.
+
+## 2 Nov · The working week was already answered
+
+`isWorkingDay` said Monday to Friday with no source, which made it look like a guess
+waiting on the owner. It is not. The room's reading of the TA System records the rule as
+settled: its alerts "skip weekends and holidays, and one working day counts as 24 hours"
+(card c1174). Ops therefore counts the same days as the TA System, which matters because
+both sides of the API quote deadlines to the same people.
+
+What is genuinely open is the **holiday list**, which is empty in both systems — so every
+"7 working days" clock currently ignores poya and public holidays and can come due on a
+day the office is shut. The dates are public; which ones Career 141 closes for is the
+owner’s call, and it belongs on the holidays screen rather than in code.
+
+## 2 Nov · The senders, and why a draft is sent twice over
+
+Email goes out as a **draft that is then sent**, not through Graph's one-step `sendMail`.
+`sendMail` returns nothing at all, so there would be no way to learn what the message was
+called — and without that a reply can never be matched to its thread. Creating the draft
+hands back the whole message including `internetMessageId`, which is exactly what the
+client's reply quotes. That is what closed the invented-id hole above.
+
+It sends **from the ops person's own mailbox**, with the common box copied, which is the
+mailbox decision of the same day: the client sees Rushda and replies to Rushda, and the
+thread is not hers alone.
+
+Three switches sit under each other on purpose, because any one of them can be wrong:
+`OPS_SEND` (off everywhere until somebody says otherwise), the outreach switch in Settings
+(test mode sends to the test address instead), and `OPS_OUTBOUND_LOCK` (even with sending
+on, only named addresses and numbers can be written to). The last one is what makes the
+preview safe to click around in once the database holds real client contacts.
+
+**Switched off is recorded as blocked, not failed.** A preview with no credentials would
+otherwise report every message as failed, which hides the real failures when they come.
+
+**A send is never retried.** A send that timed out may well have gone, and the record says
+exactly that — "we do not know whether it went" — rather than guessing. Retrying is how a
+client gets the same email twice (TA, 2 Oct).
+
+**WhatsApp groups are not sent by anybody.** Meta's API cannot write to a group, so the
+text is drafted and a person posts it from their phone and ticks it off. The sender says so
+in those words rather than appearing to do nothing.
+
+## 2 Nov 2026 - two faults the Phase 1 run-through found
+
+The run-through (15, Phase 1 step 26) is the first test that drives the whole
+foundation in one go, and it found two things that every other test missed
+because each piece was right on its own.
+
+**A client who replied was chased anyway.** The list of "things we have written
+about", which a reply is matched against, lower-cased the kind of thing:
+`clientSet` became `clientset`. The match then came back naming `clientset`,
+and cancelling the chase looked for a clock on `clientset` - there was none, so
+the clock kept running and the client would have been chased after answering.
+The list now keeps the real case; the matcher already compared without case.
+
+**The mail screen counted emails it had already seen.** A pass reported every
+email handed to it as "read", including the ones it recognised and skipped.
+Since each pass deliberately overlaps the last, a screen could say "25 read"
+when nothing had arrived. A pass now reports what was new, and says separately
+how many it had already.
+
+Both are the same kind of fault: a piece that is correct alone and wrong when
+joined to the next one. Worth remembering when Phases 2 to 7 add handlers to
+this foundation.
+
+## The agreement, read at last (3 November)
+
+Three things in the plan were my own guesses, and the real document corrected
+them.
+
+**The fee fields.** The field list asked for a tax number as a required field
+and never asked for the company registration number or the client's line of
+business. The agreement is the other way round: the registration number and
+the business are named in its first clauses, and a tax number appears nowhere
+in it.
+
+**The refund.** The plan said 25%, from the owner's canvas. The agreement, as
+reviewed on 10 September, says 50%. The owner settled it on 3 November: the
+document is the truth.
+
+**The late payment charge.** The plan said 5% per unpaid month, simple. The
+agreement says 1% a month, compounded, with nothing charged on an invoice
+disputed in good faith. Same decision: the document.
+
+The lesson is the ordinary one and it cost nothing this time, because the
+numbers all live in the settings: a rule read off a card is a guess until the
+document that a client signs has been read.

@@ -1,0 +1,64 @@
+# Ops system, local backend on this laptop only.
+#
+# Its own instance name (ops-local, database ops_local) and its own ports, so it
+# can never touch the TA System's local backend (3210/3211) or anything live.
+# Secrets are generated into deploy/local/.env.backend.local, git-ignored (2 Nov).
+#
+#   deploy/local/start.sh   does all of this for you
+
+name: ops-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ops-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: convex
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?set in .env.backend.local}
+      POSTGRES_DB: ops_local
+    volumes:
+      - ops-local-postgres-data:/var/lib/postgresql/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U convex -d ops_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: ops-local-convex
+    restart: unless-stopped
+    stop_grace_period: 20s
+    stop_signal: SIGINT
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3310:3210"
+      - "127.0.0.1:3311:3211"
+    environment:
+      INSTANCE_NAME: ops-local
+      INSTANCE_SECRET: ${LOCAL_INSTANCE_SECRET:?set in .env.backend.local}
+      POSTGRES_URL: postgresql://convex:${LOCAL_POSTGRES_PASSWORD}@postgres:5432?sslmode=disable
+      DO_NOT_REQUIRE_SSL: "true"
+      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:3310
+      CONVEX_SITE_ORIGIN: http://127.0.0.1:3311
+      DISABLE_BEACON: "true"
+    volumes:
+      - ops-local-convex-files:/convex/data
+    mem_limit: 4g
+
+  dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: ops-local-dashboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6891:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:3310
+
+volumes:
+  ops-local-postgres-data:
+  ops-local-convex-files:
