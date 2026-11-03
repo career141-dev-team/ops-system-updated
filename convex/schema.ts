@@ -332,6 +332,25 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** One weekly report, kept as it was built (15, Phase 7 step 9). */
+  opsReports: defineTable({
+    kind: v.string(),
+    weekOf: v.string(),
+    state: v.string(),
+    rows: v.any(),
+    note: v.union(v.string(), v.null()),
+    builtAt: v.number(),
+    approvedBy: v.union(v.string(), v.null()),
+    approvedAt: v.union(v.number(), v.null()),
+    messageId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_week", ["weekOf"])
+    .index("by_created", ["createdAt"]),
+
   opsEsa: defineTable({
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),

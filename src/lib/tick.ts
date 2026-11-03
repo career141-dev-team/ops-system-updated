@@ -49,6 +49,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "Talent Pulse: it is Tuesday",
     body: "This week's issue is compiled. Each role needs its line from the TA, then it goes to marketing for tomorrow.",
   },
+  "report.weekly": {
+    kind: "record",
+    title: "The weekly report: it is Monday",
+    body: "This week's report is built from the TA System and our own rows. Read it, then approve it and the Director's email is drafted.",
+  },
   "lead.inviteBack": {
     kind: "call",
     title: "Time to go back to a client we turned down",

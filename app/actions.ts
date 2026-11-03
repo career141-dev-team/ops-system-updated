@@ -27,9 +27,12 @@ import {
   patchIssue,
   patchPosition,
   patchRequirement,
+  buildWeeklyReport,
   evaluateDepth,
   positionForSet,
+  patchReport,
   positionIn,
+  reportIn,
   requirementForLead,
   startReceiptClocks,
   clientsNewestFirst,
@@ -116,6 +119,7 @@ import {
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
+import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import { parseHolidayLines } from "@/lib/holidays";
 import { MEASURES } from "@/lib/baseline";
 import {
@@ -2710,4 +2714,101 @@ export async function markTalentPulsePosted(formData: FormData): Promise<void> {
   );
   revalidatePath("/talent-pulse");
   back("Recorded as posted. Next Tuesday's issue compiles itself.");
+}
+
+/* ── The weekly report (15, Phase 7 step 9) ───────────────────── */
+
+/**
+ * Build this Monday's report now.
+ *
+ * The clock does this at eight on a Monday. The button is for the week it has
+ * not come round yet, and for the TA lead who wants it again after a change -
+ * it gives back the same report rather than making a second one.
+ */
+export async function buildWeeklyReportNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/reports?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+
+  const report = await buildWeeklyReport(member.id);
+  revalidatePath("/reports");
+  if (!report) back("Nothing to report on.");
+  const row = report as NonNullable<typeof report>;
+  redirect(
+    "/reports/" +
+      row.id +
+      "?msg=" +
+      encodeURIComponent(
+        row.rows.length
+          ? "The report for " + row.weekOf + " is built. Read it, then approve it."
+          : "No position is open, so this week's report is empty. Nothing goes to the Director.",
+      ),
+  );
+}
+
+/**
+ * Approve the report, which drafts the Director's email.
+ *
+ * The owner's rule: the report is the TA lead's to review. Only after that is
+ * anything written to the Director, and even then it is a draft a person
+ * sends - the same one way out as every other client or Director message.
+ */
+export async function approveWeeklyReport(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const reportId = String(formData.get("reportId") ?? "");
+  const here = "/reports/" + reportId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+  const db = await desk();
+  const report = reportIn(db, reportId);
+  if (!report) redirect("/reports?msg=" + encodeURIComponent("That report is gone."));
+  const row = report as NonNullable<typeof report>;
+  if (row.state !== "review") back("That report is not waiting to be read.");
+
+  const problem = problemWithReport(row.rows);
+  if (problem) back(problem);
+
+  const to = recipientsFrom(db.settings.find((s) => s.key === "report.recipients")?.value);
+  if (!to.length) {
+    back("Nobody is set to receive the report. Put the Director's address in the settings first.");
+  }
+
+  const text = reportText(row.weekOf, row.rows);
+  const wording = templateFor(db, "report.weekly");
+  const fill = (what: string) =>
+    what
+      .replace(/\{\{weekOf\}\}/g, row.weekOf)
+      .replace(/\{\{report\}\}/g, text)
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Career 141 - active positions, week of {{weekOf}}"),
+    body: fill(wording?.body ?? "Dear Mr Azeem,\n\n{{report}}\n\nKind regards\n{{opsPerson}}"),
+    templateKey: "report.weekly",
+    subjectType: "report",
+    subjectId: reportId,
+  });
+
+  const now = Date.now();
+  await patchReport(
+    reportId,
+    { state: "approved", approvedBy: member.id, approvedAt: now, messageId: message.id },
+    member.id,
+    "report.approved",
+    row.note,
+  );
+  // The clock that built it has done its work; next Monday's is already set.
+  await cancelClocksFor(db, "report", reportId, member.id, "The report has been read.", []);
+  revalidatePath(here);
+  revalidatePath("/reports");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The Director's email is drafted. Read it, then approve it and it goes."),
+  );
 }

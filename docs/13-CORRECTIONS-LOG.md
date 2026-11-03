@@ -247,3 +247,23 @@ same row a patch writes to, so "was it held before?" was asked of a record
 that already said the new answer, and the hold never lifted in TA. The same
 trap as the set that said "short of 5" about a set of exactly five: read the
 old value into a variable before the patch. Both are pinned by tests now.
+
+## 3 November 2026 - the Director was sent our screen's words
+
+The first weekly report read "Head of finance - Open in the TA System · 0 days
+open · 0 days waiting on the client". Every part of that is a fact and none of
+it is a sentence a Director can read.
+
+Three wordings were wrong because they were borrowed:
+
+- **The stage** came from the ops screens, where "Open in the TA System" sits
+  beside a link to TA and makes sense. The report now has its own words for
+  each stage, and the row keeps the raw stage so there is one place to change
+  them.
+- **"0 days open"** for a position handed over this morning. It says "handed
+  over today".
+- **"0 days waiting on the client"** for a set that went out an hour ago. It
+  says "sent today, nothing back yet".
+
+The lesson: words written for the people who did the work do not travel to the
+person who only reads about it.

@@ -606,6 +606,55 @@ export interface OpsTalentPulseIssue {
   updatedAt: number;
 }
 
+/**
+ * One weekly report (15, Phase 3 step 18 and Phase 7 step 9).
+ *
+ * Built by a Monday clock, read by the TA lead, then sent to the Director.
+ * The rows are kept as they were built, so last Monday's report still says
+ * what it said last Monday - a report rebuilt from today's data is a
+ * different report, and the owner asked for the week's picture.
+ */
+export interface OpsReport {
+  id: Id;
+  /** "activePositions" today; the KPI report is Phase 7. */
+  kind: string;
+  /** The Monday it belongs to, as a readable date. */
+  weekOf: string;
+  state: string;
+  rows: ReportRowRecord[];
+  /** What could not be read when it was built, in words. */
+  note: string | null;
+  builtAt: number;
+  approvedBy: Id | null;
+  approvedAt: number | null;
+  /** The drafted email to the Director, once it is approved. */
+  messageId: Id | null;
+  sentAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One line of a report. The same shape as `ReportRow` in `@/lib/reports`. */
+export interface ReportRowRecord {
+  positionId: Id;
+  openingTaId: string | null;
+  client: string;
+  title: string;
+  primaryTa: string;
+  stage: string;
+  daysOpen: number;
+  counts: Record<string, number> | null;
+  shortlisted: number | null;
+  setsSent: number;
+  lastSentAt: number | null;
+  daysWaitingOnClient: number | null;
+  decisionsIn: number;
+  onHold: boolean;
+  depth: string | null;
+  advertised: boolean;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -623,6 +672,7 @@ export interface OpsDatabase {
   requirements: OpsRequirement[];
   positions: OpsPosition[];
   talentPulse: OpsTalentPulseIssue[];
+  reports: OpsReport[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

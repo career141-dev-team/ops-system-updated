@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -75,6 +75,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsRequirements").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsPositions").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsTalentPulse").withIndex("by_created").order("desc").take(60),
+      ctx.db.query("opsReports").withIndex("by_created").order("desc").take(26),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -107,6 +108,7 @@ export const snapshot = internalQuery({
       requirements: requirements.map(row),
       positions: positions.map(row),
       talentPulse: talentPulse.map(row),
+      reports: reports.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -584,6 +586,62 @@ export const addPosition = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** One weekly report (15, Phase 7 step 9). */
+export const addReport = internalMutation({
+  args: {
+    kind: v.string(),
+    weekOf: v.string(),
+    state: v.string(),
+    rows: v.any(),
+    note: v.union(v.string(), v.null()),
+    builtAt: v.number(),
+    approvedBy: v.union(v.string(), v.null()),
+    approvedAt: v.union(v.number(), v.null()),
+    messageId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsReports", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "report.built",
+      subjectType: "report",
+      subjectId: id as string,
+      after: args.weekOf,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchReport = internalMutation({
+  args: {
+    reportId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.reportId as Id<"opsReports">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "report",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

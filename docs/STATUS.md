@@ -63,9 +63,11 @@ code is invented.
 | The LinkedIn post recorded | `recordLinkedInPost`, `src/lib/adverts.ts` | only a real LinkedIn post address is taken (a wrong link looks done), the share tail is cut, and TA is told because that is what unlocks Live |
 | Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
 
+| The weekly report | `src/lib/reports.ts`, `buildWeeklyReport` in `src/data/desk.ts`, screens `app/reports` | built at eight on a Monday by its own clock, which sets the next Monday itself; one line per open position read from TA's pipeline and our own rows; a position TA cannot be read for keeps its line and says so rather than showing a zero; the ops lead reads it, and only then is the Director's email drafted |
+
 Still to come in phase 3: **TopJobs** — requested, the flyer, the order, live,
 and closed after two weeks — which the owner paused on 3 Nov because it is the
-one with money in it. Then the weekly report builder.
+one with money in it.
 
 ## Built: phase 4, the client side of the search
 
@@ -124,6 +126,8 @@ and accuracy machinery, and the priority order. Nothing of it is built.
 - Microsoft 365: letting the Graph app read the mailboxes the desk already uses.
 - The website form pointed at `/api/leads/website`.
 - Whether Saturday is a working day, and the holiday list for 2026-27.
+- The Director's address in the setting `report.recipients`, or an approved
+  weekly report has nowhere to go.
 
 ## Rules the code enforces, and why
 
@@ -146,7 +150,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 29 suites, each in its own process
+node tests/run.mjs        # all 30 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

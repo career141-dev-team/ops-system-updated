@@ -31,6 +31,9 @@ export function seed(now = Date.now()): OpsDatabase {
       // The owner's two depth rules, as numbers a lead can change (3 Nov).
       { key: "depth.holdAt", value: 5, updatedBy: null, updatedAt: null },
       { key: "depth.searchAgainAt", value: 3, updatedBy: null, updatedAt: null },
+      // Who the Monday report goes to. Addresses, separated by commas; the
+      // Director's real address is the owner's to put in.
+      { key: "report.recipients", value: "", updatedBy: null, updatedAt: null },
       { key: "hold.afterDays", value: 14, updatedBy: null, updatedAt: null },
       { key: "hold.reviewDays", value: 30, updatedBy: null, updatedAt: null },
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
@@ -75,6 +78,7 @@ export function seed(now = Date.now()): OpsDatabase {
     requirements: [],
     positions: [],
     talentPulse: [],
+    reports: [],
     leads: [
       {
         id: "ld_new",
@@ -362,6 +366,22 @@ Career 141`,
         body: `{{client}} > {{position}} > SET {{setNumber}}
 
 {{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "report.weekly",
+        channel: "email",
+        name: "The weekly report to the Director",
+        subject: "Career 141 - active positions, week of {{weekOf}}",
+        body: `Dear Mr Azeem,
+
+{{report}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

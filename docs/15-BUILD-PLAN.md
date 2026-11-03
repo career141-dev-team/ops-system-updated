@@ -871,7 +871,10 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 17. Position view queries: `positions.forClient`, `positions.byStage`, each joining live TA
     opening data (team, JD, posts, stage counts).
 18. Weekly desk report builder (used in P7): `reports.buildActivePositions` from `GET
-    reports/active-positions` + `opsPositions`; stored; not yet emailed.
+    reports/active-positions` + `opsPositions`; stored; not yet emailed. **Built 3 Nov** as
+    `buildWeeklyReport`, from `GET openings/{id}/pipeline` per position rather than one
+    `reports/active-positions` call - the pipeline read already exists, so the TA side
+    needs nothing new for the report.
 19. Inbox views: "requirements to open", "ads in progress", "Talent Pulse this week".
 20. Phase test: requirement saved → opening created in local TA (fields checked in TA) →
     TA approves JD → event updates Ops → TopJobs request → flyer → sent (test) → live →
@@ -1063,7 +1066,8 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 7. ⚪ client deadline to choose replace or stop after a no-show (P6 step 8) → timer
    `noshow.clientChoice` → reminder.
 8. `guarantees.view`: per client and per placement with days left; "ending this month".
-9. Weekly report: Monday 08:00 job (`report.day`) → `reports.buildActivePositions`
+9. **Built 3 Nov** (bar the PDF, which waits for the invoice work's own PDF step).
+   Weekly report: Monday 08:00 job (`report.weekly`) → `reports.buildActivePositions`
    (P3 step 18) + Ops rows (ESA state, sets sent, days waiting on client, interviews this
    week, placements, guarantees running, invoices unpaid) → `opsReports` built → task to the
    TA lead "review" → `reports.approve` → email `report.weekly` to Mr Azeem (auto after

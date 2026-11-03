@@ -12,6 +12,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
@@ -32,6 +33,12 @@ import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import {
+  type ReportRowRecord,
+  daysBetween,
+  nextMondayEightAm,
+  reportWeekOf,
+} from "@/lib/reports";
 import {
   DEPTH_MEANINGS,
   HOLD_AT,
@@ -55,6 +62,7 @@ import {
   clientSet as taClientSet,
   eventsAfter,
   opening as taOpening,
+  people as taPeople,
   pipeline as taPipeline,
   write as taWrite,
 } from "@/lib/ta";
@@ -265,6 +273,11 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   // Tuesday's clock is set, so the rhythm keeps itself (step 14).
   "talentpulse.compile": async (timer, now) => {
     await compileTalentPulse(timer.ownerId, now);
+  },
+  // Monday morning: this week's report is built and next Monday is set
+  // (Phase 7 step 9).
+  "report.weekly": async (timer, now) => {
+    await buildWeeklyReport(timer.ownerId, now);
   },
 };
 
@@ -1100,6 +1113,143 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
     payload: { label: "Talent Pulse" },
   });
   return issue;
+}
+
+/* ── The weekly report (15, Phase 3 step 18, Phase 7 step 9) ───── */
+
+export async function addReport(input: Omit<OpsReport, "id" | "createdAt" | "updatedAt">): Promise<OpsReport> {
+  if (!usingConvex()) return repo.addReport(input);
+  return (await convexMutation<OpsReport>("ops/data:addReport", input)) as OpsReport;
+}
+
+export async function patchReport(
+  reportId: Id,
+  patch: Partial<OpsReport>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchReport(reportId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchReport", { reportId, patch, by, what, reason });
+}
+
+export function reportIn(db: OpsDatabase, reportId: Id): OpsReport | null {
+  return db.reports.find((r) => r.id === reportId) ?? null;
+}
+
+export function reportsNewestFirst(db: OpsDatabase): OpsReport[] {
+  return [...db.reports].sort((a, b) => b.builtAt - a.builtAt);
+}
+
+/**
+ * Build this Monday's report (Phase 7 step 9).
+ *
+ * One line per open position, each read from TA's own pipeline and from our
+ * own rows. A position TA cannot be read for keeps its line and says so: the
+ * Director needs to know the picture is short, not be shown a zero.
+ *
+ * Asking twice in one week gives the same report back, so the clock and the
+ * button on the screen cannot make two.
+ */
+export async function buildWeeklyReport(by: Id, now = Date.now()): Promise<OpsReport | null> {
+  const db = await desk();
+  const week = reportWeekOf(now);
+  const already = db.reports.find((r) => r.kind === "activePositions" && r.weekOf === week);
+  if (already) return already;
+
+  const open = db.positions.filter((p) => p.stage !== "closed");
+  const people = await taPeople();
+  const nameOf = (taId: string | null) =>
+    (people.ok && taId ? people.data.find((u) => u.id === taId)?.fullName : null) ?? taId ?? "nobody yet";
+
+  const rows: ReportRowRecord[] = [];
+  for (const position of open) {
+    // Their sets, newest first, and what has come back on the newest one.
+    const theirSets = db.clientSets
+      .filter((s) => s.openingTaId === position.openingTaId && s.state === "sent")
+      .sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
+    const newest = theirSets[0] ?? null;
+    const decisions = newest ? newest.candidates.filter((c) => c.decision).length : 0;
+    const held = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
+
+    let counts: Record<string, number> | null = null;
+    let shortlisted: number | null = null;
+    if (position.openingTaId) {
+      const answer = await taPipeline(position.openingTaId);
+      if (answer.ok) {
+        counts = (answer.data.counts ?? {}) as Record<string, number>;
+        shortlisted = countDepth(answer.data.applications ?? []).shortlistedTotal;
+      }
+    }
+
+    rows.push({
+      positionId: position.id,
+      openingTaId: position.openingTaId,
+      client: (position.clientId ? clientIn(db, position.clientId)?.name : null) ?? position.clientTaId,
+      title: position.title,
+      primaryTa: nameOf(position.primaryTaId),
+      // The raw stage: the report turns it into the Director's words itself.
+      stage: position.stage,
+      daysOpen: daysBetween(position.handedOverAt, now),
+      counts,
+      shortlisted,
+      setsSent: theirSets.length,
+      lastSentAt: newest?.sentAt ?? null,
+      daysWaitingOnClient: newest?.receivedAt ? daysBetween(newest.receivedAt, now) : null,
+      decisionsIn: decisions,
+      onHold: Boolean(held),
+      depth: position.depthStage,
+      advertised: Boolean(position.linkedInUrl),
+    });
+  }
+
+  const unread = rows.filter((r) => r.counts === null).length;
+  const owner = db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? by;
+  const report = await addReport({
+    kind: "activePositions",
+    weekOf: week,
+    state: rows.length ? "review" : "building",
+    rows,
+    note: unread
+      ? unread + (unread === 1 ? " position" : " positions") + " could not be read from the TA System."
+      : null,
+    builtAt: now,
+    approvedBy: null,
+    approvedAt: null,
+    messageId: null,
+    sentAt: null,
+    ownerId: owner,
+  });
+
+  await createTask({
+    kind: "record",
+    title: "Read the weekly report for " + week,
+    body: rows.length
+      ? "One line per open position, built from the TA System and our own rows. Read it, correct nothing silently - if a line is wrong, say so on the position - then approve it and the Director's email is drafted."
+      : "No position is open, so there is nothing in it. Nothing goes to the Director.",
+    assigneeId: owner,
+    dueAt: now,
+    subjectType: "report",
+    subjectId: report.id,
+    link: "/reports/" + report.id,
+  });
+
+  // Next Monday, from this one: the rhythm keeps itself, exactly as Talent
+  // Pulse does on a Tuesday.
+  await startTimer({
+    kind: "report.weekly",
+    subjectType: "report",
+    subjectId: report.id,
+    startsAt: now,
+    dueAt: nextMondayEightAm(now),
+    warnAt: null,
+    ownerId: owner,
+    payload: { label: "The weekly report" },
+  });
+  return report;
 }
 
 /**

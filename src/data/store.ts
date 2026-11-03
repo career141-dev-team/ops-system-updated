@@ -24,6 +24,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
@@ -624,6 +625,40 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── The weekly report (15, Phase 7 step 9) ─────────────── */
+
+  reportIn(reportId: Id): OpsReport | null {
+    return load().reports.find((r) => r.id === reportId) ?? null;
+  },
+
+  addReport(input: Omit<OpsReport, "id" | "createdAt" | "updatedAt">): OpsReport {
+    const db = load();
+    const now = Date.now();
+    const row: OpsReport = { ...input, id: id("rep"), createdAt: now, updatedAt: now };
+    db.reports.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "report.built",
+      subjectType: "report",
+      subjectId: row.id,
+      before: null,
+      after: row.weekOf + ", " + row.rows.length + " positions",
+      reason: row.note,
+    });
+    save();
+    return row;
+  },
+
+  patchReport(reportId: Id, patch: Partial<OpsReport>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.reports.find((r) => r.id === reportId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "report", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 
