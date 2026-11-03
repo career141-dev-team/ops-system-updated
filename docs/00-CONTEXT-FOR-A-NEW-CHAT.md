@@ -4,7 +4,7 @@ Paste or point any new AI chat (or new teammate) at this file. It says what the
 project is, what is decided, where everything is, and what to do next, so nobody has
 to explain the TA System and the Ops system again.
 
-_Last updated: 28 Oct 2026._
+_Last updated: 1 Nov 2026._
 
 ## 1. The business in one paragraph
 
@@ -58,12 +58,13 @@ until the guarantee ends. See the whole flow in [04](04-OPS-FLOW.md).
 | People and roles | [11](11-PEOPLE-AND-ROLES.md) |
 | Glossary | [12](12-GLOSSARY.md) |
 | What was corrected from the canvas, and why | [13](13-CORRECTIONS-LOG.md) |
+| The owner's diagram c5237, all 250 steps, read deeply | [14](14-DIAGRAM-DEEP-WALKTHROUGH.md) |
 | Source material (analysis, 26 connection points, diagrams as step lists) | [`reference/`](reference/) |
 
 ## 5. Sources and how reliable they are
 
 1. **The owner's planning canvas** ("Career 141 operations", Thinking Room share): 59
-   cards, re-read on 28 Oct and unchanged since 27 Oct. The share link's key is **not**
+   cards, re-read on 28 Oct and 1 Nov and unchanged since 27 Oct. The share link's key is **not**
    stored anywhere; ask the owner for it. Locked cards: today's ops workflow (c719), the
    job-to-joining archive map (c713), the business flows (c2790, c3002, c3626), the ESA
    terms (c2511). The newest system flow is **c5237**; every system step on it is still
