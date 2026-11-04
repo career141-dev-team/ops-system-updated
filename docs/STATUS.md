@@ -124,10 +124,37 @@ calendar permission the owner has yet to grant - the link is pasted in by a
 person until then), reading a client's reply for its times by itself (Phase 9),
 and the ICS export.
 
+## Built: phase 6, the placement and the money
+
+The TA System makes the placement. This is what happens next, which is the
+part that pays for everything.
+
+| Piece | Where | Notes |
+|---|---|---|
+| A placement arrives the day it is made | `takePlacement` in `src/data/desk.ts`, from TA's `placement.created` event | the same-day notice to accounts and the ops owner is the point of it - the owner's own note is that Asma learns months later; the same event twice is one placement |
+| The agreement's fee rule, copied onto it | `takePlacement` | the signed agreement as it stood that day, so a rule changed next year cannot change an invoice already sent |
+| What TA could not give us | `missingPlacementFields` in `src/lib/money.ts` | asked for at once rather than on the joining day, because an invoice cannot be built on a package nobody wrote down |
+| Three clocks before the joining day | `joinClocks`, `startJoinClocks` | a week out, the day before, and nine on the morning when the TA phones them; a clock whose day has gone is not set |
+| The joining day moving | `changeJoinDate` in `app/actions.ts` | needs a reason, keeps every move, resets the clocks, tells TA - a day that slips twice is the thing to watch |
+| They joined | `markPlacementJoined`, and TA's `placement.joined` event | one door for both ways in; the fee is drafted at once, because thirty days run from the first working day whether or not anybody remembered |
+| They never turned up | `markNoShow`, and TA's `placement.no_show` event | nothing invoiced and nothing refunded (the owner's rule); the client's choice between a replacement and stopping is drafted, and their answer reopens or closes the search in TA |
+| The fee invoice | `draftFeeInvoice` | the agreement's rule times the package, a number from the series, due thirty days from the first working day; invoicing twice is refused, and a replacement under the guarantee is not invoiced at all |
+| Sending it | `sendInvoice` | to the billing address on the client's record, as a draft accounts approves; the clock that chases it starts from the due date, and TA is told the invoice state |
+| Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
+| Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
+| Writing it off | `writeOffInvoice` | not before ninety days unless the Director of Operations decides; the guarantee is void and the position closes |
+| Screens | `app/placements`, `app/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
+
+Still to come in phase 6: the **invoice document** (it waits on a template
+from the owner, exactly as the agreement did - until then the lines go in the
+body of the email), tax lines, the surcharge invoice for an unreported hire
+(phase 4's step), credit notes (they belong with phase 7's refunds), the CSV
+exports, and the nightly check of our invoice state against TA's.
+
 ## Not built
 
-TopJobs, and phases 6 to 8: placement and the invoice, the guarantee and the
-close, then hardening and the pilot.
+TopJobs, and phases 7 and 8: the guarantee, the reports and the close, then
+hardening and the pilot.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -152,6 +179,10 @@ and accuracy machinery, and the priority order. Nothing of it is built.
 - Whether Saturday is a working day, and the holiday list for 2026-27.
 - The Director's address in the setting `report.recipients`, or an approved
   weekly report has nowhere to go.
+- The invoice template, as a document, before a real invoice can be sent as
+  anything but the lines in an email.
+- A calendar permission for the Ops mailbox, or an interview's Teams link
+  stays something a person pastes in.
 
 ## Rules the code enforces, and why
 
@@ -174,7 +205,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 31 suites, each in its own process
+node tests/run.mjs        # all 32 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

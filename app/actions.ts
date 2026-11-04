@@ -28,23 +28,30 @@ import {
   patchPosition,
   patchRequirement,
   addInterview,
+  addInvoice,
   addReference,
   buildWeeklyReport,
   evaluateDepth,
   positionForSet,
   draftCandidateFeedback,
   interviewIn,
+  invoiceIn,
   liveInterviewFor,
   noticeCandidateOut,
+  markPlacementJoined,
   patchInterview,
+  patchInvoice,
+  patchPlacement,
   patchReference,
   patchReport,
+  placementIn,
   positionForOpening,
   positionIn,
   referenceForApplication,
   referenceIn,
   reportIn,
   startInterviewClocks,
+  startJoinClocks,
   requirementForLead,
   startReceiptClocks,
   clientsNewestFirst,
@@ -132,6 +139,18 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
+import {
+  WRITE_OFF_DAYS,
+  balanceOf,
+  feeInWords,
+  invoiceLines,
+  money,
+  problemWithDojChange,
+  problemWithNoShow,
+  problemWithNoShowChoice,
+  problemWithPayment,
+  problemWithWriteOff,
+} from "@/lib/money";
 import {
   type InterviewState,
   MAX_SLOT_LOOPS,
@@ -3478,4 +3497,441 @@ export async function recordReferenceDecision(formData: FormData): Promise<void>
       ? "Cleared. The offer is the TA System's work from here."
       : "Dropped, with their reason." + depth,
   );
+}
+
+/* ── Placements, invoices and payments (15, Phase 6) ──────────── */
+
+/** They joined. The button for when the TA phones them and tells us. */
+export async function markJoined(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const answer = await markPlacementJoined(placementId, member.id);
+  revalidatePath(here);
+  revalidatePath("/placements");
+  back(answer.what);
+}
+
+/** They never turned up (step 8). */
+export async function markNoShow(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithNoShow(reason);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchPlacement(placementId, { state: "no_show", reason }, member.id, "placement.noShow", reason);
+  await cancelClocksFor(db, "placement", placementId, member.id, "They never joined.", null);
+
+  // The client has to choose, and nothing is invoiced either way.
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const wording = templateFor(db, "placement.noshow_options");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{position\}\}/g, positionIn(db, row.positionId ?? "")?.title ?? "the role")
+      .replace(/\{\{joinDate\}\}/g, row.joinDate ? colomboDateInWords(row.joinDate) : "the agreed day")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: client?.billingEmail ? [client.billingEmail] : [],
+    subject: fill(wording?.subject ?? "{{candidate}} - {{position}}"),
+    body: fill(wording?.body ?? "Dear all,\n\n{{candidate}} did not start with you."),
+    templateKey: "placement.noshow_options",
+    subjectType: "placement",
+    subjectId: placementId,
+  });
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/no-show",
+    { reason, markedAt: now },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        "Down as a no-show, and the TA System has been told. Nothing is invoiced. The client's choice is drafted - read it, then approve it.",
+      ),
+  );
+}
+
+/** What the client chose after a no-show: a replacement, or stop. */
+export async function recordNoShowChoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const choice = String(formData.get("choice") ?? "");
+  const problem = problemWithNoShowChoice(choice);
+  if (problem) back(problem);
+
+  await patchPlacement(placementId, { noShowChoice: choice }, member.id, "placement.noShowChoice." + choice, null);
+  // The search reopening is TA's: they hold the pipeline and the back-ups.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/status",
+    { status: choice === "replace" ? "open" : "closed", reason: "no-show, client chose to " + choice },
+    { type: "placement", id: placementId },
+  );
+  if (choice === "stop") {
+    await createTask({
+      kind: "check",
+      title: "Close the position: " + row.candidateName + "'s was a no-show",
+      body: "The client has stopped the search. Closing the adverts and the opening is the close checklist, which is Phase 7.",
+      assigneeId: row.ownerId,
+      dueAt: Date.now(),
+      subjectType: "placement",
+      subjectId: placementId,
+      link: here,
+    });
+  }
+  revalidatePath(here);
+  back(
+    choice === "replace"
+      ? "Noted: a replacement. The TA System has been asked to reopen the search."
+      : "Noted: they have stopped. Nothing is invoiced, and the position closes.",
+  );
+}
+
+/** The joining day moved (step 5). */
+export async function changeJoinDate(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join any more.");
+
+  const when = Date.parse(String(formData.get("joinDate") ?? "") + "T09:00:00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithDojChange(when, reason);
+  if (problem) back(problem);
+  // Counted before the patch: the store hands back the row the patch writes
+  // to, so afterwards this already includes the move being made (3 Nov).
+  const movesBefore = row.dojHistory.length;
+
+  const now = Date.now();
+  await patchPlacement(
+    placementId,
+    {
+      joinDate: when,
+      // Every move is kept: a joining day that slips twice is the thing we
+      // watch for, and it cannot be seen if the old date is overwritten.
+      dojHistory: [...row.dojHistory, { from: row.joinDate, to: when, reason, at: now, by: member.id }],
+    },
+    member.id,
+    "placement.dojChanged",
+    reason,
+  );
+  await cancelClocksFor(db, "placement", placementId, member.id, "The joining day moved.", null);
+  await startJoinClocks({ ...row, joinDate: when }, now);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/join-date",
+    { joinDateMs: when, reason },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  back(
+    "Moved to " +
+      colomboDateInWords(when) +
+      ". The reminders are reset and the TA System has been told." +
+      (movesBefore ? " That is move " + (movesBefore + 1) + " for this one." : ""),
+  );
+}
+
+/** We lost them before they joined (step 6). */
+export async function cancelPlacement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write what happened. A lost candidate is read about later.");
+
+  await patchPlacement(placementId, { state: "cancelled", reason }, member.id, "placement.cancelled", reason);
+  await cancelClocksFor(db, "placement", placementId, member.id, "The placement is off.", null);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/cancel",
+    { reason, cancelledAt: Date.now() },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  back("Cancelled, and the TA System has been told so it can reopen its own path. Nothing is invoiced.");
+}
+
+/**
+ * Send the invoice (step 10).
+ *
+ * Accounts' own job, so it needs `money.manage`. The lines go in the body,
+ * because the invoice document itself waits on a template from the owner -
+ * the same rule as the agreement: we do not invent the paperwork a client
+ * pays against.
+ */
+export async function sendInvoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (row.state !== "draft") back("That invoice has gone already.");
+
+  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  if (!client?.billingEmail) {
+    back("This client has no billing address on their record. Put it there first, or the invoice has nowhere to go.");
+  }
+
+  const lines = invoiceLines({
+    number: row.number,
+    candidateName: placement?.candidateName ?? "",
+    positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
+    clientName: client?.billingName || client?.name || "",
+    feeWords: feeInWords({ feeMonths: placement?.feeMonths ?? 1, feeBasis: placement?.feeBasis ?? "gross" }),
+    monthlySalary: placement?.monthlySalary ?? 0,
+    amount: row.amount,
+    lateCharge: row.lateCharge,
+    payments: row.payments,
+    joinedAt: placement?.joinedAt ?? null,
+    dueAt: row.dueAt,
+    currency: row.currency,
+  });
+
+  const wording = templateFor(db, "invoice.cover");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, row.number)
+      .replace(/\{\{invoice\}\}/g, lines)
+      .replace(/\{\{dueDate\}\}/g, row.dueAt ? colomboDateInWords(row.dueAt) : "thirty days from the first working day")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: [client?.billingEmail ?? ""].filter(Boolean),
+    subject: fill(wording?.subject ?? "{{client}} - invoice {{invoiceNumber}}"),
+    body: fill(wording?.body ?? "Dear {{contact}},\n\n{{invoice}}"),
+    templateKey: "invoice.cover",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+  });
+
+  const now = Date.now();
+  await patchInvoice(
+    invoiceId,
+    { state: "sent", sentAt: now, sentMessageId: message.id },
+    member.id,
+    "invoice.sent",
+    null,
+  );
+  // The clock that asks for the money, counted from the due date.
+  if (row.dueAt) {
+    await startTimer({
+      kind: "invoice.due",
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      startsAt: now,
+      dueAt: row.dueAt,
+      warnAt: null,
+      ownerId: row.ownerId,
+      payload: { label: row.number },
+    });
+  }
+  await queueTaWrite(
+    "/integrations/v1/placements/" + (placement?.placementTaId ?? "") + "/invoice-state",
+    { state: "sent", invoiceNumber: row.number, amount: row.amount, dueAt: row.dueAt },
+    { type: "invoice", id: invoiceId },
+  );
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The invoice is drafted for the billing address. Read it, then approve it and it goes."),
+  );
+}
+
+/** Money in (step 12). */
+export async function recordPayment(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+
+  const amount = Number(formData.get("amount") ?? 0);
+  const method = String(formData.get("method") ?? "").trim() || "bank transfer";
+  const note = String(formData.get("note") ?? "").trim();
+  const owed = balanceOf(row);
+  const problem = problemWithPayment(amount, owed);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const payments = [...row.payments, { amount, paidAt: now, method, by: member.id, note: note || null }];
+  const left = Math.round((row.amount + row.lateCharge - payments.reduce((s, p) => s + p.amount, 0)) * 100) / 100;
+  const settled = left <= 0.5;
+
+  await patchInvoice(
+    invoiceId,
+    {
+      payments,
+      state: settled ? "paid" : "partly_paid",
+      paidAt: settled ? now : null,
+    },
+    member.id,
+    settled ? "invoice.paid" : "invoice.partlyPaid",
+    money(amount, row.currency) + " by " + method,
+  );
+
+  if (settled) {
+    // Nothing chases a paid invoice.
+    await cancelClocksFor(db, "invoice", invoiceId, member.id, "It is paid.", null);
+    const placement = row.placementId ? placementIn(db, row.placementId) : null;
+    const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement?.ownerId));
+    await draftMessage({
+      channel: "internal",
+      to: tell.map((m) => m.email).filter(Boolean),
+      subject: "Fee collected: " + row.number,
+      body:
+        money(row.amount + row.lateCharge, row.currency) +
+        " is in for " +
+        (placement?.candidateName ?? row.number) +
+        ".\n\nThe guarantee only holds while the fee is fully paid, so this is the day it really starts.",
+      templateKey: "invoice.collected",
+      subjectType: "invoice",
+      subjectId: invoiceId,
+    });
+  }
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  back(
+    settled
+      ? "Paid in full. Accounts and the ops owner have been told, and nothing chases it any more."
+      : money(left, row.currency) + " still owed.",
+  );
+}
+
+/** The client says the invoice is wrong (the agreement's own exception). */
+export async function markInvoiceDisputed(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const settled = String(formData.get("settled") ?? "") === "yes";
+  if (!settled && reason.length < 4) back("Write what they say is wrong with it.");
+
+  await patchInvoice(
+    invoiceId,
+    settled
+      ? { disputed: false, disputedReason: null }
+      : { disputed: true, disputedReason: reason, lateCharge: 0 },
+    member.id,
+    settled ? "invoice.disputeSettled" : "invoice.disputed",
+    settled ? "The dispute is settled." : reason,
+  );
+  revalidatePath(here);
+  back(
+    settled
+      ? "The dispute is settled, so the late charge runs again from now."
+      : "Marked as disputed in good faith: no late charge while it stands. That is the agreement's own wording.",
+  );
+}
+
+/** Write it off (step 14). The Director's call, not a habit. */
+export async function writeOffInvoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "refund.decide") && !can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (row.state === "paid") back("That one is paid.");
+  if (row.state === "written_off") back("That one is already written off.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithWriteOff(row.dueAt ?? Date.now(), reason, Date.now(), numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS));
+  // Only the Director of Operations may write one off early, which is the
+  // same shape as the refund decision.
+  if (problem && !can(member, "refund.decide")) back(problem);
+
+  const now = Date.now();
+  await patchInvoice(
+    invoiceId,
+    { state: "written_off", writtenOffAt: now, reason },
+    member.id,
+    "invoice.writtenOff",
+    reason,
+  );
+  await cancelClocksFor(db, "invoice", invoiceId, member.id, "It has been written off.", null);
+  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  await createTask({
+    kind: "check",
+    title: "Written off: " + row.number,
+    body:
+      "The guarantee does not apply to an unpaid fee, so it is void, and the position closes. The close checklist is Phase 7.",
+    assigneeId: placement?.ownerId ?? member.id,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    link: here,
+  });
+  revalidatePath(here);
+  back("Written off, with your reason. The guarantee is void and the position closes.");
 }

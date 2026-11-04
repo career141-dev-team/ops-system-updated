@@ -25,6 +25,8 @@ import type {
   OpsPosition,
   OpsRequirement,
   OpsInterview,
+  OpsInvoice,
+  OpsPlacement,
   OpsReferenceRequest,
   OpsReport,
   OpsTalentPulseIssue,
@@ -627,6 +629,84 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Placements, invoices and payments (15, Phase 6) ────── */
+
+  placementIn(placementId: Id): OpsPlacement | null {
+    return load().placements.find((p) => p.id === placementId) ?? null;
+  },
+
+  addPlacement(input: Omit<OpsPlacement, "id" | "createdAt" | "updatedAt">): OpsPlacement {
+    const db = load();
+    const now = Date.now();
+    const row: OpsPlacement = { ...input, id: id("plc"), createdAt: now, updatedAt: now };
+    db.placements.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "placement.taken",
+      subjectType: "placement",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchPlacement(
+    placementId: Id,
+    patch: Partial<OpsPlacement>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.placements.find((p) => p.id === placementId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "placement", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  invoiceIn(invoiceId: Id): OpsInvoice | null {
+    return load().invoices.find((i) => i.id === invoiceId) ?? null;
+  },
+
+  addInvoice(input: Omit<OpsInvoice, "id" | "createdAt" | "updatedAt">): OpsInvoice {
+    const db = load();
+    const now = Date.now();
+    const row: OpsInvoice = { ...input, id: id("inv"), createdAt: now, updatedAt: now };
+    db.invoices.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "invoice.drafted",
+      subjectType: "invoice",
+      subjectId: row.id,
+      before: null,
+      after: row.number,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchInvoice(
+    invoiceId: Id,
+    patch: Partial<OpsInvoice>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.invoices.find((i) => i.id === invoiceId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "invoice", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

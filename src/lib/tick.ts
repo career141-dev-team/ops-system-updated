@@ -94,6 +94,26 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "No feedback from the client yet",
     body: "Call them today, then write down what they said.",
   },
+  "doj.remind.week": {
+    kind: "check",
+    title: "Somebody joins in a week",
+    body: "A week out is when a candidate who is wobbling can still be saved. The TA checks they are still coming.",
+  },
+  "doj.remind.day": {
+    kind: "check",
+    title: "Somebody joins tomorrow",
+    body: "Last check before the day. If anything has changed, the client has to hear it today.",
+  },
+  "doj.join": {
+    kind: "call",
+    title: "Joining day: did they turn up?",
+    body: "The TA phones them this morning. Mark whether they joined - the invoice and the guarantee both start from it.",
+  },
+  "invoice.due": {
+    kind: "approve",
+    title: "An invoice is due today",
+    body: "Thirty days from their first working day. If nothing has come in, the chase is drafted for you.",
+  },
   "invoice.chase": {
     kind: "approve",
     title: "The invoice is past its due date",

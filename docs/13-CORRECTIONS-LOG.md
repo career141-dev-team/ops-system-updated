@@ -286,3 +286,23 @@ decision." on the screen. `&rsquo;` is HTML, and the string was a value passed
 to a function rather than text in the page, so nothing turned it into an
 apostrophe. The character itself goes in a string; the entity only works where
 the page is written.
+
+## 4 November 2026 - the aliasing trap, a third time
+
+"Moved to 23 November 2026. That is move 2 for this one" - on the first move
+of that joining day. The message counted `dojHistory.length` after the patch,
+and the store hands back the row the patch wrote to, so the list already held
+the move being announced.
+
+Three times now, in three different places: the set that said "short of 5"
+about a set of five, the depth count that asked whether it had been held
+before, and this. The rule is one line: read the old value into a variable
+before the patch, and build the message from the variable.
+
+## 4 November 2026 - a draft that said money was owed
+
+The invoices list read "C141-2026-0001 · C141-2026-0001 · Drafted, waiting
+for accounts · LKR 450,000.00 owed · due in 30 days". Two faults in one line:
+the number came from the link and from the words beside it, and a draft that
+has not been sent owes nothing - "owed" of one reads as though the client were
+already late. A draft now says what it will be and when it will be payable.

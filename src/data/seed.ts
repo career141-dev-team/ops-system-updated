@@ -42,6 +42,10 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "hold.afterDays", value: 14, updatedBy: null, updatedAt: null },
       { key: "hold.reviewDays", value: 30, updatedBy: null, updatedAt: null },
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
+      // The invoice series, and how long before somebody must decide to write
+      // an unpaid fee off (15, Phase 6 steps 9 and 14).
+      { key: "invoice.series", value: "C141", updatedBy: null, updatedAt: null },
+      { key: "invoice.writeOffDays", value: 90, updatedBy: null, updatedAt: null },
       // From the agreement itself, which the owner said is the truth (3 Nov):
       // 1% a month, compounded, and nothing on an invoice disputed in good
       // faith. The board had said 5% simple; the document wins.
@@ -86,6 +90,8 @@ export function seed(now = Date.now()): OpsDatabase {
     reports: [],
     interviews: [],
     references: [],
+    placements: [],
+    invoices: [],
     leads: [
       {
         id: "ld_new",
@@ -373,6 +379,60 @@ Career 141`,
         body: `{{client}} > {{position}} > SET {{setNumber}}
 
 {{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.cover",
+        channel: "email",
+        name: "Sending an invoice",
+        subject: "{{client}} - invoice {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+Our invoice for the placement of {{candidate}} is below. It is payable by {{dueDate}}, thirty days from their first working day.
+
+{{invoice}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.chase",
+        channel: "email",
+        name: "Chasing an unpaid invoice",
+        subject: "Invoice {{invoiceNumber}} - still outstanding",
+        body: `Dear all,
+
+Invoice {{invoiceNumber}} is {{daysLate}} days past its due date, and {{amount}} is outstanding.
+
+Our agreement adds 1% a month, compounded, to a late invoice. If anything on it is in question, tell us and nothing is charged while we sort it out.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "placement.noshow_options",
+        channel: "email",
+        name: "A candidate who never turned up",
+        subject: "{{candidate}} - {{position}}",
+        body: `Dear all,
+
+{{candidate}} did not start with you on {{joinDate}}, and we have not been able to change that.
+
+Nothing is invoiced for this placement. Would you like us to find a replacement, or to stop the search? Either way, tell us and we will act on it today.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

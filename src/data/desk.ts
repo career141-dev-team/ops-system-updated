@@ -13,6 +13,8 @@ import type {
   OpsPosition,
   OpsRequirement,
   OpsInterview,
+  OpsInvoice,
+  OpsPlacement,
   OpsReferenceRequest,
   OpsReport,
   OpsTalentPulseIssue,
@@ -36,6 +38,21 @@ import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import {
+  DUE_DAYS,
+  LATE_PCT_PER_MONTH,
+  WRITE_OFF_DAYS,
+  balanceOf,
+  dueOn,
+  feeAmount,
+  feeInWords,
+  invoiceNumber,
+  joinClocks,
+  lateCharge,
+  missingPlacementFields,
+  money,
+  monthsLate,
+} from "@/lib/money";
 import {
   NOTICE_DAYS,
   NOTICE_HOURS,
@@ -73,6 +90,7 @@ import {
   opening as taOpening,
   people as taPeople,
   pipeline as taPipeline,
+  placement as taPlacement,
   write as taWrite,
 } from "@/lib/ta";
 
@@ -292,6 +310,14 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   // is asked to reconfirm the candidate (Phase 5 step 10).
   "interview.reconfirm": async (timer, now) => {
     await remindAboutInterview(timer.subjectId, now);
+  },
+  // Thirty days after the first working day, and every month after that: the
+  // late charge is recomputed and the chase drafted (Phase 6 steps 13 and 14).
+  "invoice.due": async (timer, now) => {
+    await chaseThePayment(timer.subjectId, now);
+  },
+  "invoice.chase": async (timer, now) => {
+    await chaseThePayment(timer.subjectId, now);
   },
 };
 
@@ -1127,6 +1153,443 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
     payload: { label: "Talent Pulse" },
   });
   return issue;
+}
+
+/* ── Placements, invoices and payments (15, Phase 6) ───────────── */
+
+export async function addPlacement(
+  input: Omit<OpsPlacement, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsPlacement> {
+  if (!usingConvex()) return repo.addPlacement(input);
+  return (await convexMutation<OpsPlacement>("ops/data:addPlacement", input)) as OpsPlacement;
+}
+
+export async function patchPlacement(
+  placementId: Id,
+  patch: Partial<OpsPlacement>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchPlacement(placementId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchPlacement", { placementId, patch, by, what, reason });
+}
+
+export function placementIn(db: OpsDatabase, placementId: Id): OpsPlacement | null {
+  return db.placements.find((p) => p.id === placementId) ?? null;
+}
+
+export function placementsNewestFirst(db: OpsDatabase): OpsPlacement[] {
+  return [...db.placements].sort((a, b) => (b.joinDate ?? b.createdAt) - (a.joinDate ?? a.createdAt));
+}
+
+export async function addInvoice(input: Omit<OpsInvoice, "id" | "createdAt" | "updatedAt">): Promise<OpsInvoice> {
+  if (!usingConvex()) return repo.addInvoice(input);
+  return (await convexMutation<OpsInvoice>("ops/data:addInvoice", input)) as OpsInvoice;
+}
+
+export async function patchInvoice(
+  invoiceId: Id,
+  patch: Partial<OpsInvoice>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchInvoice(invoiceId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchInvoice", { invoiceId, patch, by, what, reason });
+}
+
+export function invoiceIn(db: OpsDatabase, invoiceId: Id): OpsInvoice | null {
+  return db.invoices.find((i) => i.id === invoiceId) ?? null;
+}
+
+export function invoicesNewestFirst(db: OpsDatabase): OpsInvoice[] {
+  return [...db.invoices].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Take a placement from TA, the day it happens (step 3).
+ *
+ * The owner's own complaint, in the owner's words: Asma learns about a
+ * placement months later. So the day TA places somebody, accounts and the ops
+ * owner are told, and the agreement's fee rule is copied onto the placement -
+ * an agreement changed next year must not change an invoice already sent.
+ *
+ * TA's placement id is the one thing both sides agree on, so the same event
+ * twice is one placement.
+ */
+export async function takePlacement(
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<OpsPlacement | null> {
+  const placementTaId = String(data.placementId ?? "").trim();
+  if (!placementTaId) return null;
+  const db = await desk();
+  const already = db.placements.find((p) => p.placementTaId === placementTaId);
+  if (already) return already;
+
+  const answer = await taPlacement(placementTaId);
+  if (!answer.ok) return null;
+  const theirs = answer.data;
+  const position = theirs.openingId ? positionForOpening(db, theirs.openingId) : null;
+  const client = position?.clientId ? clientIn(db, position.clientId) : null;
+
+  // The fee rule off the signed agreement, not off today's settings.
+  const agreement = client?.leadId
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    : null;
+  const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
+  const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+
+  const placement = await addPlacement({
+    placementTaId,
+    applicationTaId: theirs.applicationId ?? "",
+    openingTaId: theirs.openingId ?? "",
+    positionId: position?.id ?? null,
+    clientId: client?.id ?? null,
+    candidateName: theirs.candidateName ?? placementTaId,
+    state: "placed",
+    monthlySalary: theirs.placedSalary ?? null,
+    currency: theirs.currency || "LKR",
+    offerLetterFileRef: theirs.offerLetterFileId ?? null,
+    joinDate: theirs.joinDateMs ?? null,
+    joinedAt: null,
+    dojHistory: [],
+    feeMonths,
+    feeBasis,
+    isReplacementOf: null,
+    invoiceId: null,
+    reason: null,
+    noShowChoice: null,
+    ownerId: position?.ownerId ?? db.members.find((m) => m.active && m.role === "ops_owner")?.id ?? "m_owner",
+  });
+
+  // The same-day notice, which is the whole point of this step. Internal, so
+  // it needs nobody's approval - it never leaves the company.
+  const accounts = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement.ownerId));
+  await draftMessage({
+    channel: "internal",
+    to: accounts.map((m) => m.email).filter(Boolean),
+    subject: "Placed today: " + placement.candidateName + (position ? " - " + position.title : ""),
+    body: [
+      placement.candidateName + " has been placed" + (client ? " at " + client.name : "") + ".",
+      "",
+      "Package: " + (placement.monthlySalary ? money(placement.monthlySalary, placement.currency) + " a month" : "not given"),
+      "Joining: " + (placement.joinDate ? colomboDateInWords(placement.joinDate) : "not given"),
+      "Fee: " + feeInWords({ feeMonths, feeBasis }),
+      "",
+      "The invoice is drafted on the day they join, due thirty days after their first working day.",
+    ].join("\n"),
+    templateKey: "placement.notice",
+    subjectType: "placement",
+    subjectId: placement.id,
+  });
+
+  // Anything TA could not give us stops the invoice later, so it is asked for
+  // now rather than on the joining day.
+  const missing = missingPlacementFields(placement);
+  if (missing.length) {
+    await createTask({
+      kind: "record",
+      title: "Missing from the placement: " + missing.join(", "),
+      body:
+        "The TA System sent this placement without " +
+        missing.join(" and ") +
+        ". The invoice cannot be built without the package, so it is asked for now rather than on the joining day.",
+      assigneeId: placement.ownerId,
+      dueAt: now,
+      subjectType: "placement",
+      subjectId: placement.id,
+      link: "/placements/" + placement.id,
+    });
+  }
+
+  await startJoinClocks(placement, now);
+  return placement;
+}
+
+/**
+ * TA says they joined, or never turned up (step 7 and step 8).
+ *
+ * Joining starts two things at once: the fee invoice, and the ninety-day
+ * guarantee (which is Phase 7). A no-show starts neither - there is no fee
+ * because there was no placement - and the client has to choose between a
+ * replacement and stopping.
+ */
+export async function takePlacementOutcome(
+  type: string,
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<void> {
+  const placementTaId = String(data.placementId ?? "").trim();
+  if (!placementTaId) return;
+  const db = await desk();
+  const placement = db.placements.find((p) => p.placementTaId === placementTaId);
+  if (!placement) return;
+  if (placement.state !== "placed") return;
+
+  if (type === "placement.joined") {
+    await markPlacementJoined(placement.id, null, now);
+    return;
+  }
+  await patchPlacement(
+    placement.id,
+    { state: "no_show", reason: String(data.reason ?? "").trim() || "Did not turn up." },
+    null,
+    "placement.noShow",
+    "From the TA System.",
+  );
+  await cancelClocksFor(db, "placement", placement.id, placement.ownerId, "They never joined.", null);
+  await createTask({
+    kind: "decide",
+    title: "A no-show: " + placement.candidateName,
+    body:
+      "They did not turn up. Nothing is invoiced and nothing is refunded - the owner's rule - so the client chooses between a replacement and stopping. Draft them the choice.",
+    assigneeId: placement.ownerId,
+    dueAt: now,
+    subjectType: "placement",
+    subjectId: placement.id,
+    link: "/placements/" + placement.id,
+  });
+}
+
+/**
+ * They joined (step 7).
+ *
+ * One door for both ways in: TA's own event, and the button on the joining
+ * day when the TA phones them and tells us. The invoice follows at once,
+ * because thirty days runs from the first working day whether or not anybody
+ * remembered to draft it.
+ */
+export async function markPlacementJoined(
+  placementId: Id,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) return { ok: false, what: "That placement is gone." };
+  if (placement.state === "joined") return { ok: false, what: "They are already down as joined." };
+  if (placement.state !== "placed") return { ok: false, what: "That placement is not waiting to join." };
+
+  await patchPlacement(placementId, { state: "joined", joinedAt: now }, by, "placement.joined", null);
+  await cancelClocksFor(db, "placement", placementId, by ?? placement.ownerId, "They joined.", null);
+
+  const invoiced = await draftFeeInvoice(placementId, by ?? placement.ownerId, now);
+  return {
+    ok: true,
+    what: "Down as joined. " + (invoiced.ok ? invoiced.what : invoiced.what),
+  };
+}
+
+/** The reminders before the joining day, and the check on the morning (step 7). */
+export async function startJoinClocks(placement: OpsPlacement, now = Date.now()): Promise<void> {
+  if (!placement.joinDate) return;
+  for (const clock of joinClocks(placement.joinDate, now)) {
+    await startTimer({
+      kind: clock.kind,
+      subjectType: "placement",
+      subjectId: placement.id,
+      startsAt: now,
+      dueAt: clock.dueAt,
+      warnAt: null,
+      ownerId: placement.ownerId,
+      payload: { label: placement.candidateName },
+    });
+  }
+}
+
+/**
+ * The invoice for a fee (step 9).
+ *
+ * Drafted the day they join, not the day they were placed: the agreement
+ * counts thirty days from the first working day. A replacement under the
+ * guarantee is not invoiced again, which is the owner's rule.
+ *
+ * The invoice document itself waits on a template from the owner, exactly as
+ * the agreement did. Until then the lines go in the body of the email, which
+ * is a real invoice a client can pay against and not a made-up form.
+ */
+export async function draftFeeInvoice(
+  placementId: Id,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) return { ok: false, what: "That placement is gone.", invoiceId: null };
+  if (placement.invoiceId) {
+    return { ok: false, what: "This placement has already been invoiced.", invoiceId: placement.invoiceId };
+  }
+  if (placement.isReplacementOf) {
+    return {
+      ok: false,
+      what: "A replacement under the guarantee is not invoiced again. Nothing to send.",
+      invoiceId: null,
+    };
+  }
+  if (placement.state !== "joined") {
+    return { ok: false, what: "The fee is invoiced when they join, not before.", invoiceId: null };
+  }
+  const missing = missingPlacementFields(placement);
+  if (missing.length) {
+    return { ok: false, what: "Still missing " + missing.join(" and ") + ". Ask the TA System for it.", invoiceId: null };
+  }
+
+  const rule = { feeMonths: placement.feeMonths, feeBasis: placement.feeBasis };
+  const amount = feeAmount(rule, placement.monthlySalary ?? 0);
+  const invoice = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
+    kind: "fee",
+    placementId,
+    clientId: placement.clientId,
+    state: "draft",
+    amount,
+    currency: placement.currency,
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: dueOn(placement.joinedAt ?? now, numberOf(db, "invoice.dueDays", DUE_DAYS)),
+    paidAt: null,
+    writtenOffAt: null,
+    reason: null,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+  await patchPlacement(placementId, { invoiceId: invoice.id }, by, "placement.invoiced", invoice.number);
+
+  await createTask({
+    kind: "approve",
+    title: "Invoice " + invoice.number + ": " + placement.candidateName,
+    body:
+      "They joined, so the fee is due thirty days from their first working day. Read the invoice, then approve it and it goes to the client's billing address.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    link: "/invoices/" + invoice.id,
+  });
+  return { ok: true, what: "Invoice " + invoice.number + " is drafted for accounts.", invoiceId: invoice.id };
+}
+
+/**
+ * The payment chase (step 13).
+ *
+ * Fired by the clock when an invoice is past due and still owed. The late
+ * charge is recomputed first - 1% a month, compounded, as the agreement words
+ * it - and nothing is charged on an invoice the client disputes in good
+ * faith, also from the agreement.
+ */
+export async function chaseThePayment(
+  invoiceId: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) return { ok: false, what: "That invoice is gone." };
+  if (invoice.state !== "sent" && invoice.state !== "partly_paid") {
+    return { ok: false, what: "That invoice is not waiting for money." };
+  }
+  if (!invoice.dueAt || invoice.dueAt > now) return { ok: false, what: "It is not due yet." };
+
+  const months = monthsLate(invoice.dueAt, now);
+  const charge = lateCharge(
+    invoice.amount,
+    months,
+    numberOf(db, "invoice.latePctPerMonth", LATE_PCT_PER_MONTH),
+    switchedOn(db, "invoice.lateCompounded"),
+    invoice.disputed,
+  );
+  await patchInvoice(
+    invoiceId,
+    { lateMonths: months, lateCharge: charge },
+    null,
+    "invoice.lateCharged",
+    invoice.disputed ? "Disputed in good faith, so nothing is charged." : months + " months late",
+  );
+
+  const dueAt = invoice.dueAt;
+  const client = invoice.clientId ? clientIn(db, invoice.clientId) : null;
+  const to = [client?.billingEmail, ...(client?.billingEmail ? [] : [])].filter((one): one is string => Boolean(one));
+  const wording = templateFor(db, "invoice.chase");
+  const fresh = { ...invoice, lateCharge: charge };
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, invoice.number)
+      .replace(/\{\{amount\}\}/g, money(balanceOf(fresh), invoice.currency))
+      .replace(/\{\{daysLate\}\}/g, String(Math.floor((now - dueAt) / 86_400_000)));
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Invoice {{invoiceNumber}} - still outstanding"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\nInvoice {{invoiceNumber}} is {{daysLate}} days past its due date. {{amount}} is outstanding.\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "invoice.chase",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+  });
+
+  await createTask({
+    kind: "approve",
+    title: "Chase invoice " + invoice.number,
+    body:
+      (invoice.disputed
+        ? "The client disputes this one, so no late charge is added. "
+        : months
+          ? "Late by " + months + (months === 1 ? " month" : " months") + ", so the charge is now " + money(charge, invoice.currency) + ". "
+          : "") + "The chase is drafted - read it before it goes.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    link: "/messages/" + message.id,
+  });
+
+  // The next chase is a month away, and goes on until it is paid or written
+  // off. Nothing collects itself; the clock only keeps asking.
+  await startTimer({
+    kind: "invoice.chase",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    startsAt: now,
+    dueAt: now + 30 * 86_400_000,
+    warnAt: null,
+    ownerId: invoice.ownerId,
+    payload: { label: invoice.number },
+  });
+
+  // Long enough unpaid and somebody has to decide, rather than the chase
+  // running for ever (step 14).
+  const writeOffAfter = numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS);
+  if (Math.floor((now - dueAt) / 86_400_000) >= writeOffAfter) {
+    await createTask({
+      kind: "decide",
+      title: "Write off invoice " + invoice.number + "?",
+      body:
+        "It has been more than " +
+        writeOffAfter +
+        " days. Writing it off voids the guarantee and closes the position, so it is the Director's call, not a habit.",
+      assigneeId: db.members.find((m) => m.active && m.role === "director_ops")?.id ?? invoice.ownerId,
+      dueAt: now,
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      link: "/invoices/" + invoiceId,
+    });
+  }
+  return { ok: true, what: "The chase is drafted. " + money(balanceOf(fresh), invoice.currency) + " outstanding." };
 }
 
 /* ── Interviews and references (15, Phase 5) ───────────────────── */
@@ -2177,6 +2640,11 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
       const position = opening ? positionForOpening(db2, opening) : null;
       if (position) await evaluateDepth(position.id, now);
     }
+    // A placement is the day the money starts (Phase 6 step 3).
+    if (event.type === "placement.created") await takePlacement(event.data, now);
+    if (event.type === "placement.joined" || event.type === "placement.no_show") {
+      await takePlacementOutcome(event.type, event.data, now);
+    }
     // What TA tells us about an interview (Phase 5 steps 11, 12 and 15). Ops
     // never writes to a candidate, so each of these is either a state we
     // record or a message to the client that a person then approves.
@@ -2227,6 +2695,12 @@ export function settingValue(db: OpsDatabase, key: string): string | null {
 export function numberOf(db: OpsDatabase, key: string, fallback: number): number {
   const value = db.settings.find((s) => s.key === key)?.value;
   return typeof value === "number" ? value : fallback;
+}
+
+/** A setting that is words rather than a number, like the invoice series. */
+export function textOf(db: OpsDatabase, key: string, fallback: string): string {
+  const value = db.settings.find((s) => s.key === key)?.value;
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 export function switchedOn(db: OpsDatabase, key: string): boolean {

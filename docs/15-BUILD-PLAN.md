@@ -1001,6 +1001,21 @@ and the ICS export (step 18). The reference is `opsReferences` as planned.
 
 ## Phase 6 · Placement to money
 
+**Built 4 November**, steps 1 to 14 and 18, with four differences, each one
+written down rather than quietly done:
+
+- **Payments live on the invoice**, not in `opsPayments`. An invoice has one or
+  two, they are only ever read with it, and the audit keeps who recorded what.
+- **The invoice document waits on a template from the owner**, exactly as the
+  agreement did. The lines go in the body of the email until then; we do not
+  invent the paperwork a client pays against.
+- **The late charge is 1% a month, compounded** (step 13 and the phase table
+  both said a simple 5%): the agreement says 1% compounded with nothing on a
+  disputed invoice, and the owner made the document the truth on 3 November.
+- **Tax lines (⚪), the surcharge invoice (15), credit notes (16), the CSV
+  exports (17) and the nightly reconciliation (19) are not built.** 15 needs
+  phase 4's unreported hire, 16 belongs with phase 7's refunds.
+
 1. Tables `opsPlacements`, `opsInvoices`, `opsPayments`.
 2. Handlers `offer.made` → position stage `offer` (search stops is TA's); `offer.declined` →
    note; `offer.accepted` → wait for the placement.

@@ -110,6 +110,31 @@ const PIPELINE = {
   counts: { client_shortlist: 2, interview: 1, offer: 1, rejected_by_client: 1, follow_up: 1 },
 };
 
+/**
+ * The sample placement (15, Phase 6 step 3).
+ *
+ * Everything the money depends on is there, because TA refuses Place without
+ * the package and the offer letter since 2 November. The joining day is a
+ * fortnight out, so the two reminders and the joining-day check all have
+ * somewhere to land.
+ */
+const PLACEMENT = {
+  id: "ta_p1",
+  applicationId: "ta_a4",
+  openingId: "ta_j1",
+  clientId: "ta_c1",
+  candidateName: "SAMPLE CANDIDATE FOUR",
+  placedSalary: 450_000,
+  currency: "LKR",
+  salaryBasis: "gross",
+  package: "LKR 450,000 a month, plus fuel and a phone allowance.",
+  offerLetterFileId: "ta_file_offer_1",
+  joinDateMs: Date.now() + 14 * 86_400_000,
+  joinConfirmedAt: null,
+  fellThroughAt: null,
+  fellThroughReason: null,
+};
+
 export type FakeAnswer<T> = { ok: true; data: T } | { ok: false; reason: string };
 
 /**
@@ -158,6 +183,9 @@ export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
     return found ? give(found) : { ok: false, reason: "The stand-in has no set " + n + "." };
   }
   if (where.endsWith("/client-sets")) return give(CLIENT_SETS);
+  if (/\/placements\/[^/]+$/.test(where)) {
+    return where.endsWith("/ta_p1") ? give(PLACEMENT) : { ok: false, reason: "The stand-in has no placement " + where.split("/").pop() + "." };
+  }
   if (where.endsWith("/pipeline")) return give(PIPELINE);
   if (where.endsWith("/events")) {
     const after = new URLSearchParams(query ?? "").get("after") ?? "";

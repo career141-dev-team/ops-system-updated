@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -78,6 +78,8 @@ export const snapshot = internalQuery({
       ctx.db.query("opsReports").withIndex("by_created").order("desc").take(26),
       ctx.db.query("opsInterviews").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsReferences").withIndex("by_created").order("desc").take(100),
+      ctx.db.query("opsPlacements").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsInvoices").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -113,6 +115,8 @@ export const snapshot = internalQuery({
       reports: reports.map(row),
       interviews: interviews.map(row),
       references: references.map(row),
+      placements: placements.map(row),
+      invoices: invoices.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -590,6 +594,135 @@ export const addPosition = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** A placement taken from TA (15, Phase 6 step 3). */
+export const addPlacement = internalMutation({
+  args: {
+    placementTaId: v.string(),
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    monthlySalary: v.union(v.number(), v.null()),
+    currency: v.string(),
+    offerLetterFileRef: v.union(v.string(), v.null()),
+    joinDate: v.union(v.number(), v.null()),
+    joinedAt: v.union(v.number(), v.null()),
+    dojHistory: v.any(),
+    feeMonths: v.number(),
+    feeBasis: v.string(),
+    isReplacementOf: v.union(v.string(), v.null()),
+    invoiceId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    noShowChoice: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsPlacements", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "placement.taken",
+      subjectType: "placement",
+      subjectId: id as string,
+      after: args.candidateName,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchPlacement = internalMutation({
+  args: {
+    placementId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.placementId as Id<"opsPlacements">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "placement",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** One invoice (15, Phase 6 step 9). */
+export const addInvoice = internalMutation({
+  args: {
+    number: v.string(),
+    kind: v.string(),
+    placementId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    lateCharge: v.number(),
+    lateMonths: v.number(),
+    disputed: v.boolean(),
+    disputedReason: v.union(v.string(), v.null()),
+    payments: v.any(),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    dueAt: v.union(v.number(), v.null()),
+    paidAt: v.union(v.number(), v.null()),
+    writtenOffAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsInvoices", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "invoice.drafted",
+      subjectType: "invoice",
+      subjectId: id as string,
+      after: args.number,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchInvoice = internalMutation({
+  args: {
+    invoiceId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.invoiceId as Id<"opsInvoices">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "invoice",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

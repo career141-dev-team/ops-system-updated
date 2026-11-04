@@ -332,6 +332,65 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** A placement taken from TA, with the agreement's fee rule on it. */
+  opsPlacements: defineTable({
+    placementTaId: v.string(),
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    monthlySalary: v.union(v.number(), v.null()),
+    currency: v.string(),
+    offerLetterFileRef: v.union(v.string(), v.null()),
+    joinDate: v.union(v.number(), v.null()),
+    joinedAt: v.union(v.number(), v.null()),
+    dojHistory: v.any(),
+    feeMonths: v.number(),
+    feeBasis: v.string(),
+    isReplacementOf: v.union(v.string(), v.null()),
+    invoiceId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    noShowChoice: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_placement_ta", ["placementTaId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_join", ["joinDate"])
+    .index("by_created", ["createdAt"]),
+
+  /** One invoice, with its payments on it (15, Phase 6). */
+  opsInvoices: defineTable({
+    number: v.string(),
+    kind: v.string(),
+    placementId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    lateCharge: v.number(),
+    lateMonths: v.number(),
+    disputed: v.boolean(),
+    disputedReason: v.union(v.string(), v.null()),
+    payments: v.any(),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    dueAt: v.union(v.number(), v.null()),
+    paidAt: v.union(v.number(), v.null()),
+    writtenOffAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["number"])
+    .index("by_state", ["state"])
+    .index("by_due", ["dueAt"])
+    .index("by_created", ["createdAt"]),
+
   /** One interview, the client's side of it (15, Phase 5). */
   opsInterviews: defineTable({
     applicationTaId: v.string(),

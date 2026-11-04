@@ -725,6 +725,79 @@ export interface OpsReferenceRequest {
   updatedAt: number;
 }
 
+/**
+ * A placement, taken from TA (15, Phase 6 step 3).
+ *
+ * TA owns the offer and the placement; this is Ops' copy of the few facts the
+ * money depends on, with the agreement's fee rule copied onto it so a rule
+ * changed next year cannot change an invoice already sent.
+ */
+export interface OpsPlacement {
+  id: Id;
+  placementTaId: string;
+  applicationTaId: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  candidateName: string;
+  state: string;
+  /** What the client agreed to pay them, a month. */
+  monthlySalary: number | null;
+  currency: string;
+  offerLetterFileRef: string | null;
+  /** The day they are due to start, and the day they really did. */
+  joinDate: number | null;
+  joinedAt: number | null;
+  /** Every time the joining day moved, and why. */
+  dojHistory: { from: number | null; to: number; reason: string; at: number; by: Id | null }[];
+  /** The agreement's fee rule, as it stood when they were placed. */
+  feeMonths: number;
+  feeBasis: string;
+  /** A replacement under the guarantee is not invoiced again. */
+  isReplacementOf: Id | null;
+  invoiceId: Id | null;
+  /** Why they never joined, or why we lost them. */
+  reason: string | null;
+  /** What the client chose after a no-show: replace, or stop. */
+  noShowChoice: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One invoice (15, Phase 6 steps 9 to 14).
+ *
+ * The payments live on it rather than in a table of their own: an invoice has
+ * one or two, they are only ever read with it, and the audit keeps who
+ * recorded what.
+ */
+export interface OpsInvoice {
+  id: Id;
+  number: string;
+  kind: string;
+  placementId: Id | null;
+  clientId: Id | null;
+  state: string;
+  amount: number;
+  currency: string;
+  lateCharge: number;
+  lateMonths: number;
+  /** Nothing is charged on an invoice disputed in good faith. */
+  disputed: boolean;
+  disputedReason: string | null;
+  payments: { amount: number; paidAt: number; method: string; by: Id | null; note: string | null }[];
+  sentAt: number | null;
+  sentMessageId: Id | null;
+  dueAt: number | null;
+  paidAt: number | null;
+  writtenOffAt: number | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -745,6 +818,8 @@ export interface OpsDatabase {
   reports: OpsReport[];
   interviews: OpsInterview[];
   references: OpsReferenceRequest[];
+  placements: OpsPlacement[];
+  invoices: OpsInvoice[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];
