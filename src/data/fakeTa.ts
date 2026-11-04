@@ -90,6 +90,51 @@ const EVENTS = [
   { id: "ta_ev_4", type: "something.we.do.not.know", at: Date.UTC(2026, 10, 1, 7), data: {} },
 ];
 
+/**
+ * The pipeline of the sample opening (15, Phase 4 step 14).
+ *
+ * Four shortlisted and two of them still waiting to be interviewed, which is
+ * the ordinary middle of a search: not held at five, and not thin enough to
+ * send the TA back out. The depth rules can be walked from here in both
+ * directions by moving one candidate.
+ */
+const PIPELINE = {
+  applications: [
+    { id: "ta_a1", candidateName: "SAMPLE CANDIDATE ONE", currentStage: "client_shortlist", setNumber: 1, backupForApplicationId: null },
+    { id: "ta_a2", candidateName: "SAMPLE CANDIDATE TWO", currentStage: "client_shortlist", setNumber: 1, backupForApplicationId: null },
+    { id: "ta_a3", candidateName: "SAMPLE CANDIDATE THREE", currentStage: "interview", setNumber: 1, backupForApplicationId: null },
+    { id: "ta_a4", candidateName: "SAMPLE CANDIDATE FOUR", currentStage: "offer", setNumber: 1, backupForApplicationId: null },
+    { id: "ta_a5", candidateName: "SAMPLE CANDIDATE FIVE", currentStage: "rejected_by_client", setNumber: 1, backupForApplicationId: null },
+    { id: "ta_a6", candidateName: "SAMPLE CANDIDATE SIX", currentStage: "follow_up", setNumber: null, backupForApplicationId: null },
+  ],
+  counts: { client_shortlist: 2, interview: 1, offer: 1, rejected_by_client: 1, follow_up: 1 },
+};
+
+/**
+ * The sample placement (15, Phase 6 step 3).
+ *
+ * Everything the money depends on is there, because TA refuses Place without
+ * the package and the offer letter since 2 November. The joining day is a
+ * fortnight out, so the two reminders and the joining-day check all have
+ * somewhere to land.
+ */
+const PLACEMENT = {
+  id: "ta_p1",
+  applicationId: "ta_a4",
+  openingId: "ta_j1",
+  clientId: "ta_c1",
+  candidateName: "SAMPLE CANDIDATE FOUR",
+  placedSalary: 450_000,
+  currency: "LKR",
+  salaryBasis: "gross",
+  package: "LKR 450,000 a month, plus fuel and a phone allowance.",
+  offerLetterFileId: "ta_file_offer_1",
+  joinDateMs: Date.now() + 14 * 86_400_000,
+  joinConfirmedAt: null,
+  fellThroughAt: null,
+  fellThroughReason: null,
+};
+
 export type FakeAnswer<T> = { ok: true; data: T } | { ok: false; reason: string };
 
 /**
@@ -138,6 +183,10 @@ export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
     return found ? give(found) : { ok: false, reason: "The stand-in has no set " + n + "." };
   }
   if (where.endsWith("/client-sets")) return give(CLIENT_SETS);
+  if (/\/placements\/[^/]+$/.test(where)) {
+    return where.endsWith("/ta_p1") ? give(PLACEMENT) : { ok: false, reason: "The stand-in has no placement " + where.split("/").pop() + "." };
+  }
+  if (where.endsWith("/pipeline")) return give(PIPELINE);
   if (where.endsWith("/events")) {
     const after = new URLSearchParams(query ?? "").get("after") ?? "";
     // The cursor is the last event's id, exactly as the real API works.

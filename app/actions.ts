@@ -27,7 +27,51 @@ import {
   patchIssue,
   patchPosition,
   patchRequirement,
+  addAd,
+  addClient,
+  addInterview,
+  addMember,
+  addInvoice,
+  addReference,
+  buildWeeklyReport,
+  adIn,
+  aiRunIn,
+  member as deskMember,
+  checklistIn,
+  evaluateDepth,
+  positionForSet,
+  draftCandidateFeedback,
+  draftCreditNote,
+  draftSurchargeInvoice,
+  guaranteeForPlacement,
+  guaranteeIn,
+  interviewIn,
+  invoiceIn,
+  liveAdFor,
+  liveInterviewFor,
+  noticeCandidateOut,
+  markLeaver,
+  markPlacementJoined,
+  openCloseChecklist,
+  openTasksFor,
+  patchInterview,
+  patchAd,
+  recordAiOutcome,
+  runAi,
+  patchChecklist,
+  patchGuarantee,
+  patchInvoice,
+  patchPlacement,
+  patchReference,
+  patchReport,
+  placementIn,
+  positionForOpening,
   positionIn,
+  referenceForApplication,
+  referenceIn,
+  reportIn,
+  startInterviewClocks,
+  startJoinClocks,
   requirementForLead,
   startReceiptClocks,
   clientsNewestFirst,
@@ -64,7 +108,7 @@ import {
   startTimer,
   switchedOn,
 } from "@/data/desk";
-import { HOUR, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
@@ -74,6 +118,14 @@ import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
 import {
+  AD_DAYS,
+  type AdState,
+  adClosesOn,
+  canMoveAdTo,
+  problemWithAdLive,
+  problemWithAdOrder,
+  problemWithAdRequest,
+  problemWithFlyer,
   problemWithIssue,
   problemWithLinkedIn,
   tidyLinkedIn,
@@ -113,7 +165,66 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
+import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
+import {
+  type Answer,
+  type DictatedRequirement,
+  IMPROVE_WORDS,
+  type ImproveHow,
+  type ImprovedDraft,
+  type InboundRead,
+  type Summary,
+  askPrompt,
+  dictateRequirementPrompt,
+  improveDraftPrompt,
+  inboundReadPrompt,
+  notSaidInWords,
+  summarisePrompt,
+} from "@/lib/aiTasks";
+import {
+  CLOSE_TRIGGERS,
+  REFUND_PCT,
+  problemWithCloseComplete,
+  problemWithLeaver,
+  problemWithRefund,
+  refundAmount,
+} from "@/lib/guarantee";
+import {
+  WRITE_OFF_DAYS,
+  balanceOf,
+  feeInWords,
+  invoiceLines,
+  money,
+  problemWithDojChange,
+  problemWithNoShow,
+  problemWithNoShowChoice,
+  problemWithPayment,
+  problemWithWriteOff,
+} from "@/lib/money";
+import {
+  type InterviewState,
+  MAX_SLOT_LOOPS,
+  canMoveTo as canMoveInterviewTo,
+  interviewersFrom,
+  parseSlots,
+  problemWithAttendance,
+  problemWithInterviewBooking,
+  problemWithNewSlots,
+  problemWithPick,
+  problemWithReference,
+  problemWithRelay,
+  problemWithRoundDecision,
+  problemWithSlots,
+} from "@/lib/interviews";
 import { parseHolidayLines } from "@/lib/holidays";
+import {
+  IMPORT_KINDS,
+  type ImportKind,
+  planImport,
+  planInWords,
+  problemWithImport,
+} from "@/lib/importer";
 import { MEASURES } from "@/lib/baseline";
 import {
   type LeadState,
@@ -155,6 +266,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
+import type { OpsMember } from "@/data/types";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -410,7 +522,15 @@ export async function approveAndSend(formData: FormData): Promise<void> {
     // Switched off on purpose is not the same as a send that went wrong. A
     // preview with no credentials would otherwise report every message as
     // failed, which hides the real failures when they come.
-    outcome.ok ? "sent" : sendingEnabled() ? "failed" : "blocked",
+    // A group post is never "sent": nobody sent it. It stops at approved,
+    // which is the truth - a person has it to post (3 Nov, in the browser).
+    message.channel === "group_post"
+      ? "approved"
+      : outcome.ok
+        ? "sent"
+        : sendingEnabled()
+          ? "failed"
+          : "blocked",
     verdict.to,
     said,
     outcome.providerMessageId,
@@ -1803,6 +1923,15 @@ export async function sendClientSet(formData: FormData): Promise<void> {
   const problem = problemWithSending(row.candidates, to, numberOf(db, "set.minCvs", MIN_CVS));
   if (problem) back(problem);
 
+  // The owner's hold at five (step 15): a client already sitting on five
+  // shortlisted gets no sixth CV, because that is how a client stops reading
+  // them. The ops lead can override it, and the override goes to the audit.
+  const held = problemWithAnotherSet(
+    positionForSet(db, row)?.depthStage ?? null,
+    numberOf(db, "depth.holdAt", HOLD_AT),
+  );
+  if (held && !can(member, "task.reassign")) back(held);
+
   const wording = templateFor(db, "set.cover");
   const fill = (text: string) =>
     text
@@ -1830,13 +1959,46 @@ export async function sendClientSet(formData: FormData): Promise<void> {
     { state: "sent", sentAt: now, sentMessageId: message.id, sentTo: to, receivedAt: now },
     member.id,
     "clientSet.sent",
-    null,
+    held ? "The ops lead sent it anyway: " + held : null,
   );
   await cancelClocksFor(db, "clientSet", setId, member.id, "The set has gone.", ["set.due"]);
   // Everything after a set counts from the day the client received it (step 6):
   // seven working days of CV ownership, the feedback chase, the two weeks before
   // a hold, and the three months before an unreported hire is asked about.
   await startReceiptClocks(db, { ...row, state: "sent", receivedAt: now }, now);
+
+  // The client's WhatsApp group (step 13). Nothing can post to a WhatsApp
+  // group - Meta's API cannot write to one - so the text is drafted and a
+  // person posts it from their phone. If the group does not exist yet, making
+  // it is the task the first set leaves behind.
+  const client = db.clients.find((c) => c.taClientId === row.clientTaId) ?? null;
+  const groupWording = templateFor(db, "set.group_post");
+  const post = await draftMessage({
+    channel: "group_post",
+    to: client?.groupName.trim() ? [client.groupName.trim()] : [],
+    subject: "",
+    body: fill(
+      groupWording?.body ?? "{{client}} > {{position}} > SET {{setNumber}}\n\n{{cvCount}} CVs are in your email.",
+    ),
+    templateKey: "set.group_post",
+    subjectType: "clientSet",
+    subjectId: setId,
+  });
+  if (!client?.groupName.trim()) {
+    await createTask({
+      kind: "check",
+      title: "Make the WhatsApp group: " + (client?.name ?? theirs?.name ?? row.name.split(" > ")[0]),
+      body:
+        "The first set has gone, so the group is made now and the set posted in it. The post is already drafted and waiting.\n\n" +
+        "Then write the group's name on the client's page, so the next set's post knows where it goes.",
+      assigneeId: row.ownerId,
+      dueAt: now,
+      subjectType: "clientSet",
+      subjectId: setId,
+      link: "/messages/" + post.id,
+    });
+  }
+
   await queueTaWrite(
     "/integrations/v1/client-sets/" + row.taRoundId + "/sent",
     { sentAt: now, receivedAt: now, sentTo: to },
@@ -1848,7 +2010,12 @@ export async function sendClientSet(formData: FormData): Promise<void> {
     "/messages/" +
       message.id +
       "?msg=" +
-      encodeURIComponent("The set is drafted with " + row.candidates.length + " CVs attached. Read it, then approve it."),
+      encodeURIComponent(
+        "The set is drafted with " +
+          row.candidates.length +
+          " CVs attached. Read it, then approve it. The group post is drafted too." +
+          (held ? " The hold at five was overridden." : ""),
+      ),
   );
 }
 
@@ -2054,9 +2221,18 @@ export async function recordClientDecision(formData: FormData): Promise<void> {
     { decision, reason, decidedAt: now, setId, roundId: row.taRoundId },
     { type: "clientSet", id: setId },
   );
+
+  // Every decision changes how deep the client's shortlist is, which is what
+  // the owner's two rules turn on (steps 14 and 15). It is counted here, from
+  // TA's own pipeline, rather than remembered by anybody.
+  const position = positionForSet(db, row);
+  const depth = position ? await evaluateDepth(position.id, now) : null;
+
   revalidatePath(here);
+  revalidatePath("/positions");
   back(
     "Recorded in their words, and the TA System will be told." +
+      (depth?.ok ? " " + depth.what : "") +
       (stopped ? " " + stopped + (stopped === 1 ? " clock" : " clocks") + " stopped: they have answered." : ""),
   );
 }
@@ -2444,6 +2620,10 @@ export async function handOverToTa(formData: FormData): Promise<void> {
     jdApprovedAt: null,
     linkedInUrl: null,
     linkedInPostedAt: null,
+    depthStage: null,
+    shortlistedTotal: null,
+    pendingCount: null,
+    depthCheckedAt: null,
     handedOverAt: now,
     closedAt: null,
     ownerId: row.ownerId,
@@ -2639,4 +2819,2153 @@ export async function markTalentPulsePosted(formData: FormData): Promise<void> {
   );
   revalidatePath("/talent-pulse");
   back("Recorded as posted. Next Tuesday's issue compiles itself.");
+}
+
+/* ── The weekly report (15, Phase 7 step 9) ───────────────────── */
+
+/**
+ * Build this Monday's report now.
+ *
+ * The clock does this at eight on a Monday. The button is for the week it has
+ * not come round yet, and for the TA lead who wants it again after a change -
+ * it gives back the same report rather than making a second one.
+ */
+export async function buildWeeklyReportNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/reports?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+
+  const report = await buildWeeklyReport(member.id);
+  revalidatePath("/reports");
+  if (!report) back("Nothing to report on.");
+  const row = report as NonNullable<typeof report>;
+  redirect(
+    "/reports/" +
+      row.id +
+      "?msg=" +
+      encodeURIComponent(
+        row.rows.length
+          ? "The report for " + row.weekOf + " is built. Read it, then approve it."
+          : "No position is open, so this week's report is empty. Nothing goes to the Director.",
+      ),
+  );
+}
+
+/**
+ * Approve the report, which drafts the Director's email.
+ *
+ * The owner's rule: the report is the TA lead's to review. Only after that is
+ * anything written to the Director, and even then it is a draft a person
+ * sends - the same one way out as every other client or Director message.
+ */
+export async function approveWeeklyReport(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const reportId = String(formData.get("reportId") ?? "");
+  const here = "/reports/" + reportId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+  const db = await desk();
+  const report = reportIn(db, reportId);
+  if (!report) redirect("/reports?msg=" + encodeURIComponent("That report is gone."));
+  const row = report as NonNullable<typeof report>;
+  if (row.state !== "review") back("That report is not waiting to be read.");
+
+  const problem = problemWithReport(row.rows);
+  if (problem) back(problem);
+
+  const to = recipientsFrom(db.settings.find((s) => s.key === "report.recipients")?.value);
+  if (!to.length) {
+    back("Nobody is set to receive the report. Put the Director's address in the settings first.");
+  }
+
+  const text = reportText(row.weekOf, row.rows);
+  const wording = templateFor(db, "report.weekly");
+  const fill = (what: string) =>
+    what
+      .replace(/\{\{weekOf\}\}/g, row.weekOf)
+      .replace(/\{\{report\}\}/g, text)
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Career 141 - active positions, week of {{weekOf}}"),
+    body: fill(wording?.body ?? "Dear Mr Azeem,\n\n{{report}}\n\nKind regards\n{{opsPerson}}"),
+    templateKey: "report.weekly",
+    subjectType: "report",
+    subjectId: reportId,
+  });
+
+  const now = Date.now();
+  await patchReport(
+    reportId,
+    { state: "approved", approvedBy: member.id, approvedAt: now, messageId: message.id },
+    member.id,
+    "report.approved",
+    row.note,
+  );
+  // The clock that built it has done its work; next Monday's is already set.
+  await cancelClocksFor(db, "report", reportId, member.id, "The report has been read.", null);
+  revalidatePath(here);
+  revalidatePath("/reports");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The Director's email is drafted. Read it, then approve it and it goes."),
+  );
+}
+
+/* ── Interviews and references (15, Phase 5) ──────────────────── */
+
+/**
+ * Start an interview for a candidate the client shortlisted (steps 2 and 6).
+ *
+ * Who schedules is the first decision and the owner's: we agree the time, or
+ * the client books it and tells us. The two are different work, so it is
+ * asked once here rather than guessed later.
+ */
+export async function startInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/interviews?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const applicationTaId = String(formData.get("applicationTaId") ?? "").trim();
+  const openingTaId = String(formData.get("openingTaId") ?? "").trim();
+  const candidateName = String(formData.get("candidateName") ?? "").trim();
+  const scheduler = String(formData.get("scheduler") ?? "");
+  if (!applicationTaId || !openingTaId) back("Which candidate, on which opening?");
+  if (!candidateName) back("Write the candidate's name as the TA System has it.");
+  if (scheduler !== "us" && scheduler !== "client") back("Say who agrees the time: us, or the client.");
+
+  const db = await desk();
+  if (liveInterviewFor(db, applicationTaId)) {
+    back("That candidate already has an interview on the go. Finish or cancel it first.");
+  }
+  const position = positionForOpening(db, openingTaId);
+  const now = Date.now();
+  const interview = await addInterview({
+    applicationTaId,
+    openingTaId,
+    positionId: position?.id ?? null,
+    clientId: position?.clientId ?? null,
+    candidateName,
+    scheduler,
+    state: "slots",
+    round: Math.max(1, Number(formData.get("round") ?? 1)),
+    slots: [],
+    slotLoops: 0,
+    at: null,
+    format: "online",
+    interviewers: [],
+    whereOrLink: "",
+    interviewTaId: null,
+    inviteMessageId: null,
+    attendedAt: null,
+    decision: null,
+    decisionReason: null,
+    decidedAt: null,
+    candidateFeedback: null,
+    reason: null,
+    ownerId: position?.ownerId ?? member.id,
+  });
+
+  // The client who books it themselves owes us a date, and a client who never
+  // sends it is the oldest hole in this flow - so a clock asks for it.
+  if (scheduler === "client") {
+    await startTimer({
+      kind: "interview.report",
+      subjectType: "interview",
+      subjectId: interview.id,
+      startsAt: now,
+      dueAt: now + numberOf(db, "interview.reportReminderDays", 2) * DAY,
+      warnAt: null,
+      ownerId: interview.ownerId,
+      payload: { label: candidateName },
+    });
+  }
+  revalidatePath("/interviews");
+  redirect(
+    "/interviews/" +
+      interview.id +
+      "?msg=" +
+      encodeURIComponent(
+        scheduler === "us"
+          ? "Started. Ask the client for times."
+          : "Started. The client books it; a clock will ask if they do not tell us the date.",
+      ),
+  );
+}
+
+/** Ask the client for times (step 3). */
+export async function requestInterviewSlots(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const problem = problemWithNewSlots(row.slotLoops, numberOf(db, "interview.maxSlotLoops", MAX_SLOT_LOOPS));
+  if (problem) back(problem);
+
+  const to = interviewersFrom(String(formData.get("to") ?? "")).length
+    ? interviewersFrom(String(formData.get("to") ?? ""))
+    : row.interviewers;
+  if (!to.length) back("Who do we ask? One address a line.");
+
+  const wording = templateFor(db, "interview.slots_request");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{position\}\}/g, positionIn(db, row.positionId ?? "")?.title ?? "the role")
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "{{candidate}} - interview times"),
+    body: fill(wording?.body ?? "Dear {{contact}},\n\nWhich times suit you for {{candidate}}?"),
+    templateKey: "interview.slots_request",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(
+    interviewId,
+    { slotLoops: row.slotLoops + 1, interviewers: to, state: "slots" },
+    member.id,
+    "interview.slotsRequested",
+    null,
+  );
+  revalidatePath(here);
+  redirect(
+    "/messages/" + message.id + "?msg=" + encodeURIComponent("The request is drafted. Read it, then approve it."),
+  );
+}
+
+/** The times the client offered, typed in from their reply (step 3). */
+export async function recordInterviewSlots(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const text = String(formData.get("slots") ?? "");
+  const problem = problemWithSlots(text);
+  if (problem) back(problem);
+  const { slots } = parseSlots(text);
+
+  await patchInterview(interviewId, { slots }, member.id, "interview.slotsFromClient", null);
+  // The candidate's half is the TA's: they ask, through their own channels.
+  await createTask({
+    kind: "check",
+    title: "Ask the candidate which time suits: " + row.candidateName,
+    body:
+      slots.map((at) => "- " + colomboDateInWords(at) + " " + new Date(at + 5.5 * HOUR).toISOString().slice(11, 16)).join("\n") +
+      "\n\nThe TA asks the candidate - we never write to one. Then record which one they took.",
+    assigneeId: row.ownerId,
+    dueAt: Date.now(),
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: here,
+  });
+  revalidatePath(here);
+  back(slots.length + (slots.length === 1 ? " time recorded." : " times recorded.") + " The TA asks the candidate now.");
+}
+
+/** The candidate took one of the times (step 4). */
+export async function recordCandidatePick(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const at = Number(formData.get("at") ?? 0);
+  const problem = problemWithPick(at, row.slots);
+  if (problem) back(problem);
+  if (!canMoveInterviewTo(row.state as InterviewState, "agreed")) back("That interview is not agreeing a time.");
+
+  await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.agreed", null);
+  revalidatePath(here);
+  back("Agreed. Now book it: who is interviewing, and where or the link.");
+}
+
+/** The client told us the date they booked themselves (step 6). */
+export async function recordClientBooking(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const at = Date.parse(String(formData.get("at") ?? "") + ":00+05:30");
+  if (!Number.isFinite(at)) back("Give the day and time they booked.");
+  if (at < Date.now()) back("That time has gone.");
+
+  await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.clientBooked", null);
+  await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report"]);
+  revalidatePath(here);
+  back("Noted. Now book it on our side so the reminders run.");
+}
+
+/**
+ * Book it (steps 7 to 10).
+ *
+ * Three things happen at once, and all three matter: TA is told so its own
+ * interview row exists, the client's people get a drafted invite, and the two
+ * clocks start. The Teams link is pasted in by a person for now - making the
+ * meeting from the Ops mailbox needs a calendar permission the owner has yet
+ * to grant, and a made-up link is worse than an asked-for one.
+ */
+export async function bookInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const wanted = {
+    at: row.at ?? NaN,
+    round: row.round,
+    format: String(formData.get("format") ?? ""),
+    interviewers: String(formData.get("interviewers") ?? ""),
+    whereOrLink: String(formData.get("whereOrLink") ?? "").trim(),
+  };
+  const problem = problemWithInterviewBooking(wanted);
+  if (problem) back(problem);
+  if (!canMoveInterviewTo(row.state as InterviewState, "booked")) back("Agree a time first.");
+
+  const interviewers = interviewersFrom(wanted.interviewers);
+  const wording = templateFor(db, "interview.invite");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{when\}\}/g, colomboDateInWords(wanted.at) + ", " + new Date(wanted.at + 5.5 * HOUR).toISOString().slice(11, 16))
+      .replace(/\{\{round\}\}/g, String(row.round))
+      .replace(/\{\{whereOrLink\}\}/g, wanted.whereOrLink)
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interviewers,
+    subject: fill(wording?.subject ?? "Interview: {{candidate}}, {{when}}"),
+    body: fill(wording?.body ?? "Dear all,\n\n{{candidate}} is confirmed for {{when}}.\n\n{{whereOrLink}}"),
+    templateKey: "interview.invite",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(
+    interviewId,
+    {
+      state: "booked",
+      format: wanted.format,
+      interviewers,
+      whereOrLink: wanted.whereOrLink,
+      inviteMessageId: message.id,
+    },
+    member.id,
+    "interview.booked",
+    null,
+  );
+  // TA keeps its own interview row and invites the candidate; we never do.
+  await queueTaWrite(
+    "/integrations/v1/interviews",
+    {
+      applicationId: row.applicationTaId,
+      openingId: row.openingTaId,
+      scheduledAt: wanted.at,
+      round: row.round,
+      interviewFormat: wanted.format,
+      interviewers,
+      teamsLink: wanted.format === "online" ? wanted.whereOrLink : null,
+      coordinatedBy: "ops",
+    },
+    { type: "interview", id: interviewId },
+  );
+  await startInterviewClocks({ ...row, at: wanted.at, ownerId: row.ownerId }, Date.now());
+  revalidatePath(here);
+  revalidatePath("/interviews");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        "Booked. The invite to the client's people is drafted, the TA System has been told, and the reminders are set.",
+      ),
+  );
+}
+
+/** Mark whether it happened (step 14). */
+export async function markInterviewAttendance(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const came = String(formData.get("came") ?? "");
+  if (came !== "attended" && came !== "no_show") back("Did they come, or not?");
+  const problem = problemWithAttendance(row.state, row.at ?? 0);
+  if (problem) back(problem);
+  const reason = String(formData.get("reason") ?? "").trim();
+  // A no-show needs a reason, like every other thing that goes wrong here.
+  if (came === "no_show" && reason.length < 4) back("Write what happened, as far as anybody knows.");
+
+  const now = Date.now();
+  await patchInterview(
+    interviewId,
+    { state: came, attendedAt: came === "attended" ? now : null, reason: reason || null },
+    member.id,
+    "interview." + came,
+    reason || null,
+  );
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The interview has happened.", null);
+  await queueTaWrite(
+    "/integrations/v1/interviews/" + (row.interviewTaId ?? row.applicationTaId) + "/attendance",
+    { outcome: came, reason: reason || null, markedAt: now },
+    { type: "interview", id: interviewId },
+  );
+  revalidatePath(here);
+  back(
+    came === "attended"
+      ? "Marked as held. The TA phones the candidate after five; their feedback arrives here."
+      : "Marked as a no-show, and the TA System has been told.",
+  );
+}
+
+/** The candidate pulled out (step 11), heard by us rather than by TA. */
+export async function recordCandidateOut(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why they are out of it.");
+  const answer = await noticeCandidateOut(interviewId, reason, member.id);
+  if (!answer.ok) back(answer.what);
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      answer.messageId +
+      "?msg=" +
+      encodeURIComponent(answer.what + " The notice to the client is drafted - read it, then approve it."),
+  );
+}
+
+/** The client cancelled or moved it (step 13). */
+export async function cancelInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why it is off.");
+  const again = String(formData.get("again") ?? "") === "yes";
+
+  await patchInterview(
+    interviewId,
+    // Rebooking keeps the round: a candidate who was at round two is still at
+    // round two after the client moves the date.
+    again ? { state: "slots", at: null, slots: [], reason } : { state: "cancelled", reason },
+    member.id,
+    again ? "interview.rebooking" : "interview.cancelled",
+    reason,
+  );
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The interview is off.", null);
+  await queueTaWrite(
+    "/integrations/v1/interviews/" + (row.interviewTaId ?? row.applicationTaId) + "/cancel",
+    { reason, rebooking: again },
+    { type: "interview", id: interviewId },
+  );
+  revalidatePath(here);
+  back(
+    again
+      ? "Off, and back to agreeing a time. The round is kept, and the TA System has been told."
+      : "Cancelled, and the TA System has been told.",
+  );
+}
+
+/** What the client decided after the interview (step 16). */
+export async function recordRoundDecision(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+  if (row.state !== "attended") back("The client decides after the interview, not before it.");
+
+  const decision = String(formData.get("decision") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithRoundDecision(decision, reason);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchInterview(
+    interviewId,
+    { decision, decisionReason: reason || null, decidedAt: now },
+    member.id,
+    "interview.decision." + decision,
+    reason || null,
+  );
+  await queueTaWrite(
+    "/integrations/v1/interviews/" + (row.interviewTaId ?? row.applicationTaId) + "/client-decision",
+    { decision, reason: reason || null, decidedAt: now },
+    { type: "interview", id: interviewId },
+  );
+
+  // A rejection changes how deep the shortlist is, so it is counted again.
+  let depth = "";
+  if (decision === "rejected" && row.positionId) {
+    const counted = await evaluateDepth(row.positionId, now);
+    if (counted.ok) depth = " " + counted.what;
+  }
+  if (decision === "next") {
+    await createTask({
+      kind: "check",
+      title: "Round " + (row.round + 1) + " for " + row.candidateName,
+      body: "The client wants another round. Start it from the candidate's row - the round goes up, and the times are agreed again.",
+      assigneeId: row.ownerId,
+      dueAt: now,
+      subjectType: "interview",
+      subjectId: interviewId,
+      link: "/interviews",
+    });
+  }
+  if (decision === "selected") {
+    await createTask({
+      kind: "decide",
+      title: "Selected: " + row.candidateName,
+      body: "The client has chosen them. Ask whether they want a reference check - it only happens when they ask. The offer itself is the TA System's.",
+      assigneeId: row.ownerId,
+      dueAt: now,
+      subjectType: "interview",
+      subjectId: interviewId,
+      link: "/interviews/" + interviewId,
+    });
+  }
+  revalidatePath(here);
+  back("Recorded, and the TA System will be told." + depth);
+}
+
+/** A reference check, only because the client asked (step 17). */
+export async function requestReference(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const asked = String(formData.get("clientAsked") ?? "") === "yes";
+  const problem = problemWithReference(asked, row.candidateName);
+  if (problem) back(problem);
+  if (referenceForApplication(db, row.applicationTaId)) back("A reference has already been asked for.");
+
+  const now = Date.now();
+  const reference = await addReference({
+    applicationTaId: row.applicationTaId,
+    openingTaId: row.openingTaId,
+    candidateName: row.candidateName,
+    state: "requested",
+    report: null,
+    requestedAt: now,
+    reportedAt: null,
+    relayMessageId: null,
+    decision: null,
+    reason: null,
+    ownerId: row.ownerId,
+  });
+  await queueTaWrite(
+    "/integrations/v1/reference-requests",
+    { applicationId: row.applicationTaId, openingId: row.openingTaId, askedBy: "client", requestedAt: now },
+    { type: "reference", id: reference.id },
+  );
+  await createTask({
+    kind: "check",
+    title: "The TA phones the referee: " + row.candidateName,
+    body: "The client asked for a reference. The TA phones the referee directly - no form, no score - and writes down what was said. It comes back here.",
+    assigneeId: row.ownerId,
+    dueAt: now,
+    subjectType: "reference",
+    subjectId: reference.id,
+    link: here,
+  });
+  revalidatePath(here);
+  back("Asked of the TA. What the referee says comes back here, and we pass it on as it is.");
+}
+
+/** What the referee said, typed in when TA reports it by hand. */
+export async function recordReferenceReport(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const referenceId = String(formData.get("referenceId") ?? "");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const reference = referenceIn(db, referenceId);
+  if (!reference) back("That reference is gone.");
+  const row = reference as NonNullable<typeof reference>;
+
+  const report = String(formData.get("report") ?? "").trim();
+  const problem = problemWithRelay(report);
+  if (problem) back(problem);
+
+  await patchReference(referenceId, { state: "reported", report, reportedAt: Date.now() }, member.id, "reference.reported", null);
+  revalidatePath(here);
+  back("Written down as it was said. Now pass it to the client.");
+}
+
+/** Pass the reference on, as it was said (step 17). */
+export async function relayReference(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const referenceId = String(formData.get("referenceId") ?? "");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const reference = referenceIn(db, referenceId);
+  if (!reference) back("That reference is gone.");
+  const row = reference as NonNullable<typeof reference>;
+  if (row.state !== "reported") back("Nothing has come back from the TA yet.");
+  const problem = problemWithRelay(row.report ?? "");
+  if (problem) back(problem);
+
+  const interview = interviewIn(db, interviewId);
+  const to = interview?.interviewers ?? [];
+  if (!to.length) back("Nobody to send it to. The interview has no interviewers on it.");
+
+  const wording = templateFor(db, "reference.relay");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{report\}\}/g, row.report ?? "")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "{{candidate}} - reference"),
+    body: fill(wording?.body ?? "Dear all,\n\n{{report}}"),
+    templateKey: "reference.relay",
+    subjectType: "reference",
+    subjectId: referenceId,
+  });
+
+  await patchReference(referenceId, { state: "relayed", relayMessageId: message.id }, member.id, "reference.relayed", null);
+  revalidatePath(here);
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Drafted word for word. Read it, then approve it."));
+}
+
+/** The client's answer to the reference: happy, or dropped (step 17). */
+export async function recordReferenceDecision(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const referenceId = String(formData.get("referenceId") ?? "");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const reference = referenceIn(db, referenceId);
+  if (!reference) back("That reference is gone.");
+  const row = reference as NonNullable<typeof reference>;
+
+  const decision = String(formData.get("decision") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (decision !== "cleared" && decision !== "dropped") back("Cleared, or dropped?");
+  if (decision === "dropped" && reason.length < 4) back("Write why they dropped them, in the client's words.");
+
+  await patchReference(
+    referenceId,
+    { state: decision, decision, reason: reason || null },
+    member.id,
+    "reference." + decision,
+    reason || null,
+  );
+
+  // A dropped candidate changes the shortlist, so it is counted again.
+  let depth = "";
+  const interview = interviewIn(db, interviewId);
+  if (decision === "dropped" && interview?.positionId) {
+    const counted = await evaluateDepth(interview.positionId, Date.now());
+    if (counted.ok) depth = " " + counted.what;
+  }
+  revalidatePath(here);
+  back(
+    decision === "cleared"
+      ? "Cleared. The offer is the TA System's work from here."
+      : "Dropped, with their reason." + depth,
+  );
+}
+
+/* ── Placements, invoices and payments (15, Phase 6) ──────────── */
+
+/** They joined. The button for when the TA phones them and tells us. */
+export async function markJoined(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const answer = await markPlacementJoined(placementId, member.id);
+  revalidatePath(here);
+  revalidatePath("/placements");
+  back(answer.what);
+}
+
+/** They never turned up (step 8). */
+export async function markNoShow(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithNoShow(reason);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchPlacement(placementId, { state: "no_show", reason }, member.id, "placement.noShow", reason);
+  await cancelClocksFor(db, "placement", placementId, member.id, "They never joined.", null);
+
+  // The client has to choose, and nothing is invoiced either way.
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const wording = templateFor(db, "placement.noshow_options");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{position\}\}/g, positionIn(db, row.positionId ?? "")?.title ?? "the role")
+      .replace(/\{\{joinDate\}\}/g, row.joinDate ? colomboDateInWords(row.joinDate) : "the agreed day")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: client?.billingEmail ? [client.billingEmail] : [],
+    subject: fill(wording?.subject ?? "{{candidate}} - {{position}}"),
+    body: fill(wording?.body ?? "Dear all,\n\n{{candidate}} did not start with you."),
+    templateKey: "placement.noshow_options",
+    subjectType: "placement",
+    subjectId: placementId,
+  });
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/no-show",
+    { reason, markedAt: now },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent(
+        "Down as a no-show, and the TA System has been told. Nothing is invoiced. The client's choice is drafted - read it, then approve it.",
+      ),
+  );
+}
+
+/** What the client chose after a no-show: a replacement, or stop. */
+export async function recordNoShowChoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const choice = String(formData.get("choice") ?? "");
+  const problem = problemWithNoShowChoice(choice);
+  if (problem) back(problem);
+
+  await patchPlacement(placementId, { noShowChoice: choice }, member.id, "placement.noShowChoice." + choice, null);
+  // The search reopening is TA's: they hold the pipeline and the back-ups.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/status",
+    { status: choice === "replace" ? "open" : "closed", reason: "no-show, client chose to " + choice },
+    { type: "placement", id: placementId },
+  );
+  if (choice === "stop") {
+    await createTask({
+      kind: "check",
+      title: "Close the position: " + row.candidateName + "'s was a no-show",
+      body: "The client has stopped the search. Closing the adverts and the opening is the close checklist, which is Phase 7.",
+      assigneeId: row.ownerId,
+      dueAt: Date.now(),
+      subjectType: "placement",
+      subjectId: placementId,
+      link: here,
+    });
+  }
+  revalidatePath(here);
+  back(
+    choice === "replace"
+      ? "Noted: a replacement. The TA System has been asked to reopen the search."
+      : "Noted: they have stopped. Nothing is invoiced, and the position closes.",
+  );
+}
+
+/** The joining day moved (step 5). */
+export async function changeJoinDate(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join any more.");
+
+  const when = Date.parse(String(formData.get("joinDate") ?? "") + "T09:00:00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithDojChange(when, reason);
+  if (problem) back(problem);
+  // Counted before the patch: the store hands back the row the patch writes
+  // to, so afterwards this already includes the move being made (3 Nov).
+  const movesBefore = row.dojHistory.length;
+
+  const now = Date.now();
+  await patchPlacement(
+    placementId,
+    {
+      joinDate: when,
+      // Every move is kept: a joining day that slips twice is the thing we
+      // watch for, and it cannot be seen if the old date is overwritten.
+      dojHistory: [...row.dojHistory, { from: row.joinDate, to: when, reason, at: now, by: member.id }],
+    },
+    member.id,
+    "placement.dojChanged",
+    reason,
+  );
+  await cancelClocksFor(db, "placement", placementId, member.id, "The joining day moved.", null);
+  await startJoinClocks({ ...row, joinDate: when }, now);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/join-date",
+    { joinDateMs: when, reason },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  back(
+    "Moved to " +
+      colomboDateInWords(when) +
+      ". The reminders are reset and the TA System has been told." +
+      (movesBefore ? " That is move " + (movesBefore + 1) + " for this one." : ""),
+  );
+}
+
+/** We lost them before they joined (step 6). */
+export async function cancelPlacement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  if (row.state !== "placed") back("That placement is not waiting to join.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write what happened. A lost candidate is read about later.");
+
+  await patchPlacement(placementId, { state: "cancelled", reason }, member.id, "placement.cancelled", reason);
+  await cancelClocksFor(db, "placement", placementId, member.id, "The placement is off.", null);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + row.placementTaId + "/cancel",
+    { reason, cancelledAt: Date.now() },
+    { type: "placement", id: placementId },
+  );
+  revalidatePath(here);
+  back("Cancelled, and the TA System has been told so it can reopen its own path. Nothing is invoiced.");
+}
+
+/**
+ * Send the invoice (step 10).
+ *
+ * Accounts' own job, so it needs `money.manage`. The lines go in the body,
+ * because the invoice document itself waits on a template from the owner -
+ * the same rule as the agreement: we do not invent the paperwork a client
+ * pays against.
+ */
+export async function sendInvoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (row.state !== "draft") back("That invoice has gone already.");
+
+  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  if (!client?.billingEmail) {
+    back("This client has no billing address on their record. Put it there first, or the invoice has nowhere to go.");
+  }
+
+  const lines = invoiceLines({
+    number: row.number,
+    // A surcharge and a credit note have no placement: what they are about is
+    // written on the invoice itself.
+    candidateName: placement?.candidateName ?? row.about ?? "",
+    positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
+    clientName: client?.billingName || client?.name || "",
+    feeWords: feeInWords({ feeMonths: placement?.feeMonths ?? 1, feeBasis: placement?.feeBasis ?? "gross" }),
+    monthlySalary: placement?.monthlySalary ?? 0,
+    amount: row.amount,
+    lateCharge: row.lateCharge,
+    payments: row.payments,
+    joinedAt: placement?.joinedAt ?? null,
+    dueAt: row.dueAt,
+    currency: row.currency,
+  });
+
+  const wording = templateFor(
+    db,
+    row.kind === "surcharge" ? "invoice.surcharge" : row.kind === "credit_note" ? "invoice.credit_note" : "invoice.cover",
+  );
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{contact\}\}/g, "all")
+      .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, row.number)
+      .replace(/\{\{invoice\}\}/g, lines)
+      .replace(/\{\{dueDate\}\}/g, row.dueAt ? colomboDateInWords(row.dueAt) : "thirty days from the first working day")
+      .replace(/\{\{surchargePct\}\}/g, String(numberOf(db, "hire.surchargePct", 50)))
+      .replace(/\{\{amount\}\}/g, money(row.amount, row.currency))
+      .replace(/\{\{why\}\}/g, row.reason ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, row.number)
+      .replace(/\{\{sentDate\}\}/g, row.setId ? (clientSetIn(db, row.setId)?.sentAt ? colomboDateInWords(clientSetIn(db, row.setId)!.sentAt!) : "the day we sent it") : "")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: [client?.billingEmail ?? ""].filter(Boolean),
+    subject: fill(wording?.subject ?? "{{client}} - invoice {{invoiceNumber}}"),
+    body: fill(wording?.body ?? "Dear {{contact}},\n\n{{invoice}}"),
+    templateKey: "invoice.cover",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+  });
+
+  const now = Date.now();
+  await patchInvoice(
+    invoiceId,
+    { state: "sent", sentAt: now, sentMessageId: message.id },
+    member.id,
+    "invoice.sent",
+    null,
+  );
+  // The clock that asks for the money, counted from the due date.
+  if (row.dueAt) {
+    await startTimer({
+      kind: "invoice.due",
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      startsAt: now,
+      dueAt: row.dueAt,
+      warnAt: null,
+      ownerId: row.ownerId,
+      payload: { label: row.number },
+    });
+  }
+  await queueTaWrite(
+    "/integrations/v1/placements/" + (placement?.placementTaId ?? "") + "/invoice-state",
+    { state: "sent", invoiceNumber: row.number, amount: row.amount, dueAt: row.dueAt },
+    { type: "invoice", id: invoiceId },
+  );
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The invoice is drafted for the billing address. Read it, then approve it and it goes."),
+  );
+}
+
+/** Money in (step 12). */
+export async function recordPayment(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+
+  const amount = Number(formData.get("amount") ?? 0);
+  const method = String(formData.get("method") ?? "").trim() || "bank transfer";
+  const note = String(formData.get("note") ?? "").trim();
+  const owed = balanceOf(row);
+  const problem = problemWithPayment(amount, owed);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const payments = [...row.payments, { amount, paidAt: now, method, by: member.id, note: note || null }];
+  const left = Math.round((row.amount + row.lateCharge - payments.reduce((s, p) => s + p.amount, 0)) * 100) / 100;
+  const settled = left <= 0.5;
+
+  await patchInvoice(
+    invoiceId,
+    {
+      payments,
+      state: settled ? "paid" : "partly_paid",
+      paidAt: settled ? now : null,
+    },
+    member.id,
+    settled ? "invoice.paid" : "invoice.partlyPaid",
+    money(amount, row.currency) + " by " + method,
+  );
+
+  if (settled) {
+    // Nothing chases a paid invoice.
+    await cancelClocksFor(db, "invoice", invoiceId, member.id, "It is paid.", null);
+    const placement = row.placementId ? placementIn(db, row.placementId) : null;
+    // The guarantee only holds on a fee fully paid, and the fee is always
+    // paid after it started - the invoice is drafted the day they join. So
+    // the day it is settled is written onto the guarantee, or every leaver
+    // would read as void (found while walking Phase 7).
+    const guarantee = placement ? guaranteeForPlacement(db, placement.id) : null;
+    if (guarantee && !guarantee.feePaidAt) {
+      await patchGuarantee(
+        guarantee.id,
+        { feePaidAt: now },
+        member.id,
+        "guarantee.feePaid",
+        "The fee is settled, so the guarantee holds.",
+      );
+    }
+    const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement?.ownerId));
+    await draftMessage({
+      channel: "internal",
+      to: tell.map((m) => m.email).filter(Boolean),
+      subject: "Fee collected: " + row.number,
+      body:
+        money(row.amount + row.lateCharge, row.currency) +
+        " is in for " +
+        (placement?.candidateName ?? row.number) +
+        ".\n\nThe guarantee only holds while the fee is fully paid, so this is the day it really starts.",
+      templateKey: "invoice.collected",
+      subjectType: "invoice",
+      subjectId: invoiceId,
+    });
+  }
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  back(
+    settled
+      ? "Paid in full. Accounts and the ops owner have been told, and nothing chases it any more."
+      : money(left, row.currency) + " still owed.",
+  );
+}
+
+/** The client says the invoice is wrong (the agreement's own exception). */
+export async function markInvoiceDisputed(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const settled = String(formData.get("settled") ?? "") === "yes";
+  if (!settled && reason.length < 4) back("Write what they say is wrong with it.");
+
+  await patchInvoice(
+    invoiceId,
+    settled
+      ? { disputed: false, disputedReason: null }
+      : { disputed: true, disputedReason: reason, lateCharge: 0 },
+    member.id,
+    settled ? "invoice.disputeSettled" : "invoice.disputed",
+    settled ? "The dispute is settled." : reason,
+  );
+  revalidatePath(here);
+  back(
+    settled
+      ? "The dispute is settled, so the late charge runs again from now."
+      : "Marked as disputed in good faith: no late charge while it stands. That is the agreement's own wording.",
+  );
+}
+
+/** Write it off (step 14). The Director's call, not a habit. */
+export async function writeOffInvoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "refund.decide") && !can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (row.state === "paid") back("That one is paid.");
+  if (row.state === "written_off") back("That one is already written off.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithWriteOff(row.dueAt ?? Date.now(), reason, Date.now(), numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS));
+  // Only the Director of Operations may write one off early, which is the
+  // same shape as the refund decision.
+  if (problem && !can(member, "refund.decide")) back(problem);
+
+  const now = Date.now();
+  await patchInvoice(
+    invoiceId,
+    { state: "written_off", writtenOffAt: now, reason },
+    member.id,
+    "invoice.writtenOff",
+    reason,
+  );
+  await cancelClocksFor(db, "invoice", invoiceId, member.id, "It has been written off.", null);
+  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  await createTask({
+    kind: "check",
+    title: "Written off: " + row.number,
+    body:
+      "The guarantee does not apply to an unpaid fee, so it is void, and the position closes. The close checklist is Phase 7.",
+    assigneeId: placement?.ownerId ?? member.id,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    link: here,
+  });
+  revalidatePath(here);
+  back("Written off, with your reason. The guarantee is void and the position closes.");
+}
+
+/* ── Guarantees and the close (15, Phase 7) ───────────────────── */
+
+/** Somebody left inside the ninety days (step 4). */
+export async function recordLeaver(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+
+  const leftAt = Date.parse(String(formData.get("leftAt") ?? "") + "T17:00:00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithLeaver(leftAt, reason, row.startsAt);
+  if (problem) back(problem);
+
+  const answer = await markLeaver(guaranteeId, leftAt, reason, member.id);
+  revalidatePath(here);
+  revalidatePath("/guarantees");
+  back(answer.what);
+}
+
+/**
+ * The refund decision (step 6).
+ *
+ * The Director of Operations', and nobody else's: `refund.decide` is the one
+ * capability only that role has. The credit note itself is accounts' work and
+ * is drafted here so the money and the decision never drift apart.
+ */
+export async function decideRefund(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "refund.decide")) back(refusal("refund.decide"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const early = String(formData.get("early") ?? "") === "yes";
+  const problem = problemWithRefund(
+    row.state,
+    reason,
+    row.deadlineAt,
+    Date.now(),
+    db.holidays.map((h) => h.date),
+    early,
+  );
+  if (problem) back(problem);
+
+  const pct = numberOf(db, "refund.pct", REFUND_PCT);
+  const placement = placementIn(db, row.placementId);
+  const invoice = placement?.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
+  const paid = invoice ? invoice.payments.reduce((sum, p) => sum + p.amount, 0) : 0;
+  const amount = refundAmount(paid, pct);
+
+  const now = Date.now();
+  await patchGuarantee(
+    guaranteeId,
+    { state: "refund_pending", refundPct: pct, refundAmount: amount, decidedBy: member.id, decidedAt: now },
+    member.id,
+    "guarantee.refundDecided",
+    // Deciding before the sixty days are up is allowed and is written down as
+    // what it was: a decision, not a deadline.
+    early ? reason + " (decided before the sixty working days were up)" : reason,
+  );
+  await cancelClocksFor(db, "guarantee", guaranteeId, member.id, "The decision is made.", null);
+  await createTask({
+    kind: "approve",
+    title: "A credit note for " + money(amount, invoice?.currency ?? "LKR"),
+    body:
+      "The Director of Operations has decided a " +
+      pct +
+      "% refund for " +
+      row.candidateName +
+      ".\n\nReason given: " +
+      reason +
+      "\n\nAccounts raises the credit note and sends it. The invoice document and the credit note both wait on a template from the owner, so for now this goes as a letter.",
+    assigneeId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? member.id,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: here,
+  });
+  revalidatePath(here);
+  back(
+    "Decided: " +
+      pct +
+      "% of what was paid, " +
+      money(amount, invoice?.currency ?? "LKR") +
+      ". Accounts has the credit note to raise.",
+  );
+}
+
+/** The refund has gone out, so the position closes (step 6). */
+export async function markRefunded(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+  if (row.state !== "refund_pending") back("No refund has been decided on this one.");
+
+  await patchGuarantee(guaranteeId, { state: "refunded" }, member.id, "guarantee.refunded", null);
+  await openCloseChecklist(row.openingTaId, "refunded", member.id);
+  revalidatePath(here);
+  back("Recorded as refunded. The close list for the position is open.");
+}
+
+/** Tick one item off the close list (step 11). */
+export async function tickCloseItem(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const checklistId = String(formData.get("checklistId") ?? "");
+  const key = String(formData.get("key") ?? "");
+  const here = "/closes/" + checklistId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const checklist = checklistIn(db, checklistId);
+  if (!checklist) redirect("/closes?msg=" + encodeURIComponent("That close list is gone."));
+  const row = checklist as NonNullable<typeof checklist>;
+  if (row.completedAt) back("That position is closed already.");
+
+  const now = Date.now();
+  const items = row.items.map((item) =>
+    item.key === key ? { ...item, doneAt: item.doneAt ? null : now, doneBy: item.doneAt ? null : member.id } : item,
+  );
+  if (!items.some((item) => item.key === key)) back("No such item on this list.");
+
+  await patchChecklist(checklistId, { items }, member.id, "close.itemTicked", key);
+  // Closing the opening is ours to do through the API, and only once the
+  // adverts are down - an opening closed with a live post is how a candidate
+  // applies to a job that has gone.
+  if (key === "opening" && items.find((item) => item.key === "opening")?.doneAt) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/status",
+      { status: "closed", reason: row.trigger },
+      { type: "close", id: checklistId },
+    );
+  }
+  revalidatePath(here);
+  back("Ticked.");
+}
+
+/** Everything is done, so the position really is closed (step 13). */
+export async function completeClose(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const checklistId = String(formData.get("checklistId") ?? "");
+  const here = "/closes/" + checklistId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const checklist = checklistIn(db, checklistId);
+  if (!checklist) redirect("/closes?msg=" + encodeURIComponent("That close list is gone."));
+  const row = checklist as NonNullable<typeof checklist>;
+  if (row.completedAt) back("That one is closed already.");
+
+  const problem = problemWithCloseComplete(row.items);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchChecklist(checklistId, { completedAt: now }, member.id, "close.completed", CLOSE_TRIGGERS[row.trigger] ?? row.trigger);
+  if (row.positionId) {
+    await patchPosition(row.positionId, { stage: "closed", closedAt: now }, member.id, "position.closed", row.trigger);
+  }
+
+  // The client's own record: still active if anything else is open for them,
+  // otherwise nothing is running and the record says so (step 15).
+  if (row.clientId) {
+    const theirs = db.positions.filter(
+      (p) => p.clientId === row.clientId && p.id !== row.positionId && p.stage !== "closed",
+    );
+    if (!theirs.length) {
+      await createTask({
+        kind: "check",
+        title: "Nothing open for this client any more",
+        body:
+          "Their last position has closed. Nothing happens automatically - if they are finished with us, move the client to dormant with a reason; if not, leave them active.",
+        assigneeId: row.ownerId,
+        dueAt: now,
+        subjectType: "client",
+        subjectId: row.clientId,
+        link: "/clients/" + row.clientId,
+      });
+    }
+  }
+  revalidatePath(here);
+  revalidatePath("/closes");
+  back("Closed. The position is finished and nothing of it is left running.");
+}
+
+/** Close a position by hand, when none of the clocks did it (step 12). */
+export async function openCloseByHand(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet, so there is nothing to close there.");
+
+  const trigger = String(formData.get("trigger") ?? "client_stopped");
+  if (!(trigger in CLOSE_TRIGGERS)) back("Why is it closing?");
+
+  const checklist = await openCloseChecklist(row.openingTaId ?? "", trigger, member.id);
+  revalidatePath(here);
+  redirect(
+    checklist
+      ? "/closes/" + checklist.id + "?msg=" + encodeURIComponent("The close list is open. Nothing closes until every item is ticked.")
+      : here + "?msg=" + encodeURIComponent("Nothing to close."),
+  );
+}
+
+/* ── The first-day import (15, Phase 8 step 11) ───────────────── */
+
+/**
+ * Import a sheet: a dry run first, then for real.
+ *
+ * The same code builds both, so what you read in the dry run is what lands.
+ * Nothing is written until the file has been looked at, and running a file
+ * twice adds nothing - every row is recognised by its own key.
+ */
+export async function runImport(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/import?msg=" + encodeURIComponent(msg));
+  // The role list, the client list and the holidays are the ops lead's.
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+
+  const kind = String(formData.get("kind") ?? "") as ImportKind;
+  if (!(kind in IMPORT_KINDS)) back("What is being imported?");
+  const text = String(formData.get("sheet") ?? "");
+  if (!text.trim()) back("Paste the sheet first, header row and all.");
+  const forReal = String(formData.get("forReal") ?? "") === "yes";
+
+  const db = await desk();
+  const existing =
+    kind === "clients"
+      ? db.clients.map((c) => c.taClientId)
+      : kind === "holidays"
+        ? db.holidays.map((h) => h.date)
+        : db.members.map((m) => m.email);
+  const plan = planImport(kind, text, existing.filter(Boolean) as string[]);
+
+  if (!forReal) {
+    // The dry run writes nothing at all; it only says what it would do.
+    back(
+      "Dry run: " +
+        planInWords(plan) +
+        (plan.problems.length
+          ? ". " + plan.problems.map((p) => "line " + p.line + ": " + p.what).join(" ")
+          : ". Nothing is wrong with it - run it for real when you are ready."),
+    );
+  }
+
+  const problem = problemWithImport(plan, true);
+  if (problem) back(problem);
+
+  let added = 0;
+  if (kind === "holidays") {
+    added = await addHolidays(
+      plan.toAdd.map((row) => ({ date: row.values.date, name: row.values.name })),
+      member.id,
+    );
+  }
+  if (kind === "members") {
+    for (const row of plan.toAdd) {
+      await addMember(
+        {
+          name: row.values.name,
+          email: row.values.email,
+          role: row.values.role as OpsMember["role"],
+          active: true,
+          taUserId: null,
+        },
+        member.id,
+      );
+      added += 1;
+    }
+  }
+  if (kind === "clients") {
+    for (const row of plan.toAdd) {
+      const owner = db.members.find((m) => m.email.toLowerCase() === (row.values.owneremail ?? "").toLowerCase());
+      await addClient({
+        leadId: null,
+        taClientId: row.values.taclientid,
+        name: row.values.company,
+        nameKey: row.values.company.trim().toLowerCase(),
+        stage: row.values.stage || "active",
+        billingName: row.values.billingname ?? "",
+        billingEmail: row.values.billingemail ?? "",
+        groupName: "",
+        // An owner we cannot match is the ops lead's to sort out, so the
+        // record says so instead of looking as though it was meant.
+        notes: owner
+          ? "Imported on the first day."
+          : "Imported on the first day. No ops person matched " +
+            (row.values.owneremail || "the owner column") +
+            ", so this one is the ops lead's until somebody takes it.",
+        reason: null,
+        ownerId: owner?.id ?? member.id,
+      });
+      added += 1;
+    }
+  }
+
+  revalidatePath("/import");
+  back(
+    added +
+      (added === 1 ? " row added" : " rows added") +
+      ", " +
+      plan.already.length +
+      " already here" +
+      (plan.problems.length ? ", " + plan.problems.length + " left for the sheet to be fixed" : "") +
+      ".",
+  );
+}
+
+/* ── TopJobs (15, Phase 3 steps 12 and 13) ────────────────────── */
+
+/** A TA or the owner asks for the paid advert. */
+export async function requestAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet.");
+  if (liveAdFor(db, row.openingTaId ?? "")) back("There is already a TopJobs advert on the go for this one.");
+
+  const kind = String(formData.get("kind") ?? "");
+  const problem = problemWithAdRequest(row.title, kind);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const ad = await addAd({
+    channel: "topjobs",
+    openingTaId: row.openingTaId ?? "",
+    positionId: row.id,
+    clientId: row.clientId,
+    title: row.title,
+    state: "requested",
+    kind,
+    cost: null,
+    flyerFileId: null,
+    applyAlias: null,
+    orderMessageId: null,
+    requestedAt: now,
+    orderedAt: null,
+    liveAt: null,
+    closesAt: null,
+    closedAt: null,
+    cvCount: null,
+    reason: null,
+    ownerId: row.ownerId,
+  });
+
+  // TA routes an apply address for this advert, so a CV that comes in through
+  // TopJobs is filed by TA with the source known. No CV passes through Ops.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/posts",
+    { channel: "portal", source: "topjobs", requestedAt: now },
+    { type: "ad", id: ad.id },
+  );
+  await createTask({
+    kind: "record",
+    title: "A flyer for TopJobs: " + row.title,
+    body:
+      "TopJobs takes an image, not a job description (the owner's note). Marketing makes the flyer, it is kept on the Files screen, and then the order can go.\n\n" +
+      (kind === "hr_and_marketing"
+        ? "The HR and marketing advert: LKR 12,700 on the board."
+        : "The single advert: LKR 5,400 on the board."),
+    assigneeId: db.members.find((m) => m.active && m.role === "marketing")?.id ?? row.ownerId,
+    dueAt: now,
+    subjectType: "ad",
+    subjectId: ad.id,
+    link: "/adverts/" + ad.id,
+  });
+  revalidatePath("/adverts");
+  redirect("/adverts/" + ad.id + "?msg=" + encodeURIComponent("Asked for. Marketing has the flyer to make."));
+}
+
+/** Marketing's flyer is ready and kept on the Files screen. */
+export async function recordAdFlyer(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const fileId = String(formData.get("flyerFileId") ?? "").trim() || null;
+  const problem = problemWithFlyer(fileId);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "flyer")) back("That advert is past the flyer.");
+
+  await patchAd(adId, { flyerFileId: fileId, state: "flyer" }, member.id, "ad.flyerReady", null);
+  revalidatePath(here);
+  back("The flyer is on it. The order to TopJobs can go now.");
+}
+
+/** The order to TopJobs: a drafted email with the flyer on it. */
+export async function orderAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const to = interviewersFrom(String(formData.get("to") ?? ""));
+  const cost = Number(formData.get("cost") ?? 0);
+  const alias = String(formData.get("applyAlias") ?? "").trim() || null;
+  const problem = problemWithAdOrder(row.flyerFileId, to, cost);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "ordered")) back("That advert cannot be ordered from where it is.");
+
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const wording = templateFor(db, "topjobs.order");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{position\}\}/g, row.title)
+      .replace(/\{\{client\}\}/g, client?.name ?? "our client")
+      .replace(/\{\{applyAlias\}\}/g, alias ?? "the address on the flyer")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Advert order: {{position}}"),
+    body: fill(
+      wording?.body ??
+        "Dear TopJobs,\n\nPlease run the attached advert for {{position}}. Applications to {{applyAlias}}.\n\nKind regards\n{{opsPerson}}\nCareer 141",
+    ),
+    templateKey: "topjobs.order",
+    subjectType: "ad",
+    subjectId: adId,
+    attachmentFileIds: row.flyerFileId ? [row.flyerFileId] : [],
+  });
+
+  await patchAd(
+    adId,
+    { state: "ordered", cost, applyAlias: alias, orderedAt: Date.now(), orderMessageId: message.id },
+    member.id,
+    "ad.ordered",
+    money(cost, "LKR"),
+  );
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The order is drafted with the flyer attached. Read it, then approve it."),
+  );
+}
+
+/** TopJobs says it is live, which starts the two weeks. */
+export async function markAdLive(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const at = Date.parse(String(formData.get("liveAt") ?? "") + "T09:00:00+05:30");
+  const problem = problemWithAdLive(at, row.orderedAt);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "live")) back("That advert is not waiting to go live.");
+
+  const closesAt = adClosesOn(at, numberOf(db, "ad.days", AD_DAYS));
+  const now = Date.now();
+  await patchAd(adId, { state: "live", liveAt: at, closesAt }, member.id, "ad.live", null);
+  await startTimer({
+    kind: "ad.close",
+    subjectType: "ad",
+    subjectId: adId,
+    startsAt: now,
+    dueAt: closesAt,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: row.title },
+  });
+  // TA records the advert channel on its own opening, which is what makes the
+  // CV counts and the "where did this come from" answer true on their side.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/ad-channel",
+    { channel: "topjobs", state: "live", liveAt: at, closesAt, cost: row.cost, applyAlias: row.applyAlias },
+    { type: "ad", id: adId },
+  );
+  revalidatePath(here);
+  back("Live, and the TA System has been told. It comes down in two weeks; a clock will ask.");
+}
+
+/** It has come down. */
+export async function markAdClosed(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+  if (!canMoveAdTo(row.state as AdState, "closed")) back("That advert is not live.");
+
+  const cvCount = Number(formData.get("cvCount") ?? NaN);
+  const now = Date.now();
+  await patchAd(
+    adId,
+    { state: "closed", closedAt: now, cvCount: Number.isFinite(cvCount) ? cvCount : row.cvCount },
+    member.id,
+    "ad.closed",
+    null,
+  );
+  await cancelClocksFor(db, "ad", adId, member.id, "The advert has come down.", null);
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/ad-channel",
+    { channel: "topjobs", state: "closed", closedAt: now, cvCount: Number.isFinite(cvCount) ? cvCount : null },
+    { type: "ad", id: adId },
+  );
+  revalidatePath(here);
+  back(
+    "Closed, and the TA System has been told." +
+      (Number.isFinite(cvCount) ? " " + cvCount + " CVs against it, which is what judges the next one." : ""),
+  );
+}
+
+/** Dropped before it ran - a reason, like everything else that stops. */
+export async function dropAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why it is not running.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  if (!canMoveAdTo(ad.state as AdState, "dropped")) back("That advert is already live or closed.");
+
+  await patchAd(adId, { state: "dropped", reason }, member.id, "ad.dropped", reason);
+  await cancelClocksFor(db, "ad", adId, member.id, "The advert was dropped.", null);
+  revalidatePath(here);
+  back("Dropped, with your reason. Nothing was ordered.");
+}
+
+/* ── The unreported hire, and credit notes (15, Phase 6 steps 15 and 16) ─ */
+
+/** Somebody in a set was hired and nobody told us. */
+export async function confirmUnreportedHire(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const who = String(formData.get("candidateName") ?? "").trim();
+  const salary = Number(formData.get("monthlySalary") ?? 0);
+  if (!who) back("Which candidate were they?");
+  if (!Number.isFinite(salary) || salary <= 0) {
+    back("What are they being paid a month? The surcharge is a share of the fee, so a number is needed - the requirement's salary if nobody knows better.");
+  }
+
+  const answer = await draftSurchargeInvoice(setId, who, salary, member.id);
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (!answer.ok) back(answer.what);
+  redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
+}
+
+/** We were wrong, or the client explained it: no surcharge. */
+export async function dismissUnreportedHire(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write what they said, or how we know. This one is read if it comes up again.");
+  const db = await desk();
+  await patchClientSet(setId, {}, member.id, "clientSet.unreportedDismissed", reason);
+  await cancelClocksFor(db, "clientSet", setId, member.id, "Asked and answered.", ["hire.unreported"]);
+  revalidatePath(here);
+  back("Noted, and nothing is invoiced. The three-month question is closed for this set.");
+}
+
+/** A credit note: a refund under the guarantee, or a correction. */
+export async function raiseCreditNote(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+
+  const amount = Number(formData.get("amount") ?? 0);
+  const why = String(formData.get("why") ?? "").trim();
+  const db = await desk();
+  const against = invoiceIn(db, invoiceId);
+  if (!against) back("That invoice is gone.");
+  if (!Number.isFinite(amount) || amount <= 0) back("How much is being credited?");
+  if (amount > (against as NonNullable<typeof against>).amount + 0.5) {
+    back("That is more than the invoice itself. Credit the invoice, not more than it.");
+  }
+  if (why.length < 4) back("Write why. A credit note with no reason is the one the auditor asks about.");
+
+  const answer = await draftCreditNote(invoiceId, amount, why, member.id);
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (!answer.ok) back(answer.what);
+  redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
+}
+
+/* ── The AI layer (15, Phase 9) ───────────────────────────────── */
+
+/**
+ * Dictation into the requirement's fields (steps 5 to 7).
+ *
+ * The speaking itself is the browser's own: no model, no key, no cost. What
+ * comes here is the text it heard, and the model's only job is to put it into
+ * our fields - leaving empty what was not said, and saying which those were.
+ * Nothing is saved: the fields are filled in on the screen for a person to
+ * correct and then press save.
+ */
+export async function dictateRequirement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const said = String(formData.get("said") ?? "").trim();
+  if (said.length < 20) back("Nothing was dictated. Hold the microphone and say the brief, then press this.");
+
+  const answer = await runAi<DictatedRequirement>(
+    "dictate.fields",
+    dictateRequirementPrompt(said),
+    member.id,
+    { type: "lead", id: leadId },
+    ["what was dictated"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) {
+    back(answer.problem ?? "Nothing came back. Type it in instead; the fields are below.");
+  }
+  const got = answer.proposal.data as DictatedRequirement;
+  // The proposal goes back on the URL, so the fields are filled in and a
+  // person corrects them before anything is saved.
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&proposed=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent(
+        "Filled in from what you said. Read every field before you save it." +
+          (notSaidInWords(got.notSaid ?? "" ? got.notSaid : []) ? " " + notSaidInWords(got.notSaid) : ""),
+      ),
+  );
+}
+
+/** Improve a draft we already wrote (step 9). */
+export async function improveDraft(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const messageId = String(formData.get("messageId") ?? "");
+  const here = "/messages/" + messageId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+  const db = await desk();
+  const message = db.messages.find((m) => m.id === messageId);
+  if (!message) redirect("/?msg=" + encodeURIComponent("That message is gone."));
+  if (!needsApproval(message)) back("That message has gone already.");
+
+  const how = String(formData.get("how") ?? "rewrite") as ImproveHow;
+  if (!(how in IMPROVE_WORDS)) back("Improve it how?");
+
+  const answer = await runAi<ImprovedDraft>(
+    "draft.improve",
+    improveDraftPrompt(message.subject, message.body, how),
+    member.id,
+    { type: "message", id: messageId },
+    ["the draft itself"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back; the draft is unchanged.");
+  const got = answer.proposal.data as ImprovedDraft;
+
+  // The draft is not replaced: the new words are offered beside it, and the
+  // person presses use it. Nothing a model wrote goes out unseen.
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&proposed=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent(IMPROVE_WORDS[how] + ": read it, then use it or ignore it."),
+  );
+}
+
+/** Use the improved draft, or leave it. Either way it is recorded. */
+export async function useImprovedDraft(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const messageId = String(formData.get("messageId") ?? "");
+  const here = "/messages/" + messageId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+
+  const runId = String(formData.get("runId") ?? "");
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const use = String(formData.get("use") ?? "") === "yes";
+
+  if (!use) {
+    if (runId) await recordAiOutcome(runId, "ignored", null, member.id);
+    back("Left as it was.");
+  }
+  await editMessage(messageId, { subject, body }, member.id);
+  if (runId) {
+    // What was really saved is kept beside what was proposed: that is the
+    // accuracy sample, and it is why "edited" is a different outcome.
+    const db = await desk();
+    const run = aiRunIn(db, runId);
+    const proposed = (run?.proposed ?? null) as ImprovedDraft | null;
+    const same = proposed && proposed.subject === subject && proposed.body === body;
+    await recordAiOutcome(runId, same ? "used" : "edited", { subject, body }, member.id);
+  }
+  revalidatePath(here);
+  back("Saved. It still waits for you to approve it before it goes.");
+}
+
+/**
+ * Read what a client sent (step 8).
+ *
+ * The reader proposes what the email means - decisions per candidate in the
+ * client's own words, times offered, a claim, a cancellation - and leaves a
+ * person to confirm it. It decides nothing: the owner's rule is that a
+ * rejection carries the client's wording, and this is how that wording gets
+ * in without being retyped.
+ */
+export async function readInbound(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const inboundId = String(formData.get("inboundId") ?? "");
+  const here = "/mail";
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const mail = db.inbound.find((m) => m.id === inboundId);
+  if (!mail) back("That email is gone.");
+  const row = mail as NonNullable<typeof mail>;
+
+  const set = row.subjectType === "clientSet" && row.subjectId ? clientSetIn(db, row.subjectId) : null;
+  const about = set ? set.name : (row.subjectType ?? "an email nobody has matched yet");
+  const candidates = set ? set.candidates.map((c) => c.name) : [];
+
+  const answer = await runAi<InboundRead>(
+    "inbound.read",
+    inboundReadPrompt(row.body, about, candidates),
+    member.id,
+    { type: "inbound", id: inboundId },
+    [about],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back. Read it yourself.");
+  const got = answer.proposal.data as InboundRead;
+
+  await createTask({
+    kind: "approve",
+    title: "Confirm what the client said: " + about,
+    body:
+      got.summary +
+      "\n\n" +
+      (got.decisions ?? [])
+        .map((d) => "- " + d.name + ": " + d.decision + ' ("' + d.theirWords + '")')
+        .join("\n") +
+      ((got.slots ?? []).length ? "\n\nTimes offered: " + got.slots.join("; ") : "") +
+      "\n\nNothing has been recorded. Open the set and confirm each one - the words above are theirs, so they can be" +
+      " used as the reason.",
+    assigneeId: set?.ownerId ?? member.id,
+    dueAt: Date.now(),
+    subjectType: set ? "clientSet" : "inbound",
+    subjectId: set?.id ?? inboundId,
+    link: set ? "/sets/" + set.id : "/mail",
+  });
+  revalidatePath(here);
+  back(
+    "Read: " +
+      got.summary +
+      " A task is on the list to confirm it. Nothing has been recorded yet." +
+      (notSaidInWords(got.notSaid ?? []) ? " " + notSaidInWords(got.notSaid ?? []) : ""),
+  );
+}
+
+/** Summarise a client's history (step 11). */
+export async function summariseClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) back("That client is gone.");
+  const row = client as NonNullable<typeof client>;
+
+  // Only what this person could read anyway, and only what the task needs
+  // (step 18): the states and the dates, not the documents.
+  const rows: string[] = [];
+  rows.push("Client: " + row.name + ", " + row.stage + ", owned by " + (deskMember(db, row.ownerId)?.name ?? "nobody"));
+  for (const esa of db.agreements.filter((a) => a.leadId === row.leadId)) {
+    rows.push("Agreement: " + esa.state + ", version " + esa.version + (esa.signedAt ? ", signed" : ", not signed"));
+  }
+  for (const position of db.positions.filter((p) => p.clientId === row.id)) {
+    rows.push("Position: " + position.title + ", " + position.stage + (position.depthStage ? ", " + position.depthStage : ""));
+  }
+  for (const set of db.clientSets.filter((s) => s.clientId === row.id)) {
+    rows.push(
+      "Set " + set.setNumber + ": " + set.state + ", " + set.candidates.length + " CVs, " +
+        set.candidates.filter((c) => c.decision).length + " decided",
+    );
+  }
+  for (const invoice of db.invoices.filter((i) => i.clientId === row.id)) {
+    rows.push("Invoice " + invoice.number + ": " + invoice.state + ", " + money(invoice.amount, invoice.currency));
+  }
+  for (const hold of db.holds.filter((h) => h.clientId === row.id)) {
+    rows.push("Hold: " + hold.state + (hold.reason ? ", " + hold.reason : ""));
+  }
+
+  const answer = await runAi<Summary>(
+    "summarise",
+    summarisePrompt(row.name, rows),
+    member.id,
+    { type: "client", id: clientId },
+    [rows.length + " rows of this client's own record"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back.");
+  const got = answer.proposal.data as Summary;
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&summary=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent("Summarised from " + rows.length + " of their own rows."),
+  );
+}
+
+/**
+ * The ask box (step 13).
+ *
+ * Read-only: it answers from the desk's own rows, inside what this person
+ * could read anyway, and names what it used. It runs nothing, writes nothing
+ * and never touches money - the box that *does* things is step 14 and is not
+ * built, on purpose.
+ */
+export async function askTheDesk(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const question = String(formData.get("question") ?? "").trim();
+  const back = (msg: string) => redirect("/ai?msg=" + encodeURIComponent(msg));
+  if (!can(member, "inbox.read")) back(refusal("inbox.read"));
+  if (question.length < 5) back("What is the question?");
+
+  const db = await desk();
+  // The rows it may use: counts and states, never a document's text.
+  const rows = [
+    "Today is " + colomboDate(Date.now()) + " in Colombo.",
+    "Leads: " + db.leads.length + ", of which " + db.leads.filter((l) => l.state !== "closed").length + " open.",
+    "Clients: " + db.clients.map((c) => c.name + " (" + c.stage + ")").join("; "),
+    "Positions: " + db.positions.map((p) => p.title + " (" + p.stage + ")").join("; "),
+    "Sets: " + db.clientSets.map((s) => s.name + " (" + s.state + ")").join("; "),
+    "Interviews: " + db.interviews.map((i) => i.candidateName + " (" + i.state + ")").join("; "),
+    "Placements: " + db.placements.map((p) => p.candidateName + " (" + p.state + ")").join("; "),
+    "Invoices: " + db.invoices.map((i) => i.number + " " + i.state + " " + money(i.amount, i.currency)).join("; "),
+    "Guarantees: " + db.guarantees.map((g) => g.candidateName + " (" + g.state + ")").join("; "),
+    "Open tasks for this person: " + openTasksFor(db, member.id).map((t) => t.title).join("; "),
+  ];
+
+  const answer = await runAi<Answer>("ask", askPrompt(question, rows), member.id, null, ["the desk's own rows"]);
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back.");
+  const got = answer.proposal.data as Answer;
+  redirect(
+    "/ai?asked=" +
+      encodeURIComponent(question) +
+      "&answer=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&runId=" +
+      encodeURIComponent(answer.runId ?? ""),
+  );
+}
+
+/** Used it, or did not: the accuracy sample (step 16). */
+export async function recordAiUse(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const runId = String(formData.get("runId") ?? "");
+  const outcome = String(formData.get("outcome") ?? "");
+  const back = String(formData.get("back") ?? "/ai");
+  if (!["used", "edited", "ignored"].includes(outcome)) redirect(back);
+  if (runId) await recordAiOutcome(runId, outcome, null, member.id);
+  redirect(back + (back.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent("Noted. It is in the AI record."));
 }

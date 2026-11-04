@@ -224,3 +224,153 @@ disputed in good faith. Same decision: the document.
 The lesson is the ordinary one and it cost nothing this time, because the
 numbers all live in the settings: a rule read off a card is a guess until the
 document that a client signs has been read.
+
+## 3 November 2026 - the group post looked like a failure
+
+Walking the last of phase 4 in the browser found three faults that the tests
+and the types had both passed.
+
+**A group post read as "group_post to ".** The day's list and the message page
+printed the channel name and the address, and a group post has neither a
+subject nor an address. It now says what it is: "To post by hand in the
+client's WhatsApp group, which is not made yet."
+
+**Approving a group post failed it.** The gate refuses a message with nobody
+to send it to, which is right for an email and wrong for a post a person makes
+from their phone. A group post now passes the gate with no address, and
+settles at *approved* rather than *sent*: nothing sent it, and saying "sent"
+about a post nobody has made yet is the kind of small lie a system should not
+tell.
+
+**The depth count read itself after writing itself.** The store hands back the
+same row a patch writes to, so "was it held before?" was asked of a record
+that already said the new answer, and the hold never lifted in TA. The same
+trap as the set that said "short of 5" about a set of exactly five: read the
+old value into a variable before the patch. Both are pinned by tests now.
+
+## 3 November 2026 - the Director was sent our screen's words
+
+The first weekly report read "Head of finance - Open in the TA System · 0 days
+open · 0 days waiting on the client". Every part of that is a fact and none of
+it is a sentence a Director can read.
+
+Three wordings were wrong because they were borrowed:
+
+- **The stage** came from the ops screens, where "Open in the TA System" sits
+  beside a link to TA and makes sense. The report now has its own words for
+  each stage, and the row keeps the raw stage so there is one place to change
+  them.
+- **"0 days open"** for a position handed over this morning. It says "handed
+  over today".
+- **"0 days waiting on the client"** for a set that went out an hour ago. It
+  says "sent today, nothing back yet".
+
+The lesson: words written for the people who did the work do not travel to the
+person who only reads about it.
+
+## 3 November 2026 - an empty list cancelled nothing
+
+`cancelClocksFor(db, type, id, by, reason, kinds)` takes the kinds to cancel,
+and `null` means every clock on the thing. Phase 5 passed `[]` instead,
+meaning "only these kinds", of which there were none - so a cancelled
+interview kept its day-of clock, and an approved report kept the clock that
+built it. Found by a test that counted the clocks afterwards.
+
+Where an argument means "everything" when it is missing, an empty list is the
+one value that quietly means the opposite.
+
+## 3 November 2026 - an entity printed as itself
+
+One of the interview lists read "Nothing waiting on a client&rsquo;s
+decision." on the screen. `&rsquo;` is HTML, and the string was a value passed
+to a function rather than text in the page, so nothing turned it into an
+apostrophe. The character itself goes in a string; the entity only works where
+the page is written.
+
+## 4 November 2026 - the aliasing trap, a third time
+
+"Moved to 23 November 2026. That is move 2 for this one" - on the first move
+of that joining day. The message counted `dojHistory.length` after the patch,
+and the store hands back the row the patch wrote to, so the list already held
+the move being announced.
+
+Three times now, in three different places: the set that said "short of 5"
+about a set of five, the depth count that asked whether it had been held
+before, and this. The rule is one line: read the old value into a variable
+before the patch, and build the message from the variable.
+
+## 4 November 2026 - a draft that said money was owed
+
+The invoices list read "C141-2026-0001 · C141-2026-0001 · Drafted, waiting
+for accounts · LKR 450,000.00 owed · due in 30 days". Two faults in one line:
+the number came from the link and from the words beside it, and a draft that
+has not been sent owes nothing - "owed" of one reads as though the client were
+already late. A draft now says what it will be and when it will be payable.
+
+## 4 November 2026 - the guarantee would never have held
+
+The guarantee reads the fee's paid date when it starts. It starts the day
+somebody joins, and the invoice for the fee is drafted that same day - so the
+fee is always paid afterwards. Read once at the start, the paid date was
+always empty, and every leaver would have come out **void**: no replacement,
+no refund, on a fee the client had paid in full.
+
+Found while walking phase 7 rather than by a test, because every test set the
+invoice up as paid before the guarantee began. Paying an invoice in full now
+writes that day onto the guarantee, and a test covers the order that actually
+happens.
+
+## 4 November 2026 - two more borrowed numbers
+
+"62 working days to replace" above a deadline set at sixty: the words counted
+working days without the holiday list, while the deadline was set with it, so
+two poya days inside the window were counted as working days. The wording
+takes the holidays now.
+
+And the refund screen said "the Director can decide early" while the rule
+refused them. Deciding early is allowed - it is a decision, not a deadline -
+so there is a tick for it, and the audit records that it was taken early.
+
+## 4 November 2026 - three faults the hardening found
+
+**TA's feedback never reached the interview.** The TA phones the candidate
+*after* the interview, so their feedback and TA's own outcome arrive once it
+is already marked held - and the lookup only considered interviews that had
+not happened yet, so both were dropped on the floor. Found by the whole-flow
+test, which walks the steps in the order they really happen.
+
+**The ops lead's TA-writes switch did nothing.** `switch.taWritesEnabled` on
+the Settings screen was never read: the only switch the writes obeyed was the
+one in the environment, which needs a deploy to change. Holding the TA link in
+an incident is exactly the thing that must not need a deploy. The outbox pass
+reads the setting now, and nothing is lost while it is off.
+
+**A write that had never been tried waited an hour.** The backoff is one,
+five, fifteen, thirty minutes then hourly, indexed by the number of tries so
+far - and handed a zero it fell off the front of the list and took the last
+step. Harmless in practice, because the first try happens immediately, but it
+is the kind of arithmetic that is wrong for years.
+
+Also: `deploy/production/.env.production.example` would have been swallowed by
+`.gitignore`, exactly as the preview's was on 3 November. Checked with
+`git add --dry-run` this time rather than discovered later.
+
+## 4 November 2026 - two small ones from the last of the plan
+
+**The nav had "Numbers" twice.** A shell command that wrote a file failed, but
+the edit beside it had already run, so the link was added twice. The lesson is
+small and real: when a command does two things and the first fails, check the
+second did not happen anyway.
+
+**An advert asked for a flyer that could not exist.** The flyer picker showed
+an empty dropdown when no image had been kept on the Files screen - which is
+the normal state before marketing has made one. It says so now, rather than
+offering a choice of nothing.
+
+## 4 November 2026 - a switch shown as a number
+
+The AI layer's per-task switches are booleans, and the settings screen sorted
+its rows by the key's prefix rather than by what the value is: `ai.task.ask`
+was listed under Numbers with a box to type into. A switch you can type "yes"
+into is not a switch. The screen now reads the value's type, so every true or
+false is a switch wherever its key came from.

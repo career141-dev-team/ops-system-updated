@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { messageInWords, messageTitle } from "@/lib/messages";
 import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks } from "@/data/desk";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { timeLeft } from "@/lib/timers";
@@ -33,14 +34,23 @@ function clockInWords(kind: string): string {
     "feedback.call": "a client to ring about feedback",
     "lead.inviteBack": "a client to invite back",
     "talentpulse.compile": "Talent Pulse, on Tuesday",
+    "report.weekly": "the weekly report, on Monday",
+    "ad.close": "a TopJobs advert to close",
+    "interview.day": "the interview itself",
+    "interview.report": "a date the client owes us",
     "silence.hold": "two weeks of client silence",
     "hold.review": "a hold to look at again",
     "hire.unreported": "a possible unreported hire",
     "set.due": "a set due at the client",
     "set.ownership": "the CV ownership window",
     "invoice.chase": "an unpaid invoice",
+    "invoice.due": "an invoice due",
+    "doj.remind.week": "somebody joining in a week",
+    "doj.remind.day": "somebody joining tomorrow",
+    "doj.join": "a joining day",
     "guarantee.warn": "the guarantee, fifteen days left",
     "guarantee.end": "the guarantee ends",
+    "replacement.deadline": "the time to replace somebody",
     "interview.reconfirm": "an interview to reconfirm",
     "test.clock": "a test clock",
   };
@@ -112,10 +122,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         {drafts.map((message) => (
           <div key={message.id} className={row}>
             <div className="min-w-0 flex-1">
-              <p className="text-[13.5px]">{message.subject}</p>
-              <p className="mt-0.5 text-[12.5px] text-ink-soft">
-                {message.channel === "email" ? "Email" : message.channel} to {message.to.join(", ")}
-              </p>
+              <p className="text-[13.5px]">{messageTitle(message)}</p>
+              <p className="mt-0.5 text-[12.5px] text-ink-soft">{messageInWords(message)}</p>
             </div>
             <Link
               href={"/messages/" + message.id}

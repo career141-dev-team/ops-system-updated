@@ -9,6 +9,7 @@ node_modules/
 .env.*
 !.env.example
 !deploy/preview/.env.preview.example
+!deploy/production/.env.production.example
 deploy/local/.env.backend.local
 tsconfig.tsbuildinfo
 next-env.d.ts

@@ -49,6 +49,26 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "Talent Pulse: it is Tuesday",
     body: "This week's issue is compiled. Each role needs its line from the TA, then it goes to marketing for tomorrow.",
   },
+  "interview.day": {
+    kind: "record",
+    title: "Did the interview happen?",
+    body: "Mark whether they came. A no-show the client hears about from us is better than one they tell us about.",
+  },
+  "interview.report": {
+    kind: "check",
+    title: "The client booked an interview and has not told us the date",
+    body: "They said they would book it themselves. Ask them when it is, or nothing after it can be tracked.",
+  },
+  "ad.close": {
+    kind: "check",
+    title: "A TopJobs advert is two weeks old",
+    body: "It comes down now. Tick it closed and the TA System is told, so nobody applies to a job that has gone.",
+  },
+  "report.weekly": {
+    kind: "record",
+    title: "The weekly report: it is Monday",
+    body: "This week's report is built from the TA System and our own rows. Read it, then approve it and the Director's email is drafted.",
+  },
   "lead.inviteBack": {
     kind: "call",
     title: "Time to go back to a client we turned down",
@@ -79,10 +99,35 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "No feedback from the client yet",
     body: "Call them today, then write down what they said.",
   },
+  "doj.remind.week": {
+    kind: "check",
+    title: "Somebody joins in a week",
+    body: "A week out is when a candidate who is wobbling can still be saved. The TA checks they are still coming.",
+  },
+  "doj.remind.day": {
+    kind: "check",
+    title: "Somebody joins tomorrow",
+    body: "Last check before the day. If anything has changed, the client has to hear it today.",
+  },
+  "doj.join": {
+    kind: "call",
+    title: "Joining day: did they turn up?",
+    body: "The TA phones them this morning. Mark whether they joined - the invoice and the guarantee both start from it.",
+  },
+  "invoice.due": {
+    kind: "approve",
+    title: "An invoice is due today",
+    body: "Thirty days from their first working day. If nothing has come in, the chase is drafted for you.",
+  },
   "invoice.chase": {
     kind: "approve",
     title: "The invoice is past its due date",
     body: "The chase is drafted, with the late charge added. Read it and approve it.",
+  },
+  "replacement.deadline": {
+    kind: "decide",
+    title: "Sixty working days and no replacement",
+    body: "The question goes to the Director of Operations: keep looking, or refund 50% of the fee. A refund is a decision, never a timeout.",
   },
   "guarantee.warn": {
     kind: "check",
@@ -97,7 +142,7 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   "interview.reconfirm": {
     kind: "check",
     title: "An interview is tomorrow",
-    body: "The client's reminder has gone. The TA is reconfirming the candidate.",
+    body: "The client's reminder is drafted. The TA reconfirms the candidate - if they have gone quiet, the client is told today, not in the morning.",
   },
   "meeting.reminder.day": {
     kind: "remind",

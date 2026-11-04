@@ -243,6 +243,45 @@ export function clientSets(openingId: string): Promise<TaResult<TaClientSet[]>> 
   return call<TaClientSet[]>("read", "/integrations/v1/openings/" + encodeURIComponent(openingId) + "/client-sets");
 }
 
+/** The opening's pipeline, for the depth rules (15, Phase 4 step 14). */
+export interface TaPipeline {
+  applications: {
+    id: string;
+    candidateName: string;
+    currentStage: string;
+    setNumber: number | null;
+    backupForApplicationId: string | null;
+  }[];
+  counts: Record<string, number>;
+}
+
+export function pipeline(openingId: string): Promise<TaResult<TaPipeline>> {
+  return call<TaPipeline>("read", "/integrations/v1/openings/" + encodeURIComponent(openingId) + "/pipeline");
+}
+
+/** A placement, which is TA's own (15, Phase 6 step 3). */
+export interface TaPlacement {
+  id: string;
+  applicationId: string;
+  openingId: string;
+  clientId: string;
+  candidateName: string;
+  /** What the client agreed to pay them a month, and in what. */
+  placedSalary: number | null;
+  currency: string | null;
+  salaryBasis: string | null;
+  package: string | null;
+  offerLetterFileId: string | null;
+  joinDateMs: number | null;
+  joinConfirmedAt: number | null;
+  fellThroughAt: number | null;
+  fellThroughReason: string | null;
+}
+
+export function placement(placementId: string): Promise<TaResult<TaPlacement>> {
+  return call<TaPlacement>("read", "/integrations/v1/placements/" + encodeURIComponent(placementId));
+}
+
 /** One round, by its number on the opening (15, Phase 4 step 2). */
 export function clientSet(openingId: string, setNumber: number): Promise<TaResult<TaClientSet>> {
   return call<TaClientSet>(

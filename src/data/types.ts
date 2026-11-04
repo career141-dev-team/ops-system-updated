@@ -563,6 +563,15 @@ export interface OpsPosition {
    */
   linkedInUrl: string | null;
   linkedInPostedAt: number | null;
+  /**
+   * How deep the client's shortlist is (15, Phase 4 steps 14 and 15). Kept on
+   * the position rather than in a table of its own: only the latest count
+   * decides anything, and every change is already in the audit.
+   */
+  depthStage: string | null;
+  shortlistedTotal: number | null;
+  pendingCount: number | null;
+  depthCheckedAt: number | null;
   handedOverAt: number;
   closedAt: number | null;
   ownerId: Id;
@@ -597,6 +606,328 @@ export interface OpsTalentPulseIssue {
   updatedAt: number;
 }
 
+/**
+ * One weekly report (15, Phase 3 step 18 and Phase 7 step 9).
+ *
+ * Built by a Monday clock, read by the TA lead, then sent to the Director.
+ * The rows are kept as they were built, so last Monday's report still says
+ * what it said last Monday - a report rebuilt from today's data is a
+ * different report, and the owner asked for the week's picture.
+ */
+export interface OpsReport {
+  id: Id;
+  /** "activePositions" today; the KPI report is Phase 7. */
+  kind: string;
+  /** The Monday it belongs to, as a readable date. */
+  weekOf: string;
+  state: string;
+  rows: ReportRowRecord[];
+  /** What could not be read when it was built, in words. */
+  note: string | null;
+  builtAt: number;
+  approvedBy: Id | null;
+  approvedAt: number | null;
+  /** The drafted email to the Director, once it is approved. */
+  messageId: Id | null;
+  sentAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One line of a report. The same shape as `ReportRow` in `@/lib/reports`. */
+export interface ReportRowRecord {
+  positionId: Id;
+  openingTaId: string | null;
+  client: string;
+  title: string;
+  primaryTa: string;
+  stage: string;
+  daysOpen: number;
+  counts: Record<string, number> | null;
+  shortlisted: number | null;
+  setsSent: number;
+  lastSentAt: number | null;
+  daysWaitingOnClient: number | null;
+  decisionsIn: number;
+  onHold: boolean;
+  depth: string | null;
+  advertised: boolean;
+}
+
+/**
+ * One interview, the client's side of it (15, Phase 5).
+ *
+ * TA owns the candidate's side and keeps its own interview row; this is what
+ * Ops has to answer the client with. `interviewTaId` is TA's row once TA has
+ * taken the booking, exactly as a position waits for `openingTaId`.
+ */
+export interface OpsInterview {
+  id: Id;
+  /** TA's application, and the opening it belongs to. */
+  applicationTaId: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  candidateName: string;
+  /** Who agrees the time: "us" or "client". */
+  scheduler: string;
+  state: string;
+  round: number;
+  /** The times the client offered, and the one everybody agreed. */
+  slots: number[];
+  slotLoops: number;
+  at: number | null;
+  format: string;
+  /** Addresses of the people interviewing, who get the invite. */
+  interviewers: string[];
+  /** The meeting link, or the address for one at the office. */
+  whereOrLink: string;
+  interviewTaId: string | null;
+  /** Each message this interview has caused, newest last. */
+  inviteMessageId: Id | null;
+  attendedAt: number | null;
+  /** What the client decided after it: next, selected or rejected. */
+  decision: string | null;
+  decisionReason: string | null;
+  decidedAt: number | null;
+  /** What the TA heard from the candidate afterwards, as TA worded it. */
+  candidateFeedback: string | null;
+  /** Why it was cancelled, or why the candidate came out of it. */
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A reference check, which happens only when the client asks (step 17).
+ *
+ * No form and no score: the owner settled that on 26 October. The TA phones
+ * the referee, writes down what was said, and Ops passes it on as it is.
+ */
+export interface OpsReferenceRequest {
+  id: Id;
+  applicationTaId: string;
+  openingTaId: string;
+  candidateName: string;
+  state: string;
+  /** What the TA reported, in the TA's own words. */
+  report: string | null;
+  requestedAt: number;
+  reportedAt: number | null;
+  relayMessageId: Id | null;
+  /** Cleared or dropped, and why if dropped. */
+  decision: string | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A placement, taken from TA (15, Phase 6 step 3).
+ *
+ * TA owns the offer and the placement; this is Ops' copy of the few facts the
+ * money depends on, with the agreement's fee rule copied onto it so a rule
+ * changed next year cannot change an invoice already sent.
+ */
+export interface OpsPlacement {
+  id: Id;
+  placementTaId: string;
+  applicationTaId: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  candidateName: string;
+  state: string;
+  /** What the client agreed to pay them, a month. */
+  monthlySalary: number | null;
+  currency: string;
+  offerLetterFileRef: string | null;
+  /** The day they are due to start, and the day they really did. */
+  joinDate: number | null;
+  joinedAt: number | null;
+  /** Every time the joining day moved, and why. */
+  dojHistory: { from: number | null; to: number; reason: string; at: number; by: Id | null }[];
+  /** The agreement's fee rule, as it stood when they were placed. */
+  feeMonths: number;
+  feeBasis: string;
+  /** A replacement under the guarantee is not invoiced again. */
+  isReplacementOf: Id | null;
+  invoiceId: Id | null;
+  /** Why they never joined, or why we lost them. */
+  reason: string | null;
+  /** What the client chose after a no-show: replace, or stop. */
+  noShowChoice: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One invoice (15, Phase 6 steps 9 to 14).
+ *
+ * The payments live on it rather than in a table of their own: an invoice has
+ * one or two, they are only ever read with it, and the audit keeps who
+ * recorded what.
+ */
+export interface OpsInvoice {
+  id: Id;
+  number: string;
+  /** "fee", "surcharge" or "credit_note". */
+  kind: string;
+  placementId: Id | null;
+  /** What it is about, when there is no placement to read it from. */
+  about: string | null;
+  /** The set an unreported hire came from, and the invoice a credit note is against. */
+  setId: Id | null;
+  againstInvoiceId: Id | null;
+  clientId: Id | null;
+  state: string;
+  amount: number;
+  currency: string;
+  lateCharge: number;
+  lateMonths: number;
+  /** Nothing is charged on an invoice disputed in good faith. */
+  disputed: boolean;
+  disputedReason: string | null;
+  payments: { amount: number; paidAt: number; method: string; by: Id | null; note: string | null }[];
+  sentAt: number | null;
+  sentMessageId: Id | null;
+  dueAt: number | null;
+  paidAt: number | null;
+  writtenOffAt: number | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One guarantee (15, Phase 7 steps 2 to 6).
+ *
+ * Ninety days from joining, and only valid while the fee is fully paid. It is
+ * its own row rather than fields on the placement because a replacement
+ * starts a new one, and the old one has to stay readable.
+ */
+export interface OpsGuarantee {
+  id: Id;
+  placementId: Id;
+  openingTaId: string;
+  clientId: Id | null;
+  candidateName: string;
+  state: string;
+  startsAt: number;
+  endsAt: number;
+  /** When the fee was paid in full; empty means the guarantee is void. */
+  feePaidAt: number | null;
+  /** The day they left, and why. */
+  leftAt: number | null;
+  reason: string | null;
+  /** Sixty working days from the day they left, to finalise a replacement. */
+  deadlineAt: number | null;
+  /** The placement that replaced them, once there is one. */
+  replacedByPlacementId: Id | null;
+  /** The decision, if it came to money. */
+  refundPct: number | null;
+  refundAmount: number | null;
+  decidedBy: Id | null;
+  decidedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * The close checklist (15, Phase 7 steps 11 to 15).
+ *
+ * The list of things that get forgotten when a position ends, each owned by
+ * whoever can actually do it. Nothing closes until every item is ticked.
+ */
+export interface OpsCloseChecklist {
+  id: Id;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  /** Why it is closing: a clean end, a refund, a write-off, the client. */
+  trigger: string;
+  items: { key: string; what: string; whose: string; doneAt: number | null; doneBy: Id | null }[];
+  completedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One paid advert (15, Phase 3 steps 12 and 13).
+ *
+ * TopJobs only, today: LinkedIn is recorded on the position and Talent Pulse
+ * has its own issue. It is its own row because it has money, a flyer, a date
+ * TopJobs gives us and a two-week clock - none of which belongs on a position.
+ */
+export interface OpsAd {
+  id: Id;
+  channel: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  title: string;
+  state: string;
+  /** Which advert, and what they are charging for it. */
+  kind: string;
+  cost: number | null;
+  /** Marketing's flyer, kept on the Files screen. */
+  flyerFileId: Id | null;
+  /** The apply address TA routes for this advert, so a CV knows where it came from. */
+  applyAlias: string | null;
+  orderMessageId: Id | null;
+  requestedAt: number;
+  orderedAt: number | null;
+  liveAt: number | null;
+  closesAt: number | null;
+  closedAt: number | null;
+  /** What TA counted against the advert's own alias. */
+  cvCount: number | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One run of the AI layer (15, Phase 9 steps 1, 17 and 19).
+ *
+ * Every ask is written down: the task, the model, what it cost, what it
+ * proposed, and what the person did with it. Accuracy and spend are read off
+ * these rows rather than guessed, and a year later it says why a record says
+ * what it says.
+ */
+export interface OpsAiRun {
+  id: Id;
+  task: string;
+  provider: string;
+  model: string | null;
+  /** The records it was given, named so a person can check them. */
+  read: string[];
+  /** What it proposed, as it came back. */
+  proposed: unknown;
+  /** "used", "edited", "ignored" or null while nobody has decided. */
+  outcome: string | null;
+  /** What the person saved, when they edited it - the accuracy sample. */
+  kept: unknown;
+  ok: boolean;
+  because: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  cost: number;
+  ms: number;
+  subjectType: string | null;
+  subjectId: Id | null;
+  by: Id;
+  at: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -614,6 +945,15 @@ export interface OpsDatabase {
   requirements: OpsRequirement[];
   positions: OpsPosition[];
   talentPulse: OpsTalentPulseIssue[];
+  reports: OpsReport[];
+  interviews: OpsInterview[];
+  references: OpsReferenceRequest[];
+  placements: OpsPlacement[];
+  invoices: OpsInvoice[];
+  guarantees: OpsGuarantee[];
+  closeChecklists: OpsCloseChecklist[];
+  ads: OpsAd[];
+  aiRuns: OpsAiRun[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

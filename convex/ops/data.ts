@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -75,6 +75,15 @@ export const snapshot = internalQuery({
       ctx.db.query("opsRequirements").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsPositions").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsTalentPulse").withIndex("by_created").order("desc").take(60),
+      ctx.db.query("opsReports").withIndex("by_created").order("desc").take(26),
+      ctx.db.query("opsInterviews").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsReferences").withIndex("by_created").order("desc").take(100),
+      ctx.db.query("opsPlacements").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsInvoices").withIndex("by_created").order("desc").take(300),
+      ctx.db.query("opsGuarantees").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsCloseChecklists").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsAds").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsAiRuns").withIndex("by_at").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -107,6 +116,15 @@ export const snapshot = internalQuery({
       requirements: requirements.map(row),
       positions: positions.map(row),
       talentPulse: talentPulse.map(row),
+      reports: reports.map(row),
+      interviews: interviews.map(row),
+      references: references.map(row),
+      placements: placements.map(row),
+      invoices: invoices.map(row),
+      guarantees: guarantees.map(row),
+      closeChecklists: closeChecklists.map(row),
+      ads: ads.map(row),
+      aiRuns: aiRuns.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -564,6 +582,10 @@ export const addPosition = internalMutation({
     jdApprovedAt: v.union(v.number(), v.null()),
     linkedInUrl: v.union(v.string(), v.null()),
     linkedInPostedAt: v.union(v.number(), v.null()),
+    depthStage: v.union(v.string(), v.null()),
+    shortlistedTotal: v.union(v.number(), v.null()),
+    pendingCount: v.union(v.number(), v.null()),
+    depthCheckedAt: v.union(v.number(), v.null()),
     handedOverAt: v.number(),
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
@@ -580,6 +602,576 @@ export const addPosition = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** An ops person (15, Phase 8 step 11). */
+export const addMember = internalMutation({
+  args: {
+    name: v.string(),
+    email: v.string(),
+    role: v.union(
+      v.literal("ops_owner"),
+      v.literal("ops_lead"),
+      v.literal("accounts"),
+      v.literal("director_ops"),
+      v.literal("marketing"),
+      v.literal("director_ro"),
+      v.literal("ta_lead_ro"),
+    ),
+    active: v.boolean(),
+    taUserId: v.union(v.string(), v.null()),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { by, ...member } = args;
+    const id = await ctx.db.insert("opsMembers", member);
+    await writeAudit(ctx, {
+      actorId: by,
+      action: "member.added",
+      subjectType: "member",
+      subjectId: id as string,
+      after: member.name + ", " + member.role,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+/** One run of the AI layer (15, Phase 9 step 1). */
+export const addAiRun = internalMutation({
+  args: {
+    task: v.string(),
+    provider: v.string(),
+    model: v.union(v.string(), v.null()),
+    read: v.array(v.string()),
+    proposed: v.any(),
+    outcome: v.union(v.string(), v.null()),
+    kept: v.any(),
+    ok: v.boolean(),
+    because: v.union(v.string(), v.null()),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    cost: v.number(),
+    ms: v.number(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+    at: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsAiRuns", args);
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const recordAiOutcome = internalMutation({
+  args: { runId: v.string(), outcome: v.string(), kept: v.any(), by: v.string() },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.runId as Id<"opsAiRuns">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { outcome: args.outcome, kept: args.kept });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "ai." + args.outcome,
+      subjectType: found.subjectType ?? "ai",
+      subjectId: (found.subjectId ?? found._id) as string,
+      before: found.task,
+      after: args.outcome,
+      reason: found.model,
+    });
+    return { ok: true };
+  },
+});
+
+/** One paid advert (15, Phase 3 step 12). */
+export const addAd = internalMutation({
+  args: {
+    channel: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    title: v.string(),
+    state: v.string(),
+    kind: v.string(),
+    cost: v.union(v.number(), v.null()),
+    flyerFileId: v.union(v.string(), v.null()),
+    applyAlias: v.union(v.string(), v.null()),
+    orderMessageId: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    orderedAt: v.union(v.number(), v.null()),
+    liveAt: v.union(v.number(), v.null()),
+    closesAt: v.union(v.number(), v.null()),
+    closedAt: v.union(v.number(), v.null()),
+    cvCount: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsAds", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "ad.requested",
+      subjectType: "ad",
+      subjectId: id as string,
+      after: args.channel + ", " + args.title,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchAd = internalMutation({
+  args: {
+    adId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.adId as Id<"opsAds">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "ad",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** One guarantee (15, Phase 7 step 2). */
+export const addGuarantee = internalMutation({
+  args: {
+    placementId: v.string(),
+    openingTaId: v.string(),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    feePaidAt: v.union(v.number(), v.null()),
+    leftAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    deadlineAt: v.union(v.number(), v.null()),
+    replacedByPlacementId: v.union(v.string(), v.null()),
+    refundPct: v.union(v.number(), v.null()),
+    refundAmount: v.union(v.number(), v.null()),
+    decidedBy: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsGuarantees", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "guarantee.started",
+      subjectType: "guarantee",
+      subjectId: id as string,
+      after: args.candidateName,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchGuarantee = internalMutation({
+  args: {
+    guaranteeId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.guaranteeId as Id<"opsGuarantees">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "guarantee",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** The close checklist (15, Phase 7 step 11). */
+export const addChecklist = internalMutation({
+  args: {
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    trigger: v.string(),
+    items: v.any(),
+    completedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsCloseChecklists", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "close.opened",
+      subjectType: "close",
+      subjectId: id as string,
+      after: args.trigger,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchChecklist = internalMutation({
+  args: {
+    checklistId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.checklistId as Id<"opsCloseChecklists">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "close",
+      subjectId: found._id as string,
+      before: found.completedAt ? "closed" : "open",
+      after: after?.completedAt ? "closed" : "open",
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** A placement taken from TA (15, Phase 6 step 3). */
+export const addPlacement = internalMutation({
+  args: {
+    placementTaId: v.string(),
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    monthlySalary: v.union(v.number(), v.null()),
+    currency: v.string(),
+    offerLetterFileRef: v.union(v.string(), v.null()),
+    joinDate: v.union(v.number(), v.null()),
+    joinedAt: v.union(v.number(), v.null()),
+    dojHistory: v.any(),
+    feeMonths: v.number(),
+    feeBasis: v.string(),
+    isReplacementOf: v.union(v.string(), v.null()),
+    invoiceId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    noShowChoice: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsPlacements", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "placement.taken",
+      subjectType: "placement",
+      subjectId: id as string,
+      after: args.candidateName,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchPlacement = internalMutation({
+  args: {
+    placementId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.placementId as Id<"opsPlacements">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "placement",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** One invoice (15, Phase 6 step 9). */
+export const addInvoice = internalMutation({
+  args: {
+    number: v.string(),
+    kind: v.string(),
+    placementId: v.union(v.string(), v.null()),
+    about: v.union(v.string(), v.null()),
+    setId: v.union(v.string(), v.null()),
+    againstInvoiceId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    lateCharge: v.number(),
+    lateMonths: v.number(),
+    disputed: v.boolean(),
+    disputedReason: v.union(v.string(), v.null()),
+    payments: v.any(),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    dueAt: v.union(v.number(), v.null()),
+    paidAt: v.union(v.number(), v.null()),
+    writtenOffAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsInvoices", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "invoice.drafted",
+      subjectType: "invoice",
+      subjectId: id as string,
+      after: args.number,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchInvoice = internalMutation({
+  args: {
+    invoiceId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.invoiceId as Id<"opsInvoices">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "invoice",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** One interview, the client's side of it (15, Phase 5). */
+export const addInterview = internalMutation({
+  args: {
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    scheduler: v.string(),
+    state: v.string(),
+    round: v.number(),
+    slots: v.array(v.number()),
+    slotLoops: v.number(),
+    at: v.union(v.number(), v.null()),
+    format: v.string(),
+    interviewers: v.array(v.string()),
+    whereOrLink: v.string(),
+    interviewTaId: v.union(v.string(), v.null()),
+    inviteMessageId: v.union(v.string(), v.null()),
+    attendedAt: v.union(v.number(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    decisionReason: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    candidateFeedback: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsInterviews", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "interview.started",
+      subjectType: "interview",
+      subjectId: id as string,
+      after: args.candidateName + ", round " + args.round,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchInterview = internalMutation({
+  args: {
+    interviewId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.interviewId as Id<"opsInterviews">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "interview",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** A reference check (15, Phase 5 step 17). */
+export const addReference = internalMutation({
+  args: {
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    candidateName: v.string(),
+    state: v.string(),
+    report: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    reportedAt: v.union(v.number(), v.null()),
+    relayMessageId: v.union(v.string(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsReferences", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "reference.requested",
+      subjectType: "reference",
+      subjectId: id as string,
+      after: args.candidateName,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchReference = internalMutation({
+  args: {
+    referenceId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.referenceId as Id<"opsReferences">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "reference",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** One weekly report (15, Phase 7 step 9). */
+export const addReport = internalMutation({
+  args: {
+    kind: v.string(),
+    weekOf: v.string(),
+    state: v.string(),
+    rows: v.any(),
+    note: v.union(v.string(), v.null()),
+    builtAt: v.number(),
+    approvedBy: v.union(v.string(), v.null()),
+    approvedAt: v.union(v.number(), v.null()),
+    messageId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsReports", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "report.built",
+      subjectType: "report",
+      subjectId: id as string,
+      after: args.weekOf,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchReport = internalMutation({
+  args: {
+    reportId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.reportId as Id<"opsReports">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "report",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 
@@ -1240,7 +1832,8 @@ export const settleMessage = internalMutation({
   args: {
     messageId: v.string(),
     by: v.string(),
-    state: v.union(v.literal("sent"), v.literal("failed"), v.literal("blocked"), v.literal("queued")),
+    // "approved" is where a group post stops: a person posts it (3 Nov).
+    state: v.union(v.literal("sent"), v.literal("failed"), v.literal("blocked"), v.literal("queued"), v.literal("approved")),
     to: v.array(v.string()),
     note: v.union(v.string(), v.null()),
     /** What the mail server called it, once a sender knows. */

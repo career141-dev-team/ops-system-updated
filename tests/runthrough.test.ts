@@ -231,6 +231,9 @@ test("today's numbers are recorded, so a later number can be compared", async ()
 });
 
 test("a write to the TA System waits in the outbox, then goes, and a repeat is one write", async () => {
+  // The seed ships with the TA link held, so a live desk turns it on first.
+  // That switch is the ops lead's kill switch (Phase 8 step 8).
+  repo.setSetting("switch.taWritesEnabled", true, "m_lead", "The TA link is live.");
   const first = await desk.queueTaWrite("/integrations/v1/notify", { userId: "ta_u1", title: "SAMPLE" });
   const same = await desk.queueTaWrite("/integrations/v1/notify", { title: "SAMPLE", userId: "ta_u1" });
   assert.equal(same.id, first.id, "the same intention twice is one write");
@@ -290,6 +293,11 @@ test("everything that happened is in the trail, with who did it", () => {
   ]) {
     assert(actions.includes(expected), "the trail records " + expected);
   }
-  // The events cursor and the clock pass are deliberately not in the trail.
-  assert.equal(actions.filter((a) => a === "setting.changed").length, 0);
+  // The events cursor and the clock pass are deliberately not in the trail,
+  // so the only setting changes in it are the ones a person made - and each
+  // of those carries the reason they gave.
+  for (const entry of repo.all().audit.filter((a) => a.action === "setting.changed")) {
+    assert(entry.actorId, "a setting changed by nobody would be the cursor leaking in");
+    assert(entry.reason, "every setting change carries its reason");
+  }
 });

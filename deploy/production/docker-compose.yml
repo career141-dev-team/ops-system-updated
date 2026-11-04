@@ -1,0 +1,81 @@
+# Ops in production on the VPS: ops.career141.com.
+#
+# The same shape as the preview, with production names and ports, and every
+# switch off on the first deploy (15, Phase 8 step 17): nothing sends and
+# nothing writes to TA until the owner turns each one on. It shares the
+# machine with the TA System and nothing else: its own instance name, its own
+# database, its own ports on 127.0.0.1, its own volumes. Nothing in here can
+# reach the TA System's backend or its database.
+#
+# What keeps the two apart, and why each line matters:
+#   * INSTANCE_NAME ops-prod, never the TA names
+#   * POSTGRES_URL points at Ops' own database (convex_ops),
+#     created once by hand with CREATE DATABASE. TA's convex_self_hosted is not
+#     touched by anything here
+#   * ports 3330/3331/6893 on loopback, clear of TA (3210/3211), of the
+#     preview (3320/3321/6892) and of the laptop's own run (3310/3311/6891)
+#   * the app listens on 127.0.0.1:3332 only; the internet reaches it through
+#     Caddy at ops.career141.com behind Clerk sign-in
+#
+#   deploy/production/README.md has the once-only server setup and the runbook.
+
+name: ops-prod
+
+services:
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: ops-prod-convex
+    restart: unless-stopped
+    stop_grace_period: 20s
+    stop_signal: SIGINT
+    ports:
+      - "127.0.0.1:3330:3210"
+      - "127.0.0.1:3331:3211"
+    environment:
+      INSTANCE_NAME: ops-prod
+      INSTANCE_SECRET: ${PROD_INSTANCE_SECRET:?set in .env.production}
+      POSTGRES_URL: ${PROD_POSTGRES_URL:?set in .env.production}
+      DO_NOT_REQUIRE_SSL: "true"
+      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:3330
+      CONVEX_SITE_ORIGIN: http://127.0.0.1:3331
+      DISABLE_BEACON: "true"
+      RUST_LOG: info
+    volumes:
+      - ops-prod-convex-files:/convex/data
+    # The TA System's backend needs the memory on this box. A dozen ops people
+    # is still small, so Ops is given enough and no more (Part C12).
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:3210/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    image: ${OPS_IMAGE:?set by the deploy, e.g. ghcr.io/career141-dev/ops-system:<sha>}
+    container_name: ops-prod-app
+    restart: unless-stopped
+    depends_on:
+      convex:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      PORT: 3300
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:3332:3300"
+    mem_limit: 1g
+
+  dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: ops-prod-dashboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6893:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:3330
+    mem_limit: 512m
+
+volumes:
+  ops-prod-convex-files:

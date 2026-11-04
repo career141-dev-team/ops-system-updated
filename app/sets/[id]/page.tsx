@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
+  confirmUnreportedHire,
+  dismissUnreportedHire,
   dropFromClientSet,
   recordClientDecision,
   recordCvClaim,
@@ -43,6 +45,7 @@ export default async function SetPage({
 
   const now = Date.now();
   const mayManage = can(me, "client.manage");
+  const surcharge = db.invoices.find((i) => i.setId === set.id && i.kind === "surcharge") ?? null;
   const client = set.clientId ? clientIn(db, set.clientId) : null;
   const missing = set.candidates.filter((c) => !c.fileId);
   const ready = set.candidates.length >= MIN_CVS && missing.length === 0;
@@ -275,6 +278,54 @@ export default async function SetPage({
             </form>
           )}
         </section>
+      )}
+
+      {set.state === "sent" && mayManage && !surcharge && (
+        <section className={card}>
+          <h2 className="text-[14.5px] font-medium">Was anybody in this set hired?</h2>
+          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
+            Three months after a set goes out, a clock asks. If one of these people is working there and nobody told
+            us, the agreement provides for a surcharge; if we are wrong, say so and the question closes. Nobody is
+            invoiced by a clock.
+          </p>
+          <form action={confirmUnreportedHire} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="setId" value={set.id} />
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
+              Who was hired
+              <select name="candidateName" className={field} defaultValue="">
+                <option value="">— which of them —</option>
+                {set.candidates.map((c) => (
+                  <option key={c.applicationTaId} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex w-[180px] flex-col gap-1 text-[12.5px] text-ink-soft">
+              Their salary a month
+              <input name="monthlySalary" type="number" min="0" step="1000" className={field} />
+            </label>
+            <button className={plain}>Raise the surcharge</button>
+          </form>
+          <form action={dismissUnreportedHire} className="mt-4 flex flex-wrap items-end gap-2 border-t border-rule pt-4">
+            <input type="hidden" name="setId" value={set.id} />
+            <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
+              Nobody was — how do we know?
+              <input name="reason" className={field} />
+            </label>
+            <button className={plain}>Close the question</button>
+          </form>
+        </section>
+      )}
+
+      {surcharge && (
+        <p className="text-[13px]">
+          A surcharge was raised:{" "}
+          <Link href={"/invoices/" + surcharge.id} className="text-brand hover:underline">
+            {surcharge.number}
+          </Link>{" "}
+          <span className="text-ink-soft">— {surcharge.about}</span>
+        </p>
       )}
 
       <section className={card}>

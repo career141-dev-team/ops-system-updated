@@ -28,9 +28,42 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "feedback.chaseDays", value: 1, updatedBy: null, updatedAt: null },
       { key: "feedback.stopAfterSilentDays", value: 4, updatedBy: null, updatedAt: null },
       { key: "feedback.callAfterDays", value: 1, updatedBy: null, updatedAt: null },
+      // The owner's two depth rules, as numbers a lead can change (3 Nov).
+      { key: "depth.holdAt", value: 5, updatedBy: null, updatedAt: null },
+      { key: "depth.searchAgainAt", value: 3, updatedBy: null, updatedAt: null },
+      // Who the Monday report goes to. Addresses, separated by commas; the
+      // Director's real address is the owner's to put in.
+      { key: "report.recipients", value: "", updatedBy: null, updatedAt: null },
+      // Interviews (15, Phase 5 step 19 and the owner's notice rule).
+      { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
+      { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },
+      { key: "interview.noticeDays", value: 1, updatedBy: null, updatedAt: null },
+      { key: "interview.noticeHours", value: 3, updatedBy: null, updatedAt: null },
       { key: "hold.afterDays", value: 14, updatedBy: null, updatedAt: null },
       { key: "hold.reviewDays", value: 30, updatedBy: null, updatedAt: null },
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
+      // The invoice series, and how long before somebody must decide to write
+      // an unpaid fee off (15, Phase 6 steps 9 and 14).
+      // TopJobs comes down two weeks after it goes live (the owner's rule).
+      { key: "ad.days", value: 14, updatedBy: null, updatedAt: null },
+      // The AI layer (15, Phase 9). Off until the owner turns it on, a cap in
+      // rupees a day, and every task switchable on its own so one bad prompt
+      // can be stopped without a deploy.
+      { key: "switch.aiEnabled", value: false, updatedBy: null, updatedAt: null },
+      { key: "ai.dailyBudget", value: 500, updatedBy: null, updatedAt: null },
+      { key: "ai.task.dictate.fields", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.inbound.read", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.draft.improve", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.draft.reply", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.summarise", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.whatfirst", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.ask", value: true, updatedBy: null, updatedAt: null },
+      // An unreported hire: three months from the day the set went, and the
+      // agreement's 50% surcharge (docs/15 Part B; the ESA says 50%).
+      { key: "hire.unreportedMonths", value: 3, updatedBy: null, updatedAt: null },
+      { key: "hire.surchargePct", value: 50, updatedBy: null, updatedAt: null },
+      { key: "invoice.series", value: "C141", updatedBy: null, updatedAt: null },
+      { key: "invoice.writeOffDays", value: 90, updatedBy: null, updatedAt: null },
       // From the agreement itself, which the owner said is the truth (3 Nov):
       // 1% a month, compounded, and nothing on an invoice disputed in good
       // faith. The board had said 5% simple; the document wins.
@@ -72,6 +105,15 @@ export function seed(now = Date.now()): OpsDatabase {
     requirements: [],
     positions: [],
     talentPulse: [],
+    reports: [],
+    interviews: [],
+    references: [],
+    placements: [],
+    invoices: [],
+    guarantees: [],
+    closeChecklists: [],
+    ads: [],
+    aiRuns: [],
     leads: [
       {
         id: "ld_new",
@@ -359,6 +401,243 @@ Career 141`,
         body: `{{client}} > {{position}} > SET {{setNumber}}
 
 {{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "topjobs.order",
+        channel: "email",
+        name: "Ordering a TopJobs advert",
+        subject: "Advert order: {{position}}",
+        body: `Dear TopJobs,
+
+Please run the attached advert for our client's {{position}} role.
+
+Applications should come to {{applyAlias}}.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.surcharge",
+        channel: "email",
+        name: "The unreported-hire surcharge",
+        subject: "{{client}} - invoice {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+Our records show that {{candidate}}, whose CV we sent you on {{sentDate}}, was hired without our being told.
+
+Our agreement provides for a surcharge of {{surchargePct}}% of the fee in that case. The invoice is below.
+
+{{invoice}}
+
+If we have this wrong, tell us and we will withdraw it at once.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.credit_note",
+        channel: "email",
+        name: "A credit note",
+        subject: "{{client}} - credit note against {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+This is our credit note for {{amount}} against invoice {{invoiceNumber}}.
+
+{{why}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.cover",
+        channel: "email",
+        name: "Sending an invoice",
+        subject: "{{client}} - invoice {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+Our invoice for the placement of {{candidate}} is below. It is payable by {{dueDate}}, thirty days from their first working day.
+
+{{invoice}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.chase",
+        channel: "email",
+        name: "Chasing an unpaid invoice",
+        subject: "Invoice {{invoiceNumber}} - still outstanding",
+        body: `Dear all,
+
+Invoice {{invoiceNumber}} is {{daysLate}} days past its due date, and {{amount}} is outstanding.
+
+Our agreement adds 1% a month, compounded, to a late invoice. If anything on it is in question, tell us and nothing is charged while we sort it out.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "placement.noshow_options",
+        channel: "email",
+        name: "A candidate who never turned up",
+        subject: "{{candidate}} - {{position}}",
+        body: `Dear all,
+
+{{candidate}} did not start with you on {{joinDate}}, and we have not been able to change that.
+
+Nothing is invoiced for this placement. Would you like us to find a replacement, or to stop the search? Either way, tell us and we will act on it today.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.slots_request",
+        channel: "email",
+        name: "Asking the client for interview times",
+        subject: "{{candidate}} - interview times",
+        body: `Dear {{contact}},
+
+Could you give us two or three times that suit you for {{candidate}} ({{position}})? We will agree one with the candidate and confirm it back to you.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.invite",
+        channel: "email",
+        name: "The interview invite to the client's people",
+        subject: "Interview: {{candidate}}, {{when}}",
+        body: `Dear all,
+
+{{candidate}} is confirmed for {{when}}, round {{round}}.
+
+{{whereOrLink}}
+
+The TA has invited the candidate. Anything to change, tell us and we will move it.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.reminder",
+        channel: "email",
+        name: "The day-before reminder to the client",
+        subject: "Tomorrow: {{candidate}}",
+        body: `Dear all,
+
+{{candidate}} is with you {{when}}.
+
+{{whereOrLink}}
+
+Kind regards,
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.dropout_notice",
+        channel: "email",
+        name: "A candidate can no longer attend",
+        subject: "{{candidate}} - interview {{when}}",
+        body: `Dear all,
+
+{{candidate}} is no longer able to attend {{when}}. We are sorry for the short notice.
+
+We are putting a back-up in front of you and will confirm a new time.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "interview.client_feedback",
+        channel: "email",
+        name: "What the candidate said after the interview",
+        subject: "{{candidate}} - after the interview",
+        body: `Dear all,
+
+We spoke to {{candidate}} after round {{round}}.
+
+{{feedback}}
+
+May we have your own feedback when you have it?
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "reference.relay",
+        channel: "email",
+        name: "Passing a reference on to the client",
+        subject: "{{candidate}} - reference",
+        body: `Dear all,
+
+We spoke to the referee for {{candidate}}. This is what was said, as it was said:
+
+{{report}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "report.weekly",
+        channel: "email",
+        name: "The weekly report to the Director",
+        subject: "Career 141 - active positions, week of {{weekOf}}",
+        body: `Dear Mr Azeem,
+
+{{report}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

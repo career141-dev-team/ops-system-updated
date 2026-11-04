@@ -24,6 +24,15 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsAd,
+  OpsAiRun,
+  OpsCloseChecklist,
+  OpsGuarantee,
+  OpsInterview,
+  OpsInvoice,
+  OpsPlacement,
+  OpsReferenceRequest,
+  OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
@@ -100,6 +109,24 @@ export const repo = {
 
   members(): OpsMember[] {
     return load().members.filter((m) => m.active);
+  },
+
+  /** An ops person, from the role list on the first day (Phase 8 step 11). */
+  addMember(input: Omit<OpsMember, "id">, by: Id): OpsMember {
+    const db = load();
+    const row: OpsMember = { ...input, id: id("m") };
+    db.members.push(row);
+    audit({
+      actorId: by,
+      action: "member.added",
+      subjectType: "member",
+      subjectId: row.id,
+      before: null,
+      after: row.name + ", " + row.role,
+      reason: null,
+    });
+    save();
+    return row;
   },
 
   member(memberId: Id): OpsMember | null {
@@ -624,6 +651,351 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── The AI layer's ledger (15, Phase 9 step 1) ─────────── */
+
+  aiRunIn(runId: Id): OpsAiRun | null {
+    return load().aiRuns.find((r) => r.id === runId) ?? null;
+  },
+
+  addAiRun(input: Omit<OpsAiRun, "id">): OpsAiRun {
+    const db = load();
+    const row: OpsAiRun = { ...input, id: id("ai") };
+    db.aiRuns.push(row);
+    // Not audited: these are the audit for the AI layer, and a row per ask
+    // would double every trail. The outcome below is audited, because that is
+    // a person's decision.
+    save();
+    return row;
+  },
+
+  recordAiOutcome(runId: Id, outcome: string, kept: unknown, by: Id): void {
+    const db = load();
+    const row = db.aiRuns.find((r) => r.id === runId);
+    if (!row) return;
+    row.outcome = outcome;
+    row.kept = kept;
+    audit({
+      actorId: by,
+      action: "ai." + outcome,
+      subjectType: row.subjectType ?? "ai",
+      subjectId: row.subjectId ?? row.id,
+      before: row.task,
+      after: outcome,
+      reason: row.model,
+    });
+    save();
+  },
+
+  /* ── Paid adverts (15, Phase 3 step 12) ─────────────────── */
+
+  adIn(adId: Id): OpsAd | null {
+    return load().ads.find((a) => a.id === adId) ?? null;
+  },
+
+  addAd(input: Omit<OpsAd, "id" | "createdAt" | "updatedAt">): OpsAd {
+    const db = load();
+    const now = Date.now();
+    const row: OpsAd = { ...input, id: id("ad"), createdAt: now, updatedAt: now };
+    db.ads.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "ad.requested",
+      subjectType: "ad",
+      subjectId: row.id,
+      before: null,
+      after: row.channel + ", " + row.title,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchAd(adId: Id, patch: Partial<OpsAd>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.ads.find((a) => a.id === adId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "ad", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Guarantees and the close checklist (15, Phase 7) ───── */
+
+  guaranteeIn(guaranteeId: Id): OpsGuarantee | null {
+    return load().guarantees.find((g) => g.id === guaranteeId) ?? null;
+  },
+
+  addGuarantee(input: Omit<OpsGuarantee, "id" | "createdAt" | "updatedAt">): OpsGuarantee {
+    const db = load();
+    const now = Date.now();
+    const row: OpsGuarantee = { ...input, id: id("gar"), createdAt: now, updatedAt: now };
+    db.guarantees.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "guarantee.started",
+      subjectType: "guarantee",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchGuarantee(
+    guaranteeId: Id,
+    patch: Partial<OpsGuarantee>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.guarantees.find((g) => g.id === guaranteeId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "guarantee", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  checklistIn(checklistId: Id): OpsCloseChecklist | null {
+    return load().closeChecklists.find((c) => c.id === checklistId) ?? null;
+  },
+
+  addChecklist(input: Omit<OpsCloseChecklist, "id" | "createdAt" | "updatedAt">): OpsCloseChecklist {
+    const db = load();
+    const now = Date.now();
+    const row: OpsCloseChecklist = { ...input, id: id("cls"), createdAt: now, updatedAt: now };
+    db.closeChecklists.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "close.opened",
+      subjectType: "close",
+      subjectId: row.id,
+      before: null,
+      after: row.trigger,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchChecklist(
+    checklistId: Id,
+    patch: Partial<OpsCloseChecklist>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.closeChecklists.find((c) => c.id === checklistId);
+    if (!row) return;
+    const before = row.completedAt ? "closed" : "open";
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "close",
+      subjectId: row.id,
+      before,
+      after: row.completedAt ? "closed" : "open",
+      reason,
+    });
+    save();
+  },
+
+  /* ── Placements, invoices and payments (15, Phase 6) ────── */
+
+  placementIn(placementId: Id): OpsPlacement | null {
+    return load().placements.find((p) => p.id === placementId) ?? null;
+  },
+
+  addPlacement(input: Omit<OpsPlacement, "id" | "createdAt" | "updatedAt">): OpsPlacement {
+    const db = load();
+    const now = Date.now();
+    const row: OpsPlacement = { ...input, id: id("plc"), createdAt: now, updatedAt: now };
+    db.placements.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "placement.taken",
+      subjectType: "placement",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchPlacement(
+    placementId: Id,
+    patch: Partial<OpsPlacement>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.placements.find((p) => p.id === placementId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "placement", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  invoiceIn(invoiceId: Id): OpsInvoice | null {
+    return load().invoices.find((i) => i.id === invoiceId) ?? null;
+  },
+
+  addInvoice(input: Omit<OpsInvoice, "id" | "createdAt" | "updatedAt">): OpsInvoice {
+    const db = load();
+    const now = Date.now();
+    const row: OpsInvoice = { ...input, id: id("inv"), createdAt: now, updatedAt: now };
+    db.invoices.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "invoice.drafted",
+      subjectType: "invoice",
+      subjectId: row.id,
+      before: null,
+      after: row.number,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchInvoice(
+    invoiceId: Id,
+    patch: Partial<OpsInvoice>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.invoices.find((i) => i.id === invoiceId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "invoice", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Interviews and references (15, Phase 5) ────────────── */
+
+  interviewIn(interviewId: Id): OpsInterview | null {
+    return load().interviews.find((i) => i.id === interviewId) ?? null;
+  },
+
+  addInterview(input: Omit<OpsInterview, "id" | "createdAt" | "updatedAt">): OpsInterview {
+    const db = load();
+    const now = Date.now();
+    const row: OpsInterview = { ...input, id: id("int"), createdAt: now, updatedAt: now };
+    db.interviews.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "interview.started",
+      subjectType: "interview",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName + ", round " + row.round,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchInterview(
+    interviewId: Id,
+    patch: Partial<OpsInterview>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.interviews.find((i) => i.id === interviewId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "interview", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  referenceIn(referenceId: Id): OpsReferenceRequest | null {
+    return load().references.find((r) => r.id === referenceId) ?? null;
+  },
+
+  addReference(input: Omit<OpsReferenceRequest, "id" | "createdAt" | "updatedAt">): OpsReferenceRequest {
+    const db = load();
+    const now = Date.now();
+    const row: OpsReferenceRequest = { ...input, id: id("ref"), createdAt: now, updatedAt: now };
+    db.references.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "reference.requested",
+      subjectType: "reference",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchReference(
+    referenceId: Id,
+    patch: Partial<OpsReferenceRequest>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.references.find((r) => r.id === referenceId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "reference", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── The weekly report (15, Phase 7 step 9) ─────────────── */
+
+  reportIn(reportId: Id): OpsReport | null {
+    return load().reports.find((r) => r.id === reportId) ?? null;
+  },
+
+  addReport(input: Omit<OpsReport, "id" | "createdAt" | "updatedAt">): OpsReport {
+    const db = load();
+    const now = Date.now();
+    const row: OpsReport = { ...input, id: id("rep"), createdAt: now, updatedAt: now };
+    db.reports.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "report.built",
+      subjectType: "report",
+      subjectId: row.id,
+      before: null,
+      after: row.weekOf + ", " + row.rows.length + " positions",
+      reason: row.note,
+    });
+    save();
+    return row;
+  },
+
+  patchReport(reportId: Id, patch: Partial<OpsReport>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.reports.find((r) => r.id === reportId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "report", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

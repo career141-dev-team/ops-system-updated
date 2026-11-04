@@ -2,9 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 
-import { desk, fileIn } from "@/data/desk";
+import { aiSwitches, desk, fileIn } from "@/data/desk";
 import { currentMember } from "@/lib/session";
-import { approveAndSend, recordReply, saveDraft } from "@/app/actions";
+import { messageInWords } from "@/lib/messages";
+import { approveAndSend, improveDraft, recordReply, saveDraft, useImprovedDraft } from "@/app/actions";
+import { anyKeySet } from "@/lib/ai";
+import { IMPROVE_WORDS, type ImprovedDraft } from "@/lib/aiTasks";
 
 /** One message, on its own page. Read it, change it, approve it. */
 export default async function MessagePage({
@@ -12,18 +15,21 @@ export default async function MessagePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg } = await searchParams;
+  const { msg, proposed: proposedJson, runId } = await searchParams;
   const db = await desk();
   const message = db.messages.find((m) => m.id === id);
   if (!message) notFound();
   // What it carries, by name: an agreement goes out as its PDF, and a person
   // approving the email has to be able to see that it is there.
   const carries = (message.attachmentFileIds ?? []).map((fileId) => fileIn(db, fileId)).filter((f) => f !== null);
+
+  const proposed: ImprovedDraft | null = proposedJson ? (JSON.parse(proposedJson) as ImprovedDraft) : null;
+  const aiOn = anyKeySet() && aiSwitches(db).on;
 
   const input = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
 
@@ -34,7 +40,7 @@ export default async function MessagePage({
       </Link>
       <h1 className="mt-2 text-[17px] font-medium">{message.templateKey ?? "Message"}</h1>
       <p className="mt-0.5 text-[13px] text-ink-soft">
-        {message.channel === "email" ? "Email" : message.channel} to {message.to.join(", ")} · {message.state}
+        {messageInWords(message)} · {message.state}
       </p>
 
       {msg && (
@@ -59,10 +65,12 @@ export default async function MessagePage({
       {message.state === "draft" ? (
         <form action={saveDraft} className="mt-4 flex flex-col gap-3">
           <input type="hidden" name="messageId" value={message.id} />
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-ink-soft">Subject</span>
-            <input name="subject" defaultValue={message.subject} className={input} />
-          </label>
+          {message.channel !== "group_post" && (
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-ink-soft">Subject</span>
+              <input name="subject" defaultValue={message.subject} className={input} />
+            </label>
+          )}
           <label className="block">
             <span className="mb-1 block text-[12px] text-ink-soft">Message</span>
             <textarea name="body" defaultValue={message.body} rows={10} className={input} />
@@ -101,11 +109,12 @@ export default async function MessagePage({
         <form action={approveAndSend} className="mt-4 border-t border-rule pt-4">
           <input type="hidden" name="messageId" value={message.id} />
           <p className="text-[13px] text-ink-soft">
-            Approving sends it. While the system is in test mode it goes to the test address instead,
-            and the result is written here.
+            {message.channel === "group_post"
+              ? "Nothing can send this: no system can post to a WhatsApp group. Approve it, copy it and post it from your phone - that it is yours to post is written here."
+              : "Approving sends it. While the system is in test mode it goes to the test address instead, and the result is written here."}
           </p>
           <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-white">
-            Approve and send
+            {message.channel === "group_post" ? "Approve it, and post it myself" : "Approve and send"}
           </button>
         </form>
       )}

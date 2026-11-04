@@ -850,7 +850,7 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     with `briefAppend` → TA bell "requirement changed".
 11. **TA: T6** (team save keeps modes; TA lead editable) and **T4** (follow-up escalation,
     retire old flow) land in this phase.
-12. TopJobs: `ads.request(openingTaId)` (TA or owner) → task to marketing (flyer) →
+12. **Built 4 Nov.** TopJobs: `ads.request(openingTaId)` (TA or owner) → task to marketing (flyer) →
     `ads.flyerReady(fileId)` → `ads.send` (email `topjobs.order` to TopJobs drafted →
     approved → sent, cost recorded) → `ads.markLive(date)` → timer `ad.close` 14 days →
     `ads.markClosed` → **TA:** `POST openings/{id}/ad-channel` at live and closed; `notify`
@@ -871,7 +871,10 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 17. Position view queries: `positions.forClient`, `positions.byStage`, each joining live TA
     opening data (team, JD, posts, stage counts).
 18. Weekly desk report builder (used in P7): `reports.buildActivePositions` from `GET
-    reports/active-positions` + `opsPositions`; stored; not yet emailed.
+    reports/active-positions` + `opsPositions`; stored; not yet emailed. **Built 3 Nov** as
+    `buildWeeklyReport`, from `GET openings/{id}/pipeline` per position rather than one
+    `reports/active-positions` call - the pipeline read already exists, so the TA side
+    needs nothing new for the report.
 19. Inbox views: "requirements to open", "ads in progress", "Talent Pulse this week".
 20. Phase test: requirement saved → opening created in local TA (fields checked in TA) →
     TA approves JD → event updates Ops → TopJobs request → flyer → sent (test) → live →
@@ -892,6 +895,8 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
    (editable); **TA:** `POST client-sets/{id}/sent`; `notify` the TA.
 5. First set for a client with no `whatsappGroupName`: task "create client group" +
    drafted group post (`set.group_post`) → owner ticks posted → `groupCreatedAt`.
+   **Built 3 Nov**: the post is drafted with every set, and settles at *approved*,
+   because nothing can send it and "sent" would be untrue.
 6. Timers at receipt: `set.ownership` (7 working days, warn at 5) and `feedback.chase` (1 day).
 7. `claims.record(setId, appTaId)`: within window → `dropped`: **TA:** `POST client-owned`;
    reply `claim.noted` drafted; after window → `refused`: reply `claim.refused` drafted.
@@ -916,9 +921,12 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     interviewed); order: `≥5 → on hold, reason "five shortlisted"` (J9: **TA** `POST
     openings/{id}/status on_hold`), else `≤3 pending → add_on` (**TA** `POST working-stage`
     for the primary TA), else `follow_up`; below five again → status `open`; `notify` the TA
-    on every change; `opsDepthChecks` row.
+    on every change; `opsDepthChecks` row. **Built 3 Nov**, with one change: the
+    count lives on the position (`depthStage`, `shortlistedTotal`, `pendingCount`,
+    `depthCheckedAt`) instead of a table of its own - there is one live count per
+    position and the audit already keeps every change of it.
 15. "Hold at five" also sets a position flag so the set sender refuses to send a new set
-    until the count drops (with an override for the ops lead).
+    until the count drops (with an override for the ops lead). **Built 3 Nov.**
 16. Back-up visibility: `backupForApplicationId` shown on the set and interviews; the slot
     loop (P5) uses it.
 17. **TA: T2** (reasons required) and **T5** (min 5, client rejection template) land here.
@@ -934,6 +942,12 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     path: clock to 14 days → hold → TA on_hold → inbound → lift.
 
 ## Phase 5 · Interviews and reference
+
+**Built 3 November**, steps 1 to 18 bar three pieces: the Teams meeting made
+from the Ops mailbox (step 8 - a calendar permission the owner has yet to
+grant; the link is pasted in by a person, and `interviews.setLink` is that),
+reading a client's reply for its times (step 3's AI half, which is Phase 9),
+and the ICS export (step 18). The reference is `opsReferences` as planned.
 
 1. Tables `opsInterviews`, `opsReferenceRequests`.
 2. `interviews.start(appTaId, scheduler)`: `us` or `client`; a row in state `slots`.
@@ -987,6 +1001,21 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 
 ## Phase 6 · Placement to money
 
+**Built 4 November**, steps 1 to 14 and 18, with four differences, each one
+written down rather than quietly done:
+
+- **Payments live on the invoice**, not in `opsPayments`. An invoice has one or
+  two, they are only ever read with it, and the audit keeps who recorded what.
+- **The invoice document waits on a template from the owner**, exactly as the
+  agreement did. The lines go in the body of the email until then; we do not
+  invent the paperwork a client pays against.
+- **The late charge is 1% a month, compounded** (step 13 and the phase table
+  both said a simple 5%): the agreement says 1% compounded with nothing on a
+  disputed invoice, and the owner made the document the truth on 3 November.
+- **Tax lines (⚪), the surcharge invoice (15), credit notes (16), the CSV
+  exports (17) and the nightly reconciliation (19) are not built.** 15 needs
+  phase 4's unreported hire, 16 belongs with phase 7's refunds.
+
 1. Tables `opsPlacements`, `opsInvoices`, `opsPayments`.
 2. Handlers `offer.made` → position stage `offer` (search stops is TA's); `offer.declined` →
    note; `offer.accepted` → wait for the placement.
@@ -1022,21 +1051,36 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 14. Write-off: at `invoice.writeOffDays` unpaid → task "write off?" to accounts (escalates
     to director_ops) → `invoices.writeOff(reason)` → guarantee `void` → close checklist (P7)
     → **TA:** status `closed`.
-15. Surcharge invoices (from P4 unreported hire): `invoices.draftSurcharge(setId)`; same
+15. **Built 4 Nov**, with the salary typed in by a person (a client who did not tell us
+    they hired somebody has not told us the package either). Surcharge invoices (from P4 unreported hire): `invoices.draftSurcharge(setId)`; same
     approve/send; ⚪ chase path (default: same as a fee invoice).
-16. Credit notes: `invoices.creditNote(invoiceId, amount, reason)` for refunds (P7) and
+16. **Built 4 Nov.** Credit notes: `invoices.creditNote(invoiceId, amount, reason)` for refunds (P7) and
     corrections.
-17. Exports: `invoices.exportCsv(range)`, `payments.exportCsv(range)` to R2 with a signed
+17. **Built 4 Nov** as two routes under `/api/exports`, accounts only. Exports: `invoices.exportCsv(range)`, `payments.exportCsv(range)` to R2 with a signed
     link (no accounting tool yet).
 18. Views: "placements this month", "joining this week", "invoices due / late / unpaid by
     client", "payments received".
-19. Reconciliation query: Ops invoice state vs TA `placements.invoice*` fields; a nightly
-    check flags differences.
+19. **Built 4 Nov** as what a laptop can really see: a sent invoice whose write to TA
+    never got through, shown on the invoices screen rather than as a nightly job - the
+    screen is where somebody would act on it. Reconciliation query: Ops invoice state vs
+    TA `placements.invoice*` fields.
 20. Phase test: placement event → notice to Asma (test) → DOJ reminders → joined → invoice
     drafted → approved → sent (test) → clock to day 30 → chase with 5% → payment recorded →
     paid; the no-show path; the cancel path; a replacement produces no invoice.
 
 ## Phase 7 · Guarantee, reports and close
+
+**Built 4 November**, steps 1 to 8 and 11 to 15 (step 9, the weekly report,
+was built on 3 November). Two corrections to this plan's own text:
+
+- **The refund is 50%, not the 25% in step 6**: the agreement says 50% and the
+  owner made the document the truth on 3 November.
+- **The guarantee's paid date is written when the fee settles**, not read once
+  when the guarantee starts - the invoice is drafted the day they join, so the
+  fee is always paid afterwards. See docs/13.
+
+Not built: step 16's analytics (no UI, kept weekly as KPIs), and the credit
+note document, which waits on the same template work as the invoice.
 
 1. Tables `opsGuarantees`, `opsReports`, `opsCloseChecklists`.
 2. `guarantees.start(placementId)` on `joined` for every hire: `endsAt` = +90 calendar days;
@@ -1058,7 +1102,8 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
 7. ⚪ client deadline to choose replace or stop after a no-show (P6 step 8) → timer
    `noshow.clientChoice` → reminder.
 8. `guarantees.view`: per client and per placement with days left; "ending this month".
-9. Weekly report: Monday 08:00 job (`report.day`) → `reports.buildActivePositions`
+9. **Built 3 Nov** (bar the PDF, which waits for the invoice work's own PDF step).
+   Weekly report: Monday 08:00 job (`report.weekly`) → `reports.buildActivePositions`
    (P3 step 18) + Ops rows (ESA state, sets sent, days waiting on client, interviews this
    week, placements, guarantees running, invoices unpaid) → `opsReports` built → task to the
    TA lead "review" → `reports.approve` → email `report.weekly` to Mr Azeem (auto after
@@ -1077,7 +1122,8 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     checklist opened in "TA closed first" mode (remaining Ops items only).
 15. Lead closure mirror: a closed position with no other open positions for the client →
     the client profile shows "no active work"; nothing else.
-16. Analytics queries (no UI): ESA return time (sent → signed), client wait on sets (set
+16. **Built 4 Nov** with a screen after all (`/numbers`), because numbers nobody can see
+    are numbers nobody checks. Analytics queries (no UI): ESA return time (sent → signed), client wait on sets (set
     sent → first decision), slipped hires (DOJ moves), time to fill (opened → placed), by
     client and by owner; stored weekly in `opsReports` kind `kpis` for the owner's
     "measure today's numbers" wish.
@@ -1090,6 +1136,18 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     note; Monday job builds and sends (test) the report.
 
 ## Phase 8 · Hardening, staging, pilot
+
+**Built 4 November**, the half a laptop can do and prove: steps 1, 3, 4, 5, 8
+and 9 (the tests and the runbooks), step 11 (the first-day import, with its
+dry run), and the production deploy files from step 13. The server and pilot
+half - steps 2, 6, 7, 10, 12, 14 to 22 - is the owner's, and [22](22-GO-LIVE.md)
+is the order to do it in.
+
+Step 11 differs from the plan in one way, written down rather than quietly
+done: **placements and guarantees are not imported**. They arrive from TA's
+own `placement.created` event, so anybody who joined inside the last ninety
+days comes with their placement once reads are on - an import would make a
+second copy of each.
 
 1. End-to-end flow tests: one test per branch of the diagram ([14](14-DIAGRAM-DEEP-WALKTHROUGH.md))
    against the fake TA, with the clock advanced; every end step reached.
@@ -1147,6 +1205,25 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     Pulse analytics, hold-limit and other ⚪ items once decided.
 
 ## Phase 9 · The AI productivity layer (added 3 Nov)
+
+**Built 4 November**, steps 1 to 9, 11, 13 and 16 to 21, with three
+differences written down rather than quietly done:
+
+- **Dictation does not use a model to listen.** Step 5 planned
+  `POST /api/ai/dictate` with a clip; the browser's own speech recognition
+  does it for nothing, keeps the audio on the machine, and needs no key. The
+  model's only job is step 7: putting what was heard into our fields. A clip
+  kept against the record would need the owner's go-ahead and a reason, and
+  there is neither yet.
+- **Reply drafting (10) and "why this first" (12)** have their rules and
+  prompts but no button yet; they are the two that read best once the pilot
+  has shown what a real reply looks like.
+- **Step 14, the box that does things, is not built on purpose.** It is the
+  only part that can act, and it waits until the read-only box has been used
+  for a while.
+
+Nothing of the layer runs without a key, and nothing runs while a page
+renders. Both keys are named in `deploy/production/.env.production.example`.
 
 Added at the owner's request. It is **one layer across the finished system**, not a
 chatbot bolted on, and it comes after the pilot because the desk has to run on rules

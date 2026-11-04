@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { recordLinkedInPost, setPositionTeam } from "@/app/actions";
+import { openCloseByHand, recordLinkedInPost, requestAd, setPositionTeam } from "@/app/actions";
 import {
   clientIn,
   desk,
+  liveAdFor,
   member as memberIn,
   outboxWaiting,
   positionIn,
   requirementIn,
 } from "@/data/desk";
+import { adInWords } from "@/lib/adverts";
+import { depthInWords } from "@/lib/depth";
 import { REQUIREMENT_FIELDS, STAGE_MEANINGS, type PositionStage, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -39,6 +42,7 @@ export default async function PositionPage({
   const queued = outboxWaiting(db).some((o) => o.subjectType === "position" && o.subjectId === position.id);
   const taSide = await taPeople();
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+  const ad = position.openingTaId ? liveAdFor(db, position.openingTaId) : null;
   const theirAudit = db.audit.filter((a) => a.subjectType === "position" && a.subjectId === position.id);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
@@ -140,6 +144,24 @@ export default async function PositionPage({
       </section>
 
       <section className={card}>
+        <h2 className="text-[14.5px] font-medium">How deep the client&rsquo;s shortlist is</h2>
+        <p className="mt-1 text-[13px]">{depthInWords(position)}</p>
+        {position.depthCheckedAt && (
+          <p className="mt-1 text-[12px] text-ink-faint">Counted {whenLocal(position.depthCheckedAt)}, from TA&rsquo;s own pipeline.</p>
+        )}
+        {position.depthStage === "hold_at_five" && (
+          <p className="mt-2 text-[12.5px]">
+            No more CVs go to this client until they interview some of the five. Only the ops lead can send a set
+            anyway.
+          </p>
+        )}
+        <p className="mt-2 text-[12px] text-ink-faint">
+          It is counted after every client decision and every stage move the TA System tells us about, so nobody has
+          to keep a tally.
+        </p>
+      </section>
+
+      <section className={card}>
         <h2 className="text-[14.5px] font-medium">Where it is advertised</h2>
         {position.linkedInUrl ? (
           <p className="mt-1 text-[13px]">
@@ -164,11 +186,55 @@ export default async function PositionPage({
             <button className={plain}>Record it</button>
           </form>
         )}
+        {ad ? (
+          <p className="mt-3 text-[13px]">
+            TopJobs:{" "}
+            <Link href={"/adverts/" + ad.id} className="text-brand hover:underline">
+              {adInWords(ad, Date.now())}
+            </Link>
+          </p>
+        ) : (
+          can(me, "advert.manage") &&
+          position.openingTaId && (
+            <form action={requestAd} className="mt-3 flex flex-wrap items-end gap-2 border-t border-rule pt-3">
+              <input type="hidden" name="positionId" value={position.id} />
+              <label className="flex min-w-[260px] flex-col gap-1 text-[12.5px] text-ink-soft">
+                TopJobs, the one that costs money
+                <select name="kind" className={field} defaultValue="single">
+                  <option value="single">The single advert &mdash; LKR 5,400</option>
+                  <option value="hr_and_marketing">HR and marketing &mdash; LKR 12,700</option>
+                </select>
+              </label>
+              <button className={plain}>Ask for it</button>
+            </form>
+          )
+        )}
         <p className="mt-2 text-[12px] text-ink-faint">
-          TopJobs and Talent Pulse are the other two. Talent Pulse compiles itself every Tuesday; TopJobs is paused
-          until the owner says otherwise, because it is the one that costs money.
+          Talent Pulse compiles itself every Tuesday. TopJobs is asked for here, marketing makes the flyer, and it
+          comes down two weeks after it goes live.
         </p>
       </section>
+
+      {position.stage !== "closed" && position.openingTaId && can(me, "client.manage") && (
+        <section className={card}>
+          <h2 className="text-[14.5px] font-medium">Closing it</h2>
+          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
+            A guarantee ending, a refund or a write-off opens the close list by itself. This is for the other way: the
+            client has stopped, or the role was never practical.
+          </p>
+          <form action={openCloseByHand} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="positionId" value={position.id} />
+            <label className="flex min-w-[260px] flex-col gap-1 text-[12.5px] text-ink-soft">
+              Why it is closing
+              <select name="trigger" className={field} defaultValue="client_stopped">
+                <option value="client_stopped">The client stopped the search</option>
+                <option value="impractical">The role was not practical at that salary</option>
+              </select>
+            </label>
+            <button className={plain}>Open the close list</button>
+          </form>
+        </section>
+      )}
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">What happened to it</h2>

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import Nav from "@/app/Nav";
 import { currentMember } from "@/lib/session";
-import { ROLE_LABEL } from "@/lib/roles";
+import { ROLE_LABEL, can } from "@/lib/roles";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,9 +15,19 @@ export const metadata: Metadata = {
 /**
  * One header, one page per thing. No overlays, no drawers: everything opens as
  * its own page (owner's rule, 2 Nov).
+ *
+ * The header has two levels and no more: five sections, and under them the
+ * pages of the section you are in (23, section 3). What a person may see is
+ * worked out here, where the session is, and handed to the navigation - which
+ * knows which page you are on and nothing else.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const member = await currentMember();
+  const may = {
+    "money.manage": member ? can(member, "money.manage") : false,
+    "settings.manage": member ? can(member, "settings.manage") : false,
+    "report.read": member ? can(member, "report.read") : false,
+  };
 
   return (
     <html lang="en">
@@ -26,22 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Link href="/" className="text-[14px] font-medium">
               Career 141 Ops
             </Link>
-            <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-soft">
-              <Link href="/" className="hover:text-ink">Your day</Link>
-              <Link href="/leads" className="hover:text-ink">Leads</Link>
-              <Link href="/clients" className="hover:text-ink">Clients</Link>
-              <Link href="/positions" className="hover:text-ink">Positions</Link>
-              <Link href="/talent-pulse" className="hover:text-ink">Talent Pulse</Link>
-              <Link href="/sets" className="hover:text-ink">CV sets</Link>
-              <Link href="/holds" className="hover:text-ink">Holds</Link>
-              <Link href="/mail" className="hover:text-ink">Mail</Link>
-              <Link href="/templates" className="hover:text-ink">What we send</Link>
-              <Link href="/files" className="hover:text-ink">Files</Link>
-              <Link href="/calls" className="hover:text-ink">Calls</Link>
-              <Link href="/ta" className="hover:text-ink">TA System</Link>
-              <Link href="/settings" className="hover:text-ink">Settings</Link>
-              <Link href="/health" className="hover:text-ink">Health</Link>
-            </nav>
+            {member && <Nav may={may} />}
             <span className="ml-auto rounded-full bg-bg-warning px-2.5 py-1 text-[11.5px] text-warning">
               Test data only
             </span>

@@ -304,6 +304,10 @@ export default defineSchema({
     jdApprovedAt: v.union(v.number(), v.null()),
     linkedInUrl: v.union(v.string(), v.null()),
     linkedInPostedAt: v.union(v.number(), v.null()),
+    depthStage: v.union(v.string(), v.null()),
+    shortlistedTotal: v.union(v.number(), v.null()),
+    pendingCount: v.union(v.number(), v.null()),
+    depthCheckedAt: v.union(v.number(), v.null()),
     handedOverAt: v.number(),
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
@@ -321,6 +325,232 @@ export default defineSchema({
     lines: v.any(),
     postedAt: v.union(v.number(), v.null()),
     postedBy: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_week", ["weekOf"])
+    .index("by_created", ["createdAt"]),
+
+  /** One run of the AI layer (15, Phase 9 step 1). */
+  opsAiRuns: defineTable({
+    task: v.string(),
+    provider: v.string(),
+    model: v.union(v.string(), v.null()),
+    read: v.array(v.string()),
+    proposed: v.any(),
+    outcome: v.union(v.string(), v.null()),
+    kept: v.any(),
+    ok: v.boolean(),
+    because: v.union(v.string(), v.null()),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    cost: v.number(),
+    ms: v.number(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+    at: v.number(),
+  })
+    .index("by_at", ["at"])
+    .index("by_task", ["task"]),
+
+  /** One paid advert, TopJobs today (15, Phase 3 step 12). */
+  opsAds: defineTable({
+    channel: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    title: v.string(),
+    state: v.string(),
+    kind: v.string(),
+    cost: v.union(v.number(), v.null()),
+    flyerFileId: v.union(v.string(), v.null()),
+    applyAlias: v.union(v.string(), v.null()),
+    orderMessageId: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    orderedAt: v.union(v.number(), v.null()),
+    liveAt: v.union(v.number(), v.null()),
+    closesAt: v.union(v.number(), v.null()),
+    closedAt: v.union(v.number(), v.null()),
+    cvCount: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_state", ["state"])
+    .index("by_created", ["createdAt"]),
+
+  /** One guarantee: ninety days from joining, on a paid fee (15, Phase 7). */
+  opsGuarantees: defineTable({
+    placementId: v.string(),
+    openingTaId: v.string(),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    feePaidAt: v.union(v.number(), v.null()),
+    leftAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    deadlineAt: v.union(v.number(), v.null()),
+    replacedByPlacementId: v.union(v.string(), v.null()),
+    refundPct: v.union(v.number(), v.null()),
+    refundAmount: v.union(v.number(), v.null()),
+    decidedBy: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_placement", ["placementId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_end", ["endsAt"])
+    .index("by_created", ["createdAt"]),
+
+  /** The close checklist for one position (15, Phase 7 step 11). */
+  opsCloseChecklists: defineTable({
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    trigger: v.string(),
+    items: v.any(),
+    completedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_created", ["createdAt"]),
+
+  /** A placement taken from TA, with the agreement's fee rule on it. */
+  opsPlacements: defineTable({
+    placementTaId: v.string(),
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    monthlySalary: v.union(v.number(), v.null()),
+    currency: v.string(),
+    offerLetterFileRef: v.union(v.string(), v.null()),
+    joinDate: v.union(v.number(), v.null()),
+    joinedAt: v.union(v.number(), v.null()),
+    dojHistory: v.any(),
+    feeMonths: v.number(),
+    feeBasis: v.string(),
+    isReplacementOf: v.union(v.string(), v.null()),
+    invoiceId: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    noShowChoice: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_placement_ta", ["placementTaId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_join", ["joinDate"])
+    .index("by_created", ["createdAt"]),
+
+  /** One invoice, with its payments on it (15, Phase 6). */
+  opsInvoices: defineTable({
+    number: v.string(),
+    kind: v.string(),
+    placementId: v.union(v.string(), v.null()),
+    about: v.union(v.string(), v.null()),
+    setId: v.union(v.string(), v.null()),
+    againstInvoiceId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    state: v.string(),
+    amount: v.number(),
+    currency: v.string(),
+    lateCharge: v.number(),
+    lateMonths: v.number(),
+    disputed: v.boolean(),
+    disputedReason: v.union(v.string(), v.null()),
+    payments: v.any(),
+    sentAt: v.union(v.number(), v.null()),
+    sentMessageId: v.union(v.string(), v.null()),
+    dueAt: v.union(v.number(), v.null()),
+    paidAt: v.union(v.number(), v.null()),
+    writtenOffAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["number"])
+    .index("by_state", ["state"])
+    .index("by_due", ["dueAt"])
+    .index("by_created", ["createdAt"]),
+
+  /** One interview, the client's side of it (15, Phase 5). */
+  opsInterviews: defineTable({
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    scheduler: v.string(),
+    state: v.string(),
+    round: v.number(),
+    slots: v.array(v.number()),
+    slotLoops: v.number(),
+    at: v.union(v.number(), v.null()),
+    format: v.string(),
+    interviewers: v.array(v.string()),
+    whereOrLink: v.string(),
+    interviewTaId: v.union(v.string(), v.null()),
+    inviteMessageId: v.union(v.string(), v.null()),
+    attendedAt: v.union(v.number(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    decisionReason: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    candidateFeedback: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationTaId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_at", ["at"])
+    .index("by_created", ["createdAt"]),
+
+  /** A reference check, only when the client asks (15, Phase 5 step 17). */
+  opsReferences: defineTable({
+    applicationTaId: v.string(),
+    openingTaId: v.string(),
+    candidateName: v.string(),
+    state: v.string(),
+    report: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    reportedAt: v.union(v.number(), v.null()),
+    relayMessageId: v.union(v.string(), v.null()),
+    decision: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_application", ["applicationTaId"])
+    .index("by_created", ["createdAt"]),
+
+  /** One weekly report, kept as it was built (15, Phase 7 step 9). */
+  opsReports: defineTable({
+    kind: v.string(),
+    weekOf: v.string(),
+    state: v.string(),
+    rows: v.any(),
+    note: v.union(v.string(), v.null()),
+    builtAt: v.number(),
+    approvedBy: v.union(v.string(), v.null()),
+    approvedAt: v.union(v.number(), v.null()),
+    messageId: v.union(v.string(), v.null()),
+    sentAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),

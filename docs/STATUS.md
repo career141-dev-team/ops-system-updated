@@ -63,11 +63,11 @@ code is invented.
 | The LinkedIn post recorded | `recordLinkedInPost`, `src/lib/adverts.ts` | only a real LinkedIn post address is taken (a wrong link looks done), the share tail is cut, and TA is told because that is what unlocks Live |
 | Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
 
-Still to come in phase 3: **TopJobs** — requested, the flyer, the order, live,
-and closed after two weeks — which the owner paused on 3 Nov because it is the
-one with money in it. Then the weekly report builder.
+| The weekly report | `src/lib/reports.ts`, `buildWeeklyReport` in `src/data/desk.ts`, screens `app/reports` | built at eight on a Monday by its own clock, which sets the next Monday itself; one line per open position read from TA's pipeline and our own rows; a position TA cannot be read for keeps its line and says so rather than showing a zero; the ops lead reads it, and only then is the Director's email drafted |
 
-## Built: phase 4, the first four steps
+| TopJobs, the paid advert | `src/lib/adverts.ts`, `src/data/desk.ts`, screens `app/adverts` | a TA asks from the position, marketing's flyer (an image, never a JD), the order drafted with the flyer attached and what they charge written down, TopJobs' own live date, two weeks, then closed with the CV count TA gives us. TA is told the apply alias and the advert channel. Nothing spends anything by itself |
+
+## Built: phase 4, the client side of the search
 
 The owner asked for these before phase 3, so they stand on the stand-in TA
 System rather than on an opening Ops created itself.
@@ -89,17 +89,157 @@ System rather than on an opening Ops created itself.
 | What the client decided, in their own words | `recordClientDecision` | a rejection without their words is refused; TA is told so it moves the stage |
 | The silence hold, and lifting it | `proposeTheHold`, `approveTheHold`, `liftTheHold`; screens `app/holds` | proposed by a clock, held only when a person approves the notice, reviewed every thirty days, and never closing by itself |
 
-Still to come in phase 4: the client WhatsApp group post, the depth rules
-("three left means search again", "five shortlisted means hold"), the inbound
-reader that proposes a client's decisions instead of them being typed (that is
-Phase 9 step 8), and the surcharge invoice an unreported hire leads to (the
-invoice engine is Phase 6).
+| The client's WhatsApp group post | `sendClientSet` in `app/actions.ts` | drafted with the set; the first set for a client with no group also leaves the task to make it. Nothing sends it - no system can write to a WhatsApp group - so it stops at *approved*, which is the truth |
+| Three left means search again, five shortlisted means hold | `src/lib/depth.ts`, `evaluateDepth` in `src/data/desk.ts` | counted from TA's own pipeline after every client decision and every stage move TA tells us about; the hold is read first, so a full client is never told to search; below five again opens the opening back up by itself |
+| A held client gets no sixth CV | `problemWithAnotherSet`, used by `sendClientSet` | refused with the reason; the ops lead can override, and the override is written to the audit |
+
+| The unreported hire | `askAboutUnreportedHire`, `draftSurchargeInvoice` | three months after a set goes, a clock **asks**; a person confirms with the salary they know, and the surcharge is 50% of the fee. Nobody is invoiced by a clock, and "we were wrong" closes the question with its reason |
+
+Still to come in phase 4: the inbound reader that proposes a client's decisions
+instead of them being typed (that is Phase 9 step 8).
+
+## Built: phase 5, interviews and the reference
+
+The TA System keeps the candidate: it invites them, phones them afterwards and
+holds their feedback. All of this is the client's side.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Who schedules, us or the client | `startInterview` in `app/actions.ts` | asked once at the start, because the two are different work; a client who books it themselves gets a clock that asks for the date |
+| The times, asked and agreed | `requestInterviewSlots`, `recordInterviewSlots`, `recordCandidatePick` | the client's times are typed in (reading them is Phase 9); the candidate is asked by the TA, through their channels, and we record which they took |
+| The slot loop that stops | `problemWithNewSlots` in `src/lib/interviews.ts` | three rounds with nothing agreed and the TA is asked for a back-up instead of another email |
+| Booking it | `bookInterview` | refuses an online interview with no link and an onsite one with no address; tells TA through the outbox, drafts the invite to the interviewers, starts both clocks |
+| The day before | `interview.reconfirm` → `remindAboutInterview` in `src/data/desk.ts` | nine in the morning the day before: the client's reminder drafted, and a task to have the TA reconfirm the candidate |
+| The interview itself | `interview.day` clock, `markInterviewAttendance` | somebody is asked whether it happened; a no-show needs a reason and TA is told |
+| A candidate pulling out | `noticeCandidateOut`, and TA's `interview.candidate_out` event | the notice is drafted whatever the hour, and how late it is said in plain words - a day is the promise, three hours the floor |
+| The client cancelling or moving it | `cancelInterview` | rebooking keeps the round, so a candidate at round two stays at round two |
+| What the candidate said afterwards | TA's `interview.feedback` event → `draftCandidateFeedback` | drafted for the client and due the next morning, not sent at night |
+| The client's decision | `recordRoundDecision` | another round, selected, or rejected with their own words; a rejection re-counts the shortlist |
+| The reference | `requestReference`, `recordReferenceReport`, `relayReference`, `recordReferenceDecision` | only when the client asks; no form and no score (the owner, 26 Oct); passed on word for word; a dropped candidate re-counts the shortlist |
+| Screens | `app/interviews`, `app/interviews/[id]` | agreeing a time, booked, held and waiting on the client; everything about one interview on its own page |
+
+Still to come in phase 5: the **Teams meeting made from the Ops mailbox** (a
+calendar permission the owner has yet to grant - the link is pasted in by a
+person until then), reading a client's reply for its times by itself (Phase 9),
+and the ICS export.
+
+## Built: phase 6, the placement and the money
+
+The TA System makes the placement. This is what happens next, which is the
+part that pays for everything.
+
+| Piece | Where | Notes |
+|---|---|---|
+| A placement arrives the day it is made | `takePlacement` in `src/data/desk.ts`, from TA's `placement.created` event | the same-day notice to accounts and the ops owner is the point of it - the owner's own note is that Asma learns months later; the same event twice is one placement |
+| The agreement's fee rule, copied onto it | `takePlacement` | the signed agreement as it stood that day, so a rule changed next year cannot change an invoice already sent |
+| What TA could not give us | `missingPlacementFields` in `src/lib/money.ts` | asked for at once rather than on the joining day, because an invoice cannot be built on a package nobody wrote down |
+| Three clocks before the joining day | `joinClocks`, `startJoinClocks` | a week out, the day before, and nine on the morning when the TA phones them; a clock whose day has gone is not set |
+| The joining day moving | `changeJoinDate` in `app/actions.ts` | needs a reason, keeps every move, resets the clocks, tells TA - a day that slips twice is the thing to watch |
+| They joined | `markPlacementJoined`, and TA's `placement.joined` event | one door for both ways in; the fee is drafted at once, because thirty days run from the first working day whether or not anybody remembered |
+| They never turned up | `markNoShow`, and TA's `placement.no_show` event | nothing invoiced and nothing refunded (the owner's rule); the client's choice between a replacement and stopping is drafted, and their answer reopens or closes the search in TA |
+| The fee invoice | `draftFeeInvoice` | the agreement's rule times the package, a number from the series, due thirty days from the first working day; invoicing twice is refused, and a replacement under the guarantee is not invoiced at all |
+| Sending it | `sendInvoice` | to the billing address on the client's record, as a draft accounts approves; the clock that chases it starts from the due date, and TA is told the invoice state |
+| Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
+| Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
+| Writing it off | `writeOffInvoice` | not before ninety days unless the Director of Operations decides; the guarantee is void and the position closes |
+| Screens | `app/placements`, `app/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
+
+| The surcharge and the credit note | `draftSurchargeInvoice`, `draftCreditNote` | both are invoices of their own kind, with what they are about written on them; a credit note is a document against an invoice, never a negative payment |
+| The money as a file | `src/lib/exports.ts`, `app/api/exports/[what]` | invoices.csv and payments.csv, accounts only, one row per thing; a cell that starts with `=` is defused, because a CSV that runs formulas is a hole |
+| Where we and TA may disagree | `invoiceDrift`, shown on `app/invoices` | a sent invoice whose write to TA never got through - TA's closing checklist reads that state, so it matters |
+
+Still to come in phase 6: the **invoice document** (it waits on a template
+from the owner, exactly as the agreement did - until then the lines go in the
+body of the email), tax lines, and tax lines. The nightly automatic check is not built; the drift is shown on
+the invoices screen instead, which is where somebody would act on it.
+
+## Built: phase 7, the guarantee and the close
+
+| Piece | Where | Notes |
+|---|---|---|
+| Ninety days from joining | `startGuarantee` in `src/data/desk.ts`, `endsOn` in `src/lib/guarantee.ts` | from the day they joined, not the day the fee was paid; started for every hire, including a replacement |
+| Only valid on a fee fully paid | `verdictOnLeaver`, and `recordPayment` writing the paid date on | the owner's rule, and the one sentence that decides what a leaver costs us. The fee is always settled after the guarantee started, so paying an invoice in full writes that day onto the guarantee |
+| The warning on day 75 | `guarantee.warn` clock → `warnAboutGuarantee` | fifteen days left: a wobble heard now may not become a leaver at all |
+| A clean ninety days | `guarantee.end` clock → `endGuaranteeClean` | the internal notice, and the close list opens by itself |
+| Somebody left | `markLeaver`, and the owner's button | unpaid fee → **void**, nothing replaced and nothing refunded, the position closes; paid fee → **replacing**: TA is told they left, the position reopens, and sixty **working** days start |
+| A replacement | `takeReplacement`, from the next `placement.created` on that opening | marked a replacement so nothing is invoiced again, the old guarantee closes as replaced, and the new one starts its own ninety days |
+| The refund | `askAboutRefund` clock → the Director's decision in `decideRefund` | **50% of what was paid** (the agreement; our board said 25%), by decision and never by a clock. The Director may decide before the sixty days are up, and that is written down as what it was |
+| The close list | `openCloseChecklist`, `tickCloseItem`, `completeClose`; screens `app/closes` | every way a position ends opens it: a clean end, a refund, a write-off, a void guarantee, a client who stopped, or a TA who closed the opening first. Only the items this position really had, and closing the opening in TA is an item of its own - an opening closed with a live advert is how somebody applies to a job that has gone |
+| Nothing left open for a client | `completeClose` | their last position closing leaves a task, not an automatic change: whether they are finished with us is a person's call |
+| Screens | `app/guarantees`, `app/closes` | ending this month first, then who has left, then the rest |
+
+The weekly report (step 9) was built on 3 November and is above.
+
+| The numbers | `src/lib/numbers.ts`, screen `app/numbers` | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
+
+Still to come in phase 7: the credit note **document**, which waits on the same
+template work as the invoice.
+
+## Built: phase 8, the hardening
+
+| Piece | Where | Notes |
+|---|---|---|
+| The whole flow in one test | `tests/wholeflow.test.ts` | enquiry to close: a set out, the client's decision, the depth counted, an interview held, a placement, the fee invoiced and paid, ninety clean days, the position closed - and a last check that every client message is still only a draft |
+| TA down, a handler throwing, every switch off | `tests/hardening.test.ts` | writes queue with their keys and wait longer each time, reads answer "could not be read" rather than throwing, one bad clock does not stop the pass, and with the senders off nothing can leave the building |
+| The ops lead's own TA-writes switch | `pushOutbox` in `src/data/desk.ts` | it now really holds the link: the writes stay queued while it is off. It was read from the environment only, so the switch on the Settings screen did nothing |
+| The first-day import | `src/lib/importer.ts`, screen `app/import` | clients and who owns each, the holiday list, the ops people. A dry run first every time, and the same code builds the dry run and the real run; a bad row stops itself and names its line; a file run twice adds nothing |
+| Production deploy files | `deploy/production/` | the preview's shape with production names and ports, **every switch off on the first deploy**, and the order to turn them on written at the top of the env example |
+| Runbooks | `docs/runbooks/` | the wrong recipient, the mail reader stalled, the TA link down, events stuck, pausing Ops, restoring, rotating a key - and every switch in one table |
+| Going live | [22](22-GO-LIVE.md) | the server once, backups rehearsed, the first deploy with everything off, one switch a day, the pilot, which sheet stops when, and what is still not built |
+
+Still to come in phase 8, and all of it needs the server or the real API:
+the contract tests shared with the TA repository (step 2), the load check
+(step 6), the backups and the restore rehearsal on the machine (step 7), the
+staging run and the team's walkthrough (steps 15 and 16), and the pilot
+itself (steps 17 to 22).
+
+## Built: phase 9, the AI layer
+
+Off until the owner turns it on, and useless without a key - by design. With
+neither key the desk works exactly as it does now, and every screen says so
+rather than breaking.
+
+| Piece | Where | Notes |
+|---|---|---|
+| One door to a model | `src/lib/ai.ts` | judgment work to Anthropic, the plain work to DeepSeek, whichever keys exist; a hard timeout; JSON or nothing; every refusal a sentence a screen can show |
+| Every task's prompt | `src/lib/aiTasks.ts` | each one forbids inventing, asks for the client's own words where a reason is required, and names what it did not find rather than filling it in |
+| The ledger | `opsAiRuns`, `runAi` in `src/data/desk.ts` | task, model, tokens, cost, what it read, what it proposed, and what the person did with it. Accuracy and spend are read off these rows |
+| Dictation | `app/Dictate.tsx`, `dictateRequirement` | the listening is the **browser's own**: no key, no cost, nothing leaves the machine until a person presses. The fields are filled in for correction; nothing saves itself |
+| Reading what a client sent | `readInbound` | proposes the decisions per candidate in the client's own words, the times offered, a claim, a cancellation - into a task to confirm. It records nothing |
+| Improving a draft | `improveDraft`, `useImprovedDraft` | rewrite, shorter, warmer, more formal; the new words are offered **beside** the draft, and "use this" or "leave it" is recorded as the accuracy sample |
+| Summaries | `summariseClient` | a client's own rows in a paragraph, with what it could not see named |
+| The ask box | `askTheDesk`, screen `app/ai` | read-only, from our own rows, inside what that person could read anyway, naming what it used |
+| Costed, sampled, switchable | screen `app/ai`, settings `switch.aiEnabled`, `ai.dailyBudget`, `ai.task.*` | today's spend against the cap, and how often each task's proposals were used as they came - under half and the screen says to fix the prompt or switch it off |
+
+What it will never do, and why: no AI telephone calls (the owner's decision
+7); no AI deciding a rejection, a hold or a decline; no AI sending anything;
+no AI writing to the TA System; no AI setting a money figure. CV reading,
+scoring and matching stay in the TA System.
+
+Still to come in phase 9: the reply drafting screen (the rule and the prompt
+are built, the button is not), "why this first" on the day page, and the ask
+box that *does* things (step 14) - which is deliberately last.
+
+## Built: the screens, step one and two (23)
+
+The plan for every screen is [23](23-UI-PLAN.md): what is wrong now, the five
+rules, the three page patterns, screen by screen, and the order to build it.
+Steps one and two of that order are done.
+
+| Piece | Where | Notes |
+|---|---|---|
+| The shell: five sections, two levels | `src/lib/nav.ts`, `app/Nav.tsx`, `app/layout.tsx` | Today, Clients, The search, Money, Set up - and under them the pages of the section you are in. Twenty-four links in one row was the fault; nothing is hidden behind a hover, and a page in no section would fail a test |
+| "What to do now" | `app/NextStep.tsx`, `src/lib/nextStep.ts` | the card at the top of a page about one thing: what is waiting and on whom, the one button that moves it, and what will happen by itself and when. Every word comes from the same rules the buttons obey, so it cannot drift |
+| The lead, rebuilt | `app/leads/[id]` | the card, then the record in sections, with the section the step belongs to outlined. Nine forms at once was the complaint on 3 Nov |
+| The client, rebuilt | `app/clients/[id]` | the card says what the record is missing (a billing address, the group's name) or points at where the work really is |
+
+Still to come, in the order 23 gives: the search's screens, money's screens,
+and the day page's section counts. Every one of them works today, and gets
+the pattern as it is opened for another reason.
 
 ## Not built
 
-TopJobs, the last of phase 4, and phases 5 to 8:
-interviews, placement and the invoice, the guarantee and the close, then
-hardening and the pilot.
+The server and pilot half of phase 8.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -122,6 +262,12 @@ and accuracy machinery, and the priority order. Nothing of it is built.
 - Microsoft 365: letting the Graph app read the mailboxes the desk already uses.
 - The website form pointed at `/api/leads/website`.
 - Whether Saturday is a working day, and the holiday list for 2026-27.
+- The Director's address in the setting `report.recipients`, or an approved
+  weekly report has nowhere to go.
+- The invoice template, as a document, before a real invoice can be sent as
+  anything but the lines in an email.
+- A calendar permission for the Ops mailbox, or an interview's Teams link
+  stays something a person pastes in.
 
 ## Rules the code enforces, and why
 
@@ -144,7 +290,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 24 suites, each in its own process
+node tests/run.mjs        # all 39 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

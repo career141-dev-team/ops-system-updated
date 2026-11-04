@@ -12,6 +12,16 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsAd,
+  OpsAiRun,
+  OpsCloseChecklist,
+  OpsGuarantee,
+  OpsInterview,
+  OpsInvoice,
+  OpsMember,
+  OpsPlacement,
+  OpsReferenceRequest,
+  OpsReport,
   OpsTalentPulseIssue,
   OpsDatabase,
   OpsEsa,
@@ -26,12 +36,69 @@ import type {
   OpsTemplate,
   OpsTimer,
 } from "./types";
+import { colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import {
+  AI_TASKS,
+  type AiSwitches,
+  type AiTask,
+  DAILY_BUDGET,
+  type Proposal,
+  ask,
+  nothing,
+  problemWithRunning,
+  providerNow,
+} from "@/lib/ai";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import {
+  CLOSE_TRIGGERS,
+  GUARANTEE_DAYS,
+  REPLACEMENT_WORKING_DAYS,
+  WARN_DAY,
+  closeItemsFor,
+  endsOn,
+  replacementDeadline,
+  verdictOnLeaver,
+  warnOn,
+} from "@/lib/guarantee";
+import {
+  DUE_DAYS,
+  LATE_PCT_PER_MONTH,
+  WRITE_OFF_DAYS,
+  balanceOf,
+  dueOn,
+  feeAmount,
+  feeInWords,
+  invoiceNumber,
+  joinClocks,
+  lateCharge,
+  missingPlacementFields,
+  money,
+  monthsLate,
+} from "@/lib/money";
+import {
+  NOTICE_DAYS,
+  NOTICE_HOURS,
+  noticeStanding,
+  reconfirmAt,
+} from "@/lib/interviews";
+import {
+  type ReportRowRecord,
+  daysBetween,
+  nextMondayEightAm,
+  reportWeekOf,
+} from "@/lib/reports";
+import {
+  DEPTH_MEANINGS,
+  HOLD_AT,
+  SEARCH_AGAIN_AT,
+  countDepth,
+  depthVerdict,
+} from "@/lib/depth";
 import {
   HOLD_AFTER_DAYS,
   OWNERSHIP_WORKING_DAYS,
@@ -44,7 +111,15 @@ import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
 import { cursorAfter, whatWeDoWithIt } from "@/lib/taEvents";
-import { clientSet as taClientSet, eventsAfter, opening as taOpening, write as taWrite } from "@/lib/ta";
+import {
+  clientSet as taClientSet,
+  eventsAfter,
+  opening as taOpening,
+  people as taPeople,
+  pipeline as taPipeline,
+  placement as taPlacement,
+  write as taWrite,
+} from "@/lib/ta";
 
 /**
  * The desk, from wherever it is kept (2 Nov).
@@ -147,7 +222,9 @@ export async function editMessage(messageId: Id, patch: Pick<OpsMessage, "subjec
 export async function settleMessage(
   messageId: Id,
   by: Id,
-  state: Extract<OpsMessage["state"], "sent" | "failed" | "blocked" | "queued">,
+  // "approved" settles a group post: a person has it to post, and nothing
+  // sent it (3 Nov).
+  state: Extract<OpsMessage["state"], "sent" | "failed" | "blocked" | "queued" | "approved">,
   to: string[],
   note: string | null,
   /** What the mail server called it, once a sender knows. */
@@ -250,6 +327,44 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   // Tuesday's clock is set, so the rhythm keeps itself (step 14).
   "talentpulse.compile": async (timer, now) => {
     await compileTalentPulse(timer.ownerId, now);
+  },
+  // Monday morning: this week's report is built and next Monday is set
+  // (Phase 7 step 9).
+  "report.weekly": async (timer, now) => {
+    await buildWeeklyReport(timer.ownerId, now);
+  },
+  // The day before an interview: the client's reminder is drafted and the TA
+  // is asked to reconfirm the candidate (Phase 5 step 10).
+  "interview.reconfirm": async (timer, now) => {
+    await remindAboutInterview(timer.subjectId, now);
+  },
+  // Thirty days after the first working day, and every month after that: the
+  // late charge is recomputed and the chase drafted (Phase 6 steps 13 and 14).
+  "invoice.due": async (timer, now) => {
+    await chaseThePayment(timer.subjectId, now);
+  },
+  "invoice.chase": async (timer, now) => {
+    await chaseThePayment(timer.subjectId, now);
+  },
+  // Day 75, day 90, and the sixty working days to replace somebody
+  // (Phase 7 steps 2, 3 and 6).
+  "guarantee.warn": async (timer, now) => {
+    await warnAboutGuarantee(timer.subjectId, now);
+  },
+  "guarantee.end": async (timer, now) => {
+    await endGuaranteeClean(timer.subjectId, now);
+  },
+  "replacement.deadline": async (timer, now) => {
+    await askAboutRefund(timer.subjectId, now);
+  },
+  // Two weeks live and the TopJobs advert comes down (Phase 3 step 12).
+  "ad.close": async (timer, now) => {
+    await askAboutClosingAd(timer.subjectId, now);
+  },
+  // Three months after a set went: was anybody in it hired without our being
+  // told? The clock asks; a person decides (Phase 4, Phase 6 step 15).
+  "hire.unreported": async (timer, now) => {
+    await askAboutUnreportedHire(timer.subjectId, now);
   },
 };
 
@@ -930,6 +1045,10 @@ export async function takeOpeningCreated(data: Record<string, unknown>, now = Da
     jdApprovedAt: null,
     linkedInUrl: null,
     linkedInPostedAt: null,
+    depthStage: null,
+    shortlistedTotal: null,
+    pendingCount: null,
+    depthCheckedAt: null,
     handedOverAt: now,
     closedAt: null,
     ownerId: client.ownerId,
@@ -1081,6 +1200,1805 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
     payload: { label: "Talent Pulse" },
   });
   return issue;
+}
+
+/**
+ * Three months after a set went out: was anybody in it hired? (15, Phase 4.)
+ *
+ * The clock only asks. Nobody is invoiced because a clock fired - a person
+ * checks with the client and with TA, and the surcharge goes only when
+ * somebody says they are sure, because the whole point of it is that we were
+ * not told and might be wrong about why.
+ */
+export async function askAboutUnreportedHire(setId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return;
+  // A set whose candidates we know were placed is not a question.
+  const placed = db.placements.some((p) => p.openingTaId === set.openingTaId && p.state !== "cancelled");
+  if (placed) return;
+
+  const months = numberOf(db, "hire.unreportedMonths", 3);
+  await createTask({
+    kind: "decide",
+    title: "Three months on: was anybody from " + set.name + " hired?",
+    body:
+      "The set went out " +
+      months +
+      " months ago and nothing came back. Ask the client, and look at the candidates on LinkedIn.\n\n" +
+      "If one of them is working there, the agreement provides for a surcharge of " +
+      numberOf(db, "hire.surchargePct", 50) +
+      "% of the fee. Confirm it on the set's page - and if we are wrong, dismiss it with a reason. Nobody is invoiced by a clock.",
+    assigneeId: set.ownerId,
+    dueAt: now,
+    subjectType: "clientSet",
+    subjectId: setId,
+    link: "/sets/" + setId,
+  });
+}
+
+/**
+ * The surcharge invoice for a hire we were never told about (15, Phase 6 step 15).
+ *
+ * The salary is typed in by a person, because a client who did not tell us
+ * they hired somebody has not told us the package either. It is the
+ * requirement's salary unless somebody knows better, and whatever is used is
+ * written on the invoice so the client can argue with the number rather than
+ * with us.
+ */
+export async function draftSurchargeInvoice(
+  setId: Id,
+  candidateName: string,
+  monthlySalary: number,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return { ok: false, what: "That set is gone.", invoiceId: null };
+  const already = db.invoices.find((i) => i.setId === setId && i.kind === "surcharge");
+  if (already) {
+    return { ok: false, what: "A surcharge for this set has already been raised.", invoiceId: already.id };
+  }
+
+  const position = positionForSet(db, set);
+  const client = set.clientId ? clientIn(db, set.clientId) : null;
+  const agreement = client?.leadId
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    : null;
+  const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
+  const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+  const pct = numberOf(db, "hire.surchargePct", 50);
+  const fee = feeAmount({ feeMonths, feeBasis }, monthlySalary);
+  const amount = Math.round(fee * (pct / 100) * 100) / 100;
+
+  const invoice = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
+    kind: "surcharge",
+    about:
+      candidateName +
+      " (" +
+      (position?.title ?? set.role) +
+      "), hired without our being told - " +
+      pct +
+      "% of " +
+      feeInWords({ feeMonths, feeBasis }) +
+      " of " +
+      money(monthlySalary, "LKR"),
+    setId,
+    againstInvoiceId: null,
+    placementId: null,
+    clientId: set.clientId,
+    state: "draft",
+    amount,
+    currency: "LKR",
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: dueOn(now, numberOf(db, "invoice.dueDays", DUE_DAYS)),
+    paidAt: null,
+    writtenOffAt: null,
+    reason: null,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+
+  await createTask({
+    kind: "approve",
+    title: "A surcharge invoice: " + invoice.number,
+    body:
+      "For " +
+      candidateName +
+      ", who was hired without our being told. Read it before it goes - this one starts an argument if the facts are wrong.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    link: "/invoices/" + invoice.id,
+  });
+  return { ok: true, what: "Surcharge " + invoice.number + " drafted: " + money(amount, "LKR") + ".", invoiceId: invoice.id };
+}
+
+/**
+ * A credit note (15, Phase 6 step 16).
+ *
+ * For a refund under the guarantee, or a correction to an invoice we got
+ * wrong. It is its own row rather than a negative payment, because what the
+ * client holds is a document of its own and the two have to agree.
+ */
+export async function draftCreditNote(
+  againstInvoiceId: Id,
+  amount: number,
+  why: string,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const against = invoiceIn(db, againstInvoiceId);
+  if (!against) return { ok: false, what: "That invoice is gone.", invoiceId: null };
+
+  const note = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now) + "-CN",
+    kind: "credit_note",
+    about: "Credit note against " + against.number + ". " + why,
+    setId: null,
+    againstInvoiceId,
+    placementId: against.placementId,
+    clientId: against.clientId,
+    state: "draft",
+    amount,
+    currency: against.currency,
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: null,
+    paidAt: null,
+    writtenOffAt: null,
+    reason: why,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+  await createTask({
+    kind: "approve",
+    title: "A credit note: " + note.number,
+    body: money(amount, against.currency) + " against " + against.number + ".\n\n" + why,
+    assigneeId: note.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: note.id,
+    link: "/invoices/" + note.id,
+  });
+  return { ok: true, what: "Credit note " + note.number + " drafted.", invoiceId: note.id };
+}
+
+/* ── The AI layer (15, Phase 9) ────────────────────────────────── */
+
+export async function addAiRun(input: Omit<OpsAiRun, "id">): Promise<OpsAiRun> {
+  if (!usingConvex()) return repo.addAiRun(input);
+  return (await convexMutation<OpsAiRun>("ops/data:addAiRun", input)) as OpsAiRun;
+}
+
+export async function recordAiOutcome(runId: Id, outcome: string, kept: unknown, by: Id): Promise<void> {
+  if (!usingConvex()) {
+    repo.recordAiOutcome(runId, outcome, kept, by);
+    return;
+  }
+  await convexMutation("ops/data:recordAiOutcome", { runId, outcome, kept, by });
+}
+
+export function aiRunIn(db: OpsDatabase, runId: Id): OpsAiRun | null {
+  return db.aiRuns.find((r) => r.id === runId) ?? null;
+}
+
+export function aiRunsNewestFirst(db: OpsDatabase): OpsAiRun[] {
+  return [...db.aiRuns].sort((a, b) => b.at - a.at);
+}
+
+/** What the layer has spent since midnight, Colombo. */
+export function aiSpentToday(db: OpsDatabase, now = Date.now()): number {
+  const today = colomboDate(now);
+  const spent = db.aiRuns.filter((r) => colomboDate(r.at) === today).reduce((sum, r) => sum + r.cost, 0);
+  return Math.round(spent * 100) / 100;
+}
+
+/** The switches as the layer reads them, settings and keys together. */
+export function aiSwitches(db: OpsDatabase, now = Date.now()): AiSwitches {
+  const tasks: Record<string, boolean> = {};
+  for (const task of Object.keys(AI_TASKS)) {
+    const value = db.settings.find((s) => s.key === "ai.task." + task)?.value;
+    tasks[task] = value !== false;
+  }
+  return {
+    on: switchedOn(db, "switch.aiEnabled"),
+    tasks,
+    dailyBudget: numberOf(db, "ai.dailyBudget", DAILY_BUDGET),
+    spentToday: aiSpentToday(db, now),
+  };
+}
+
+/**
+ * Run one AI task and write it down (steps 1 to 4, 17 and 19).
+ *
+ * The only way the rest of the system asks a model anything. It checks the
+ * switches and the budget first, asks once, records the run whatever
+ * happened, and hands back a proposal - which is a suggestion with an id, so
+ * what the person then does with it can be recorded against it.
+ *
+ * It is called from an action a person pressed or from the clock pass, never
+ * while a screen renders: the Claude subscription is a pool, and a page that
+ * spends on every render empties it by lunchtime (3 Nov).
+ */
+export async function runAi<T>(
+  task: AiTask,
+  built: { system: string; prompt: string },
+  by: Id,
+  about: { type: string; id: Id } | null = null,
+  read: string[] = [],
+  now = Date.now(),
+): Promise<{ proposal: Proposal<T>; runId: Id | null; problem: string | null }> {
+  const db = await desk();
+  const provider = providerNow(task);
+  const problem = problemWithRunning(task, provider, aiSwitches(db, now));
+  if (problem) return { proposal: nothing<T>(task, problem, provider), runId: null, problem };
+
+  const proposal = await ask<T>({ task, system: built.system, prompt: built.prompt, read });
+  const run = await addAiRun({
+    task,
+    provider: proposal.provider,
+    model: proposal.model,
+    read,
+    proposed: proposal.data,
+    outcome: null,
+    kept: null,
+    ok: proposal.ok,
+    because: proposal.because,
+    tokensIn: proposal.tokensIn,
+    tokensOut: proposal.tokensOut,
+    cost: proposal.cost,
+    ms: proposal.ms,
+    subjectType: about?.type ?? null,
+    subjectId: about?.id ?? null,
+    by,
+    at: now,
+  });
+  return { proposal, runId: run.id, problem: proposal.ok ? null : proposal.because };
+}
+
+/**
+ * How often each task's proposals are changed (step 16).
+ *
+ * Accuracy, not impressions: the share of proposals a person used as they
+ * were. A task whose proposals are nearly always edited is a prompt to fix,
+ * and the screen says so plainly rather than hiding it behind a number.
+ */
+export function aiAccuracy(db: OpsDatabase): {
+  task: string;
+  runs: number;
+  used: number;
+  edited: number;
+  ignored: number;
+  cost: number;
+  words: string;
+}[] {
+  return Object.keys(AI_TASKS).map((task) => {
+    const runs = db.aiRuns.filter((r) => r.task === task);
+    const decided = runs.filter((r) => r.outcome);
+    const used = decided.filter((r) => r.outcome === "used").length;
+    const edited = decided.filter((r) => r.outcome === "edited").length;
+    const ignored = decided.filter((r) => r.outcome === "ignored").length;
+    const cost = Math.round(runs.reduce((sum, r) => sum + r.cost, 0) * 100) / 100;
+    let words: string;
+    if (!runs.length) words = "Never used yet";
+    else if (!decided.length) words = runs.length + " asked, none decided on yet";
+    else {
+      const share = Math.round((used / decided.length) * 100);
+      words =
+        runs.length +
+        " asked · " +
+        share +
+        "% used as they came" +
+        (edited ? ", " + edited + " edited" : "") +
+        (ignored ? ", " + ignored + " ignored" : "") +
+        (share < 50 && decided.length >= 4 ? " · worth fixing the prompt, or switching this one off" : "");
+    }
+    return { task, runs: runs.length, used, edited, ignored, cost, words };
+  });
+}
+
+/* ── Paid adverts: TopJobs (15, Phase 3 step 12) ───────────────── */
+
+export async function addAd(input: Omit<OpsAd, "id" | "createdAt" | "updatedAt">): Promise<OpsAd> {
+  if (!usingConvex()) return repo.addAd(input);
+  return (await convexMutation<OpsAd>("ops/data:addAd", input)) as OpsAd;
+}
+
+export async function patchAd(
+  adId: Id,
+  patch: Partial<OpsAd>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchAd(adId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchAd", { adId, patch, by, what, reason });
+}
+
+export function adIn(db: OpsDatabase, adId: Id): OpsAd | null {
+  return db.ads.find((a) => a.id === adId) ?? null;
+}
+
+export function adsNewestFirst(db: OpsDatabase): OpsAd[] {
+  return [...db.ads].sort((a, b) => b.requestedAt - a.requestedAt);
+}
+
+export function liveAdFor(db: OpsDatabase, openingTaId: string): OpsAd | null {
+  return (
+    db.ads.find((a) => a.openingTaId === openingTaId && a.state !== "closed" && a.state !== "dropped") ?? null
+  );
+}
+
+/**
+ * Two weeks are up: the advert comes down (step 12).
+ *
+ * TopJobs tells ops when it closes and ops tells the TA; the clock is here so
+ * that an advert nobody took down is noticed by us rather than by a candidate
+ * applying to a job that has gone.
+ */
+export async function askAboutClosingAd(adId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad || ad.state !== "live") return;
+  await createTask({
+    kind: "check",
+    title: "The TopJobs advert is two weeks old: " + ad.title,
+    body:
+      "It should come down now. TopJobs usually tells us; if they have not, ask them. Then tick it closed here and the TA System is told, so nobody is left applying to a job that has gone.",
+    assigneeId: ad.ownerId,
+    dueAt: now,
+    subjectType: "ad",
+    subjectId: adId,
+    link: "/adverts/" + adId,
+  });
+}
+
+/* ── Guarantees and the close checklist (15, Phase 7) ──────────── */
+
+export async function addGuarantee(
+  input: Omit<OpsGuarantee, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsGuarantee> {
+  if (!usingConvex()) return repo.addGuarantee(input);
+  return (await convexMutation<OpsGuarantee>("ops/data:addGuarantee", input)) as OpsGuarantee;
+}
+
+export async function patchGuarantee(
+  guaranteeId: Id,
+  patch: Partial<OpsGuarantee>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchGuarantee(guaranteeId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchGuarantee", { guaranteeId, patch, by, what, reason });
+}
+
+export function guaranteeIn(db: OpsDatabase, guaranteeId: Id): OpsGuarantee | null {
+  return db.guarantees.find((g) => g.id === guaranteeId) ?? null;
+}
+
+export function guaranteesNewestFirst(db: OpsDatabase): OpsGuarantee[] {
+  return [...db.guarantees].sort((a, b) => b.startsAt - a.startsAt);
+}
+
+/** The live guarantee for a placement, or for an opening being replaced. */
+export function guaranteeForPlacement(db: OpsDatabase, placementId: Id): OpsGuarantee | null {
+  return [...db.guarantees].reverse().find((g) => g.placementId === placementId) ?? null;
+}
+
+export function replacingGuaranteeFor(db: OpsDatabase, openingTaId: string): OpsGuarantee | null {
+  return db.guarantees.find((g) => g.openingTaId === openingTaId && g.state === "replacing") ?? null;
+}
+
+export async function addChecklist(
+  input: Omit<OpsCloseChecklist, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsCloseChecklist> {
+  if (!usingConvex()) return repo.addChecklist(input);
+  return (await convexMutation<OpsCloseChecklist>("ops/data:addChecklist", input)) as OpsCloseChecklist;
+}
+
+export async function patchChecklist(
+  checklistId: Id,
+  patch: Partial<OpsCloseChecklist>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchChecklist(checklistId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchChecklist", { checklistId, patch, by, what, reason });
+}
+
+export function checklistIn(db: OpsDatabase, checklistId: Id): OpsCloseChecklist | null {
+  return db.closeChecklists.find((c) => c.id === checklistId) ?? null;
+}
+
+export function checklistsNewestFirst(db: OpsDatabase): OpsCloseChecklist[] {
+  return [...db.closeChecklists].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function openChecklistFor(db: OpsDatabase, openingTaId: string): OpsCloseChecklist | null {
+  return db.closeChecklists.find((c) => c.openingTaId === openingTaId && !c.completedAt) ?? null;
+}
+
+/**
+ * Start the guarantee (step 2).
+ *
+ * Ninety days from the day they joined, for every hire, whether or not the
+ * fee has been paid yet - because the clock is from joining and the payment
+ * can come later. Whether it is honoured is a different question, asked the
+ * day somebody leaves.
+ *
+ * A replacement gets its own guarantee and no invoice, which is the owner's
+ * rule.
+ */
+export async function startGuarantee(
+  placementId: Id,
+  now = Date.now(),
+): Promise<OpsGuarantee | null> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement || !placement.joinedAt) return null;
+  const already = db.guarantees.find((g) => g.placementId === placementId);
+  if (already) return already;
+
+  const days = numberOf(db, "guarantee.days", GUARANTEE_DAYS);
+  const invoice = placement.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
+  const guarantee = await addGuarantee({
+    placementId,
+    openingTaId: placement.openingTaId,
+    clientId: placement.clientId,
+    candidateName: placement.candidateName,
+    state: "running",
+    startsAt: placement.joinedAt,
+    endsAt: endsOn(placement.joinedAt, days),
+    // A replacement is covered by the fee already paid on the first hire.
+    feePaidAt: invoice?.paidAt ?? (placement.isReplacementOf ? now : null),
+    leftAt: null,
+    reason: null,
+    deadlineAt: null,
+    replacedByPlacementId: null,
+    refundPct: null,
+    refundAmount: null,
+    decidedBy: null,
+    decidedAt: null,
+    ownerId: placement.ownerId,
+  });
+
+  await startTimer({
+    kind: "guarantee.warn",
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    startsAt: now,
+    dueAt: warnOn(placement.joinedAt, numberOf(db, "guarantee.warnDay", WARN_DAY)),
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: placement.candidateName },
+  });
+  await startTimer({
+    kind: "guarantee.end",
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    startsAt: now,
+    dueAt: guarantee.endsAt,
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: placement.candidateName },
+  });
+  return guarantee;
+}
+
+/**
+ * Day 75: the warning (step 2).
+ *
+ * Fifteen days left is the owner's own number. Nothing is sent to anybody -
+ * it is a look at the person while there is still time to do something if
+ * they are wobbling.
+ */
+export async function warnAboutGuarantee(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee || guarantee.state !== "running") return;
+  await patchGuarantee(guaranteeId, { state: "warned" }, null, "guarantee.warned", null);
+  await createTask({
+    kind: "check",
+    title: "Fifteen days of guarantee left: " + guarantee.candidateName,
+    body:
+      "Ask the TA how they are getting on, and the client if there is anything to know. A leaver found on day 76 costs us a replacement; one found now may not leave at all.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+}
+
+/**
+ * Day 90 with nobody having left: a clean end (step 3).
+ *
+ * The guarantee ends and the close checklist is made, because this is the
+ * ordinary way a position finishes and the things that get forgotten are
+ * forgotten here.
+ */
+export async function endGuaranteeClean(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) return;
+  if (guarantee.state !== "running" && guarantee.state !== "warned") return;
+
+  await patchGuarantee(guaranteeId, { state: "ended_clean" }, null, "guarantee.endedClean", null);
+  await cancelClocksFor(db, "guarantee", guaranteeId, guarantee.ownerId, "The guarantee has ended.", null);
+  const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === guarantee.ownerId));
+  await draftMessage({
+    channel: "internal",
+    to: tell.map((m) => m.email).filter(Boolean),
+    subject: "Guarantee ended cleanly: " + guarantee.candidateName,
+    body:
+      guarantee.candidateName +
+      " has been in the job ninety days. Nothing is owed either way, and the position closes.",
+    templateKey: "guarantee.ended",
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+  });
+  await openCloseChecklist(guarantee.openingTaId, "ended_clean", guarantee.ownerId, now);
+}
+
+/**
+ * Somebody left inside the ninety days (step 4).
+ *
+ * One question decides everything: was the fee paid in full? If it was not,
+ * there was no guarantee to honour and the position simply closes. If it
+ * was, the same position reopens and a replacement comes first - with sixty
+ * working days to finalise one.
+ */
+export async function markLeaver(
+  guaranteeId: Id,
+  leftAt: number,
+  reason: string,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) return { ok: false, what: "That guarantee is gone." };
+  if (guarantee.state !== "running" && guarantee.state !== "warned") {
+    return { ok: false, what: "That guarantee is not running any more." };
+  }
+
+  const verdict = verdictOnLeaver(guarantee.feePaidAt);
+  const deadlineAt =
+    verdict.state === "replacing"
+      ? replacementDeadline(
+          leftAt,
+          numberOf(db, "replacement.workingDays", REPLACEMENT_WORKING_DAYS),
+          db.holidays.map((h) => h.date),
+        )
+      : null;
+
+  await patchGuarantee(
+    guaranteeId,
+    { state: verdict.state, leftAt, reason, deadlineAt },
+    by,
+    "guarantee." + verdict.state,
+    reason,
+  );
+  await cancelClocksFor(db, "guarantee", guaranteeId, by ?? guarantee.ownerId, "They have left.", null);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + (placementIn(db, guarantee.placementId)?.placementTaId ?? "") + "/left",
+    { leftAt, reason, guaranteeHolds: verdict.state === "replacing" },
+    { type: "guarantee", id: guaranteeId },
+  );
+
+  if (verdict.state === "void") {
+    await openCloseChecklist(guarantee.openingTaId, "void", by ?? guarantee.ownerId, now);
+    return { ok: true, what: verdict.because };
+  }
+
+  // The search reopens on TA's side, because TA holds the pipeline.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + guarantee.openingTaId + "/status",
+    { status: "open", reason: "replacement under the guarantee" },
+    { type: "guarantee", id: guaranteeId },
+  );
+  await startTimer({
+    kind: "replacement.deadline",
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    startsAt: now,
+    dueAt: deadlineAt ?? now,
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: guarantee.candidateName },
+  });
+  await createTask({
+    kind: "check",
+    title: "A replacement for " + guarantee.candidateName,
+    body:
+      verdict.because +
+      "\n\nThe TA System has been asked to reopen the position. Sixty working days to finalise a replacement; after that it is the Director's decision, not a timeout.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+  return { ok: true, what: verdict.because };
+}
+
+/**
+ * The sixty working days have run out (step 6).
+ *
+ * Nothing is refunded by a clock. The question goes to the Director of
+ * Operations, who decides - and the owner's rule is that a refund is a
+ * decision, never a default.
+ */
+export async function askAboutRefund(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee || guarantee.state !== "replacing") return;
+  await createTask({
+    kind: "decide",
+    title: "No replacement for " + guarantee.candidateName + " - refund?",
+    body:
+      "Sixty working days have gone since they left and there is no replacement. The agreement says 50% of the fee, by decision. Replacing them is still the better answer if it is possible at all.",
+    assigneeId: db.members.find((m) => m.active && m.role === "director_ops")?.id ?? guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+}
+
+/**
+ * A replacement was placed (step 5).
+ *
+ * Called when a placement arrives for an opening whose guarantee is looking
+ * for one. The old guarantee is closed as replaced, the new placement is
+ * marked a replacement so nothing is invoiced, and the new guarantee starts
+ * from the new joining day.
+ */
+export async function takeReplacement(
+  placementId: Id,
+  openingTaId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const db = await desk();
+  const guarantee = replacingGuaranteeFor(db, openingTaId);
+  if (!guarantee) return false;
+  await patchPlacement(
+    placementId,
+    { isReplacementOf: guarantee.placementId },
+    null,
+    "placement.isReplacement",
+    "Under the guarantee for " + guarantee.candidateName + ", so nothing is invoiced.",
+  );
+  await patchGuarantee(
+    guarantee.id,
+    { state: "replaced", replacedByPlacementId: placementId },
+    null,
+    "guarantee.replaced",
+    null,
+  );
+  await cancelClocksFor(db, "guarantee", guarantee.id, guarantee.ownerId, "They have been replaced.", null);
+  await createTask({
+    kind: "check",
+    title: "Replacement placed for " + guarantee.candidateName,
+    body:
+      "Nothing is invoiced for this one - it is the replacement under the guarantee - and a new ninety days starts the day they join.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    link: "/guarantees/" + guarantee.id,
+  });
+  return true;
+}
+
+/**
+ * Open the close checklist (step 11).
+ *
+ * One per opening at a time. The items are the things that get forgotten, and
+ * only the ones this position really had: no LinkedIn post means no item
+ * about closing one.
+ */
+export async function openCloseChecklist(
+  openingTaId: string,
+  trigger: string,
+  by: Id,
+  now = Date.now(),
+): Promise<OpsCloseChecklist | null> {
+  if (!openingTaId) return null;
+  const db = await desk();
+  const already = openChecklistFor(db, openingTaId);
+  if (already) return already;
+  const position = positionForOpening(db, openingTaId);
+
+  const checklist = await addChecklist({
+    openingTaId,
+    positionId: position?.id ?? null,
+    clientId: position?.clientId ?? null,
+    trigger,
+    items: closeItemsFor({ linkedInUrl: position?.linkedInUrl ?? null }, false),
+    completedAt: null,
+    ownerId: position?.ownerId ?? by,
+  });
+  await createTask({
+    kind: "check",
+    title: "Close the position: " + (position?.title ?? openingTaId),
+    body:
+      (CLOSE_TRIGGERS[trigger] ?? trigger) +
+      ".\n\nThe list is on the close page. Nothing is closed until every item is ticked, because this is where the adverts get left up.",
+    assigneeId: checklist.ownerId,
+    dueAt: now,
+    subjectType: "close",
+    subjectId: checklist.id,
+    link: "/closes/" + checklist.id,
+  });
+  return checklist;
+}
+
+/* ── Placements, invoices and payments (15, Phase 6) ───────────── */
+
+export async function addPlacement(
+  input: Omit<OpsPlacement, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsPlacement> {
+  if (!usingConvex()) return repo.addPlacement(input);
+  return (await convexMutation<OpsPlacement>("ops/data:addPlacement", input)) as OpsPlacement;
+}
+
+export async function patchPlacement(
+  placementId: Id,
+  patch: Partial<OpsPlacement>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchPlacement(placementId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchPlacement", { placementId, patch, by, what, reason });
+}
+
+export function placementIn(db: OpsDatabase, placementId: Id): OpsPlacement | null {
+  return db.placements.find((p) => p.id === placementId) ?? null;
+}
+
+export function placementsNewestFirst(db: OpsDatabase): OpsPlacement[] {
+  return [...db.placements].sort((a, b) => (b.joinDate ?? b.createdAt) - (a.joinDate ?? a.createdAt));
+}
+
+export async function addInvoice(input: Omit<OpsInvoice, "id" | "createdAt" | "updatedAt">): Promise<OpsInvoice> {
+  if (!usingConvex()) return repo.addInvoice(input);
+  return (await convexMutation<OpsInvoice>("ops/data:addInvoice", input)) as OpsInvoice;
+}
+
+export async function patchInvoice(
+  invoiceId: Id,
+  patch: Partial<OpsInvoice>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchInvoice(invoiceId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchInvoice", { invoiceId, patch, by, what, reason });
+}
+
+export function invoiceIn(db: OpsDatabase, invoiceId: Id): OpsInvoice | null {
+  return db.invoices.find((i) => i.id === invoiceId) ?? null;
+}
+
+export function invoicesNewestFirst(db: OpsDatabase): OpsInvoice[] {
+  return [...db.invoices].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Take a placement from TA, the day it happens (step 3).
+ *
+ * The owner's own complaint, in the owner's words: Asma learns about a
+ * placement months later. So the day TA places somebody, accounts and the ops
+ * owner are told, and the agreement's fee rule is copied onto the placement -
+ * an agreement changed next year must not change an invoice already sent.
+ *
+ * TA's placement id is the one thing both sides agree on, so the same event
+ * twice is one placement.
+ */
+export async function takePlacement(
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<OpsPlacement | null> {
+  const placementTaId = String(data.placementId ?? "").trim();
+  if (!placementTaId) return null;
+  const db = await desk();
+  const already = db.placements.find((p) => p.placementTaId === placementTaId);
+  if (already) return already;
+
+  const answer = await taPlacement(placementTaId);
+  if (!answer.ok) return null;
+  const theirs = answer.data;
+  const position = theirs.openingId ? positionForOpening(db, theirs.openingId) : null;
+  const client = position?.clientId ? clientIn(db, position.clientId) : null;
+
+  // The fee rule off the signed agreement, not off today's settings.
+  const agreement = client?.leadId
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    : null;
+  const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
+  const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+
+  const placement = await addPlacement({
+    placementTaId,
+    applicationTaId: theirs.applicationId ?? "",
+    openingTaId: theirs.openingId ?? "",
+    positionId: position?.id ?? null,
+    clientId: client?.id ?? null,
+    candidateName: theirs.candidateName ?? placementTaId,
+    state: "placed",
+    monthlySalary: theirs.placedSalary ?? null,
+    currency: theirs.currency || "LKR",
+    offerLetterFileRef: theirs.offerLetterFileId ?? null,
+    joinDate: theirs.joinDateMs ?? null,
+    joinedAt: null,
+    dojHistory: [],
+    feeMonths,
+    feeBasis,
+    isReplacementOf: null,
+    invoiceId: null,
+    reason: null,
+    noShowChoice: null,
+    ownerId: position?.ownerId ?? db.members.find((m) => m.active && m.role === "ops_owner")?.id ?? "m_owner",
+  });
+
+  // The same-day notice, which is the whole point of this step. Internal, so
+  // it needs nobody's approval - it never leaves the company.
+  const accounts = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement.ownerId));
+  await draftMessage({
+    channel: "internal",
+    to: accounts.map((m) => m.email).filter(Boolean),
+    subject: "Placed today: " + placement.candidateName + (position ? " - " + position.title : ""),
+    body: [
+      placement.candidateName + " has been placed" + (client ? " at " + client.name : "") + ".",
+      "",
+      "Package: " + (placement.monthlySalary ? money(placement.monthlySalary, placement.currency) + " a month" : "not given"),
+      "Joining: " + (placement.joinDate ? colomboDateInWords(placement.joinDate) : "not given"),
+      "Fee: " + feeInWords({ feeMonths, feeBasis }),
+      "",
+      "The invoice is drafted on the day they join, due thirty days after their first working day.",
+    ].join("\n"),
+    templateKey: "placement.notice",
+    subjectType: "placement",
+    subjectId: placement.id,
+  });
+
+  // Anything TA could not give us stops the invoice later, so it is asked for
+  // now rather than on the joining day.
+  const missing = missingPlacementFields(placement);
+  if (missing.length) {
+    await createTask({
+      kind: "record",
+      title: "Missing from the placement: " + missing.join(", "),
+      body:
+        "The TA System sent this placement without " +
+        missing.join(" and ") +
+        ". The invoice cannot be built without the package, so it is asked for now rather than on the joining day.",
+      assigneeId: placement.ownerId,
+      dueAt: now,
+      subjectType: "placement",
+      subjectId: placement.id,
+      link: "/placements/" + placement.id,
+    });
+  }
+
+  // A placement on an opening whose guarantee is looking for a replacement is
+  // that replacement: nothing is invoiced for it (Phase 7 step 5).
+  await takeReplacement(placement.id, placement.openingTaId, now);
+  await startJoinClocks(placement, now);
+  return placement;
+}
+
+/**
+ * TA says they joined, or never turned up (step 7 and step 8).
+ *
+ * Joining starts two things at once: the fee invoice, and the ninety-day
+ * guarantee (which is Phase 7). A no-show starts neither - there is no fee
+ * because there was no placement - and the client has to choose between a
+ * replacement and stopping.
+ */
+export async function takePlacementOutcome(
+  type: string,
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<void> {
+  const placementTaId = String(data.placementId ?? "").trim();
+  if (!placementTaId) return;
+  const db = await desk();
+  const placement = db.placements.find((p) => p.placementTaId === placementTaId);
+  if (!placement) return;
+  if (placement.state !== "placed") return;
+
+  if (type === "placement.joined") {
+    await markPlacementJoined(placement.id, null, now);
+    return;
+  }
+  await patchPlacement(
+    placement.id,
+    { state: "no_show", reason: String(data.reason ?? "").trim() || "Did not turn up." },
+    null,
+    "placement.noShow",
+    "From the TA System.",
+  );
+  await cancelClocksFor(db, "placement", placement.id, placement.ownerId, "They never joined.", null);
+  await createTask({
+    kind: "decide",
+    title: "A no-show: " + placement.candidateName,
+    body:
+      "They did not turn up. Nothing is invoiced and nothing is refunded - the owner's rule - so the client chooses between a replacement and stopping. Draft them the choice.",
+    assigneeId: placement.ownerId,
+    dueAt: now,
+    subjectType: "placement",
+    subjectId: placement.id,
+    link: "/placements/" + placement.id,
+  });
+}
+
+/**
+ * They joined (step 7).
+ *
+ * One door for both ways in: TA's own event, and the button on the joining
+ * day when the TA phones them and tells us. The invoice follows at once,
+ * because thirty days runs from the first working day whether or not anybody
+ * remembered to draft it.
+ */
+export async function markPlacementJoined(
+  placementId: Id,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) return { ok: false, what: "That placement is gone." };
+  if (placement.state === "joined") return { ok: false, what: "They are already down as joined." };
+  if (placement.state !== "placed") return { ok: false, what: "That placement is not waiting to join." };
+
+  await patchPlacement(placementId, { state: "joined", joinedAt: now }, by, "placement.joined", null);
+  await cancelClocksFor(db, "placement", placementId, by ?? placement.ownerId, "They joined.", null);
+
+  const invoiced = await draftFeeInvoice(placementId, by ?? placement.ownerId, now);
+  // Ninety days from today, whatever happens with the money (Phase 7 step 2).
+  const guarantee = await startGuarantee(placementId, now);
+  return {
+    ok: true,
+    what:
+      "Down as joined. " +
+      invoiced.what +
+      (guarantee ? " The ninety-day guarantee runs to " + colomboDateInWords(guarantee.endsAt) + "." : ""),
+  };
+}
+
+/** The reminders before the joining day, and the check on the morning (step 7). */
+export async function startJoinClocks(placement: OpsPlacement, now = Date.now()): Promise<void> {
+  if (!placement.joinDate) return;
+  for (const clock of joinClocks(placement.joinDate, now)) {
+    await startTimer({
+      kind: clock.kind,
+      subjectType: "placement",
+      subjectId: placement.id,
+      startsAt: now,
+      dueAt: clock.dueAt,
+      warnAt: null,
+      ownerId: placement.ownerId,
+      payload: { label: placement.candidateName },
+    });
+  }
+}
+
+/**
+ * The invoice for a fee (step 9).
+ *
+ * Drafted the day they join, not the day they were placed: the agreement
+ * counts thirty days from the first working day. A replacement under the
+ * guarantee is not invoiced again, which is the owner's rule.
+ *
+ * The invoice document itself waits on a template from the owner, exactly as
+ * the agreement did. Until then the lines go in the body of the email, which
+ * is a real invoice a client can pay against and not a made-up form.
+ */
+export async function draftFeeInvoice(
+  placementId: Id,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) return { ok: false, what: "That placement is gone.", invoiceId: null };
+  if (placement.invoiceId) {
+    return { ok: false, what: "This placement has already been invoiced.", invoiceId: placement.invoiceId };
+  }
+  if (placement.isReplacementOf) {
+    return {
+      ok: false,
+      what: "A replacement under the guarantee is not invoiced again. Nothing to send.",
+      invoiceId: null,
+    };
+  }
+  if (placement.state !== "joined") {
+    return { ok: false, what: "The fee is invoiced when they join, not before.", invoiceId: null };
+  }
+  const missing = missingPlacementFields(placement);
+  if (missing.length) {
+    return { ok: false, what: "Still missing " + missing.join(" and ") + ". Ask the TA System for it.", invoiceId: null };
+  }
+
+  const rule = { feeMonths: placement.feeMonths, feeBasis: placement.feeBasis };
+  const amount = feeAmount(rule, placement.monthlySalary ?? 0);
+  const invoice = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
+    kind: "fee",
+    about: null,
+    setId: null,
+    againstInvoiceId: null,
+    placementId,
+    clientId: placement.clientId,
+    state: "draft",
+    amount,
+    currency: placement.currency,
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: dueOn(placement.joinedAt ?? now, numberOf(db, "invoice.dueDays", DUE_DAYS)),
+    paidAt: null,
+    writtenOffAt: null,
+    reason: null,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+  await patchPlacement(placementId, { invoiceId: invoice.id }, by, "placement.invoiced", invoice.number);
+
+  await createTask({
+    kind: "approve",
+    title: "Invoice " + invoice.number + ": " + placement.candidateName,
+    body:
+      "They joined, so the fee is due thirty days from their first working day. Read the invoice, then approve it and it goes to the client's billing address.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    link: "/invoices/" + invoice.id,
+  });
+  return { ok: true, what: "Invoice " + invoice.number + " is drafted for accounts.", invoiceId: invoice.id };
+}
+
+/**
+ * The payment chase (step 13).
+ *
+ * Fired by the clock when an invoice is past due and still owed. The late
+ * charge is recomputed first - 1% a month, compounded, as the agreement words
+ * it - and nothing is charged on an invoice the client disputes in good
+ * faith, also from the agreement.
+ */
+export async function chaseThePayment(
+  invoiceId: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) return { ok: false, what: "That invoice is gone." };
+  if (invoice.state !== "sent" && invoice.state !== "partly_paid") {
+    return { ok: false, what: "That invoice is not waiting for money." };
+  }
+  if (!invoice.dueAt || invoice.dueAt > now) return { ok: false, what: "It is not due yet." };
+
+  const months = monthsLate(invoice.dueAt, now);
+  const charge = lateCharge(
+    invoice.amount,
+    months,
+    numberOf(db, "invoice.latePctPerMonth", LATE_PCT_PER_MONTH),
+    switchedOn(db, "invoice.lateCompounded"),
+    invoice.disputed,
+  );
+  await patchInvoice(
+    invoiceId,
+    { lateMonths: months, lateCharge: charge },
+    null,
+    "invoice.lateCharged",
+    invoice.disputed ? "Disputed in good faith, so nothing is charged." : months + " months late",
+  );
+
+  const dueAt = invoice.dueAt;
+  const client = invoice.clientId ? clientIn(db, invoice.clientId) : null;
+  const to = [client?.billingEmail, ...(client?.billingEmail ? [] : [])].filter((one): one is string => Boolean(one));
+  const wording = templateFor(db, "invoice.chase");
+  const fresh = { ...invoice, lateCharge: charge };
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, invoice.number)
+      .replace(/\{\{amount\}\}/g, money(balanceOf(fresh), invoice.currency))
+      .replace(/\{\{daysLate\}\}/g, String(Math.floor((now - dueAt) / 86_400_000)));
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Invoice {{invoiceNumber}} - still outstanding"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\nInvoice {{invoiceNumber}} is {{daysLate}} days past its due date. {{amount}} is outstanding.\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "invoice.chase",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+  });
+
+  await createTask({
+    kind: "approve",
+    title: "Chase invoice " + invoice.number,
+    body:
+      (invoice.disputed
+        ? "The client disputes this one, so no late charge is added. "
+        : months
+          ? "Late by " + months + (months === 1 ? " month" : " months") + ", so the charge is now " + money(charge, invoice.currency) + ". "
+          : "") + "The chase is drafted - read it before it goes.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    link: "/messages/" + message.id,
+  });
+
+  // The next chase is a month away, and goes on until it is paid or written
+  // off. Nothing collects itself; the clock only keeps asking.
+  await startTimer({
+    kind: "invoice.chase",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    startsAt: now,
+    dueAt: now + 30 * 86_400_000,
+    warnAt: null,
+    ownerId: invoice.ownerId,
+    payload: { label: invoice.number },
+  });
+
+  // Long enough unpaid and somebody has to decide, rather than the chase
+  // running for ever (step 14).
+  const writeOffAfter = numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS);
+  if (Math.floor((now - dueAt) / 86_400_000) >= writeOffAfter) {
+    await createTask({
+      kind: "decide",
+      title: "Write off invoice " + invoice.number + "?",
+      body:
+        "It has been more than " +
+        writeOffAfter +
+        " days. Writing it off voids the guarantee and closes the position, so it is the Director's call, not a habit.",
+      assigneeId: db.members.find((m) => m.active && m.role === "director_ops")?.id ?? invoice.ownerId,
+      dueAt: now,
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      link: "/invoices/" + invoiceId,
+    });
+  }
+  return { ok: true, what: "The chase is drafted. " + money(balanceOf(fresh), invoice.currency) + " outstanding." };
+}
+
+/* ── Interviews and references (15, Phase 5) ───────────────────── */
+
+export async function addInterview(
+  input: Omit<OpsInterview, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsInterview> {
+  if (!usingConvex()) return repo.addInterview(input);
+  return (await convexMutation<OpsInterview>("ops/data:addInterview", input)) as OpsInterview;
+}
+
+export async function patchInterview(
+  interviewId: Id,
+  patch: Partial<OpsInterview>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchInterview(interviewId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchInterview", { interviewId, patch, by, what, reason });
+}
+
+export function interviewIn(db: OpsDatabase, interviewId: Id): OpsInterview | null {
+  return db.interviews.find((i) => i.id === interviewId) ?? null;
+}
+
+export function interviewsNewestFirst(db: OpsDatabase): OpsInterview[] {
+  return [...db.interviews].sort((a, b) => (b.at ?? b.createdAt) - (a.at ?? a.createdAt));
+}
+
+/** The live interview for one application, if there is one. */
+export function liveInterviewFor(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
+  return (
+    db.interviews.find(
+      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && i.state !== "cancelled",
+    ) ?? null
+  );
+}
+
+/**
+ * The newest interview for one application, held or not.
+ *
+ * The TA phones the candidate **after** the interview, so their feedback and
+ * TA's own outcome both arrive once it is already marked held: looking only
+ * for a live one dropped them on the floor (found by the whole-flow test,
+ * 4 Nov).
+ */
+export function interviewForApplication(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
+  return (
+    [...db.interviews]
+      .reverse()
+      .find((i) => i.applicationTaId === applicationTaId && i.state !== "cancelled") ?? null
+  );
+}
+
+export async function addReference(
+  input: Omit<OpsReferenceRequest, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsReferenceRequest> {
+  if (!usingConvex()) return repo.addReference(input);
+  return (await convexMutation<OpsReferenceRequest>("ops/data:addReference", input)) as OpsReferenceRequest;
+}
+
+export async function patchReference(
+  referenceId: Id,
+  patch: Partial<OpsReferenceRequest>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchReference(referenceId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchReference", { referenceId, patch, by, what, reason });
+}
+
+export function referenceIn(db: OpsDatabase, referenceId: Id): OpsReferenceRequest | null {
+  return db.references.find((r) => r.id === referenceId) ?? null;
+}
+
+export function referenceForApplication(db: OpsDatabase, applicationTaId: string): OpsReferenceRequest | null {
+  return [...db.references].reverse().find((r) => r.applicationTaId === applicationTaId) ?? null;
+}
+
+/**
+ * The clocks a booked interview starts (step 10).
+ *
+ * Two, and they do different work. The day before at nine the client is
+ * reminded and the TA is asked to reconfirm the candidate - the owner's rule,
+ * because a candidate who has gone quiet is better found the day before than
+ * on the morning. At the interview time itself somebody is asked whether it
+ * actually happened, or an interview nobody attended is only noticed when the
+ * client complains.
+ */
+export async function startInterviewClocks(interview: OpsInterview, now = Date.now()): Promise<void> {
+  if (!interview.at) return;
+  const label = interview.candidateName + ", round " + interview.round;
+  const reconfirm = reconfirmAt(interview.at);
+  if (reconfirm > now) {
+    await startTimer({
+      kind: "interview.reconfirm",
+      subjectType: "interview",
+      subjectId: interview.id,
+      startsAt: now,
+      dueAt: reconfirm,
+      warnAt: null,
+      ownerId: interview.ownerId,
+      payload: { label },
+    });
+  }
+  await startTimer({
+    kind: "interview.day",
+    subjectType: "interview",
+    subjectId: interview.id,
+    startsAt: now,
+    dueAt: interview.at,
+    warnAt: null,
+    ownerId: interview.ownerId,
+    payload: { label },
+  });
+}
+
+/**
+ * The day before: remind the client, and ask the TA about the candidate.
+ *
+ * The reminder to the client is drafted like everything else. The TA's half is
+ * a task, because reconfirming the candidate is the TA's own work and their
+ * channels, never ours.
+ */
+export async function remindAboutInterview(
+  interviewId: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone." };
+  if (interview.state !== "booked" && interview.state !== "reconfirmed") {
+    return { ok: false, what: "That interview is not booked any more." };
+  }
+
+  const wording = templateFor(db, "interview.reminder");
+  const when = interview.at ? colomboDateInWords(interview.at) : "tomorrow";
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{when\}\}/g, when)
+      .replace(/\{\{whereOrLink\}\}/g, interview.whereOrLink);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "Tomorrow: {{candidate}}"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\n{{candidate}} is with you {{when}}.\n\n{{whereOrLink}}\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.reminder",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await createTask({
+    kind: "check",
+    title: "Ask the TA to reconfirm: " + interview.candidateName,
+    body:
+      "The interview is tomorrow. The TA reconfirms the candidate through their own channels - we never write to a candidate.\n\nIf the candidate has gone quiet, the client has to be told today, not in the morning.",
+    assigneeId: interview.ownerId,
+    dueAt: now,
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/interviews/" + interviewId,
+  });
+  return { ok: true, what: "The client's reminder is drafted and the TA has been asked. Message " + message.id };
+}
+
+/**
+ * Draft the drop-out notice (step 11).
+ *
+ * Raised by TA's own event when a candidate pulls out, and by the button when
+ * somebody hears it first. The notice goes whatever the hour, but how late it
+ * is said in the task, because the owner's promise is a day's warning.
+ */
+export async function noticeCandidateOut(
+  interviewId: Id,
+  reason: string,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; messageId: Id | null }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone.", messageId: null };
+  if (interview.state === "cancelled" || interview.state === "attended") {
+    return { ok: false, what: "That interview is already finished.", messageId: null };
+  }
+
+  const standing = interview.at
+    ? noticeStanding(interview.at, now, numberOf(db, "interview.noticeDays", NOTICE_DAYS), numberOf(db, "interview.noticeHours", NOTICE_HOURS))
+    : { ok: true, late: false, what: "No time was agreed yet, so nobody is waiting for them." };
+
+  const wording = templateFor(db, "interview.dropout_notice");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{when\}\}/g, interview.at ? colomboDateInWords(interview.at) : "the agreed time")
+      .replace(/\{\{reason\}\}/g, reason);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "{{candidate}} - interview {{when}}"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\n{{candidate}} is no longer able to attend {{when}}. We are sorry for the short notice and are putting a back-up in front of you.\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.dropout_notice",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(
+    interviewId,
+    { state: "cancelled", reason: reason },
+    by,
+    "interview.candidateOut",
+    reason,
+  );
+  await cancelClocksFor(db, "interview", interviewId, by ?? interview.ownerId, "The candidate came out of it.", null);
+  await createTask({
+    kind: "check",
+    title: "A back-up for " + interview.candidateName,
+    body:
+      standing.what +
+      "\n\nThe notice to the client is drafted and waiting for you. Then ask the TA for the back-up they kept: the position cannot sit on one candidate.",
+    assigneeId: interview.ownerId,
+    dueAt: now,
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/messages/" + message.id,
+  });
+  return { ok: true, what: standing.what, messageId: message.id };
+}
+
+/**
+ * The candidate's feedback, which TA collects, drafted for the client (step 15).
+ *
+ * The TA phones the candidate after five; this is what we do with what they
+ * say. Drafted, never sent by itself, and the owner approves it the next
+ * morning rather than at night.
+ */
+export async function draftCandidateFeedback(
+  interviewId: Id,
+  feedback: string,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone." };
+
+  const wording = templateFor(db, "interview.client_feedback");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{candidate\}\}/g, interview.candidateName)
+      .replace(/\{\{feedback\}\}/g, feedback)
+      .replace(/\{\{round\}\}/g, String(interview.round));
+
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject: fill(wording?.subject ?? "{{candidate}} - after the interview"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\nWe spoke to {{candidate}} after round {{round}}.\n\n{{feedback}}\n\nMay we have your own feedback when you have it?\n\nKind regards\nCareer 141",
+    ),
+    templateKey: "interview.client_feedback",
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+
+  await patchInterview(interviewId, { candidateFeedback: feedback }, null, "interview.candidateFeedback", null);
+  await createTask({
+    kind: "approve",
+    title: "The candidate's feedback, for the client: " + interview.candidateName,
+    body: "The TA has spoken to the candidate. The message to the client is drafted - read it in the morning, then approve it.",
+    assigneeId: interview.ownerId,
+    dueAt: nextNineAm(now),
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: "/messages/" + message.id,
+  });
+  return { ok: true, what: "Drafted for the client, waiting for the morning." };
+}
+
+/**
+ * What TA tells us about an interview (steps 11, 12, 15 and 17).
+ *
+ * Matched on TA's own application id, because that is the one thing both
+ * sides agree on. An event about an interview we do not have is recorded and
+ * left alone: TA may have booked it itself, and inventing a row from one
+ * event would mean two interviews for one meeting.
+ */
+export async function takeInterviewEvent(
+  type: string,
+  data: Record<string, unknown>,
+  now = Date.now(),
+): Promise<void> {
+  const applicationTaId = String(data.applicationId ?? "").trim();
+  if (!applicationTaId) return;
+  const db = await desk();
+
+  if (type === "reference.reported") {
+    const asked = referenceForApplication(db, applicationTaId);
+    const report = String(data.report ?? "").trim();
+    if (!asked || !report) return;
+    await patchReference(asked.id, { state: "reported", report, reportedAt: now }, null, "reference.reported", null);
+    await createTask({
+      kind: "approve",
+      title: "A reference is back: " + asked.candidateName,
+      body: "The TA has spoken to the referee. Read what was said, then pass it to the client as it is.",
+      assigneeId: asked.ownerId,
+      dueAt: now,
+      subjectType: "reference",
+      subjectId: asked.id,
+      link: "/interviews?reference=" + asked.id,
+    });
+    return;
+  }
+
+  // Feedback and an outcome come after the interview; a reconfirm or a
+  // drop-out can only be about one that has not happened yet.
+  const interview =
+    type === "interview.feedback" || type === "interview.outcome"
+      ? interviewForApplication(db, applicationTaId)
+      : liveInterviewFor(db, applicationTaId);
+  if (!interview) return;
+
+  if (type === "interview.confirmed") {
+    await patchInterview(interview.id, { state: "reconfirmed" }, null, "interview.reconfirmed", "TA reconfirmed the candidate.");
+    return;
+  }
+  if (type === "interview.candidate_out") {
+    await noticeCandidateOut(
+      interview.id,
+      String(data.reason ?? "").trim() || "The candidate withdrew.",
+      null,
+      now,
+    );
+    return;
+  }
+  if (type === "interview.feedback") {
+    const said = String(data.feedback ?? "").trim();
+    if (said) await draftCandidateFeedback(interview.id, said, now);
+    return;
+  }
+  if (type === "interview.outcome") {
+    const outcome = String(data.outcome ?? "").trim();
+    if (outcome === "no_show" || outcome === "attended") {
+      await patchInterview(
+        interview.id,
+        { state: outcome, attendedAt: outcome === "attended" ? now : null },
+        null,
+        "interview." + outcome,
+        "From the TA System.",
+      );
+    }
+  }
+}
+
+/* ── The weekly report (15, Phase 3 step 18, Phase 7 step 9) ───── */
+
+export async function addReport(input: Omit<OpsReport, "id" | "createdAt" | "updatedAt">): Promise<OpsReport> {
+  if (!usingConvex()) return repo.addReport(input);
+  return (await convexMutation<OpsReport>("ops/data:addReport", input)) as OpsReport;
+}
+
+export async function patchReport(
+  reportId: Id,
+  patch: Partial<OpsReport>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchReport(reportId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchReport", { reportId, patch, by, what, reason });
+}
+
+export function reportIn(db: OpsDatabase, reportId: Id): OpsReport | null {
+  return db.reports.find((r) => r.id === reportId) ?? null;
+}
+
+export function reportsNewestFirst(db: OpsDatabase): OpsReport[] {
+  return [...db.reports].sort((a, b) => b.builtAt - a.builtAt);
+}
+
+/**
+ * Build this Monday's report (Phase 7 step 9).
+ *
+ * One line per open position, each read from TA's own pipeline and from our
+ * own rows. A position TA cannot be read for keeps its line and says so: the
+ * Director needs to know the picture is short, not be shown a zero.
+ *
+ * Asking twice in one week gives the same report back, so the clock and the
+ * button on the screen cannot make two.
+ */
+export async function buildWeeklyReport(by: Id, now = Date.now()): Promise<OpsReport | null> {
+  const db = await desk();
+  const week = reportWeekOf(now);
+  const already = db.reports.find((r) => r.kind === "activePositions" && r.weekOf === week);
+  if (already) return already;
+
+  const open = db.positions.filter((p) => p.stage !== "closed");
+  const people = await taPeople();
+  const nameOf = (taId: string | null) =>
+    (people.ok && taId ? people.data.find((u) => u.id === taId)?.fullName : null) ?? taId ?? "nobody yet";
+
+  const rows: ReportRowRecord[] = [];
+  for (const position of open) {
+    // Their sets, newest first, and what has come back on the newest one.
+    const theirSets = db.clientSets
+      .filter((s) => s.openingTaId === position.openingTaId && s.state === "sent")
+      .sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
+    const newest = theirSets[0] ?? null;
+    const decisions = newest ? newest.candidates.filter((c) => c.decision).length : 0;
+    const held = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
+
+    let counts: Record<string, number> | null = null;
+    let shortlisted: number | null = null;
+    if (position.openingTaId) {
+      const answer = await taPipeline(position.openingTaId);
+      if (answer.ok) {
+        counts = (answer.data.counts ?? {}) as Record<string, number>;
+        shortlisted = countDepth(answer.data.applications ?? []).shortlistedTotal;
+      }
+    }
+
+    rows.push({
+      positionId: position.id,
+      openingTaId: position.openingTaId,
+      client: (position.clientId ? clientIn(db, position.clientId)?.name : null) ?? position.clientTaId,
+      title: position.title,
+      primaryTa: nameOf(position.primaryTaId),
+      // The raw stage: the report turns it into the Director's words itself.
+      stage: position.stage,
+      daysOpen: daysBetween(position.handedOverAt, now),
+      counts,
+      shortlisted,
+      setsSent: theirSets.length,
+      lastSentAt: newest?.sentAt ?? null,
+      daysWaitingOnClient: newest?.receivedAt ? daysBetween(newest.receivedAt, now) : null,
+      decisionsIn: decisions,
+      onHold: Boolean(held),
+      depth: position.depthStage,
+      advertised: Boolean(position.linkedInUrl),
+    });
+  }
+
+  const unread = rows.filter((r) => r.counts === null).length;
+  const owner = db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? by;
+  const report = await addReport({
+    kind: "activePositions",
+    weekOf: week,
+    state: rows.length ? "review" : "building",
+    rows,
+    note: unread
+      ? unread + (unread === 1 ? " position" : " positions") + " could not be read from the TA System."
+      : null,
+    builtAt: now,
+    approvedBy: null,
+    approvedAt: null,
+    messageId: null,
+    sentAt: null,
+    ownerId: owner,
+  });
+
+  await createTask({
+    kind: "record",
+    title: "Read the weekly report for " + week,
+    body: rows.length
+      ? "One line per open position, built from the TA System and our own rows. Read it, correct nothing silently - if a line is wrong, say so on the position - then approve it and the Director's email is drafted."
+      : "No position is open, so there is nothing in it. Nothing goes to the Director.",
+    assigneeId: owner,
+    dueAt: now,
+    subjectType: "report",
+    subjectId: report.id,
+    link: "/reports/" + report.id,
+  });
+
+  // Next Monday, from this one: the rhythm keeps itself, exactly as Talent
+  // Pulse does on a Tuesday.
+  await startTimer({
+    kind: "report.weekly",
+    subjectType: "report",
+    subjectId: report.id,
+    startsAt: now,
+    dueAt: nextMondayEightAm(now),
+    warnAt: null,
+    ownerId: owner,
+    payload: { label: "The weekly report" },
+  });
+  return report;
+}
+
+/**
+ * Count the client's shortlist, and decide (15, Phase 4 steps 14 and 15).
+ *
+ * Run after every client decision and every stage move TA tells us about. The
+ * counting is TA's - we read their pipeline rather than keep our own tally,
+ * because two tallies always disagree in the end - and the decision is the
+ * owner's two rules: hold at five, or search again at three.
+ *
+ * It never throws: a pipeline we cannot read leaves the last count standing,
+ * which is better than a wrong one.
+ */
+export async function evaluateDepth(
+  positionId: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; stage: string | null }> {
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) return { ok: false, what: "That position is gone.", stage: null };
+  if (!position.openingTaId) {
+    return { ok: false, what: "TA has not confirmed the opening yet, so there is no pipeline to count.", stage: null };
+  }
+
+  const answer = await taPipeline(position.openingTaId);
+  if (!answer.ok) return { ok: false, what: "Could not read the pipeline: " + answer.reason, stage: position.depthStage };
+
+  const depth = countDepth(answer.data.applications ?? []);
+  const verdict = depthVerdict(depth, numberOf(db, "depth.holdAt", HOLD_AT), numberOf(db, "depth.searchAgainAt", SEARCH_AGAIN_AT));
+  // Read before the patch: the store hands back the row it keeps, so after a
+  // patch this object already says the new stage (the aliasing trap, 3 Nov).
+  const was = position.depthStage;
+  const changed = was !== verdict.stage;
+
+  await patchPosition(
+    positionId,
+    {
+      depthStage: verdict.stage,
+      shortlistedTotal: depth.shortlistedTotal,
+      pendingCount: depth.pending,
+      depthCheckedAt: now,
+    },
+    null,
+    changed ? "position.depth." + verdict.stage : "position.depthCounted",
+    verdict.because,
+  );
+
+  if (!changed) return { ok: true, what: verdict.because, stage: verdict.stage };
+
+  // TA decides how its own people work, so this is told, never set: the
+  // working stage goes through the API and the TA is belled about it.
+  if (verdict.taWorkingStage) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + position.openingTaId + "/working-stage",
+      { workingStage: verdict.taWorkingStage, because: verdict.because },
+      { type: "position", id: positionId },
+    );
+  }
+  if (verdict.stage === "hold_at_five") {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + position.openingTaId + "/status",
+      { status: "on_hold", reason: "five shortlisted" },
+      { type: "position", id: positionId },
+    );
+  } else if (was === "hold_at_five") {
+    // Below five again: the hold lifts of its own accord, because the count is
+    // the whole reason it was there (15, Phase 4 step 14).
+    await queueTaWrite(
+      "/integrations/v1/openings/" + position.openingTaId + "/status",
+      { status: "open", reason: "below five shortlisted again" },
+      { type: "position", id: positionId },
+    );
+  }
+  await createTask({
+    kind: "check",
+    title: DEPTH_MEANINGS[verdict.stage] + ": " + position.title,
+    body: verdict.because + "\n\nThe TA System has been told; nothing else to do unless the TA asks something.",
+    assigneeId: position.ownerId,
+    dueAt: now,
+    subjectType: "position",
+    subjectId: positionId,
+    link: "/positions/" + positionId,
+  });
+  return { ok: true, what: verdict.because, stage: verdict.stage };
+}
+
+/** The position behind a set, when TA has confirmed its opening. */
+export function positionForSet(db: OpsDatabase, set: OpsClientSet): OpsPosition | null {
+  return db.positions.find((p) => p.openingTaId === set.openingTaId) ?? null;
 }
 
 /* ── Client sets: what the client is sent (15, Phase 4) ───────── */
@@ -1414,6 +3332,11 @@ export async function logCall(input: Omit<OpsCallLog, "id" | "at">): Promise<voi
   await convexMutation("ops/data:logCall", input);
 }
 
+export async function addMember(input: Omit<OpsMember, "id">, by: Id): Promise<OpsMember> {
+  if (!usingConvex()) return repo.addMember(input, by);
+  return (await convexMutation<OpsMember>("ops/data:addMember", { ...input, by })) as OpsMember;
+}
+
 export async function addHolidays(days: { date: string; name: string }[], by: Id): Promise<number> {
   if (!usingConvex()) return repo.addHolidays(days, by);
   return convexMutation<number>("ops/data:addHolidays", { days, by });
@@ -1468,6 +3391,12 @@ export async function queueTaWrite(
  */
 export async function pushOutbox(now = Date.now()): Promise<{ sent: number; waiting: number; gaveUp: number }> {
   const db = await desk();
+  // The ops lead's own switch, which lives in the settings rather than in the
+  // environment: holding the TA link must not need a deploy. Nothing is lost
+  // while it is off - the writes stay queued (4 Nov, Phase 8 step 8).
+  if (!switchedOn(db, "switch.taWritesEnabled")) {
+    return { sent: 0, waiting: dueNow(db.outbox, now).length, gaveUp: 0 };
+  }
   const due = dueNow(db.outbox, now);
   let sent = 0;
   let waiting = 0;
@@ -1550,6 +3479,31 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
     // TA owns the openings, so Ops learns about them here rather than
     // guessing (15, Phase 3 steps 7 and 8).
     if (event.type === "opening.created") await takeOpeningCreated(event.data, now);
+    // A candidate moving stage in TA changes how deep the client's shortlist
+    // is, which is what the owner's two rules turn on (step 14).
+    if (event.type === "application.stage_changed") {
+      const opening = String(event.data.openingId ?? "");
+      const db2 = await desk();
+      const position = opening ? positionForOpening(db2, opening) : null;
+      if (position) await evaluateDepth(position.id, now);
+    }
+    // A TA closing an opening by hand still leaves our own things open, so
+    // the checklist is made with only the items that are ours (Phase 7 step 14).
+    if (event.type === "opening.closed") {
+      const opening = String(event.data.openingId ?? "").trim();
+      if (opening) await openCloseChecklist(opening, "ta_closed", "m_owner", now);
+    }
+    // A placement is the day the money starts (Phase 6 step 3).
+    if (event.type === "placement.created") await takePlacement(event.data, now);
+    if (event.type === "placement.joined" || event.type === "placement.no_show") {
+      await takePlacementOutcome(event.type, event.data, now);
+    }
+    // What TA tells us about an interview (Phase 5 steps 11, 12 and 15). Ops
+    // never writes to a candidate, so each of these is either a state we
+    // record or a message to the client that a person then approves.
+    if (event.type.startsWith("interview.") || event.type === "reference.reported") {
+      await takeInterviewEvent(event.type, event.data, now);
+    }
     if (
       event.type === "opening.updated" ||
       event.type === "opening.jd_approved" ||
@@ -1594,6 +3548,12 @@ export function settingValue(db: OpsDatabase, key: string): string | null {
 export function numberOf(db: OpsDatabase, key: string, fallback: number): number {
   const value = db.settings.find((s) => s.key === key)?.value;
   return typeof value === "number" ? value : fallback;
+}
+
+/** A setting that is words rather than a number, like the invoice series. */
+export function textOf(db: OpsDatabase, key: string, fallback: string): string {
+  const value = db.settings.find((s) => s.key === key)?.value;
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 export function switchedOn(db: OpsDatabase, key: string): boolean {

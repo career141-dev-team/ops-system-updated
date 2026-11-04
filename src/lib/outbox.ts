@@ -12,10 +12,17 @@
 
 const MINUTE = 60_000;
 
-/** One, five, fifteen, thirty minutes, then every hour. */
+/**
+ * One, five, fifteen, thirty minutes, then every hour.
+ *
+ * `attempts` is how many tries have already been made, so a write that has
+ * never been tried waits the first step - not the last one, which is what the
+ * bare index did when it was handed a zero (4 Nov).
+ */
 export function waitAfter(attempts: number): number {
   const steps = [1, 5, 15, 30];
-  return (steps[attempts - 1] ?? 60) * MINUTE;
+  const step = Math.max(1, attempts);
+  return (steps[step - 1] ?? 60) * MINUTE;
 }
 
 export function nextTryAt(attempts: number, now: number): number {
