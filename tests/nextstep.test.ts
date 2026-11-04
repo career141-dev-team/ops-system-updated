@@ -8,8 +8,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NAV, isHere, sectionFor } from "@/lib/nav";
+import { NAV, isHere, pageAndSectionFor, sectionFor } from "@/lib/nav";
 import { clientNextStep, leadNextStep } from "@/lib/nextStep";
+import { workByPage, workInWords } from "@/lib/sectionWork";
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 10, 9, 4, 30);
@@ -248,6 +249,53 @@ test("the shell has five sections, and every page is in exactly one", () => {
   ]) {
     assert(seen.has(href), href + " is in no section");
   }
+});
+
+test("every section and every page says what it is for", () => {
+  // The owner's complaint on 4 November: a list of words teaches nobody what
+  // the system can do. A page with no purpose line is a page nobody can judge
+  // from the menu, so an empty one fails here rather than shipping.
+  for (const section of NAV) {
+    assert(section.about.length > 20, section.what + " has no purpose line");
+    for (const page of section.pages) {
+      assert(page.about.length > 20, page.href + " has no purpose line");
+      assert(!/^The page/i.test(page.about), page.href + " describes itself, not its work");
+    }
+  }
+});
+
+test("work is counted on the page its own link points at", () => {
+  const counts = workByPage(
+    [
+      { link: "/sets/set_1", dueAt: NOW - DAY }, // late, the search
+      { link: "/sets", dueAt: NOW + DAY }, // the search
+      { link: "/invoices/inv_1", dueAt: NOW - DAY }, // late, money
+      { link: null, dueAt: NOW + DAY }, // nothing to point at: the day keeps it
+      { link: "/nowhere", dueAt: NOW + DAY }, // a page we do not have: the same
+    ],
+    NOW,
+  );
+
+  assert.deepEqual(counts["/sets"], { waiting: 2, late: 1 });
+  assert.deepEqual(counts["search"], { waiting: 2, late: 1 });
+  assert.deepEqual(counts["/invoices"], { waiting: 1, late: 1 });
+  assert.deepEqual(counts["money"], { waiting: 1, late: 1 });
+  // Nothing is ever lost: a task with nowhere to go lands on the day.
+  assert.deepEqual(counts["/"], { waiting: 2, late: 0 });
+  assert.deepEqual(counts["today"], { waiting: 2, late: 0 });
+  assert.deepEqual(counts["/holds"], { waiting: 0, late: 0 });
+
+  assert.equal(workInWords(counts["/holds"]), "Nothing waiting");
+  assert.equal(workInWords(counts["/invoices"]), "1 thing waiting, 1 late");
+  assert.equal(workInWords(counts["/sets"]), "2 things waiting, 1 late");
+  assert.equal(workInWords(undefined), "Nothing waiting");
+});
+
+test("a path finds its own page, not only its section", () => {
+  assert.equal(pageAndSectionFor("/sets/set_1")?.page.href, "/sets");
+  assert.equal(pageAndSectionFor("/sets/set_1")?.section.key, "search");
+  assert.equal(pageAndSectionFor("/")?.page.href, "/");
+  assert.equal(pageAndSectionFor("/nowhere"), null);
 });
 
 test("the section is found from the path, and the longest page wins", () => {

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import Nav from "@/app/Nav";
+import { desk, openTasksFor } from "@/data/desk";
+import { workByPage } from "@/lib/sectionWork";
 import { currentMember } from "@/lib/session";
 import { ROLE_LABEL, can } from "@/lib/roles";
 import "./globals.css";
@@ -29,6 +31,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     "report.read": member ? can(member, "report.read") : false,
   };
 
+  // The counts beside the sections. They are your own open tasks, placed on
+  // the page their link points at, so the header and the day page can never
+  // disagree about where the work is (24, section 4).
+  const counts = member ? workByPage(openTasksFor(await desk(), member.id), Date.now()) : {};
+
   return (
     <html lang="en">
       <body className="min-h-screen">
@@ -37,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Link href="/" className="text-[14px] font-medium">
               Career 141 Ops
             </Link>
-            {member && <Nav may={may} />}
+            {member && <Nav may={may} counts={counts} />}
             <span className="ml-auto rounded-full bg-bg-warning px-2.5 py-1 text-[11.5px] text-warning">
               Test data only
             </span>

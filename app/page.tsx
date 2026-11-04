@@ -6,6 +6,8 @@ import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks } from "@/d
 import { colomboDate, DAY } from "@/lib/calendar";
 import { timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
+import { NAV } from "@/lib/nav";
+import { workByPage, workInWords } from "@/lib/sectionWork";
 import { runClocksNow, startTestClock } from "./actions";
 
 /**
@@ -73,6 +75,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
   const late = tasks.filter((t) => t.dueAt < now);
   const clocks = liveTimersFor(db, member.id);
+  const work = workByPage(tasks, now);
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
@@ -115,6 +118,41 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
           </div>
         ))}
       </div>
+
+      {/*
+        Where the work is, section by section (24, section 4). The same count
+        the header shows, from the same rule, so the two can never disagree.
+        It is here because a person who opens the app should be able to read
+        one screen and know where to go, without opening anything.
+      */}
+      <section className={card}>
+        <h2 className="text-[14.5px] font-medium">Where your work is</h2>
+        <div className="mt-1 grid gap-x-6 sm:grid-cols-2">
+          {NAV.map((section) => {
+            const count = work[section.key];
+            return (
+              <Link
+                key={section.key}
+                href={(section.pages.find((page) => (work[page.href]?.waiting ?? 0) > 0) ?? section.pages[0]).href}
+                className="flex items-baseline gap-3 border-t border-rule py-2.5 hover:bg-paper"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="text-[13.5px]">{section.what}</span>
+                  <span className="mt-0.5 block text-[12.5px] text-ink-soft">{section.about}</span>
+                </span>
+                <span
+                  className={
+                    "whitespace-nowrap text-[12.5px] " +
+                    (count?.late ? "text-danger" : count?.waiting ? "text-ink" : "text-ink-faint")
+                  }
+                >
+                  {workInWords(count)}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">Waiting for your approval</h2>
