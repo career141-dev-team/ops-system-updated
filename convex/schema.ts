@@ -332,6 +332,29 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** One run of the AI layer (15, Phase 9 step 1). */
+  opsAiRuns: defineTable({
+    task: v.string(),
+    provider: v.string(),
+    model: v.union(v.string(), v.null()),
+    read: v.array(v.string()),
+    proposed: v.any(),
+    outcome: v.union(v.string(), v.null()),
+    kept: v.any(),
+    ok: v.boolean(),
+    because: v.union(v.string(), v.null()),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    cost: v.number(),
+    ms: v.number(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+    at: v.number(),
+  })
+    .index("by_at", ["at"])
+    .index("by_task", ["task"]),
+
   /** One paid advert, TopJobs today (15, Phase 3 step 12). */
   opsAds: defineTable({
     channel: v.string(),

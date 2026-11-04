@@ -895,6 +895,39 @@ export interface OpsAd {
   updatedAt: number;
 }
 
+/**
+ * One run of the AI layer (15, Phase 9 steps 1, 17 and 19).
+ *
+ * Every ask is written down: the task, the model, what it cost, what it
+ * proposed, and what the person did with it. Accuracy and spend are read off
+ * these rows rather than guessed, and a year later it says why a record says
+ * what it says.
+ */
+export interface OpsAiRun {
+  id: Id;
+  task: string;
+  provider: string;
+  model: string | null;
+  /** The records it was given, named so a person can check them. */
+  read: string[];
+  /** What it proposed, as it came back. */
+  proposed: unknown;
+  /** "used", "edited", "ignored" or null while nobody has decided. */
+  outcome: string | null;
+  /** What the person saved, when they edited it - the accuracy sample. */
+  kept: unknown;
+  ok: boolean;
+  because: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  cost: number;
+  ms: number;
+  subjectType: string | null;
+  subjectId: Id | null;
+  by: Id;
+  at: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -920,6 +953,7 @@ export interface OpsDatabase {
   guarantees: OpsGuarantee[];
   closeChecklists: OpsCloseChecklist[];
   ads: OpsAd[];
+  aiRuns: OpsAiRun[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

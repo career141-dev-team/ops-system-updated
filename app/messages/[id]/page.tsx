@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 
-import { desk, fileIn } from "@/data/desk";
+import { aiSwitches, desk, fileIn } from "@/data/desk";
 import { currentMember } from "@/lib/session";
 import { messageInWords } from "@/lib/messages";
-import { approveAndSend, recordReply, saveDraft } from "@/app/actions";
+import { approveAndSend, improveDraft, recordReply, saveDraft, useImprovedDraft } from "@/app/actions";
+import { anyKeySet } from "@/lib/ai";
+import { IMPROVE_WORDS, type ImprovedDraft } from "@/lib/aiTasks";
 
 /** One message, on its own page. Read it, change it, approve it. */
 export default async function MessagePage({
@@ -13,18 +15,21 @@ export default async function MessagePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg } = await searchParams;
+  const { msg, proposed: proposedJson, runId } = await searchParams;
   const db = await desk();
   const message = db.messages.find((m) => m.id === id);
   if (!message) notFound();
   // What it carries, by name: an agreement goes out as its PDF, and a person
   // approving the email has to be able to see that it is there.
   const carries = (message.attachmentFileIds ?? []).map((fileId) => fileIn(db, fileId)).filter((f) => f !== null);
+
+  const proposed: ImprovedDraft | null = proposedJson ? (JSON.parse(proposedJson) as ImprovedDraft) : null;
+  const aiOn = anyKeySet() && aiSwitches(db).on;
 
   const input = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
 

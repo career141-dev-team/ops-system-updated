@@ -46,6 +46,18 @@ export function seed(now = Date.now()): OpsDatabase {
       // an unpaid fee off (15, Phase 6 steps 9 and 14).
       // TopJobs comes down two weeks after it goes live (the owner's rule).
       { key: "ad.days", value: 14, updatedBy: null, updatedAt: null },
+      // The AI layer (15, Phase 9). Off until the owner turns it on, a cap in
+      // rupees a day, and every task switchable on its own so one bad prompt
+      // can be stopped without a deploy.
+      { key: "switch.aiEnabled", value: false, updatedBy: null, updatedAt: null },
+      { key: "ai.dailyBudget", value: 500, updatedBy: null, updatedAt: null },
+      { key: "ai.task.dictate.fields", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.inbound.read", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.draft.improve", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.draft.reply", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.summarise", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.whatfirst", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.ask", value: true, updatedBy: null, updatedAt: null },
       // An unreported hire: three months from the day the set went, and the
       // agreement's 50% surcharge (docs/15 Part B; the ESA says 50%).
       { key: "hire.unreportedMonths", value: 3, updatedBy: null, updatedAt: null },
@@ -101,6 +113,7 @@ export function seed(now = Date.now()): OpsDatabase {
     guarantees: [],
     closeChecklists: [],
     ads: [],
+    aiRuns: [],
     leads: [
       {
         id: "ld_new",

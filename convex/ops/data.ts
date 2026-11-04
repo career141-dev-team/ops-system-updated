@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -83,6 +83,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsGuarantees").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsCloseChecklists").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsAds").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsAiRuns").withIndex("by_at").order("desc").take(300),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -123,6 +124,7 @@ export const snapshot = internalQuery({
       guarantees: guarantees.map(row),
       closeChecklists: closeChecklists.map(row),
       ads: ads.map(row),
+      aiRuns: aiRuns.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -633,6 +635,53 @@ export const addMember = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** One run of the AI layer (15, Phase 9 step 1). */
+export const addAiRun = internalMutation({
+  args: {
+    task: v.string(),
+    provider: v.string(),
+    model: v.union(v.string(), v.null()),
+    read: v.array(v.string()),
+    proposed: v.any(),
+    outcome: v.union(v.string(), v.null()),
+    kept: v.any(),
+    ok: v.boolean(),
+    because: v.union(v.string(), v.null()),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    cost: v.number(),
+    ms: v.number(),
+    subjectType: v.union(v.string(), v.null()),
+    subjectId: v.union(v.string(), v.null()),
+    by: v.string(),
+    at: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsAiRuns", args);
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const recordAiOutcome = internalMutation({
+  args: { runId: v.string(), outcome: v.string(), kept: v.any(), by: v.string() },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.runId as Id<"opsAiRuns">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { outcome: args.outcome, kept: args.kept });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "ai." + args.outcome,
+      subjectType: found.subjectType ?? "ai",
+      subjectId: (found.subjectId ?? found._id) as string,
+      before: found.task,
+      after: args.outcome,
+      reason: found.model,
+    });
+    return { ok: true };
   },
 });
 

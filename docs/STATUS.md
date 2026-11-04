@@ -193,9 +193,36 @@ the contract tests shared with the TA repository (step 2), the load check
 staging run and the team's walkthrough (steps 15 and 16), and the pilot
 itself (steps 17 to 22).
 
+## Built: phase 9, the AI layer
+
+Off until the owner turns it on, and useless without a key - by design. With
+neither key the desk works exactly as it does now, and every screen says so
+rather than breaking.
+
+| Piece | Where | Notes |
+|---|---|---|
+| One door to a model | `src/lib/ai.ts` | judgment work to Anthropic, the plain work to DeepSeek, whichever keys exist; a hard timeout; JSON or nothing; every refusal a sentence a screen can show |
+| Every task's prompt | `src/lib/aiTasks.ts` | each one forbids inventing, asks for the client's own words where a reason is required, and names what it did not find rather than filling it in |
+| The ledger | `opsAiRuns`, `runAi` in `src/data/desk.ts` | task, model, tokens, cost, what it read, what it proposed, and what the person did with it. Accuracy and spend are read off these rows |
+| Dictation | `app/Dictate.tsx`, `dictateRequirement` | the listening is the **browser's own**: no key, no cost, nothing leaves the machine until a person presses. The fields are filled in for correction; nothing saves itself |
+| Reading what a client sent | `readInbound` | proposes the decisions per candidate in the client's own words, the times offered, a claim, a cancellation - into a task to confirm. It records nothing |
+| Improving a draft | `improveDraft`, `useImprovedDraft` | rewrite, shorter, warmer, more formal; the new words are offered **beside** the draft, and "use this" or "leave it" is recorded as the accuracy sample |
+| Summaries | `summariseClient` | a client's own rows in a paragraph, with what it could not see named |
+| The ask box | `askTheDesk`, screen `app/ai` | read-only, from our own rows, inside what that person could read anyway, naming what it used |
+| Costed, sampled, switchable | screen `app/ai`, settings `switch.aiEnabled`, `ai.dailyBudget`, `ai.task.*` | today's spend against the cap, and how often each task's proposals were used as they came - under half and the screen says to fix the prompt or switch it off |
+
+What it will never do, and why: no AI telephone calls (the owner's decision
+7); no AI deciding a rejection, a hold or a decline; no AI sending anything;
+no AI writing to the TA System; no AI setting a money figure. CV reading,
+scoring and matching stay in the TA System.
+
+Still to come in phase 9: the reply drafting screen (the rule and the prompt
+are built, the button is not), "why this first" on the day page, and the ask
+box that *does* things (step 14) - which is deliberately last.
+
 ## Not built
 
-The server and pilot half of phase 8, and phase 9's AI layer.
+The server and pilot half of phase 8.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -246,7 +273,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 37 suites, each in its own process
+node tests/run.mjs        # all 38 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

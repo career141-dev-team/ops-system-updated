@@ -19,8 +19,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const db = await desk();
   const settings = [...db.settings].sort((a, b) => a.key.localeCompare(b.key));
-  const switches = settings.filter((s) => s.key.startsWith("switch."));
-  const numbers = settings.filter((s) => !s.key.startsWith("switch."));
+  // A switch is anything whose value is yes or no, not only the ones named
+  // "switch.": the AI layer's per-task switches are booleans too, and they
+  // were being shown as numbers with a Save box (4 Nov).
+  const switches = settings.filter((s) => s.key.startsWith("switch.") || typeof s.value === "boolean");
+  const numbers = settings.filter((s) => !switches.includes(s));
 
   return (
     <div className="max-w-[760px]">

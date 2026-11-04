@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   bookIntroCall,
+  dictateRequirement,
   bookRequirementMeeting,
   handOverToTa,
   markRoleImpractical,
@@ -21,7 +22,10 @@ import {
   markMeetingHeld,
   markMeetingNotHeld,
 } from "@/app/actions";
-import { agreementForLead, desk, leadIn, meetingsForLead, requirementForLead } from "@/data/desk";
+import { agreementForLead, aiSwitches, desk, leadIn, meetingsForLead, requirementForLead } from "@/data/desk";
+import { anyKeySet } from "@/lib/ai";
+import { notSaidInWords, type DictatedRequirement } from "@/lib/aiTasks";
+import Dictate from "@/app/Dictate";
 import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
@@ -60,12 +64,12 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg } = await searchParams;
+  const { msg, proposed: proposedJson } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
@@ -75,6 +79,13 @@ export default async function LeadPage({
   const card = "mt-4 rounded-2xl border border-rule bg-surface px-5 py-4";
   const field_cls = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const field_wide = field_cls + " sm:col-span-2";
+  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  // What dictation proposed, which fills the fields in for correction and is
+  // saved by nothing until a person presses save (Phase 9 step 7).
+  const dictated: DictatedRequirement | null = proposedJson
+    ? (JSON.parse(proposedJson) as DictatedRequirement)
+    : null;
+  const aiOn = anyKeySet() && aiSwitches(db).on;
   const button = "rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
   const nameOf = (who: string | null) => (who ? db.members.find((m) => m.id === who)?.name ?? "somebody" : "nobody");
   const closed = lead.state.startsWith("closed") || lead.state === "declined_industry";
@@ -519,6 +530,25 @@ export default async function LeadPage({
                   </p>
                 )}
 
+                {mayManage && aiOn && (
+                  <form action={dictateRequirement} className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
+                      Say the brief instead of typing it
+                      <textarea name="said" rows={3} className={field_wide} />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Dictate into="said" label="Hold a moment and speak" />
+                      <button className={plain}>Put it into the fields</button>
+                    </div>
+                    <p className="text-[12px] text-ink-faint">
+                      The listening is your browser&rsquo;s own, so it costs nothing and nothing leaves this machine
+                      until you press the button. The fields are filled in for you to correct; nothing saves itself,
+                      and what was not said is left empty and named.
+                    </p>
+                  </form>
+                )}
+
                 {mayManage && (
                   <form action={saveRequirement} className="mt-3 flex flex-col gap-3">
                     <input type="hidden" name="leadId" value={lead.id} />
@@ -531,13 +561,13 @@ export default async function LeadPage({
                             <textarea
                               name={"field." + f.key}
                               rows={3}
-                              defaultValue={requirement?.fields[f.key] ?? ""}
+                              defaultValue={requirement?.fields[f.key] ?? dictated?.[f.key as keyof typeof dictated] ?? ""}
                               className={field_wide}
                             />
                           ) : (
                             <input
                               name={"field." + f.key}
-                              defaultValue={requirement?.fields[f.key] ?? ""}
+                              defaultValue={requirement?.fields[f.key] ?? dictated?.[f.key as keyof typeof dictated] ?? ""}
                               className={field_cls}
                             />
                           )}

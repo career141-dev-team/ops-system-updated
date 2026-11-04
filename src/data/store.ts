@@ -25,6 +25,7 @@ import type {
   OpsPosition,
   OpsRequirement,
   OpsAd,
+  OpsAiRun,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -650,6 +651,41 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── The AI layer's ledger (15, Phase 9 step 1) ─────────── */
+
+  aiRunIn(runId: Id): OpsAiRun | null {
+    return load().aiRuns.find((r) => r.id === runId) ?? null;
+  },
+
+  addAiRun(input: Omit<OpsAiRun, "id">): OpsAiRun {
+    const db = load();
+    const row: OpsAiRun = { ...input, id: id("ai") };
+    db.aiRuns.push(row);
+    // Not audited: these are the audit for the AI layer, and a row per ask
+    // would double every trail. The outcome below is audited, because that is
+    // a person's decision.
+    save();
+    return row;
+  },
+
+  recordAiOutcome(runId: Id, outcome: string, kept: unknown, by: Id): void {
+    const db = load();
+    const row = db.aiRuns.find((r) => r.id === runId);
+    if (!row) return;
+    row.outcome = outcome;
+    row.kept = kept;
+    audit({
+      actorId: by,
+      action: "ai." + outcome,
+      subjectType: row.subjectType ?? "ai",
+      subjectId: row.subjectId ?? row.id,
+      before: row.task,
+      after: outcome,
+      reason: row.model,
+    });
     save();
   },
 

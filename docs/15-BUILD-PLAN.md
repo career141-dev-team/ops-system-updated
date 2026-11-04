@@ -1206,6 +1206,25 @@ second copy of each.
 
 ## Phase 9 · The AI productivity layer (added 3 Nov)
 
+**Built 4 November**, steps 1 to 9, 11, 13 and 16 to 21, with three
+differences written down rather than quietly done:
+
+- **Dictation does not use a model to listen.** Step 5 planned
+  `POST /api/ai/dictate` with a clip; the browser's own speech recognition
+  does it for nothing, keeps the audio on the machine, and needs no key. The
+  model's only job is step 7: putting what was heard into our fields. A clip
+  kept against the record would need the owner's go-ahead and a reason, and
+  there is neither yet.
+- **Reply drafting (10) and "why this first" (12)** have their rules and
+  prompts but no button yet; they are the two that read best once the pilot
+  has shown what a real reply looks like.
+- **Step 14, the box that does things, is not built on purpose.** It is the
+  only part that can act, and it waits until the read-only box has been used
+  for a while.
+
+Nothing of the layer runs without a key, and nothing runs while a page
+renders. Both keys are named in `deploy/production/.env.production.example`.
+
 Added at the owner's request. It is **one layer across the finished system**, not a
 chatbot bolted on, and it comes after the pilot because the desk has to run on rules
 before anything starts proposing. Two pieces are cheap and may ride earlier: see the

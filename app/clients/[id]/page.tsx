@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { moveClientOwner, moveClientStage, saveClientDetails } from "@/app/actions";
-import { activeMembers, agreementForLead, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
+import { moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
+import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
+import { anyKeySet } from "@/lib/ai";
+import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
 import { STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
 import { can } from "@/lib/roles";
@@ -14,12 +16,12 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; summary?: string; runId?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { id } = await params;
-  const { msg } = await searchParams;
+  const { msg, summary: summaryJson, runId } = await searchParams;
 
   const db = await desk();
   const client = clientIn(db, id);
@@ -34,6 +36,9 @@ export default async function ClientPage({
     canMoveStage(client.stage as ClientStage, s),
   );
   const theirAudit = db.audit.filter((a) => a.subjectType === "client" && a.subjectId === client.id);
+  const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
+  const aiOn = anyKeySet() && aiSwitches(db).on;
+
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
@@ -54,6 +59,42 @@ export default async function ClientPage({
       </div>
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      {aiOn && (
+        <section className="rounded-2xl border border-rule bg-surface px-5 py-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[14.5px] font-medium">Where this client stands</h2>
+            <form action={summariseClient}>
+              <input type="hidden" name="clientId" value={client.id} />
+              <button className="rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper">
+                Summarise their history
+              </button>
+            </form>
+          </div>
+          {summary ? (
+            <>
+              <p className="mt-2 whitespace-pre-wrap text-[13.5px]">{summary.summary}</p>
+              {summary.points?.map((point, i) => (
+                <p key={i} className="mt-1 text-[13px] text-ink-soft">
+                  &middot; {point}
+                </p>
+              ))}
+              {notSaidInWords(summary.notSaid ?? []) && (
+                <p className="mt-2 text-[12px] text-warning">{notSaidInWords(summary.notSaid ?? [])}</p>
+              )}
+              <p className="mt-2 text-[12px] text-ink-faint">
+                Written from this client&rsquo;s own rows on this system, nothing else. Check it against the record
+                below before you repeat it to anybody.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-[13px] text-ink-soft">
+              Their agreements, positions, sets, invoices and holds in a paragraph, from our own rows. It is a reading
+              aid, not a record.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">Where they came from</h2>

@@ -35,6 +35,8 @@ import {
   addReference,
   buildWeeklyReport,
   adIn,
+  aiRunIn,
+  member as deskMember,
   checklistIn,
   evaluateDepth,
   positionForSet,
@@ -51,8 +53,11 @@ import {
   markLeaver,
   markPlacementJoined,
   openCloseChecklist,
+  openTasksFor,
   patchInterview,
   patchAd,
+  recordAiOutcome,
+  runAi,
   patchChecklist,
   patchGuarantee,
   patchInvoice,
@@ -103,7 +108,7 @@ import {
   startTimer,
   switchedOn,
 } from "@/data/desk";
-import { DAY, HOUR, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
 import { settingChange } from "@/lib/settingsRules";
@@ -162,6 +167,21 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
+import {
+  type Answer,
+  type DictatedRequirement,
+  IMPROVE_WORDS,
+  type ImproveHow,
+  type ImprovedDraft,
+  type InboundRead,
+  type Summary,
+  askPrompt,
+  dictateRequirementPrompt,
+  improveDraftPrompt,
+  inboundReadPrompt,
+  notSaidInWords,
+  summarisePrompt,
+} from "@/lib/aiTasks";
 import {
   CLOSE_TRIGGERS,
   REFUND_PCT,
@@ -4654,4 +4674,298 @@ export async function raiseCreditNote(formData: FormData): Promise<void> {
   revalidatePath("/invoices");
   if (!answer.ok) back(answer.what);
   redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
+}
+
+/* ── The AI layer (15, Phase 9) ───────────────────────────────── */
+
+/**
+ * Dictation into the requirement's fields (steps 5 to 7).
+ *
+ * The speaking itself is the browser's own: no model, no key, no cost. What
+ * comes here is the text it heard, and the model's only job is to put it into
+ * our fields - leaving empty what was not said, and saying which those were.
+ * Nothing is saved: the fields are filled in on the screen for a person to
+ * correct and then press save.
+ */
+export async function dictateRequirement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const said = String(formData.get("said") ?? "").trim();
+  if (said.length < 20) back("Nothing was dictated. Hold the microphone and say the brief, then press this.");
+
+  const answer = await runAi<DictatedRequirement>(
+    "dictate.fields",
+    dictateRequirementPrompt(said),
+    member.id,
+    { type: "lead", id: leadId },
+    ["what was dictated"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) {
+    back(answer.problem ?? "Nothing came back. Type it in instead; the fields are below.");
+  }
+  const got = answer.proposal.data as DictatedRequirement;
+  // The proposal goes back on the URL, so the fields are filled in and a
+  // person corrects them before anything is saved.
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&proposed=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent(
+        "Filled in from what you said. Read every field before you save it." +
+          (notSaidInWords(got.notSaid ?? "" ? got.notSaid : []) ? " " + notSaidInWords(got.notSaid) : ""),
+      ),
+  );
+}
+
+/** Improve a draft we already wrote (step 9). */
+export async function improveDraft(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const messageId = String(formData.get("messageId") ?? "");
+  const here = "/messages/" + messageId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+  const db = await desk();
+  const message = db.messages.find((m) => m.id === messageId);
+  if (!message) redirect("/?msg=" + encodeURIComponent("That message is gone."));
+  if (!needsApproval(message)) back("That message has gone already.");
+
+  const how = String(formData.get("how") ?? "rewrite") as ImproveHow;
+  if (!(how in IMPROVE_WORDS)) back("Improve it how?");
+
+  const answer = await runAi<ImprovedDraft>(
+    "draft.improve",
+    improveDraftPrompt(message.subject, message.body, how),
+    member.id,
+    { type: "message", id: messageId },
+    ["the draft itself"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back; the draft is unchanged.");
+  const got = answer.proposal.data as ImprovedDraft;
+
+  // The draft is not replaced: the new words are offered beside it, and the
+  // person presses use it. Nothing a model wrote goes out unseen.
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&proposed=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent(IMPROVE_WORDS[how] + ": read it, then use it or ignore it."),
+  );
+}
+
+/** Use the improved draft, or leave it. Either way it is recorded. */
+export async function useImprovedDraft(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const messageId = String(formData.get("messageId") ?? "");
+  const here = "/messages/" + messageId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+
+  const runId = String(formData.get("runId") ?? "");
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const use = String(formData.get("use") ?? "") === "yes";
+
+  if (!use) {
+    if (runId) await recordAiOutcome(runId, "ignored", null, member.id);
+    back("Left as it was.");
+  }
+  await editMessage(messageId, { subject, body }, member.id);
+  if (runId) {
+    // What was really saved is kept beside what was proposed: that is the
+    // accuracy sample, and it is why "edited" is a different outcome.
+    const db = await desk();
+    const run = aiRunIn(db, runId);
+    const proposed = (run?.proposed ?? null) as ImprovedDraft | null;
+    const same = proposed && proposed.subject === subject && proposed.body === body;
+    await recordAiOutcome(runId, same ? "used" : "edited", { subject, body }, member.id);
+  }
+  revalidatePath(here);
+  back("Saved. It still waits for you to approve it before it goes.");
+}
+
+/**
+ * Read what a client sent (step 8).
+ *
+ * The reader proposes what the email means - decisions per candidate in the
+ * client's own words, times offered, a claim, a cancellation - and leaves a
+ * person to confirm it. It decides nothing: the owner's rule is that a
+ * rejection carries the client's wording, and this is how that wording gets
+ * in without being retyped.
+ */
+export async function readInbound(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const inboundId = String(formData.get("inboundId") ?? "");
+  const here = "/mail";
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const mail = db.inbound.find((m) => m.id === inboundId);
+  if (!mail) back("That email is gone.");
+  const row = mail as NonNullable<typeof mail>;
+
+  const set = row.subjectType === "clientSet" && row.subjectId ? clientSetIn(db, row.subjectId) : null;
+  const about = set ? set.name : (row.subjectType ?? "an email nobody has matched yet");
+  const candidates = set ? set.candidates.map((c) => c.name) : [];
+
+  const answer = await runAi<InboundRead>(
+    "inbound.read",
+    inboundReadPrompt(row.body, about, candidates),
+    member.id,
+    { type: "inbound", id: inboundId },
+    [about],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back. Read it yourself.");
+  const got = answer.proposal.data as InboundRead;
+
+  await createTask({
+    kind: "approve",
+    title: "Confirm what the client said: " + about,
+    body:
+      got.summary +
+      "\n\n" +
+      (got.decisions ?? [])
+        .map((d) => "- " + d.name + ": " + d.decision + ' ("' + d.theirWords + '")')
+        .join("\n") +
+      ((got.slots ?? []).length ? "\n\nTimes offered: " + got.slots.join("; ") : "") +
+      "\n\nNothing has been recorded. Open the set and confirm each one - the words above are theirs, so they can be" +
+      " used as the reason.",
+    assigneeId: set?.ownerId ?? member.id,
+    dueAt: Date.now(),
+    subjectType: set ? "clientSet" : "inbound",
+    subjectId: set?.id ?? inboundId,
+    link: set ? "/sets/" + set.id : "/mail",
+  });
+  revalidatePath(here);
+  back(
+    "Read: " +
+      got.summary +
+      " A task is on the list to confirm it. Nothing has been recorded yet." +
+      (notSaidInWords(got.notSaid ?? []) ? " " + notSaidInWords(got.notSaid ?? []) : ""),
+  );
+}
+
+/** Summarise a client's history (step 11). */
+export async function summariseClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "report.read")) back(refusal("report.read"));
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) back("That client is gone.");
+  const row = client as NonNullable<typeof client>;
+
+  // Only what this person could read anyway, and only what the task needs
+  // (step 18): the states and the dates, not the documents.
+  const rows: string[] = [];
+  rows.push("Client: " + row.name + ", " + row.stage + ", owned by " + (deskMember(db, row.ownerId)?.name ?? "nobody"));
+  for (const esa of db.agreements.filter((a) => a.leadId === row.leadId)) {
+    rows.push("Agreement: " + esa.state + ", version " + esa.version + (esa.signedAt ? ", signed" : ", not signed"));
+  }
+  for (const position of db.positions.filter((p) => p.clientId === row.id)) {
+    rows.push("Position: " + position.title + ", " + position.stage + (position.depthStage ? ", " + position.depthStage : ""));
+  }
+  for (const set of db.clientSets.filter((s) => s.clientId === row.id)) {
+    rows.push(
+      "Set " + set.setNumber + ": " + set.state + ", " + set.candidates.length + " CVs, " +
+        set.candidates.filter((c) => c.decision).length + " decided",
+    );
+  }
+  for (const invoice of db.invoices.filter((i) => i.clientId === row.id)) {
+    rows.push("Invoice " + invoice.number + ": " + invoice.state + ", " + money(invoice.amount, invoice.currency));
+  }
+  for (const hold of db.holds.filter((h) => h.clientId === row.id)) {
+    rows.push("Hold: " + hold.state + (hold.reason ? ", " + hold.reason : ""));
+  }
+
+  const answer = await runAi<Summary>(
+    "summarise",
+    summarisePrompt(row.name, rows),
+    member.id,
+    { type: "client", id: clientId },
+    [rows.length + " rows of this client's own record"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back.");
+  const got = answer.proposal.data as Summary;
+  redirect(
+    here +
+      "?runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&summary=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&msg=" +
+      encodeURIComponent("Summarised from " + rows.length + " of their own rows."),
+  );
+}
+
+/**
+ * The ask box (step 13).
+ *
+ * Read-only: it answers from the desk's own rows, inside what this person
+ * could read anyway, and names what it used. It runs nothing, writes nothing
+ * and never touches money - the box that *does* things is step 14 and is not
+ * built, on purpose.
+ */
+export async function askTheDesk(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const question = String(formData.get("question") ?? "").trim();
+  const back = (msg: string) => redirect("/ai?msg=" + encodeURIComponent(msg));
+  if (!can(member, "inbox.read")) back(refusal("inbox.read"));
+  if (question.length < 5) back("What is the question?");
+
+  const db = await desk();
+  // The rows it may use: counts and states, never a document's text.
+  const rows = [
+    "Today is " + colomboDate(Date.now()) + " in Colombo.",
+    "Leads: " + db.leads.length + ", of which " + db.leads.filter((l) => l.state !== "closed").length + " open.",
+    "Clients: " + db.clients.map((c) => c.name + " (" + c.stage + ")").join("; "),
+    "Positions: " + db.positions.map((p) => p.title + " (" + p.stage + ")").join("; "),
+    "Sets: " + db.clientSets.map((s) => s.name + " (" + s.state + ")").join("; "),
+    "Interviews: " + db.interviews.map((i) => i.candidateName + " (" + i.state + ")").join("; "),
+    "Placements: " + db.placements.map((p) => p.candidateName + " (" + p.state + ")").join("; "),
+    "Invoices: " + db.invoices.map((i) => i.number + " " + i.state + " " + money(i.amount, i.currency)).join("; "),
+    "Guarantees: " + db.guarantees.map((g) => g.candidateName + " (" + g.state + ")").join("; "),
+    "Open tasks for this person: " + openTasksFor(db, member.id).map((t) => t.title).join("; "),
+  ];
+
+  const answer = await runAi<Answer>("ask", askPrompt(question, rows), member.id, null, ["the desk's own rows"]);
+  if (!answer.proposal.ok || !answer.proposal.data) back(answer.problem ?? "Nothing came back.");
+  const got = answer.proposal.data as Answer;
+  redirect(
+    "/ai?asked=" +
+      encodeURIComponent(question) +
+      "&answer=" +
+      encodeURIComponent(JSON.stringify(got)) +
+      "&runId=" +
+      encodeURIComponent(answer.runId ?? ""),
+  );
+}
+
+/** Used it, or did not: the accuracy sample (step 16). */
+export async function recordAiUse(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const runId = String(formData.get("runId") ?? "");
+  const outcome = String(formData.get("outcome") ?? "");
+  const back = String(formData.get("back") ?? "/ai");
+  if (!["used", "edited", "ignored"].includes(outcome)) redirect(back);
+  if (runId) await recordAiOutcome(runId, outcome, null, member.id);
+  redirect(back + (back.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent("Noted. It is in the AI record."));
 }

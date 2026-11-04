@@ -366,3 +366,11 @@ second did not happen anyway.
 an empty dropdown when no image had been kept on the Files screen - which is
 the normal state before marketing has made one. It says so now, rather than
 offering a choice of nothing.
+
+## 4 November 2026 - a switch shown as a number
+
+The AI layer's per-task switches are booleans, and the settings screen sorted
+its rows by the key's prefix rather than by what the value is: `ai.task.ask`
+was listed under Numbers with a box to type into. A switch you can type "yes"
+into is not a switch. The screen now reads the value's type, so every true or
+false is a switch wherever its key came from.

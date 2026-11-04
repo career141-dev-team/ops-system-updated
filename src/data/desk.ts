@@ -13,6 +13,7 @@ import type {
   OpsPosition,
   OpsRequirement,
   OpsAd,
+  OpsAiRun,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -35,7 +36,18 @@ import type {
   OpsTemplate,
   OpsTimer,
 } from "./types";
-import { colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import {
+  AI_TASKS,
+  type AiSwitches,
+  type AiTask,
+  DAILY_BUDGET,
+  type Proposal,
+  ask,
+  nothing,
+  problemWithRunning,
+  providerNow,
+} from "@/lib/ai";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
@@ -1363,6 +1375,140 @@ export async function draftCreditNote(
     link: "/invoices/" + note.id,
   });
   return { ok: true, what: "Credit note " + note.number + " drafted.", invoiceId: note.id };
+}
+
+/* ── The AI layer (15, Phase 9) ────────────────────────────────── */
+
+export async function addAiRun(input: Omit<OpsAiRun, "id">): Promise<OpsAiRun> {
+  if (!usingConvex()) return repo.addAiRun(input);
+  return (await convexMutation<OpsAiRun>("ops/data:addAiRun", input)) as OpsAiRun;
+}
+
+export async function recordAiOutcome(runId: Id, outcome: string, kept: unknown, by: Id): Promise<void> {
+  if (!usingConvex()) {
+    repo.recordAiOutcome(runId, outcome, kept, by);
+    return;
+  }
+  await convexMutation("ops/data:recordAiOutcome", { runId, outcome, kept, by });
+}
+
+export function aiRunIn(db: OpsDatabase, runId: Id): OpsAiRun | null {
+  return db.aiRuns.find((r) => r.id === runId) ?? null;
+}
+
+export function aiRunsNewestFirst(db: OpsDatabase): OpsAiRun[] {
+  return [...db.aiRuns].sort((a, b) => b.at - a.at);
+}
+
+/** What the layer has spent since midnight, Colombo. */
+export function aiSpentToday(db: OpsDatabase, now = Date.now()): number {
+  const today = colomboDate(now);
+  const spent = db.aiRuns.filter((r) => colomboDate(r.at) === today).reduce((sum, r) => sum + r.cost, 0);
+  return Math.round(spent * 100) / 100;
+}
+
+/** The switches as the layer reads them, settings and keys together. */
+export function aiSwitches(db: OpsDatabase, now = Date.now()): AiSwitches {
+  const tasks: Record<string, boolean> = {};
+  for (const task of Object.keys(AI_TASKS)) {
+    const value = db.settings.find((s) => s.key === "ai.task." + task)?.value;
+    tasks[task] = value !== false;
+  }
+  return {
+    on: switchedOn(db, "switch.aiEnabled"),
+    tasks,
+    dailyBudget: numberOf(db, "ai.dailyBudget", DAILY_BUDGET),
+    spentToday: aiSpentToday(db, now),
+  };
+}
+
+/**
+ * Run one AI task and write it down (steps 1 to 4, 17 and 19).
+ *
+ * The only way the rest of the system asks a model anything. It checks the
+ * switches and the budget first, asks once, records the run whatever
+ * happened, and hands back a proposal - which is a suggestion with an id, so
+ * what the person then does with it can be recorded against it.
+ *
+ * It is called from an action a person pressed or from the clock pass, never
+ * while a screen renders: the Claude subscription is a pool, and a page that
+ * spends on every render empties it by lunchtime (3 Nov).
+ */
+export async function runAi<T>(
+  task: AiTask,
+  built: { system: string; prompt: string },
+  by: Id,
+  about: { type: string; id: Id } | null = null,
+  read: string[] = [],
+  now = Date.now(),
+): Promise<{ proposal: Proposal<T>; runId: Id | null; problem: string | null }> {
+  const db = await desk();
+  const provider = providerNow(task);
+  const problem = problemWithRunning(task, provider, aiSwitches(db, now));
+  if (problem) return { proposal: nothing<T>(task, problem, provider), runId: null, problem };
+
+  const proposal = await ask<T>({ task, system: built.system, prompt: built.prompt, read });
+  const run = await addAiRun({
+    task,
+    provider: proposal.provider,
+    model: proposal.model,
+    read,
+    proposed: proposal.data,
+    outcome: null,
+    kept: null,
+    ok: proposal.ok,
+    because: proposal.because,
+    tokensIn: proposal.tokensIn,
+    tokensOut: proposal.tokensOut,
+    cost: proposal.cost,
+    ms: proposal.ms,
+    subjectType: about?.type ?? null,
+    subjectId: about?.id ?? null,
+    by,
+    at: now,
+  });
+  return { proposal, runId: run.id, problem: proposal.ok ? null : proposal.because };
+}
+
+/**
+ * How often each task's proposals are changed (step 16).
+ *
+ * Accuracy, not impressions: the share of proposals a person used as they
+ * were. A task whose proposals are nearly always edited is a prompt to fix,
+ * and the screen says so plainly rather than hiding it behind a number.
+ */
+export function aiAccuracy(db: OpsDatabase): {
+  task: string;
+  runs: number;
+  used: number;
+  edited: number;
+  ignored: number;
+  cost: number;
+  words: string;
+}[] {
+  return Object.keys(AI_TASKS).map((task) => {
+    const runs = db.aiRuns.filter((r) => r.task === task);
+    const decided = runs.filter((r) => r.outcome);
+    const used = decided.filter((r) => r.outcome === "used").length;
+    const edited = decided.filter((r) => r.outcome === "edited").length;
+    const ignored = decided.filter((r) => r.outcome === "ignored").length;
+    const cost = Math.round(runs.reduce((sum, r) => sum + r.cost, 0) * 100) / 100;
+    let words: string;
+    if (!runs.length) words = "Never used yet";
+    else if (!decided.length) words = runs.length + " asked, none decided on yet";
+    else {
+      const share = Math.round((used / decided.length) * 100);
+      words =
+        runs.length +
+        " asked · " +
+        share +
+        "% used as they came" +
+        (edited ? ", " + edited + " edited" : "") +
+        (ignored ? ", " + ignored + " ignored" : "") +
+        (share < 50 && decided.length >= 4 ? " · worth fixing the prompt, or switching this one off" : "");
+    }
+    return { task, runs: runs.length, used, edited, ignored, cost, words };
+  });
 }
 
 /* ── Paid adverts: TopJobs (15, Phase 3 step 12) ───────────────── */

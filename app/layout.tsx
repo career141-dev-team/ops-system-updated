@@ -49,6 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/import" className="hover:text-ink">First day</Link>
               <Link href="/settings" className="hover:text-ink">Settings</Link>
               <Link href="/numbers" className="hover:text-ink">Numbers</Link>
+              <Link href="/ai" className="hover:text-ink">AI</Link>
               <Link href="/health" className="hover:text-ink">Health</Link>
             </nav>
             <span className="ml-auto rounded-full bg-bg-warning px-2.5 py-1 text-[11.5px] text-warning">
