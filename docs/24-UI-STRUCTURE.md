@@ -167,9 +167,9 @@ list as [23](23-UI-PLAN.md) section 6, with the purpose lines now living in
 | CV sets · Set | list · one thing | **done 4 Nov** | the card picks one clock of the four; late sets first on the list |
 | Holds · Hold | list · one thing | **done 4 Nov** | the review date, and that it never closes by itself |
 | Interviews · Interview | list · one thing | **done 4 Nov** | the card replaced seven open forms |
-| Placements · Placement | list · one thing | after | joining, joined, or waiting on a choice; the three clocks |
-| Invoices · Invoice | list · one thing | after | late with the charge; the CSVs; the drift list |
-| Guarantees · Guarantee | list · one thing | after | days left; whose decision a leaver is; paid-fee rule |
+| Placements · Placement | list · one thing | **done 4 Nov** | the card says the rule: a replacement is never invoiced again, a no-show never at all |
+| Invoices · Invoice | list · one thing | **done 4 Nov** | 1% a month compounded, nothing on a disputed one, no write-off inside ninety days |
+| Guarantees · Guarantee | list · one thing | **done 4 Nov** | ninety days, and worth nothing until the fee is paid in full |
 | Closing · Close | list · one thing | leave | already a checklist |
 | Report · Numbers · AI · Health | list | leave | single-purpose already |
 | Templates · Files · TA System · First day · Settings | form or list | leave | tools, not the day |
@@ -202,7 +202,11 @@ process that found the faults in every phase of the backend.
    (`setNextStep`, `holdNextStep`, `interviewNextStep`, with tests), and the
    record as shut parts: only the step you are on is open. `app/Part.tsx` is a
    plain `details`, so it needs no JavaScript and is not an overlay.
-5. Money: placements, invoices, guarantees.
+5. ~~Money: placements, invoices, guarantees~~ — **done 4 Nov.**
+   `placementNextStep`, `invoiceNextStep`, `guaranteeNextStep`, each saying the
+   rule and not only the date, because these are the ones a wrong screen costs
+   money for. The three money lists already ordered themselves by what is
+   waiting, so they were left alone.
 6. The lists: leads, clients, positions, adverts, mail.
 7. The rest, as each is opened for some other reason.
 

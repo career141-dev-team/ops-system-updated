@@ -5,6 +5,7 @@ import { markInvoiceDisputed, raiseCreditNote, recordPayment, sendInvoice, write
 import { clientIn, desk, invoiceIn, member as memberIn, placementIn, positionIn } from "@/data/desk";
 import {
   INVOICE_MEANINGS,
+  WRITE_OFF_DAYS,
   type InvoiceState,
   balanceOf,
   feeInWords,
@@ -12,6 +13,9 @@ import {
   money,
   paidSoFar,
 } from "@/lib/money";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { invoiceNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -56,6 +60,20 @@ export default async function InvoicePage({
 
   const day = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  // What to do now (24, step 5). These are the rules a wrong screen costs
+  // real money for, so the card says them: 1% a month compounded, nothing at
+  // all on a disputed invoice, and no write-off inside ninety days.
+  const step = invoiceNextStep(
+    invoice,
+    {
+      owedSaid: money(balance, invoice.currency),
+      lateChargeSaid: invoice.lateCharge ? money(invoice.lateCharge, invoice.currency) : null,
+      billingEmail: client?.billingEmail ?? "",
+      writeOffAfterDays: WRITE_OFF_DAYS,
+    },
+    now,
+  );
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
@@ -90,18 +108,26 @@ export default async function InvoicePage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">As the client reads it</h2>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="As the client reads it"
+        says={"The lines that go in the message"}
+        open={step.at === "send"}
+      >
         <p className="mt-2 whitespace-pre-wrap text-[13px] text-ink-soft">{lines}</p>
         <p className="mt-3 text-[12px] text-ink-faint">
           The invoice document itself waits on a template from the owner, exactly as the agreement did. Until then
           these lines go in the body of the email — a real invoice to pay against, and not a form we invented.
         </p>
-      </section>
+      </Part>
 
       {invoice.state === "draft" && mayMoney && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Send it</h2>
+        <Part
+          title="Send it"
+          says={client?.billingEmail || "No billing address on the client"}
+          open={step.at === "send" || step.at === "client"}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             It goes to the billing address on the client&rsquo;s record, as a draft you approve. The clock that chases
             it starts from the due date.
@@ -110,12 +136,15 @@ export default async function InvoicePage({
             <input type="hidden" name="invoiceId" value={invoice.id} />
             <button className={button}>Draft it for the client</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {invoice.state !== "draft" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Money in</h2>
+        <Part
+          title="Money in"
+          says={money(balance, invoice.currency) + " still owed"}
+          open={step.at === "payment"}
+        >
           <p className="mt-1 text-[13px]">
             {money(invoice.amount, invoice.currency)} invoiced
             {invoice.lateCharge > 0 && " · " + money(invoice.lateCharge, invoice.currency) + " late charge"}
@@ -147,12 +176,15 @@ export default async function InvoicePage({
               <button className={plain}>Record it</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {invoice.state !== "draft" && invoice.state !== "paid" && mayMoney && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">When it is not paid</h2>
+        <Part
+          title="When it is not paid"
+          says={"Disputed, chased, or written off"}
+          open={step.at === "disputed"}
+        >
 
           <form action={markInvoiceDisputed} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="invoiceId" value={invoice.id} />
@@ -186,12 +218,15 @@ export default async function InvoicePage({
               <button className={plain}>Write it off</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {invoice.kind !== "credit_note" && invoice.state !== "draft" && mayMoney && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">A credit note</h2>
+        <Part
+          title="A credit note"
+          says={"Against this invoice, with a reason"}
+          open={false}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             For a refund under the guarantee, or a correction to an invoice we got wrong. It is a document of its own,
             drafted for the client like everything else.
@@ -219,7 +254,7 @@ export default async function InvoicePage({
             </label>
             <button className={plain}>Raise it</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {invoice.kind === "credit_note" && invoice.againstInvoiceId && (
@@ -232,8 +267,11 @@ export default async function InvoicePage({
         </p>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry) => (
           <div key={entry.id} className="border-t border-rule py-2 first:border-t-0">
@@ -254,7 +292,7 @@ export default async function InvoicePage({
             </Link>
           </p>
         )}
-      </section>
+      </Part>
     </div>
   );
 }

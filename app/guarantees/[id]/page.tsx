@@ -5,12 +5,18 @@ import { decideRefund, markRefunded, recordLeaver } from "@/app/actions";
 import { clientIn, desk, guaranteeIn, invoiceIn, member as memberIn, placementIn } from "@/data/desk";
 import {
   GUARANTEE_MEANINGS,
+  REFUND_PCT,
+  REPLACEMENT_WORKING_DAYS,
+  WARN_DAY,
   type GuaranteeState,
   daysLeftInWords,
   guaranteeInWords,
   refundAmount,
 } from "@/lib/guarantee";
 import { money } from "@/lib/money";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { guaranteeNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -39,6 +45,15 @@ export default async function GuaranteePage({
 
   const day = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  // What to do now (24, step 5). Two facts decide everything here, so the
+  // card leads with them: ninety days from the day they joined, and valid
+  // only while the fee is paid in full.
+  const step = guaranteeNextStep(
+    guarantee,
+    { warnDay: WARN_DAY, refundPct: REFUND_PCT, replacementWorkingDays: REPLACEMENT_WORKING_DAYS },
+    now,
+  );
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
@@ -76,8 +91,13 @@ export default async function GuaranteePage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Does it hold?</h2>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="Does it hold?"
+        says={guarantee.feePaidAt ? "The fee is paid" : "Not until the fee is paid in full"}
+        open={step.at === "fee"}
+      >
         {guarantee.feePaidAt ? (
           <p className="mt-2 text-[13px]">
             The fee was paid in full on {day(guarantee.feePaidAt)}, so the guarantee holds: a replacement if somebody
@@ -95,11 +115,14 @@ export default async function GuaranteePage({
             still time.
           </p>
         )}
-      </section>
+      </Part>
 
       {(guarantee.state === "running" || guarantee.state === "warned") && can(me, "client.manage") && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">They have left</h2>
+        <Part
+          title="They have left"
+          says={"The day they went, and why"}
+          open={step.at === "running" || step.at === "fee"}
+        >
           <form action={recordLeaver} className="mt-3 flex flex-wrap items-end gap-2">
             <input type="hidden" name="guaranteeId" value={guarantee.id} />
             <label className="flex min-w-[160px] flex-col gap-1 text-[12.5px] text-ink-soft">
@@ -116,12 +139,15 @@ export default async function GuaranteePage({
             What happens next turns on one thing: whether the fee was paid. Paid means the position reopens and a
             replacement comes first, with sixty working days to finalise one.
           </p>
-        </section>
+        </Part>
       )}
 
       {guarantee.state === "replacing" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Replacing them</h2>
+        <Part
+          title="Replacing them"
+          says={"Replacement first, with its own deadline"}
+          open={step.at === "replacement"}
+        >
           <p className="mt-2 text-[13px]">
             Left {guarantee.leftAt ? day(guarantee.leftAt) : "—"}: {guarantee.reason}
           </p>
@@ -156,12 +182,15 @@ export default async function GuaranteePage({
               <button className={plain}>Decide a refund</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {guarantee.state === "refund_pending" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">The refund</h2>
+        <Part
+          title="The refund"
+          says={"The Director decides it, never a clock"}
+          open={step.at === "refund"}
+        >
           <p className="mt-2 text-[13px]">
             {guarantee.refundPct}% of what was paid:{" "}
             {money(guarantee.refundAmount ?? 0, invoice?.currency ?? "LKR")}, decided by{" "}
@@ -178,21 +207,27 @@ export default async function GuaranteePage({
               <button className={plain}>The refund has gone</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {guarantee.state === "void" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Void</h2>
+        <Part
+          title="Void"
+          says={"Nothing replaced, nothing refunded"}
+          open={false}
+        >
           <p className="mt-2 text-[13px]">
             They left on {guarantee.leftAt ? day(guarantee.leftAt) : "—"} and the fee was never paid in full, so there
             was no guarantee to honour: nothing replaced and nothing refunded. {guarantee.reason}
           </p>
-        </section>
+        </Part>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry) => (
           <div key={entry.id} className="border-t border-rule py-2 first:border-t-0">
@@ -209,7 +244,7 @@ export default async function GuaranteePage({
         <p className="mt-2 text-[12px] text-ink-faint">
           {GUARANTEE_MEANINGS[guarantee.state as GuaranteeState] ?? guarantee.state}
         </p>
-      </section>
+      </Part>
     </div>
   );
 }

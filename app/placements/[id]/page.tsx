@@ -4,6 +4,9 @@ import { notFound, redirect } from "next/navigation";
 import { cancelPlacement, changeJoinDate, markJoined, markNoShow, recordNoShowChoice } from "@/app/actions";
 import { clientIn, desk, invoiceIn, member as memberIn, placementIn, positionIn } from "@/data/desk";
 import { NO_SHOW_CHOICES, feeInWords, invoiceInWords, missingPlacementFields, money, placementInWords } from "@/lib/money";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { placementNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -33,6 +36,18 @@ export default async function PlacementPage({
 
   const day = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  // What to do now (24, step 5). The card says the rule, not only the date:
+  // a replacement is never invoiced again, and a no-show never at all.
+  const step = placementNextStep(
+    placement,
+    {
+      missing,
+      feeSaid: feeInWords({ feeMonths: placement.feeMonths, feeBasis: placement.feeBasis }),
+      invoiceState: invoice ? invoice.state : null,
+    },
+    now,
+  );
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
@@ -68,8 +83,13 @@ export default async function PlacementPage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What the TA System sent</h2>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="What the TA System sent"
+        says={missing.length ? missing.join(" and ") + " still missing" : "Complete"}
+        open={step.at === "details"}
+      >
         <p className="mt-2 text-[13px]">
           Package:{" "}
           {placement.monthlySalary ? money(placement.monthlySalary, placement.currency) + " a month" : "not given"}
@@ -103,11 +123,14 @@ export default async function PlacementPage({
             ))}
           </div>
         )}
-      </section>
+      </Part>
 
       {placement.state === "placed" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">The joining day</h2>
+        <Part
+          title="The joining day"
+          says={placement.dojHistory.length ? "Moved " + placement.dojHistory.length + (placement.dojHistory.length === 1 ? " time" : " times") : "Not moved"}
+          open={step.at === "joining"}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             The TA phones them on the morning. Marking them joined drafts the invoice at once, because the thirty days
             run from their first working day whether or not anybody remembered.
@@ -152,12 +175,15 @@ export default async function PlacementPage({
             </label>
             <button className={plain}>Cancel the placement</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {placement.state === "no_show" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">What the client chose</h2>
+        <Part
+          title="What the client chose"
+          says={placement.noShowChoice ? NO_SHOW_CHOICES[placement.noShowChoice] ?? placement.noShowChoice : "Replace them, or stop the search"}
+          open={step.at === "noshow"}
+        >
           {placement.noShowChoice ? (
             <p className="mt-2 text-[13px]">{NO_SHOW_CHOICES[placement.noShowChoice] ?? placement.noShowChoice}</p>
           ) : (
@@ -177,11 +203,14 @@ export default async function PlacementPage({
             </form>
           )}
           {placement.reason && <p className="mt-2 text-[12.5px] text-ink-faint">{placement.reason}</p>}
-        </section>
+        </Part>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The money</h2>
+      <Part
+        title="The money"
+        says={invoice ? invoiceInWords(invoice, now) : "Nothing drafted yet"}
+        open={step.at === "invoice"}
+      >
         {placement.isReplacementOf ? (
           <p className="mt-2 text-[13px] text-ink-soft">
             A replacement under the guarantee: nothing is invoiced again, and the guarantee starts afresh.
@@ -198,10 +227,13 @@ export default async function PlacementPage({
             Nothing invoiced yet. The fee is drafted the day they join, due thirty days from their first working day.
           </p>
         )}
-      </section>
+      </Part>
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry) => (
           <div key={entry.id} className="border-t border-rule py-2 first:border-t-0">
@@ -215,7 +247,7 @@ export default async function PlacementPage({
             </p>
           </div>
         ))}
-      </section>
+      </Part>
     </div>
   );
 }

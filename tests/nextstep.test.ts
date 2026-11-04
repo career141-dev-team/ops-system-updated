@@ -11,9 +11,12 @@ import test from "node:test";
 import { NAV, isHere, pageAndSectionFor, sectionFor } from "@/lib/nav";
 import {
   clientNextStep,
+  guaranteeNextStep,
   holdNextStep,
+  invoiceNextStep,
   interviewNextStep,
   leadNextStep,
+  placementNextStep,
   setNextStep,
 } from "@/lib/nextStep";
 import { workByPage, workInWords } from "@/lib/sectionWork";
@@ -484,4 +487,160 @@ test("an interview card is the client's side only, one step at a time", () => {
 
   const cancelled = interviewNextStep(iv({ state: "cancelled", reason: "The client moved it." }), parts, NOW);
   assert.match(cancelled.waiting, /The round is kept/);
+});
+
+/* ── Money's three cards (24, step 5) ──────────────────────────── */
+
+const placement = (over = {}) => ({
+  state: "placed",
+  candidateName: "SAMPLE CANDIDATE",
+  monthlySalary: 450_000,
+  offerLetterFileRef: "f_offer",
+  joinDate: NOW + 6 * DAY,
+  joinedAt: null,
+  dojHistory: [] as { reason: string }[],
+  isReplacementOf: null,
+  invoiceId: null,
+  noShowChoice: null,
+  reason: null,
+  ...over,
+});
+const pParts = { missing: [] as string[], feeSaid: "one month's gross salary", invoiceState: null };
+
+test("a placement says the rule, not only the date", () => {
+  // What is missing comes first: accounts cannot raise a fee without it.
+  const thin = placementNextStep(placement(), { ...pParts, missing: ["the package", "the offer letter"] }, NOW);
+  assert.equal(thin.at, "details");
+  assert.match(thin.waiting, /the package and the offer letter/);
+
+  const soon = placementNextStep(placement(), pParts, NOW);
+  assert.match(soon.where, /Joining in 6 days/);
+  assert.match(soon.clock ?? "", /a week before/);
+  assert.match(soon.clock ?? "", /one month's gross salary/);
+
+  // Every move of the joining day is counted, because each needed a reason.
+  const moved = placementNextStep(placement({ dojHistory: [{ reason: "visa" }, { reason: "notice" }] }), pParts, NOW);
+  assert.match(moved.waiting, /moved 2 times/);
+
+  // Joined, nothing drafted: the fee should already exist.
+  const joined = placementNextStep(placement({ state: "joined", joinedAt: NOW - DAY }), pParts, NOW);
+  assert.equal(joined.at, "invoice");
+  assert.match(joined.waiting, /should have been drafted the day they joined/);
+
+  // A replacement is never billed again - the rule, said on the card.
+  const replacement = placementNextStep(
+    placement({ state: "joined", joinedAt: NOW - DAY, isReplacementOf: "pl_old" }),
+    pParts,
+    NOW,
+  );
+  assert.match(replacement.waiting, /never billed again/);
+  assert.match(replacement.clock ?? "", /new ninety days/);
+
+  // A no-show invoices nothing, and the client's choice is theirs to make.
+  const noShow = placementNextStep(placement({ state: "no_show" }), pParts, NOW);
+  assert.equal(noShow.at, "noshow");
+  assert.match(noShow.waiting, /Nothing is invoiced either way/);
+  assert.match(
+    placementNextStep(placement({ state: "no_show", noShowChoice: "replace" }), pParts, NOW).waiting,
+    /nothing was invoiced/,
+  );
+});
+
+test("an invoice card leads with the rule that costs money", () => {
+  const invoice = (over = {}) => ({
+    kind: "fee",
+    state: "sent",
+    disputed: false,
+    disputedReason: null,
+    sentAt: NOW - 10 * DAY,
+    dueAt: NOW + 20 * DAY,
+    paidAt: null,
+    writtenOffAt: null,
+    reason: null,
+    ...over,
+  });
+  const iParts = {
+    owedSaid: "LKR 450,000",
+    lateChargeSaid: null,
+    billingEmail: "finance@example.test",
+    writeOffAfterDays: 90,
+  };
+
+  // A draft with nowhere to go says so, instead of offering to send it.
+  const nowhere = invoiceNextStep(invoice({ state: "draft" }), { ...iParts, billingEmail: "" }, NOW);
+  assert.equal(nowhere.at, "client");
+  assert.match(nowhere.waiting, /no billing address/);
+
+  const draft = invoiceNextStep(invoice({ state: "draft" }), iParts, NOW);
+  assert.match(draft.waiting, /finance@example.test/);
+  assert.match(draft.waiting, /draft somebody approves/);
+
+  const owed = invoiceNextStep(invoice(), iParts, NOW);
+  assert.match(owed.waiting, /LKR 450,000 is owed, due in 20 days/);
+  assert.match(owed.clock ?? "", /1% a month is added, compounded/);
+
+  const late = invoiceNextStep(
+    invoice({ dueAt: NOW - 12 * DAY }),
+    { ...iParts, lateChargeSaid: "LKR 4,500" },
+    NOW,
+  );
+  assert.match(late.where, /Late since 12 days ago/);
+  assert.match(late.waiting, /with LKR 4,500 added so far/);
+  assert.match(late.clock ?? "", /waits 90 days/);
+
+  // Disputed outranks late, and the charge stops while it stands.
+  const disputed = invoiceNextStep(
+    invoice({ dueAt: NOW - 12 * DAY, disputed: true, disputedReason: "They say the salary is wrong." }),
+    iParts,
+    NOW,
+  );
+  assert.equal(disputed.at, "disputed");
+  assert.match(disputed.clock ?? "", /Nothing is charged on a disputed invoice/);
+
+  assert.match(invoiceNextStep(invoice({ state: "paid", paidAt: NOW - DAY }), iParts, NOW).waiting, /every chase stopped/);
+});
+
+test("a guarantee is ninety days, and only on a fee fully paid", () => {
+  const guarantee = (over = {}) => ({
+    state: "running",
+    candidateName: "SAMPLE CANDIDATE",
+    startsAt: NOW - 30 * DAY,
+    endsAt: NOW + 60 * DAY,
+    feePaidAt: NOW - 20 * DAY,
+    leftAt: null,
+    reason: null,
+    deadlineAt: null,
+    replacedByPlacementId: null,
+    refundPct: null,
+    ...over,
+  });
+  const gParts = { warnDay: 75, refundPct: 50, replacementWorkingDays: 60 };
+
+  const running = guaranteeNextStep(guarantee(), gParts, NOW);
+  assert.match(running.where, /60 days left/);
+  assert.match(running.waiting, /unless they leave/);
+  assert.match(running.clock ?? "", /warning on day 75/);
+
+  // The fee is not paid: the card says the guarantee is worth nothing yet.
+  const unpaid = guaranteeNextStep(guarantee({ feePaidAt: null }), gParts, NOW);
+  assert.equal(unpaid.at, "fee");
+  assert.match(unpaid.waiting, /worth nothing/);
+  assert.match(unpaid.waiting, /nothing is replaced and nothing is refunded/);
+
+  const replacing = guaranteeNextStep(
+    guarantee({ state: "replacing", leftAt: NOW - 2 * DAY, deadlineAt: NOW + 40 * DAY, reason: "Counter-offer." }),
+    gParts,
+    NOW,
+  );
+  assert.match(replacing.waiting, /Replacement first/);
+  assert.match(replacing.clock ?? "", /60 working days/);
+  assert.match(replacing.clock ?? "", /50% refund is the Director's decision, never a clock's/);
+
+  assert.match(guaranteeNextStep(guarantee({ state: "void" }), gParts, NOW).waiting, /never paid in full/);
+  assert.match(guaranteeNextStep(guarantee({ state: "ended_clean" }), gParts, NOW).waiting, /close list/);
+  assert.match(guaranteeNextStep(guarantee({ state: "replaced" }), gParts, NOW).waiting, /not invoiced again/);
+  assert.match(
+    guaranteeNextStep(guarantee({ state: "refund_pending", refundPct: 50 }), gParts, NOW).clock ?? "",
+    /waits for a person/,
+  );
 });
