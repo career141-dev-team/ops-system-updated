@@ -220,6 +220,23 @@ Still to come in phase 9: the reply drafting screen (the rule and the prompt
 are built, the button is not), "why this first" on the day page, and the ask
 box that *does* things (step 14) - which is deliberately last.
 
+## Built: the screens, step one and two (23)
+
+The plan for every screen is [23](23-UI-PLAN.md): what is wrong now, the five
+rules, the three page patterns, screen by screen, and the order to build it.
+Steps one and two of that order are done.
+
+| Piece | Where | Notes |
+|---|---|---|
+| The shell: five sections, two levels | `src/lib/nav.ts`, `app/Nav.tsx`, `app/layout.tsx` | Today, Clients, The search, Money, Set up - and under them the pages of the section you are in. Twenty-four links in one row was the fault; nothing is hidden behind a hover, and a page in no section would fail a test |
+| "What to do now" | `app/NextStep.tsx`, `src/lib/nextStep.ts` | the card at the top of a page about one thing: what is waiting and on whom, the one button that moves it, and what will happen by itself and when. Every word comes from the same rules the buttons obey, so it cannot drift |
+| The lead, rebuilt | `app/leads/[id]` | the card, then the record in sections, with the section the step belongs to outlined. Nine forms at once was the complaint on 3 Nov |
+| The client, rebuilt | `app/clients/[id]` | the card says what the record is missing (a billing address, the group's name) or points at where the work really is |
+
+Still to come, in the order 23 gives: the search's screens, money's screens,
+and the day page's section counts. Every one of them works today, and gets
+the pattern as it is opened for another reason.
+
 ## Not built
 
 The server and pilot half of phase 8.
@@ -273,7 +290,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 38 suites, each in its own process
+node tests/run.mjs        # all 39 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

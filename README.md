@@ -80,6 +80,7 @@ npm run typecheck
 | 20 | [Replacing the Ops sheets](docs/20-SHEETS-TO-SYSTEM.md) | Every sheet the desk keeps today, and what replaces it |
 | 21 | [Where AI earns its place](docs/21-AI-OPPORTUNITIES.md) | The AI register, module by module: what the TA System already does (and so is never rebuilt here), what is worth adding, what is refused and why, the cost and accuracy rules, and the priority order. Built as Phase 9 |
 | [22](docs/22-GO-LIVE.md) | Going live: the order, the pilot, the sheets, and what stays behind |
+| [23](docs/23-UI-PLAN.md) | The screens: what is wrong, the patterns, screen by screen, and the order |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).

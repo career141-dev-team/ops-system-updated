@@ -26,6 +26,8 @@ import { agreementForLead, aiSwitches, desk, leadIn, meetingsForLead, requiremen
 import { anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type DictatedRequirement } from "@/lib/aiTasks";
 import Dictate from "@/app/Dictate";
+import NextStep from "@/app/NextStep";
+import { leadNextStep } from "@/lib/nextStep";
 import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
@@ -112,6 +114,16 @@ export default async function LeadPage({
   const countersignedFiles = db.files.filter((f) => f.kind === "esa_countersigned");
   const when = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ");
 
+  // What to do now, worked out from these same rows (23, section 4). The card
+  // below says it, and the section it belongs to is the one outlined.
+  const step = leadNextStep(lead, {
+    meetings,
+    esa,
+    requirement,
+    position,
+    requiredFields: REQUIREMENT_FIELDS.filter((f) => f.required).map((f) => f.key),
+  });
+
   return (
     <div className="max-w-[760px]">
       <Link href="/leads" className="text-[12.5px] text-brand hover:underline">
@@ -124,6 +136,24 @@ export default async function LeadPage({
       </p>
 
       {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      <div className="mt-4">
+        <NextStep where={step.where} waiting={step.waiting} clock={step.clock}>
+          {step.at !== "closed" && (
+            <a href={"#" + step.at} className="rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90">
+              {step.at === "duplicate"
+                ? "Check them"
+                : step.at === "industry"
+                  ? "Answer it"
+                  : step.at === "intro"
+                    ? "The intro call"
+                    : step.at === "agreement"
+                      ? "The agreement"
+                      : "The requirement"}
+            </a>
+          )}
+        </NextStep>
+      </div>
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">What we know</h2>
@@ -146,7 +176,7 @@ export default async function LeadPage({
 
       {!closed && (
         <>
-          <section className={card}>
+          <section id="duplicate" className={card + (step.at === "duplicate" ? " border-brand" : "")}>
             <h2 className="text-[14.5px] font-medium">Are they already our client?</h2>
             <p className="mt-1 text-[13px] text-ink-soft">
               Asks the TA System for a company with this name. An exact match is linked and the lead skips straight to
@@ -168,7 +198,7 @@ export default async function LeadPage({
             )}
           </section>
 
-          <section className={card}>
+          <section id="industry" className={card + (step.at === "industry" ? " border-brand" : "")}>
             <h2 className="text-[14.5px] font-medium">Banking or finance?</h2>
             {lead.industryFlagged ? (
               <p className="mt-1 text-[13px]">
@@ -202,7 +232,7 @@ export default async function LeadPage({
             )}
           </section>
 
-          <section className={card}>
+          <section id="intro" className={card + (step.at === "intro" ? " border-brand" : "")}>
             <h2 className="text-[14.5px] font-medium">The intro call</h2>
             <p className="mt-1 text-[13px] text-ink-soft">
               A TA lead is on every intro call. Booking it starts two reminders: the day before at nine, and an hour
@@ -315,7 +345,7 @@ export default async function LeadPage({
             )}
           </section>
 
-          <section className={card}>
+          <section id="agreement" className={card + (step.at === "agreement" ? " border-brand" : "")}>
             <h2 className="text-[14.5px] font-medium">The agreement</h2>
 
             {!esa && (
@@ -480,7 +510,7 @@ export default async function LeadPage({
             )}
           </section>
 
-          <section className={card}>
+          <section id="requirement" className={card + (step.at === "requirement" ? " border-brand" : "")}>
             <h2 className="text-[14.5px] font-medium">The requirement, and handing it over</h2>
 
             {!agreementDone && (

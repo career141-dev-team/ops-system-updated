@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
 import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
+import NextStep from "@/app/NextStep";
+import { clientNextStep } from "@/lib/nextStep";
 import { anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
@@ -40,6 +42,18 @@ export default async function ClientPage({
   const aiOn = anyKeySet() && aiSwitches(db).on;
 
 
+  // What to do now, from their own rows (23, section 4).
+  const theirPositions = db.positions.filter((p) => p.clientId === client.id);
+  const theirSets = db.clientSets.filter((cs) => cs.clientId === client.id);
+  const step = clientNextStep(client, {
+    positions: theirPositions,
+    sets: theirSets,
+    owing: db.invoices.filter(
+      (i) => i.clientId === client.id && (i.state === "sent" || i.state === "partly_paid"),
+    ),
+    holds: db.holds.filter((h) => h.clientId === client.id),
+  });
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
@@ -59,6 +73,8 @@ export default async function ClientPage({
       </div>
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
 
       {aiOn && (
         <section className="rounded-2xl border border-rule bg-surface px-5 py-4">
