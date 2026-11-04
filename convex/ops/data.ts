@@ -601,6 +601,39 @@ export const addPosition = internalMutation({
   },
 });
 
+/** An ops person (15, Phase 8 step 11). */
+export const addMember = internalMutation({
+  args: {
+    name: v.string(),
+    email: v.string(),
+    role: v.union(
+      v.literal("ops_owner"),
+      v.literal("ops_lead"),
+      v.literal("accounts"),
+      v.literal("director_ops"),
+      v.literal("marketing"),
+      v.literal("director_ro"),
+      v.literal("ta_lead_ro"),
+    ),
+    active: v.boolean(),
+    taUserId: v.union(v.string(), v.null()),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { by, ...member } = args;
+    const id = await ctx.db.insert("opsMembers", member);
+    await writeAudit(ctx, {
+      actorId: by,
+      action: "member.added",
+      subjectType: "member",
+      subjectId: id as string,
+      after: member.name + ", " + member.role,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
 /** One guarantee (15, Phase 7 step 2). */
 export const addGuarantee = internalMutation({
   args: {

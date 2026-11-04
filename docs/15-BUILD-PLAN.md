@@ -1133,6 +1133,18 @@ note document, which waits on the same template work as the invoice.
 
 ## Phase 8 · Hardening, staging, pilot
 
+**Built 4 November**, the half a laptop can do and prove: steps 1, 3, 4, 5, 8
+and 9 (the tests and the runbooks), step 11 (the first-day import, with its
+dry run), and the production deploy files from step 13. The server and pilot
+half - steps 2, 6, 7, 10, 12, 14 to 22 - is the owner's, and [22](22-GO-LIVE.md)
+is the order to do it in.
+
+Step 11 differs from the plan in one way, written down rather than quietly
+done: **placements and guarantees are not imported**. They arrive from TA's
+own `placement.created` event, so anybody who joined inside the last ninety
+days comes with their placement once reads are on - an import would make a
+second copy of each.
+
 1. End-to-end flow tests: one test per branch of the diagram ([14](14-DIAGRAM-DEEP-WALKTHROUGH.md))
    against the fake TA, with the clock advanced; every end step reached.
 2. Contract tests: one shared JSON of request/response examples run by both repos (Ops

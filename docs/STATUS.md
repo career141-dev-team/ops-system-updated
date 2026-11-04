@@ -173,9 +173,28 @@ wait on a set, slipped hires, time to fill, kept weekly as KPIs), and the
 credit note **document**, which waits on the same template work as the
 invoice.
 
+## Built: phase 8, the hardening
+
+| Piece | Where | Notes |
+|---|---|---|
+| The whole flow in one test | `tests/wholeflow.test.ts` | enquiry to close: a set out, the client's decision, the depth counted, an interview held, a placement, the fee invoiced and paid, ninety clean days, the position closed - and a last check that every client message is still only a draft |
+| TA down, a handler throwing, every switch off | `tests/hardening.test.ts` | writes queue with their keys and wait longer each time, reads answer "could not be read" rather than throwing, one bad clock does not stop the pass, and with the senders off nothing can leave the building |
+| The ops lead's own TA-writes switch | `pushOutbox` in `src/data/desk.ts` | it now really holds the link: the writes stay queued while it is off. It was read from the environment only, so the switch on the Settings screen did nothing |
+| The first-day import | `src/lib/importer.ts`, screen `app/import` | clients and who owns each, the holiday list, the ops people. A dry run first every time, and the same code builds the dry run and the real run; a bad row stops itself and names its line; a file run twice adds nothing |
+| Production deploy files | `deploy/production/` | the preview's shape with production names and ports, **every switch off on the first deploy**, and the order to turn them on written at the top of the env example |
+| Runbooks | `docs/runbooks/` | the wrong recipient, the mail reader stalled, the TA link down, events stuck, pausing Ops, restoring, rotating a key - and every switch in one table |
+| Going live | [22](22-GO-LIVE.md) | the server once, backups rehearsed, the first deploy with everything off, one switch a day, the pilot, which sheet stops when, and what is still not built |
+
+Still to come in phase 8, and all of it needs the server or the real API:
+the contract tests shared with the TA repository (step 2), the load check
+(step 6), the backups and the restore rehearsal on the machine (step 7), the
+staging run and the team's walkthrough (steps 15 and 16), and the pilot
+itself (steps 17 to 22).
+
 ## Not built
 
-TopJobs, phase 7's analytics, and phase 8: hardening, staging and the pilot.
+TopJobs, phase 7's analytics, the server and pilot half of phase 8, and
+phase 9's AI layer.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -226,7 +245,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 33 suites, each in its own process
+node tests/run.mjs        # all 36 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

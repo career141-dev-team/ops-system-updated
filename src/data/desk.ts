@@ -16,6 +16,7 @@ import type {
   OpsGuarantee,
   OpsInterview,
   OpsInvoice,
+  OpsMember,
   OpsPlacement,
   OpsReferenceRequest,
   OpsReport,
@@ -2053,6 +2054,22 @@ export function liveInterviewFor(db: OpsDatabase, applicationTaId: string): OpsI
   );
 }
 
+/**
+ * The newest interview for one application, held or not.
+ *
+ * The TA phones the candidate **after** the interview, so their feedback and
+ * TA's own outcome both arrive once it is already marked held: looking only
+ * for a live one dropped them on the floor (found by the whole-flow test,
+ * 4 Nov).
+ */
+export function interviewForApplication(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
+  return (
+    [...db.interviews]
+      .reverse()
+      .find((i) => i.applicationTaId === applicationTaId && i.state !== "cancelled") ?? null
+  );
+}
+
 export async function addReference(
   input: Omit<OpsReferenceRequest, "id" | "createdAt" | "updatedAt">,
 ): Promise<OpsReferenceRequest> {
@@ -2325,7 +2342,12 @@ export async function takeInterviewEvent(
     return;
   }
 
-  const interview = liveInterviewFor(db, applicationTaId);
+  // Feedback and an outcome come after the interview; a reconfirm or a
+  // drop-out can only be about one that has not happened yet.
+  const interview =
+    type === "interview.feedback" || type === "interview.outcome"
+      ? interviewForApplication(db, applicationTaId)
+      : liveInterviewFor(db, applicationTaId);
   if (!interview) return;
 
   if (type === "interview.confirmed") {
@@ -2917,6 +2939,11 @@ export async function logCall(input: Omit<OpsCallLog, "id" | "at">): Promise<voi
   await convexMutation("ops/data:logCall", input);
 }
 
+export async function addMember(input: Omit<OpsMember, "id">, by: Id): Promise<OpsMember> {
+  if (!usingConvex()) return repo.addMember(input, by);
+  return (await convexMutation<OpsMember>("ops/data:addMember", { ...input, by })) as OpsMember;
+}
+
 export async function addHolidays(days: { date: string; name: string }[], by: Id): Promise<number> {
   if (!usingConvex()) return repo.addHolidays(days, by);
   return convexMutation<number>("ops/data:addHolidays", { days, by });
@@ -2971,6 +2998,12 @@ export async function queueTaWrite(
  */
 export async function pushOutbox(now = Date.now()): Promise<{ sent: number; waiting: number; gaveUp: number }> {
   const db = await desk();
+  // The ops lead's own switch, which lives in the settings rather than in the
+  // environment: holding the TA link must not need a deploy. Nothing is lost
+  // while it is off - the writes stay queued (4 Nov, Phase 8 step 8).
+  if (!switchedOn(db, "switch.taWritesEnabled")) {
+    return { sent: 0, waiting: dueNow(db.outbox, now).length, gaveUp: 0 };
+  }
   const due = dueNow(db.outbox, now);
   let sent = 0;
   let waiting = 0;

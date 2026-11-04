@@ -109,6 +109,24 @@ export const repo = {
     return load().members.filter((m) => m.active);
   },
 
+  /** An ops person, from the role list on the first day (Phase 8 step 11). */
+  addMember(input: Omit<OpsMember, "id">, by: Id): OpsMember {
+    const db = load();
+    const row: OpsMember = { ...input, id: id("m") };
+    db.members.push(row);
+    audit({
+      actorId: by,
+      action: "member.added",
+      subjectType: "member",
+      subjectId: row.id,
+      before: null,
+      after: row.name + ", " + row.role,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
   member(memberId: Id): OpsMember | null {
     return load().members.find((m) => m.id === memberId) ?? null;
   },

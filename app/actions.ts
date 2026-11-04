@@ -27,7 +27,9 @@ import {
   patchIssue,
   patchPosition,
   patchRequirement,
+  addClient,
   addInterview,
+  addMember,
   addInvoice,
   addReference,
   buildWeeklyReport,
@@ -182,6 +184,13 @@ import {
   problemWithSlots,
 } from "@/lib/interviews";
 import { parseHolidayLines } from "@/lib/holidays";
+import {
+  IMPORT_KINDS,
+  type ImportKind,
+  planImport,
+  planInWords,
+  problemWithImport,
+} from "@/lib/importer";
 import { MEASURES } from "@/lib/baseline";
 import {
   type LeadState,
@@ -223,6 +232,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
+import type { OpsMember } from "@/data/types";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -4193,5 +4203,110 @@ export async function openCloseByHand(formData: FormData): Promise<void> {
     checklist
       ? "/closes/" + checklist.id + "?msg=" + encodeURIComponent("The close list is open. Nothing closes until every item is ticked.")
       : here + "?msg=" + encodeURIComponent("Nothing to close."),
+  );
+}
+
+/* ── The first-day import (15, Phase 8 step 11) ───────────────── */
+
+/**
+ * Import a sheet: a dry run first, then for real.
+ *
+ * The same code builds both, so what you read in the dry run is what lands.
+ * Nothing is written until the file has been looked at, and running a file
+ * twice adds nothing - every row is recognised by its own key.
+ */
+export async function runImport(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/import?msg=" + encodeURIComponent(msg));
+  // The role list, the client list and the holidays are the ops lead's.
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+
+  const kind = String(formData.get("kind") ?? "") as ImportKind;
+  if (!(kind in IMPORT_KINDS)) back("What is being imported?");
+  const text = String(formData.get("sheet") ?? "");
+  if (!text.trim()) back("Paste the sheet first, header row and all.");
+  const forReal = String(formData.get("forReal") ?? "") === "yes";
+
+  const db = await desk();
+  const existing =
+    kind === "clients"
+      ? db.clients.map((c) => c.taClientId)
+      : kind === "holidays"
+        ? db.holidays.map((h) => h.date)
+        : db.members.map((m) => m.email);
+  const plan = planImport(kind, text, existing.filter(Boolean) as string[]);
+
+  if (!forReal) {
+    // The dry run writes nothing at all; it only says what it would do.
+    back(
+      "Dry run: " +
+        planInWords(plan) +
+        (plan.problems.length
+          ? ". " + plan.problems.map((p) => "line " + p.line + ": " + p.what).join(" ")
+          : ". Nothing is wrong with it - run it for real when you are ready."),
+    );
+  }
+
+  const problem = problemWithImport(plan, true);
+  if (problem) back(problem);
+
+  let added = 0;
+  if (kind === "holidays") {
+    added = await addHolidays(
+      plan.toAdd.map((row) => ({ date: row.values.date, name: row.values.name })),
+      member.id,
+    );
+  }
+  if (kind === "members") {
+    for (const row of plan.toAdd) {
+      await addMember(
+        {
+          name: row.values.name,
+          email: row.values.email,
+          role: row.values.role as OpsMember["role"],
+          active: true,
+          taUserId: null,
+        },
+        member.id,
+      );
+      added += 1;
+    }
+  }
+  if (kind === "clients") {
+    for (const row of plan.toAdd) {
+      const owner = db.members.find((m) => m.email.toLowerCase() === (row.values.owneremail ?? "").toLowerCase());
+      await addClient({
+        leadId: null,
+        taClientId: row.values.taclientid,
+        name: row.values.company,
+        nameKey: row.values.company.trim().toLowerCase(),
+        stage: row.values.stage || "active",
+        billingName: row.values.billingname ?? "",
+        billingEmail: row.values.billingemail ?? "",
+        groupName: "",
+        // An owner we cannot match is the ops lead's to sort out, so the
+        // record says so instead of looking as though it was meant.
+        notes: owner
+          ? "Imported on the first day."
+          : "Imported on the first day. No ops person matched " +
+            (row.values.owneremail || "the owner column") +
+            ", so this one is the ops lead's until somebody takes it.",
+        reason: null,
+        ownerId: owner?.id ?? member.id,
+      });
+      added += 1;
+    }
+  }
+
+  revalidatePath("/import");
+  back(
+    added +
+      (added === 1 ? " row added" : " rows added") +
+      ", " +
+      plan.already.length +
+      " already here" +
+      (plan.problems.length ? ", " + plan.problems.length + " left for the sheet to be fixed" : "") +
+      ".",
   );
 }

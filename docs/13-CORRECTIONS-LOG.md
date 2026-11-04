@@ -330,3 +330,27 @@ takes the holidays now.
 And the refund screen said "the Director can decide early" while the rule
 refused them. Deciding early is allowed - it is a decision, not a deadline -
 so there is a tick for it, and the audit records that it was taken early.
+
+## 4 November 2026 - three faults the hardening found
+
+**TA's feedback never reached the interview.** The TA phones the candidate
+*after* the interview, so their feedback and TA's own outcome arrive once it
+is already marked held - and the lookup only considered interviews that had
+not happened yet, so both were dropped on the floor. Found by the whole-flow
+test, which walks the steps in the order they really happen.
+
+**The ops lead's TA-writes switch did nothing.** `switch.taWritesEnabled` on
+the Settings screen was never read: the only switch the writes obeyed was the
+one in the environment, which needs a deploy to change. Holding the TA link in
+an incident is exactly the thing that must not need a deploy. The outbox pass
+reads the setting now, and nothing is lost while it is off.
+
+**A write that had never been tried waited an hour.** The backoff is one,
+five, fifteen, thirty minutes then hourly, indexed by the number of tries so
+far - and handed a zero it fell off the front of the list and took the last
+step. Harmless in practice, because the first try happens immediately, but it
+is the kind of arithmetic that is wrong for years.
+
+Also: `deploy/production/.env.production.example` would have been swallowed by
+`.gitignore`, exactly as the preview's was on 3 November. Checked with
+`git add --dry-run` this time rather than discovered later.
