@@ -9,7 +9,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { NAV, isHere, pageAndSectionFor, sectionFor } from "@/lib/nav";
-import { clientNextStep, leadNextStep } from "@/lib/nextStep";
+import {
+  clientNextStep,
+  holdNextStep,
+  interviewNextStep,
+  leadNextStep,
+  setNextStep,
+} from "@/lib/nextStep";
 import { workByPage, workInWords } from "@/lib/sectionWork";
 
 const DAY = 86_400_000;
@@ -190,7 +196,7 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ billingEmail: "" }), theirs()).waiting, /billing address/);
 
   // A hold outranks money, because it is why nothing is moving.
-  const held = clientNextStep(client(), theirs({ holds: [{ state: "held" }] }));
+  const held = clientNextStep(client(), theirs({ holds: [{ state: "on_hold" }] }));
   assert.match(held.waiting, /held because they went quiet/);
   assert.match(held.clock ?? "", /never closes by itself/);
 
@@ -313,4 +319,169 @@ test("the section is found from the path, and the longest page wins", () => {
   assert.equal(isHere("/leads", "/"), false, "the day is only the day");
   assert.equal(isHere("/leads/lead_1", "/leads"), true);
   assert.equal(isHere("/leadsomething", "/leads"), false, "a prefix is not a match");
+});
+
+/* ── The search's three cards (24, step 4) ─────────────────────── */
+
+const cv = (name: string, over = {}) => ({ name, fileId: "f_1", problem: null, ...over });
+const aSet = (over = {}) => ({
+  state: "reviewing",
+  name: "SAMPLE CLIENT > Head of finance > SET 1",
+  candidates: [cv("One"), cv("Two"), cv("Three"), cv("Four"), cv("Five")],
+  dueAt: NOW + 2 * DAY,
+  sentAt: null,
+  receivedAt: null,
+  reason: null,
+  ...over,
+});
+const noParts = { minCvs: 5, ownershipClosesAt: null, feedback: null, holdState: null };
+
+test("a set says the one step, and never four clocks at once", () => {
+  assert.match(setNextStep(aSet({ state: "ready" }), noParts, NOW).waiting, /Read it before it goes/);
+
+  // Short of five, and it names who is missing a CV rather than a number.
+  const short = setNextStep(
+    aSet({ candidates: [cv("One"), cv("Two"), cv("Three"), cv("Four"), cv("Five", { fileId: null })] }),
+    noParts,
+    NOW,
+  );
+  assert.equal(short.at, "candidates");
+  assert.match(short.waiting, /4 of 5 CVs are ready/);
+  assert.match(short.waiting, /Five has no CV/);
+
+  const ready = setNextStep(aSet(), noParts, NOW);
+  assert.equal(ready.at, "send");
+  assert.match(ready.clock ?? "", /Due at the client in 2 days/);
+
+  // Sent but not received: nothing after it can start, and the card says so.
+  const sent = setNextStep(aSet({ state: "sent", sentAt: NOW - DAY }), noParts, NOW);
+  assert.equal(sent.at, "received");
+  assert.match(sent.waiting, /none of them is running/);
+});
+
+test("once a set is received the card picks one clock, in this order", () => {
+  const received = (over = {}, parts = {}) =>
+    setNextStep(
+      aSet({ state: "sent", sentAt: NOW - 3 * DAY, receivedAt: NOW - 2 * DAY, ...over }),
+      { ...noParts, ...parts },
+      NOW,
+    );
+
+  // A proposed hold outranks the chase: it is why nothing is moving.
+  const proposed = received({}, { holdState: "proposed", feedback: { what: "call", because: "x" } });
+  assert.equal(proposed.at, "hold");
+  assert.match(proposed.clock ?? "", /without a person/);
+
+  assert.match(received({}, { holdState: "on_hold" }).clock ?? "", /never closes by itself/);
+
+  const chase = received({}, { feedback: { what: "chase", because: "A day with no feedback." } });
+  assert.match(chase.waiting, /Ask once, in writing: 5 of 5/);
+  assert.match(chase.clock ?? "", /nothing goes out on its own/);
+
+  const call = received({}, { feedback: { what: "call", because: "Chased already." } });
+  assert.match(call.waiting, /Ring them today/);
+
+  const stop = received({}, { feedback: { what: "stop", because: "Silent for 4 days." } });
+  assert.match(stop.clock ?? "", /never put on by itself/);
+
+  // Everybody answered: the work moves to the position, not to this page.
+  const done = received({
+    candidates: [cv("One", { decision: "shortlisted" }), cv("Two", { decision: "rejected" })],
+  });
+  assert.equal(done.at, "decisions");
+  assert.match(done.waiting, /the depth rule decides/);
+
+  // The ownership window is the quiet clock when nothing else is waiting.
+  const waiting = received({}, { ownershipClosesAt: NOW + 3 * DAY });
+  assert.match(waiting.clock ?? "", /that window shuts in 3 days/);
+});
+
+test("a hold never closes by itself, and the card says so every time", () => {
+  const hold = (over = {}) => ({
+    state: "proposed",
+    reason: "Nothing for two weeks.",
+    liftedReason: null,
+    heldAt: null,
+    liftedAt: null,
+    reviewAt: null,
+    noticeMessageId: null,
+    ...over,
+  });
+
+  const proposed = holdNextStep(hold(), NOW);
+  assert.equal(proposed.at, "approve");
+  assert.match(proposed.waiting, /Nothing is drafted yet/);
+  assert.match(holdNextStep(hold({ noticeMessageId: "m_1" }), NOW).waiting, /drafted and waiting for you/);
+
+  const held = holdNextStep(hold({ state: "on_hold", heldAt: NOW - 10 * DAY, reviewAt: NOW + 20 * DAY }), NOW);
+  assert.equal(held.at, "review");
+  assert.match(held.where, /Held since 10 days ago/);
+  assert.match(held.clock ?? "", /asked about it again in 20 days/);
+  assert.match(held.clock ?? "", /never closes by itself/);
+
+  const lifted = holdNextStep(
+    hold({ state: "lifted", liftedAt: NOW - DAY, liftedReason: "They came back." }),
+    NOW,
+  );
+  assert.match(lifted.waiting, /the search is running again. They came back./);
+  assert.equal(lifted.clock, null);
+});
+
+test("an interview card is the client's side only, one step at a time", () => {
+  const iv = (over = {}) => ({
+    state: "slots",
+    scheduler: "us",
+    round: 1,
+    slots: [] as number[],
+    slotLoops: 0,
+    at: null,
+    whereOrLink: "",
+    interviewers: [] as string[],
+    decision: null,
+    reason: null,
+    candidateFeedback: null,
+    ...over,
+  });
+  const parts = { maxSlotLoops: 3, reference: null };
+
+  assert.match(interviewNextStep(iv(), parts, NOW).waiting, /Ask the client for times/);
+  assert.match(interviewNextStep(iv({ slots: [NOW, NOW + DAY] }), parts, NOW).waiting, /which one they picked/);
+  assert.match(
+    interviewNextStep(iv({ scheduler: "client" }), parts, NOW).waiting,
+    /The client books it themselves/,
+  );
+  assert.match(interviewNextStep(iv({ slotLoops: 3 }), parts, NOW).waiting, /finds a back-up candidate/);
+
+  // Agreed, but it would be refused: the card says what is missing first.
+  assert.match(interviewNextStep(iv({ state: "agreed" }), parts, NOW).waiting, /refuse until you give it a link/);
+  assert.match(
+    interviewNextStep(iv({ state: "agreed", whereOrLink: "https://teams.test/x" }), parts, NOW).waiting,
+    /who is interviewing/,
+  );
+  assert.match(
+    interviewNextStep(
+      iv({ state: "agreed", whereOrLink: "https://teams.test/x", interviewers: ["hr@example.test"] }),
+      parts,
+      NOW,
+    ).waiting,
+    /The invite is drafted for you to approve/,
+  );
+
+  const booked = interviewNextStep(iv({ state: "booked", at: NOW + 2 * DAY }), parts, NOW);
+  assert.match(booked.clock ?? "", /nine the morning before/);
+  assert.match(booked.waiting, /how late it is goes in the notice/);
+
+  const held = interviewNextStep(iv({ state: "attended", at: NOW - DAY }), parts, NOW);
+  assert.equal(held.at, "decision");
+  assert.match(held.waiting, /in their own words/);
+
+  const reference = interviewNextStep(
+    iv({ state: "attended", at: NOW - DAY, decision: "next" }),
+    { ...parts, reference: { state: "asked" } },
+    NOW,
+  );
+  assert.match(reference.waiting, /word for word/);
+
+  const cancelled = interviewNextStep(iv({ state: "cancelled", reason: "The client moved it." }), parts, NOW);
+  assert.match(cancelled.waiting, /The round is kept/);
 });

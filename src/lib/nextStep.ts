@@ -295,7 +295,10 @@ export function clientNextStep(
 ): Step {
   const { positions, sets, owing, holds } = parts;
   const open = positions.filter((p) => p.stage !== "closed");
-  const held = holds.filter((h) => h.state === "held" || h.state === "proposed");
+  // "on_hold" is what the rows actually say (HoldState). This looked for
+  // "held" and so never saw a held client at all - found walking the search
+  // screens on 4 November.
+  const held = holds.filter((h) => h.state === "on_hold" || h.state === "proposed");
 
   if (client.stage === "closed" || client.stage === "dormant") {
     return {
@@ -360,5 +363,370 @@ export function clientNextStep(
       (waitingSets ? " and the " + waitingSets + " " + (waitingSets === 1 ? "set" : "sets") + " they are holding." : "."),
     where: "Active",
     clock: null,
+  };
+}
+
+/* ── The search: a set, a hold, an interview (24, step 4) ──────── */
+
+export interface SetLike {
+  state: string;
+  name: string;
+  candidates: {
+    name: string;
+    fileId: string | null;
+    problem: string | null;
+    claimedAt?: number | null;
+    decision?: string | null;
+  }[];
+  dueAt: number | null;
+  sentAt: number | null;
+  receivedAt: number | null;
+  reason: string | null;
+}
+
+/**
+ * A set's own next step.
+ *
+ * This is the hardest card on the desk, because once a set is received four
+ * clocks run at once: CV ownership, the feedback chase, the two weeks before
+ * a hold, and three months for an unreported hire. The card names the one
+ * step and the nearest clock; the page lists the rest below it. Four
+ * countdowns in a row is a dashboard, which the owner has refused twice.
+ */
+export function setNextStep(
+  set: SetLike,
+  parts: {
+    minCvs: number;
+    /** When the client's claim window shuts, if it is still open. */
+    ownershipClosesAt: number | null;
+    /** What the feedback rule says to do about the silence. */
+    feedback: { what: string; because: string } | null;
+    /** A hold on this position: "proposed", "held", or nothing. */
+    holdState: string | null;
+  },
+  now: number,
+): Step {
+  const ready = set.candidates.filter((c) => !c.problem && c.fileId);
+  const missing = set.candidates.filter((c) => c.problem || !c.fileId);
+  const undecided = set.candidates.filter((c) => !c.decision);
+
+  if (set.state === "withdrawn") {
+    return {
+      at: "closed",
+      where: "Pulled back",
+      waiting: "Nothing: this set was pulled back and never went." + (set.reason ? " " + set.reason : ""),
+      clock: null,
+    };
+  }
+
+  if (set.state === "ready") {
+    return {
+      at: "review",
+      where: "TA says it is ready",
+      waiting: "Read it before it goes. Nothing reaches the client until you have.",
+      clock: set.dueAt ? "Due at the client " + inDays(set.dueAt, now) + ", counted from the day they signed." : null,
+    };
+  }
+
+  if (set.state === "reviewing") {
+    if (ready.length < parts.minCvs) {
+      return {
+        at: "candidates",
+        where: "Being read before it goes",
+        waiting:
+          ready.length +
+          " of " +
+          parts.minCvs +
+          " CVs are ready, so it cannot go yet" +
+          (missing.length
+            ? ": " +
+              missing.map((c) => c.name).join(", ") +
+              " " +
+              (missing.length === 1 ? "has" : "have") +
+              " no CV."
+            : "."),
+        clock: set.dueAt ? "Due at the client " + inDays(set.dueAt, now) + "." : null,
+      };
+    }
+    return {
+      at: "send",
+      where: "Ready to go",
+      waiting: "Send it to the client's own people. It goes as a draft you approve, with every CV attached.",
+      clock: set.dueAt ? "Due at the client " + inDays(set.dueAt, now) + "." : null,
+    };
+  }
+
+  // Sent, but nobody has said when it landed. Every clock after this counts
+  // from that day, so none of them has started.
+  if (!set.receivedAt) {
+    return {
+      at: "received",
+      where: "Sent " + inDays(set.sentAt, now),
+      waiting:
+        "Say the day the client received it. Every clock after this counts from that day, so none of them is running.",
+      clock: null,
+    };
+  }
+
+  const ownership = parts.ownershipClosesAt
+    ? "They can still say they already had one of these CVs: that window shuts " +
+      inDays(parts.ownershipClosesAt, now) +
+      ", and after it a claim is refused."
+    : null;
+
+  if (parts.holdState === "proposed") {
+    return {
+      at: "hold",
+      where: "With the client, gone quiet",
+      waiting: "A clock has proposed a hold. It only holds once you approve the notice the client gets.",
+      clock: "Nothing is held, or let go, without a person.",
+    };
+  }
+
+  if (parts.holdState === "on_hold") {
+    return {
+      at: "hold",
+      where: "On hold",
+      waiting: "Nothing on this set: the position is held until the client comes back.",
+      clock: "The hold is looked at again every thirty days. It never closes by itself.",
+    };
+  }
+
+  if (undecided.length === 0) {
+    return {
+      at: "decisions",
+      where: "Every candidate answered",
+      waiting:
+        "Nothing here. The work is on the position now - the depth rule decides whether the search carries on.",
+      clock: ownership,
+    };
+  }
+
+  const step = parts.feedback;
+  if (step?.what === "chase") {
+    return {
+      at: "feedback",
+      where: "With the client",
+      waiting:
+        "Ask once, in writing: " +
+        undecided.length +
+        " of " +
+        set.candidates.length +
+        " candidates still have no answer.",
+      clock: "The chase is drafted for you to approve; nothing goes out on its own.",
+    };
+  }
+  if (step?.what === "call") {
+    return {
+      at: "feedback",
+      where: "With the client, chased once",
+      waiting: "Ring them today. " + step.because,
+      clock: "After this we stop asking, and the hold clock decides.",
+    };
+  }
+  if (step?.what === "stop") {
+    return {
+      at: "feedback",
+      where: "With the client, silent",
+      waiting: "Stop asking. " + step.because,
+      clock: "A hold will be proposed for you to approve; it is never put on by itself.",
+    };
+  }
+
+  return {
+    at: "feedback",
+    where: "With the client",
+    waiting: "Waiting on them: " + undecided.length + " of " + set.candidates.length + " candidates have no answer yet.",
+    clock: ownership,
+  };
+}
+
+export interface HoldLike {
+  state: string;
+  reason: string;
+  liftedReason: string | null;
+  heldAt: number | null;
+  liftedAt: number | null;
+  reviewAt: number | null;
+  noticeMessageId: string | null;
+}
+
+/**
+ * A hold's own next step.
+ *
+ * The owner's decision 6, said in one card: a silent client's hold never
+ * closes by itself, and a person is asked about it again every thirty days.
+ */
+export function holdNextStep(hold: HoldLike, now: number): Step {
+  if (hold.state === "lifted") {
+    return {
+      at: "closed",
+      where: "Lifted " + inDays(hold.liftedAt, now),
+      waiting: "Nothing: the search is running again." + (hold.liftedReason ? " " + hold.liftedReason : ""),
+      clock: null,
+    };
+  }
+
+  if (hold.state === "proposed") {
+    return {
+      at: "approve",
+      where: "Proposed by a clock",
+      waiting:
+        "Approve the notice the client gets, and it goes on hold. " +
+        (hold.noticeMessageId ? "The notice is drafted and waiting for you." : "Nothing is drafted yet."),
+      clock: "Nothing holds a position by itself: it waits here until a person decides.",
+    };
+  }
+
+  return {
+    at: "review",
+    where: "Held since " + inDays(hold.heldAt, now),
+    waiting: "Nothing today, unless the client has come back. Then lift it, with a reason.",
+    clock: hold.reviewAt
+      ? "You will be asked about it again " + inDays(hold.reviewAt, now) + ". It never closes by itself."
+      : "It never closes by itself.",
+  };
+}
+
+export interface InterviewLike {
+  state: string;
+  scheduler: string;
+  round: number;
+  slots: number[];
+  slotLoops: number;
+  at: number | null;
+  whereOrLink: string;
+  interviewers: string[];
+  decision: string | null;
+  reason: string | null;
+  candidateFeedback: string | null;
+}
+
+/**
+ * An interview's own next step.
+ *
+ * The client's side only: the candidate is the TA System's, and this card
+ * never says a word about chasing them. Four forms used to sit open on this
+ * page at once (24, section 1).
+ */
+export function interviewNextStep(
+  interview: InterviewLike,
+  parts: {
+    maxSlotLoops: number;
+    /** A reference the client asked for: "asked", "reported", or nothing. */
+    reference: { state: string } | null;
+  },
+  now: number,
+): Step {
+  const round = "Round " + interview.round;
+
+  if (interview.state === "cancelled") {
+    return {
+      at: "closed",
+      where: "Cancelled",
+      waiting:
+        "Nothing." +
+        (interview.reason ? " " + interview.reason : "") +
+        " The round is kept: a new time starts a new interview.",
+      clock: null,
+    };
+  }
+
+  if (interview.state === "no_show") {
+    return {
+      at: "slots",
+      where: "Nobody came",
+      waiting: "Agree a new time, or tell the TA this one is over. Nothing was sent to anybody by itself.",
+      clock: null,
+    };
+  }
+
+  if (interview.state === "attended") {
+    if (!interview.decision) {
+      return {
+        at: "decision",
+        where: round + " held " + inDays(interview.at, now),
+        waiting: "Waiting on the client's decision, in their own words.",
+        clock: interview.candidateFeedback
+          ? "The TA's own feedback is in, and the client's copy was drafted the next morning."
+          : "The TA System sends us what the candidate said; we draft the client's copy the next morning.",
+      };
+    }
+    if (parts.reference?.state === "asked") {
+      return {
+        at: "reference",
+        where: round + " · " + interview.decision,
+        waiting:
+          "The client asked for a reference. The TA rings the referee and writes down what was said, word for word.",
+        clock: null,
+      };
+    }
+    return {
+      at: "decision",
+      where: round + " · " + interview.decision,
+      waiting: "Nothing here: the decision is recorded and the depth has been counted again.",
+      clock: null,
+    };
+  }
+
+  if (interview.state === "slots") {
+    if (interview.scheduler === "client") {
+      return {
+        at: "booking",
+        where: "Waiting for the client's date",
+        waiting: "The client books it themselves. Record the date as soon as they tell you.",
+        clock: "A clock asks them for it, and asks you again if nothing comes back.",
+      };
+    }
+    if (interview.slotLoops >= parts.maxSlotLoops) {
+      return {
+        at: "slots",
+        where: "Three rounds of times, no answer",
+        waiting: "Stop asking. Tell the TA, who finds a back-up candidate.",
+        clock: null,
+      };
+    }
+    if (interview.slots.length === 0) {
+      return {
+        at: "slots",
+        where: "Agreeing a time",
+        waiting: "Ask the client for times. The TA asks the candidate once you have them.",
+        clock: null,
+      };
+    }
+    return {
+      at: "slots",
+      where: interview.slots.length + " times offered",
+      waiting: "The TA is asking the candidate. Record which one they picked.",
+      clock: null,
+    };
+  }
+
+  if (interview.state === "agreed") {
+    const missing = !interview.whereOrLink
+      ? "a link or an address"
+      : interview.interviewers.length === 0
+        ? "who is interviewing"
+        : null;
+    return {
+      at: "book",
+      where: "A time is agreed",
+      waiting: missing
+        ? "Book it. It will refuse until you give it " + missing + "."
+        : "Book it. The invite is drafted for you to approve, and the TA is told.",
+      clock: null,
+    };
+  }
+
+  // Booked, or booked and reconfirmed.
+  return {
+    at: "booked",
+    where: round + (interview.state === "reconfirmed" ? " · reconfirmed" : "") + " · " + inDays(interview.at, now),
+    waiting:
+      "Nothing until it happens. If the candidate drops out, say so here: the client is told at once, and how late it is goes in the notice.",
+    clock:
+      interview.state === "reconfirmed"
+        ? "The interview's own clock runs on the day: mark who turned up."
+        : "A reminder goes at nine the morning before, and the interview's own clock runs on the day.",
   };
 }

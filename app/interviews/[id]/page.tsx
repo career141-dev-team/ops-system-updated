@@ -22,6 +22,7 @@ import {
   REFERENCE_MEANINGS,
   ROUND_DECISIONS,
   SCHEDULER_MEANINGS,
+  MAX_SLOT_LOOPS,
   STATE_MEANINGS,
   type InterviewState,
   type ReferenceState,
@@ -29,6 +30,9 @@ import {
   interviewInWords,
   noticeStanding,
 } from "@/lib/interviews";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { interviewNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -62,6 +66,10 @@ export default async function InterviewPage({
 
   const standing = interview.at ? noticeStanding(interview.at, now) : null;
 
+  // What to do now (24, step 4). The client's side only: this card never says
+  // a word about chasing the candidate, who is the TA System's.
+  const step = interviewNextStep(interview, { maxSlotLoops: MAX_SLOT_LOOPS, reference }, now);
+
   return (
     <div className="flex max-w-[800px] flex-col gap-4">
       <div>
@@ -88,10 +96,15 @@ export default async function InterviewPage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
       {/* Agreeing a time: the two paths, ours and the client's. */}
       {(interview.state === "slots" || interview.state === "agreed") && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">The time</h2>
+        <Part
+          title="The time"
+          says={interview.slots.length ? interview.slots.length + " offered" : "None offered yet"}
+          open={step.at === "slots" || step.at === "booking"}
+        >
 
           {interview.scheduler === "us" ? (
             <>
@@ -149,13 +162,16 @@ export default async function InterviewPage({
               <button className={plain}>Record their pick</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {/* A time is agreed: book it. */}
       {interview.state === "agreed" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Book it</h2>
+        <Part
+          title="Book it"
+          says={"Refuses without a link or an address, and without who is interviewing"}
+          open={step.at === "book"}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             {interview.at ? whenLocal(interview.at) : "no time yet"}. Booking tells the TA System, drafts the invite to
             the client&rsquo;s people, and starts the day-before reminder.
@@ -186,13 +202,16 @@ export default async function InterviewPage({
             </p>
             <button className={button}>Book it, and draft the invite</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {/* Booked: attendance, the candidate pulling out, the client moving it. */}
       {(interview.state === "booked" || interview.state === "reconfirmed") && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Before and after it</h2>
+        <Part
+          title="Before and after it"
+          says={"Who turned up, a drop-out, or a cancellation"}
+          open={step.at === "booked"}
+        >
           <p className="mt-1 text-[13px] text-ink-soft">
             {interview.at ? whenLocal(interview.at) : "no time"} ·{" "}
             {FORMAT_MEANINGS[interview.format as keyof typeof FORMAT_MEANINGS] ?? interview.format} ·{" "}
@@ -240,23 +259,29 @@ export default async function InterviewPage({
             </label>
             <button className={plain}>Record it</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {interview.candidateFeedback && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">What the candidate said afterwards</h2>
+        <Part
+          title="What the candidate said afterwards"
+          says={"As the TA worded it"}
+          open={false}
+        >
           <p className="mt-2 whitespace-pre-wrap text-[13px] text-ink-soft">{interview.candidateFeedback}</p>
           <p className="mt-2 text-[12px] text-ink-faint">
             The TA phones them after five; this is their words. The message to the client is drafted for the morning.
           </p>
-        </section>
+        </Part>
       )}
 
       {/* Held: the client's decision. */}
       {interview.state === "attended" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">What the client decided</h2>
+        <Part
+          title="What the client decided"
+          says={interview.decision ?? "Not yet"}
+          open={step.at === "decision"}
+        >
           {interview.decision ? (
             <p className="mt-2 text-[13px]">
               {ROUND_DECISIONS[interview.decision] ?? interview.decision}
@@ -283,13 +308,16 @@ export default async function InterviewPage({
               <button className={button}>Record it</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {/* The reference, only when the client asks for one. */}
       {interview.decision === "selected" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">A reference check</h2>
+        <Part
+          title="A reference check"
+          says={"Only when the client asks for one"}
+          open={step.at === "reference"}
+        >
           {!reference ? (
             <form action={requestReference} className="mt-3 flex flex-col gap-2">
               <input type="hidden" name="interviewId" value={interview.id} />
@@ -361,7 +389,7 @@ export default async function InterviewPage({
               )}
             </>
           )}
-        </section>
+        </Part>
       )}
 
       {interview.inviteMessageId && (
@@ -372,8 +400,11 @@ export default async function InterviewPage({
         </p>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry) => (
           <div key={entry.id} className="border-t border-rule py-2 first:border-t-0">
@@ -391,7 +422,7 @@ export default async function InterviewPage({
           {STATE_MEANINGS[interview.state as InterviewState] ?? interview.state}
           {interview.reason && " · " + interview.reason}
         </p>
-      </section>
+      </Part>
     </div>
   );
 }

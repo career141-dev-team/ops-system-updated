@@ -22,9 +22,13 @@ export default async function SetsPage({ searchParams }: { searchParams: Promise
   const now = Date.now();
   const db = await desk();
   const sets = clientSetsNewestFirst(db);
-  const waiting = sets
+  // Late first, then what is waiting, then what has gone: the order is the
+  // answer on a list page (24, section 4).
+  const unsent = sets
     .filter((r) => r.state !== "sent")
     .sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+  const late = unsent.filter((r) => r.dueAt !== null && r.dueAt < now);
+  const waiting = unsent.filter((r) => !(r.dueAt !== null && r.dueAt < now));
   const gone = sets.filter((r) => r.state === "sent");
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
@@ -41,6 +45,28 @@ export default async function SetsPage({ searchParams }: { searchParams: Promise
       </div>
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      {late.length > 0 && (
+        <section className={card}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[14.5px] font-medium text-danger">Late at the client</h2>
+            <span className="text-[12.5px] text-ink-soft">{late.length}</span>
+          </div>
+          {late.map((set) => (
+            <div key={set.id} className={row}>
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <Link href={"/sets/" + set.id} className="text-[13.5px] text-brand hover:underline">
+                  {set.name}
+                </Link>
+                <span className="ml-auto text-[12px] text-ink-faint">
+                  {memberIn(db, set.ownerId)?.name ?? "nobody"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[12.5px] text-danger">{whereItStands(set, now)}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className={card}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">

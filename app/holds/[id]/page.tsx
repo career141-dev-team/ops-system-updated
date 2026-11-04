@@ -3,7 +3,10 @@ import { notFound, redirect } from "next/navigation";
 
 import { approveTheHold, liftTheHold } from "@/app/actions";
 import { clientIn, clientSetIn, desk, holdIn, member as memberIn } from "@/data/desk";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
+import { holdNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -29,6 +32,10 @@ export default async function HoldPage({
   const set = hold.setId ? clientSetIn(db, hold.setId) : null;
   const theirAudit = db.audit.filter((a) => a.subjectType === "hold" && a.subjectId === hold.id);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+
+  // What to do now (24, step 4): the owner's decision 6 in one card - a hold
+  // is never put on, reviewed or taken off without a person.
+  const step = holdNextStep(hold, Date.now());
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
@@ -60,8 +67,13 @@ export default async function HoldPage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happens when it goes on</h2>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="What happens when it goes on"
+        says={"The position, the TA System, and what the client is told"}
+        open={step.at === "approve"}
+      >
         <p className="mt-1 text-[13px] text-ink-soft">
           The client is told, in a notice you approve like any other message. The TA System is told to stop working the
           opening. Nothing is lost and nothing closes: somebody is asked about it again in thirty days, and it ends only
@@ -81,11 +93,14 @@ export default async function HoldPage({
             )}
           </p>
         )}
-      </section>
+      </Part>
 
       {hold.state === "proposed" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Put it on hold</h2>
+        <Part
+          title="Put it on hold"
+          says={"Needs a reason, and the notice the client gets"}
+          open={step.at === "approve"}
+        >
           <form action={approveTheHold} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="holdId" value={hold.id} />
             <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
@@ -94,12 +109,15 @@ export default async function HoldPage({
             </label>
             <button className={button}>Draft the notice and hold it</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {hold.state !== "lifted" && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Lift it</h2>
+        <Part
+          title="Lift it"
+          says={"When they come back - with a reason"}
+          open={step.at === "review"}
+        >
           <p className="mt-1 text-[13px] text-ink-soft">
             Any word from the client is enough. The TA System is told the opening is open again, and the feedback chase
             starts again from today.
@@ -112,11 +130,14 @@ export default async function HoldPage({
             </label>
             <button className={plain}>Lift the hold</button>
           </form>
-        </section>
+        </Part>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry, i) => (
           <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
@@ -127,7 +148,7 @@ export default async function HoldPage({
             </p>
           </div>
         ))}
-      </section>
+      </Part>
     </div>
   );
 }

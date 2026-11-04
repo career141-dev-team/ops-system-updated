@@ -164,9 +164,9 @@ list as [23](23-UI-PLAN.md) section 6, with the purpose lines now living in
 | Positions · Position | list · one thing | to do | whose move it is; the depth rule said out loud |
 | Adverts · Advert | list · one thing | to do | whose step: marketing, ops, TopJobs; the two-week clock |
 | Talent Pulse | list | leave | — |
-| CV sets · Set | list · one thing | **next** | due/sent/waiting; the four clocks after receipt, in words |
-| Holds · Hold | list · one thing | **next** | when the review is due; that it never closes by itself |
-| Interviews · Interview | list · one thing | **next** | the card replaces four stacked forms |
+| CV sets · Set | list · one thing | **done 4 Nov** | the card picks one clock of the four; late sets first on the list |
+| Holds · Hold | list · one thing | **done 4 Nov** | the review date, and that it never closes by itself |
+| Interviews · Interview | list · one thing | **done 4 Nov** | the card replaced seven open forms |
 | Placements · Placement | list · one thing | after | joining, joined, or waiting on a choice; the three clocks |
 | Invoices · Invoice | list · one thing | after | late with the charge; the CSVs; the drift list |
 | Guarantees · Guarantee | list · one thing | after | days left; whose decision a leaver is; paid-fee rule |
@@ -198,7 +198,10 @@ process that found the faults in every phase of the backend.
 2. ~~"What to do now", the lead and the client~~ — done (PR #19).
 3. ~~The header that opens in place, purpose lines, the counts, Your day~~ —
    **done 4 Nov, this pull request.** The demo screen.
-4. The search: sets, holds, interviews.
+4. ~~The search: sets, holds, interviews~~ — **done 4 Nov.** The card for each
+   (`setNextStep`, `holdNextStep`, `interviewNextStep`, with tests), and the
+   record as shut parts: only the step you are on is open. `app/Part.tsx` is a
+   plain `details`, so it needs no JavaScript and is not an overlay.
 5. Money: placements, invoices, guarantees.
 6. The lists: leads, clients, positions, adverts, mail.
 7. The rest, as each is opened for some other reason.
