@@ -12,6 +12,8 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsCloseChecklist,
+  OpsGuarantee,
   OpsInterview,
   OpsInvoice,
   OpsPlacement,
@@ -38,6 +40,17 @@ import { type TickAction, tick } from "@/lib/tick";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import {
+  CLOSE_TRIGGERS,
+  GUARANTEE_DAYS,
+  REPLACEMENT_WORKING_DAYS,
+  WARN_DAY,
+  closeItemsFor,
+  endsOn,
+  replacementDeadline,
+  verdictOnLeaver,
+  warnOn,
+} from "@/lib/guarantee";
 import {
   DUE_DAYS,
   LATE_PCT_PER_MONTH,
@@ -318,6 +331,17 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   },
   "invoice.chase": async (timer, now) => {
     await chaseThePayment(timer.subjectId, now);
+  },
+  // Day 75, day 90, and the sixty working days to replace somebody
+  // (Phase 7 steps 2, 3 and 6).
+  "guarantee.warn": async (timer, now) => {
+    await warnAboutGuarantee(timer.subjectId, now);
+  },
+  "guarantee.end": async (timer, now) => {
+    await endGuaranteeClean(timer.subjectId, now);
+  },
+  "replacement.deadline": async (timer, now) => {
+    await askAboutRefund(timer.subjectId, now);
   },
 };
 
@@ -1155,6 +1179,395 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
   return issue;
 }
 
+/* ── Guarantees and the close checklist (15, Phase 7) ──────────── */
+
+export async function addGuarantee(
+  input: Omit<OpsGuarantee, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsGuarantee> {
+  if (!usingConvex()) return repo.addGuarantee(input);
+  return (await convexMutation<OpsGuarantee>("ops/data:addGuarantee", input)) as OpsGuarantee;
+}
+
+export async function patchGuarantee(
+  guaranteeId: Id,
+  patch: Partial<OpsGuarantee>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchGuarantee(guaranteeId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchGuarantee", { guaranteeId, patch, by, what, reason });
+}
+
+export function guaranteeIn(db: OpsDatabase, guaranteeId: Id): OpsGuarantee | null {
+  return db.guarantees.find((g) => g.id === guaranteeId) ?? null;
+}
+
+export function guaranteesNewestFirst(db: OpsDatabase): OpsGuarantee[] {
+  return [...db.guarantees].sort((a, b) => b.startsAt - a.startsAt);
+}
+
+/** The live guarantee for a placement, or for an opening being replaced. */
+export function guaranteeForPlacement(db: OpsDatabase, placementId: Id): OpsGuarantee | null {
+  return [...db.guarantees].reverse().find((g) => g.placementId === placementId) ?? null;
+}
+
+export function replacingGuaranteeFor(db: OpsDatabase, openingTaId: string): OpsGuarantee | null {
+  return db.guarantees.find((g) => g.openingTaId === openingTaId && g.state === "replacing") ?? null;
+}
+
+export async function addChecklist(
+  input: Omit<OpsCloseChecklist, "id" | "createdAt" | "updatedAt">,
+): Promise<OpsCloseChecklist> {
+  if (!usingConvex()) return repo.addChecklist(input);
+  return (await convexMutation<OpsCloseChecklist>("ops/data:addChecklist", input)) as OpsCloseChecklist;
+}
+
+export async function patchChecklist(
+  checklistId: Id,
+  patch: Partial<OpsCloseChecklist>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchChecklist(checklistId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchChecklist", { checklistId, patch, by, what, reason });
+}
+
+export function checklistIn(db: OpsDatabase, checklistId: Id): OpsCloseChecklist | null {
+  return db.closeChecklists.find((c) => c.id === checklistId) ?? null;
+}
+
+export function checklistsNewestFirst(db: OpsDatabase): OpsCloseChecklist[] {
+  return [...db.closeChecklists].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function openChecklistFor(db: OpsDatabase, openingTaId: string): OpsCloseChecklist | null {
+  return db.closeChecklists.find((c) => c.openingTaId === openingTaId && !c.completedAt) ?? null;
+}
+
+/**
+ * Start the guarantee (step 2).
+ *
+ * Ninety days from the day they joined, for every hire, whether or not the
+ * fee has been paid yet - because the clock is from joining and the payment
+ * can come later. Whether it is honoured is a different question, asked the
+ * day somebody leaves.
+ *
+ * A replacement gets its own guarantee and no invoice, which is the owner's
+ * rule.
+ */
+export async function startGuarantee(
+  placementId: Id,
+  now = Date.now(),
+): Promise<OpsGuarantee | null> {
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement || !placement.joinedAt) return null;
+  const already = db.guarantees.find((g) => g.placementId === placementId);
+  if (already) return already;
+
+  const days = numberOf(db, "guarantee.days", GUARANTEE_DAYS);
+  const invoice = placement.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
+  const guarantee = await addGuarantee({
+    placementId,
+    openingTaId: placement.openingTaId,
+    clientId: placement.clientId,
+    candidateName: placement.candidateName,
+    state: "running",
+    startsAt: placement.joinedAt,
+    endsAt: endsOn(placement.joinedAt, days),
+    // A replacement is covered by the fee already paid on the first hire.
+    feePaidAt: invoice?.paidAt ?? (placement.isReplacementOf ? now : null),
+    leftAt: null,
+    reason: null,
+    deadlineAt: null,
+    replacedByPlacementId: null,
+    refundPct: null,
+    refundAmount: null,
+    decidedBy: null,
+    decidedAt: null,
+    ownerId: placement.ownerId,
+  });
+
+  await startTimer({
+    kind: "guarantee.warn",
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    startsAt: now,
+    dueAt: warnOn(placement.joinedAt, numberOf(db, "guarantee.warnDay", WARN_DAY)),
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: placement.candidateName },
+  });
+  await startTimer({
+    kind: "guarantee.end",
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    startsAt: now,
+    dueAt: guarantee.endsAt,
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: placement.candidateName },
+  });
+  return guarantee;
+}
+
+/**
+ * Day 75: the warning (step 2).
+ *
+ * Fifteen days left is the owner's own number. Nothing is sent to anybody -
+ * it is a look at the person while there is still time to do something if
+ * they are wobbling.
+ */
+export async function warnAboutGuarantee(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee || guarantee.state !== "running") return;
+  await patchGuarantee(guaranteeId, { state: "warned" }, null, "guarantee.warned", null);
+  await createTask({
+    kind: "check",
+    title: "Fifteen days of guarantee left: " + guarantee.candidateName,
+    body:
+      "Ask the TA how they are getting on, and the client if there is anything to know. A leaver found on day 76 costs us a replacement; one found now may not leave at all.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+}
+
+/**
+ * Day 90 with nobody having left: a clean end (step 3).
+ *
+ * The guarantee ends and the close checklist is made, because this is the
+ * ordinary way a position finishes and the things that get forgotten are
+ * forgotten here.
+ */
+export async function endGuaranteeClean(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) return;
+  if (guarantee.state !== "running" && guarantee.state !== "warned") return;
+
+  await patchGuarantee(guaranteeId, { state: "ended_clean" }, null, "guarantee.endedClean", null);
+  await cancelClocksFor(db, "guarantee", guaranteeId, guarantee.ownerId, "The guarantee has ended.", null);
+  const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === guarantee.ownerId));
+  await draftMessage({
+    channel: "internal",
+    to: tell.map((m) => m.email).filter(Boolean),
+    subject: "Guarantee ended cleanly: " + guarantee.candidateName,
+    body:
+      guarantee.candidateName +
+      " has been in the job ninety days. Nothing is owed either way, and the position closes.",
+    templateKey: "guarantee.ended",
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+  });
+  await openCloseChecklist(guarantee.openingTaId, "ended_clean", guarantee.ownerId, now);
+}
+
+/**
+ * Somebody left inside the ninety days (step 4).
+ *
+ * One question decides everything: was the fee paid in full? If it was not,
+ * there was no guarantee to honour and the position simply closes. If it
+ * was, the same position reopens and a replacement comes first - with sixty
+ * working days to finalise one.
+ */
+export async function markLeaver(
+  guaranteeId: Id,
+  leftAt: number,
+  reason: string,
+  by: Id | null,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) return { ok: false, what: "That guarantee is gone." };
+  if (guarantee.state !== "running" && guarantee.state !== "warned") {
+    return { ok: false, what: "That guarantee is not running any more." };
+  }
+
+  const verdict = verdictOnLeaver(guarantee.feePaidAt);
+  const deadlineAt =
+    verdict.state === "replacing"
+      ? replacementDeadline(
+          leftAt,
+          numberOf(db, "replacement.workingDays", REPLACEMENT_WORKING_DAYS),
+          db.holidays.map((h) => h.date),
+        )
+      : null;
+
+  await patchGuarantee(
+    guaranteeId,
+    { state: verdict.state, leftAt, reason, deadlineAt },
+    by,
+    "guarantee." + verdict.state,
+    reason,
+  );
+  await cancelClocksFor(db, "guarantee", guaranteeId, by ?? guarantee.ownerId, "They have left.", null);
+  await queueTaWrite(
+    "/integrations/v1/placements/" + (placementIn(db, guarantee.placementId)?.placementTaId ?? "") + "/left",
+    { leftAt, reason, guaranteeHolds: verdict.state === "replacing" },
+    { type: "guarantee", id: guaranteeId },
+  );
+
+  if (verdict.state === "void") {
+    await openCloseChecklist(guarantee.openingTaId, "void", by ?? guarantee.ownerId, now);
+    return { ok: true, what: verdict.because };
+  }
+
+  // The search reopens on TA's side, because TA holds the pipeline.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + guarantee.openingTaId + "/status",
+    { status: "open", reason: "replacement under the guarantee" },
+    { type: "guarantee", id: guaranteeId },
+  );
+  await startTimer({
+    kind: "replacement.deadline",
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    startsAt: now,
+    dueAt: deadlineAt ?? now,
+    warnAt: null,
+    ownerId: guarantee.ownerId,
+    payload: { label: guarantee.candidateName },
+  });
+  await createTask({
+    kind: "check",
+    title: "A replacement for " + guarantee.candidateName,
+    body:
+      verdict.because +
+      "\n\nThe TA System has been asked to reopen the position. Sixty working days to finalise a replacement; after that it is the Director's decision, not a timeout.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+  return { ok: true, what: verdict.because };
+}
+
+/**
+ * The sixty working days have run out (step 6).
+ *
+ * Nothing is refunded by a clock. The question goes to the Director of
+ * Operations, who decides - and the owner's rule is that a refund is a
+ * decision, never a default.
+ */
+export async function askAboutRefund(guaranteeId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee || guarantee.state !== "replacing") return;
+  await createTask({
+    kind: "decide",
+    title: "No replacement for " + guarantee.candidateName + " - refund?",
+    body:
+      "Sixty working days have gone since they left and there is no replacement. The agreement says 50% of the fee, by decision. Replacing them is still the better answer if it is possible at all.",
+    assigneeId: db.members.find((m) => m.active && m.role === "director_ops")?.id ?? guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: "/guarantees/" + guaranteeId,
+  });
+}
+
+/**
+ * A replacement was placed (step 5).
+ *
+ * Called when a placement arrives for an opening whose guarantee is looking
+ * for one. The old guarantee is closed as replaced, the new placement is
+ * marked a replacement so nothing is invoiced, and the new guarantee starts
+ * from the new joining day.
+ */
+export async function takeReplacement(
+  placementId: Id,
+  openingTaId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const db = await desk();
+  const guarantee = replacingGuaranteeFor(db, openingTaId);
+  if (!guarantee) return false;
+  await patchPlacement(
+    placementId,
+    { isReplacementOf: guarantee.placementId },
+    null,
+    "placement.isReplacement",
+    "Under the guarantee for " + guarantee.candidateName + ", so nothing is invoiced.",
+  );
+  await patchGuarantee(
+    guarantee.id,
+    { state: "replaced", replacedByPlacementId: placementId },
+    null,
+    "guarantee.replaced",
+    null,
+  );
+  await cancelClocksFor(db, "guarantee", guarantee.id, guarantee.ownerId, "They have been replaced.", null);
+  await createTask({
+    kind: "check",
+    title: "Replacement placed for " + guarantee.candidateName,
+    body:
+      "Nothing is invoiced for this one - it is the replacement under the guarantee - and a new ninety days starts the day they join.",
+    assigneeId: guarantee.ownerId,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guarantee.id,
+    link: "/guarantees/" + guarantee.id,
+  });
+  return true;
+}
+
+/**
+ * Open the close checklist (step 11).
+ *
+ * One per opening at a time. The items are the things that get forgotten, and
+ * only the ones this position really had: no LinkedIn post means no item
+ * about closing one.
+ */
+export async function openCloseChecklist(
+  openingTaId: string,
+  trigger: string,
+  by: Id,
+  now = Date.now(),
+): Promise<OpsCloseChecklist | null> {
+  if (!openingTaId) return null;
+  const db = await desk();
+  const already = openChecklistFor(db, openingTaId);
+  if (already) return already;
+  const position = positionForOpening(db, openingTaId);
+
+  const checklist = await addChecklist({
+    openingTaId,
+    positionId: position?.id ?? null,
+    clientId: position?.clientId ?? null,
+    trigger,
+    items: closeItemsFor({ linkedInUrl: position?.linkedInUrl ?? null }, false),
+    completedAt: null,
+    ownerId: position?.ownerId ?? by,
+  });
+  await createTask({
+    kind: "check",
+    title: "Close the position: " + (position?.title ?? openingTaId),
+    body:
+      (CLOSE_TRIGGERS[trigger] ?? trigger) +
+      ".\n\nThe list is on the close page. Nothing is closed until every item is ticked, because this is where the adverts get left up.",
+    assigneeId: checklist.ownerId,
+    dueAt: now,
+    subjectType: "close",
+    subjectId: checklist.id,
+    link: "/closes/" + checklist.id,
+  });
+  return checklist;
+}
+
 /* ── Placements, invoices and payments (15, Phase 6) ───────────── */
 
 export async function addPlacement(
@@ -1310,6 +1723,9 @@ export async function takePlacement(
     });
   }
 
+  // A placement on an opening whose guarantee is looking for a replacement is
+  // that replacement: nothing is invoiced for it (Phase 7 step 5).
+  await takeReplacement(placement.id, placement.openingTaId, now);
   await startJoinClocks(placement, now);
   return placement;
 }
@@ -1382,9 +1798,14 @@ export async function markPlacementJoined(
   await cancelClocksFor(db, "placement", placementId, by ?? placement.ownerId, "They joined.", null);
 
   const invoiced = await draftFeeInvoice(placementId, by ?? placement.ownerId, now);
+  // Ninety days from today, whatever happens with the money (Phase 7 step 2).
+  const guarantee = await startGuarantee(placementId, now);
   return {
     ok: true,
-    what: "Down as joined. " + (invoiced.ok ? invoiced.what : invoiced.what),
+    what:
+      "Down as joined. " +
+      invoiced.what +
+      (guarantee ? " The ninety-day guarantee runs to " + colomboDateInWords(guarantee.endsAt) + "." : ""),
   };
 }
 
@@ -2639,6 +3060,12 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
       const db2 = await desk();
       const position = opening ? positionForOpening(db2, opening) : null;
       if (position) await evaluateDepth(position.id, now);
+    }
+    // A TA closing an opening by hand still leaves our own things open, so
+    // the checklist is made with only the items that are ours (Phase 7 step 14).
+    if (event.type === "opening.closed") {
+      const opening = String(event.data.openingId ?? "").trim();
+      if (opening) await openCloseChecklist(opening, "ta_closed", "m_owner", now);
     }
     // A placement is the day the money starts (Phase 6 step 3).
     if (event.type === "placement.created") await takePlacement(event.data, now);

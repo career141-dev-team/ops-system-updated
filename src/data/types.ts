@@ -798,6 +798,61 @@ export interface OpsInvoice {
   updatedAt: number;
 }
 
+/**
+ * One guarantee (15, Phase 7 steps 2 to 6).
+ *
+ * Ninety days from joining, and only valid while the fee is fully paid. It is
+ * its own row rather than fields on the placement because a replacement
+ * starts a new one, and the old one has to stay readable.
+ */
+export interface OpsGuarantee {
+  id: Id;
+  placementId: Id;
+  openingTaId: string;
+  clientId: Id | null;
+  candidateName: string;
+  state: string;
+  startsAt: number;
+  endsAt: number;
+  /** When the fee was paid in full; empty means the guarantee is void. */
+  feePaidAt: number | null;
+  /** The day they left, and why. */
+  leftAt: number | null;
+  reason: string | null;
+  /** Sixty working days from the day they left, to finalise a replacement. */
+  deadlineAt: number | null;
+  /** The placement that replaced them, once there is one. */
+  replacedByPlacementId: Id | null;
+  /** The decision, if it came to money. */
+  refundPct: number | null;
+  refundAmount: number | null;
+  decidedBy: Id | null;
+  decidedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * The close checklist (15, Phase 7 steps 11 to 15).
+ *
+ * The list of things that get forgotten when a position ends, each owned by
+ * whoever can actually do it. Nothing closes until every item is ticked.
+ */
+export interface OpsCloseChecklist {
+  id: Id;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  /** Why it is closing: a clean end, a refund, a write-off, the client. */
+  trigger: string;
+  items: { key: string; what: string; whose: string; doneAt: number | null; doneBy: Id | null }[];
+  completedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -820,6 +875,8 @@ export interface OpsDatabase {
   references: OpsReferenceRequest[];
   placements: OpsPlacement[];
   invoices: OpsInvoice[];
+  guarantees: OpsGuarantee[];
+  closeChecklists: OpsCloseChecklist[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

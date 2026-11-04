@@ -306,3 +306,27 @@ for accounts · LKR 450,000.00 owed · due in 30 days". Two faults in one line:
 the number came from the link and from the words beside it, and a draft that
 has not been sent owes nothing - "owed" of one reads as though the client were
 already late. A draft now says what it will be and when it will be payable.
+
+## 4 November 2026 - the guarantee would never have held
+
+The guarantee reads the fee's paid date when it starts. It starts the day
+somebody joins, and the invoice for the fee is drafted that same day - so the
+fee is always paid afterwards. Read once at the start, the paid date was
+always empty, and every leaver would have come out **void**: no replacement,
+no refund, on a fee the client had paid in full.
+
+Found while walking phase 7 rather than by a test, because every test set the
+invoice up as paid before the guarantee began. Paying an invoice in full now
+writes that day onto the guarantee, and a test covers the order that actually
+happens.
+
+## 4 November 2026 - two more borrowed numbers
+
+"62 working days to replace" above a deadline set at sixty: the words counted
+working days without the holiday list, while the deadline was set with it, so
+two poya days inside the window were counted as working days. The wording
+takes the holidays now.
+
+And the refund screen said "the Director can decide early" while the rule
+refused them. Deciding early is allowed - it is a decision, not a deadline -
+so there is a tick for it, and the audit records that it was taken early.

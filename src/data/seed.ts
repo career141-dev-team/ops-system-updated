@@ -92,6 +92,8 @@ export function seed(now = Date.now()): OpsDatabase {
     references: [],
     placements: [],
     invoices: [],
+    guarantees: [],
+    closeChecklists: [],
     leads: [
       {
         id: "ld_new",

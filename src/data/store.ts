@@ -24,6 +24,8 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsCloseChecklist,
+  OpsGuarantee,
   OpsInterview,
   OpsInvoice,
   OpsPlacement,
@@ -629,6 +631,92 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Guarantees and the close checklist (15, Phase 7) ───── */
+
+  guaranteeIn(guaranteeId: Id): OpsGuarantee | null {
+    return load().guarantees.find((g) => g.id === guaranteeId) ?? null;
+  },
+
+  addGuarantee(input: Omit<OpsGuarantee, "id" | "createdAt" | "updatedAt">): OpsGuarantee {
+    const db = load();
+    const now = Date.now();
+    const row: OpsGuarantee = { ...input, id: id("gar"), createdAt: now, updatedAt: now };
+    db.guarantees.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "guarantee.started",
+      subjectType: "guarantee",
+      subjectId: row.id,
+      before: null,
+      after: row.candidateName,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchGuarantee(
+    guaranteeId: Id,
+    patch: Partial<OpsGuarantee>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.guarantees.find((g) => g.id === guaranteeId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "guarantee", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  checklistIn(checklistId: Id): OpsCloseChecklist | null {
+    return load().closeChecklists.find((c) => c.id === checklistId) ?? null;
+  },
+
+  addChecklist(input: Omit<OpsCloseChecklist, "id" | "createdAt" | "updatedAt">): OpsCloseChecklist {
+    const db = load();
+    const now = Date.now();
+    const row: OpsCloseChecklist = { ...input, id: id("cls"), createdAt: now, updatedAt: now };
+    db.closeChecklists.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "close.opened",
+      subjectType: "close",
+      subjectId: row.id,
+      before: null,
+      after: row.trigger,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchChecklist(
+    checklistId: Id,
+    patch: Partial<OpsCloseChecklist>,
+    by: Id | null,
+    what: string,
+    reason: string | null = null,
+  ): void {
+    const db = load();
+    const row = db.closeChecklists.find((c) => c.id === checklistId);
+    if (!row) return;
+    const before = row.completedAt ? "closed" : "open";
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "close",
+      subjectId: row.id,
+      before,
+      after: row.completedAt ? "closed" : "open",
+      reason,
+    });
     save();
   },
 

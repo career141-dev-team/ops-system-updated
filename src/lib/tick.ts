@@ -119,6 +119,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "The invoice is past its due date",
     body: "The chase is drafted, with the late charge added. Read it and approve it.",
   },
+  "replacement.deadline": {
+    kind: "decide",
+    title: "Sixty working days and no replacement",
+    body: "The question goes to the Director of Operations: keep looking, or refund 50% of the fee. A refund is a decision, never a timeout.",
+  },
   "guarantee.warn": {
     kind: "check",
     title: "The guarantee has fifteen days left",

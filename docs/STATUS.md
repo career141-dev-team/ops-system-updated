@@ -151,10 +151,31 @@ body of the email), tax lines, the surcharge invoice for an unreported hire
 (phase 4's step), credit notes (they belong with phase 7's refunds), the CSV
 exports, and the nightly check of our invoice state against TA's.
 
+## Built: phase 7, the guarantee and the close
+
+| Piece | Where | Notes |
+|---|---|---|
+| Ninety days from joining | `startGuarantee` in `src/data/desk.ts`, `endsOn` in `src/lib/guarantee.ts` | from the day they joined, not the day the fee was paid; started for every hire, including a replacement |
+| Only valid on a fee fully paid | `verdictOnLeaver`, and `recordPayment` writing the paid date on | the owner's rule, and the one sentence that decides what a leaver costs us. The fee is always settled after the guarantee started, so paying an invoice in full writes that day onto the guarantee |
+| The warning on day 75 | `guarantee.warn` clock → `warnAboutGuarantee` | fifteen days left: a wobble heard now may not become a leaver at all |
+| A clean ninety days | `guarantee.end` clock → `endGuaranteeClean` | the internal notice, and the close list opens by itself |
+| Somebody left | `markLeaver`, and the owner's button | unpaid fee → **void**, nothing replaced and nothing refunded, the position closes; paid fee → **replacing**: TA is told they left, the position reopens, and sixty **working** days start |
+| A replacement | `takeReplacement`, from the next `placement.created` on that opening | marked a replacement so nothing is invoiced again, the old guarantee closes as replaced, and the new one starts its own ninety days |
+| The refund | `askAboutRefund` clock → the Director's decision in `decideRefund` | **50% of what was paid** (the agreement; our board said 25%), by decision and never by a clock. The Director may decide before the sixty days are up, and that is written down as what it was |
+| The close list | `openCloseChecklist`, `tickCloseItem`, `completeClose`; screens `app/closes` | every way a position ends opens it: a clean end, a refund, a write-off, a void guarantee, a client who stopped, or a TA who closed the opening first. Only the items this position really had, and closing the opening in TA is an item of its own - an opening closed with a live advert is how somebody applies to a job that has gone |
+| Nothing left open for a client | `completeClose` | their last position closing leaves a task, not an automatic change: whether they are finished with us is a person's call |
+| Screens | `app/guarantees`, `app/closes` | ending this month first, then who has left, then the rest |
+
+The weekly report (step 9) was built on 3 November and is above.
+
+Still to come in phase 7: the **analytics** (step 16 - ESA return time, client
+wait on a set, slipped hires, time to fill, kept weekly as KPIs), and the
+credit note **document**, which waits on the same template work as the
+invoice.
+
 ## Not built
 
-TopJobs, and phases 7 and 8: the guarantee, the reports and the close, then
-hardening and the pilot.
+TopJobs, phase 7's analytics, and phase 8: hardening, staging and the pilot.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -205,7 +226,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 32 suites, each in its own process
+node tests/run.mjs        # all 33 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

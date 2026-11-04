@@ -49,6 +49,7 @@ function clockInWords(kind: string): string {
     "doj.join": "a joining day",
     "guarantee.warn": "the guarantee, fifteen days left",
     "guarantee.end": "the guarantee ends",
+    "replacement.deadline": "the time to replace somebody",
     "interview.reconfirm": "an interview to reconfirm",
     "test.clock": "a test clock",
   };

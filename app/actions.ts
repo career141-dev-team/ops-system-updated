@@ -31,15 +31,22 @@ import {
   addInvoice,
   addReference,
   buildWeeklyReport,
+  checklistIn,
   evaluateDepth,
   positionForSet,
   draftCandidateFeedback,
+  guaranteeForPlacement,
+  guaranteeIn,
   interviewIn,
   invoiceIn,
   liveInterviewFor,
   noticeCandidateOut,
+  markLeaver,
   markPlacementJoined,
+  openCloseChecklist,
   patchInterview,
+  patchChecklist,
+  patchGuarantee,
   patchInvoice,
   patchPlacement,
   patchReference,
@@ -139,6 +146,14 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
+import {
+  CLOSE_TRIGGERS,
+  REFUND_PCT,
+  problemWithCloseComplete,
+  problemWithLeaver,
+  problemWithRefund,
+  refundAmount,
+} from "@/lib/guarantee";
 import {
   WRITE_OFF_DAYS,
   balanceOf,
@@ -3836,6 +3851,20 @@ export async function recordPayment(formData: FormData): Promise<void> {
     // Nothing chases a paid invoice.
     await cancelClocksFor(db, "invoice", invoiceId, member.id, "It is paid.", null);
     const placement = row.placementId ? placementIn(db, row.placementId) : null;
+    // The guarantee only holds on a fee fully paid, and the fee is always
+    // paid after it started - the invoice is drafted the day they join. So
+    // the day it is settled is written onto the guarantee, or every leaver
+    // would read as void (found while walking Phase 7).
+    const guarantee = placement ? guaranteeForPlacement(db, placement.id) : null;
+    if (guarantee && !guarantee.feePaidAt) {
+      await patchGuarantee(
+        guarantee.id,
+        { feePaidAt: now },
+        member.id,
+        "guarantee.feePaid",
+        "The fee is settled, so the guarantee holds.",
+      );
+    }
     const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement?.ownerId));
     await draftMessage({
       channel: "internal",
@@ -3934,4 +3963,235 @@ export async function writeOffInvoice(formData: FormData): Promise<void> {
   });
   revalidatePath(here);
   back("Written off, with your reason. The guarantee is void and the position closes.");
+}
+
+/* ── Guarantees and the close (15, Phase 7) ───────────────────── */
+
+/** Somebody left inside the ninety days (step 4). */
+export async function recordLeaver(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+
+  const leftAt = Date.parse(String(formData.get("leftAt") ?? "") + "T17:00:00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithLeaver(leftAt, reason, row.startsAt);
+  if (problem) back(problem);
+
+  const answer = await markLeaver(guaranteeId, leftAt, reason, member.id);
+  revalidatePath(here);
+  revalidatePath("/guarantees");
+  back(answer.what);
+}
+
+/**
+ * The refund decision (step 6).
+ *
+ * The Director of Operations', and nobody else's: `refund.decide` is the one
+ * capability only that role has. The credit note itself is accounts' work and
+ * is drafted here so the money and the decision never drift apart.
+ */
+export async function decideRefund(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "refund.decide")) back(refusal("refund.decide"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const early = String(formData.get("early") ?? "") === "yes";
+  const problem = problemWithRefund(
+    row.state,
+    reason,
+    row.deadlineAt,
+    Date.now(),
+    db.holidays.map((h) => h.date),
+    early,
+  );
+  if (problem) back(problem);
+
+  const pct = numberOf(db, "refund.pct", REFUND_PCT);
+  const placement = placementIn(db, row.placementId);
+  const invoice = placement?.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
+  const paid = invoice ? invoice.payments.reduce((sum, p) => sum + p.amount, 0) : 0;
+  const amount = refundAmount(paid, pct);
+
+  const now = Date.now();
+  await patchGuarantee(
+    guaranteeId,
+    { state: "refund_pending", refundPct: pct, refundAmount: amount, decidedBy: member.id, decidedAt: now },
+    member.id,
+    "guarantee.refundDecided",
+    // Deciding before the sixty days are up is allowed and is written down as
+    // what it was: a decision, not a deadline.
+    early ? reason + " (decided before the sixty working days were up)" : reason,
+  );
+  await cancelClocksFor(db, "guarantee", guaranteeId, member.id, "The decision is made.", null);
+  await createTask({
+    kind: "approve",
+    title: "A credit note for " + money(amount, invoice?.currency ?? "LKR"),
+    body:
+      "The Director of Operations has decided a " +
+      pct +
+      "% refund for " +
+      row.candidateName +
+      ".\n\nReason given: " +
+      reason +
+      "\n\nAccounts raises the credit note and sends it. The invoice document and the credit note both wait on a template from the owner, so for now this goes as a letter.",
+    assigneeId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? member.id,
+    dueAt: now,
+    subjectType: "guarantee",
+    subjectId: guaranteeId,
+    link: here,
+  });
+  revalidatePath(here);
+  back(
+    "Decided: " +
+      pct +
+      "% of what was paid, " +
+      money(amount, invoice?.currency ?? "LKR") +
+      ". Accounts has the credit note to raise.",
+  );
+}
+
+/** The refund has gone out, so the position closes (step 6). */
+export async function markRefunded(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const guaranteeId = String(formData.get("guaranteeId") ?? "");
+  const here = "/guarantees/" + guaranteeId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const guarantee = guaranteeIn(db, guaranteeId);
+  if (!guarantee) redirect("/guarantees?msg=" + encodeURIComponent("That guarantee is gone."));
+  const row = guarantee as NonNullable<typeof guarantee>;
+  if (row.state !== "refund_pending") back("No refund has been decided on this one.");
+
+  await patchGuarantee(guaranteeId, { state: "refunded" }, member.id, "guarantee.refunded", null);
+  await openCloseChecklist(row.openingTaId, "refunded", member.id);
+  revalidatePath(here);
+  back("Recorded as refunded. The close list for the position is open.");
+}
+
+/** Tick one item off the close list (step 11). */
+export async function tickCloseItem(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const checklistId = String(formData.get("checklistId") ?? "");
+  const key = String(formData.get("key") ?? "");
+  const here = "/closes/" + checklistId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const checklist = checklistIn(db, checklistId);
+  if (!checklist) redirect("/closes?msg=" + encodeURIComponent("That close list is gone."));
+  const row = checklist as NonNullable<typeof checklist>;
+  if (row.completedAt) back("That position is closed already.");
+
+  const now = Date.now();
+  const items = row.items.map((item) =>
+    item.key === key ? { ...item, doneAt: item.doneAt ? null : now, doneBy: item.doneAt ? null : member.id } : item,
+  );
+  if (!items.some((item) => item.key === key)) back("No such item on this list.");
+
+  await patchChecklist(checklistId, { items }, member.id, "close.itemTicked", key);
+  // Closing the opening is ours to do through the API, and only once the
+  // adverts are down - an opening closed with a live post is how a candidate
+  // applies to a job that has gone.
+  if (key === "opening" && items.find((item) => item.key === "opening")?.doneAt) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/status",
+      { status: "closed", reason: row.trigger },
+      { type: "close", id: checklistId },
+    );
+  }
+  revalidatePath(here);
+  back("Ticked.");
+}
+
+/** Everything is done, so the position really is closed (step 13). */
+export async function completeClose(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const checklistId = String(formData.get("checklistId") ?? "");
+  const here = "/closes/" + checklistId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const checklist = checklistIn(db, checklistId);
+  if (!checklist) redirect("/closes?msg=" + encodeURIComponent("That close list is gone."));
+  const row = checklist as NonNullable<typeof checklist>;
+  if (row.completedAt) back("That one is closed already.");
+
+  const problem = problemWithCloseComplete(row.items);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  await patchChecklist(checklistId, { completedAt: now }, member.id, "close.completed", CLOSE_TRIGGERS[row.trigger] ?? row.trigger);
+  if (row.positionId) {
+    await patchPosition(row.positionId, { stage: "closed", closedAt: now }, member.id, "position.closed", row.trigger);
+  }
+
+  // The client's own record: still active if anything else is open for them,
+  // otherwise nothing is running and the record says so (step 15).
+  if (row.clientId) {
+    const theirs = db.positions.filter(
+      (p) => p.clientId === row.clientId && p.id !== row.positionId && p.stage !== "closed",
+    );
+    if (!theirs.length) {
+      await createTask({
+        kind: "check",
+        title: "Nothing open for this client any more",
+        body:
+          "Their last position has closed. Nothing happens automatically - if they are finished with us, move the client to dormant with a reason; if not, leave them active.",
+        assigneeId: row.ownerId,
+        dueAt: now,
+        subjectType: "client",
+        subjectId: row.clientId,
+        link: "/clients/" + row.clientId,
+      });
+    }
+  }
+  revalidatePath(here);
+  revalidatePath("/closes");
+  back("Closed. The position is finished and nothing of it is left running.");
+}
+
+/** Close a position by hand, when none of the clocks did it (step 12). */
+export async function openCloseByHand(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet, so there is nothing to close there.");
+
+  const trigger = String(formData.get("trigger") ?? "client_stopped");
+  if (!(trigger in CLOSE_TRIGGERS)) back("Why is it closing?");
+
+  const checklist = await openCloseChecklist(row.openingTaId ?? "", trigger, member.id);
+  revalidatePath(here);
+  redirect(
+    checklist
+      ? "/closes/" + checklist.id + "?msg=" + encodeURIComponent("The close list is open. Nothing closes until every item is ticked.")
+      : here + "?msg=" + encodeURIComponent("Nothing to close."),
+  );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { recordLinkedInPost, setPositionTeam } from "@/app/actions";
+import { openCloseByHand, recordLinkedInPost, setPositionTeam } from "@/app/actions";
 import {
   clientIn,
   desk,
@@ -188,6 +188,27 @@ export default async function PositionPage({
           until the owner says otherwise, because it is the one that costs money.
         </p>
       </section>
+
+      {position.stage !== "closed" && position.openingTaId && can(me, "client.manage") && (
+        <section className={card}>
+          <h2 className="text-[14.5px] font-medium">Closing it</h2>
+          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
+            A guarantee ending, a refund or a write-off opens the close list by itself. This is for the other way: the
+            client has stopped, or the role was never practical.
+          </p>
+          <form action={openCloseByHand} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="positionId" value={position.id} />
+            <label className="flex min-w-[260px] flex-col gap-1 text-[12.5px] text-ink-soft">
+              Why it is closing
+              <select name="trigger" className={field} defaultValue="client_stopped">
+                <option value="client_stopped">The client stopped the search</option>
+                <option value="impractical">The role was not practical at that salary</option>
+              </select>
+            </label>
+            <button className={plain}>Open the close list</button>
+          </form>
+        </section>
+      )}
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">What happened to it</h2>

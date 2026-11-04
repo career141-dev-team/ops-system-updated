@@ -1067,6 +1067,18 @@ written down rather than quietly done:
 
 ## Phase 7 · Guarantee, reports and close
 
+**Built 4 November**, steps 1 to 8 and 11 to 15 (step 9, the weekly report,
+was built on 3 November). Two corrections to this plan's own text:
+
+- **The refund is 50%, not the 25% in step 6**: the agreement says 50% and the
+  owner made the document the truth on 3 November.
+- **The guarantee's paid date is written when the fee settles**, not read once
+  when the guarantee starts - the invoice is drafted the day they join, so the
+  fee is always paid afterwards. See docs/13.
+
+Not built: step 16's analytics (no UI, kept weekly as KPIs), and the credit
+note document, which waits on the same template work as the invoice.
+
 1. Tables `opsGuarantees`, `opsReports`, `opsCloseChecklists`.
 2. `guarantees.start(placementId)` on `joined` for every hire: `endsAt` = +90 calendar days;
    timers `guarantee.end`, ⚪ `guarantee.warn` (75).

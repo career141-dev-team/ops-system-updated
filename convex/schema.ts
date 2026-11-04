@@ -332,6 +332,48 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** One guarantee: ninety days from joining, on a paid fee (15, Phase 7). */
+  opsGuarantees: defineTable({
+    placementId: v.string(),
+    openingTaId: v.string(),
+    clientId: v.union(v.string(), v.null()),
+    candidateName: v.string(),
+    state: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    feePaidAt: v.union(v.number(), v.null()),
+    leftAt: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    deadlineAt: v.union(v.number(), v.null()),
+    replacedByPlacementId: v.union(v.string(), v.null()),
+    refundPct: v.union(v.number(), v.null()),
+    refundAmount: v.union(v.number(), v.null()),
+    decidedBy: v.union(v.string(), v.null()),
+    decidedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_placement", ["placementId"])
+    .index("by_opening", ["openingTaId"])
+    .index("by_end", ["endsAt"])
+    .index("by_created", ["createdAt"]),
+
+  /** The close checklist for one position (15, Phase 7 step 11). */
+  opsCloseChecklists: defineTable({
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    trigger: v.string(),
+    items: v.any(),
+    completedAt: v.union(v.number(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_created", ["createdAt"]),
+
   /** A placement taken from TA, with the agreement's fee rule on it. */
   opsPlacements: defineTable({
     placementTaId: v.string(),
