@@ -556,8 +556,42 @@ export interface OpsPosition {
   /** What TA has told us about it, in words, for the client view. */
   taStatus: string | null;
   jdApprovedAt: number | null;
+  /**
+   * The LinkedIn post the TA made (15, Phase 3 step 16). Mandatory, and the
+   * TA System will not let an opening go Live without it, so Ops holds the
+   * link and can answer a client who asks where their role is advertised.
+   */
+  linkedInUrl: string | null;
+  linkedInPostedAt: number | null;
   handedOverAt: number;
   closedAt: number | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One week's Talent Pulse (15, Phase 3 steps 14 and 15).
+ *
+ * Ops compiles the open positions with a line from each TA on a Tuesday;
+ * marketing posts it on the Wednesday. Compiled by a clock rather than by
+ * somebody remembering, which is why it slipped.
+ */
+export interface OpsTalentPulseIssue {
+  id: Id;
+  /** The Tuesday it belongs to, as a readable date. */
+  weekOf: string;
+  state: string;
+  lines: {
+    positionId: Id;
+    openingTaId: string | null;
+    title: string;
+    client: string;
+    note: string;
+    applyAddress: string;
+  }[];
+  postedAt: number | null;
+  postedBy: Id | null;
   ownerId: Id;
   createdAt: number;
   updatedAt: number;
@@ -579,6 +613,7 @@ export interface OpsDatabase {
   holds: OpsHold[];
   requirements: OpsRequirement[];
   positions: OpsPosition[];
+  talentPulse: OpsTalentPulseIssue[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

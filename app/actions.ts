@@ -14,6 +14,8 @@ import {
   agreementForLead,
   addPosition,
   addRequirement,
+  compileTalentPulse,
+  issueIn,
   agreementIn,
   chaseTheAgreement,
   clientFromLead,
@@ -22,6 +24,7 @@ import {
   holdIn,
   patchClientSet,
   patchHold,
+  patchIssue,
   patchPosition,
   patchRequirement,
   positionIn,
@@ -70,6 +73,11 @@ import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
+import {
+  problemWithIssue,
+  problemWithLinkedIn,
+  tidyLinkedIn,
+} from "@/lib/adverts";
 import {
   briefText,
   problemWithHandover,
@@ -2434,6 +2442,8 @@ export async function handOverToTa(formData: FormData): Promise<void> {
     hundredPercentDay: String(formData.get("hundredPercentDay") ?? "") || null,
     taStatus: null,
     jdApprovedAt: null,
+    linkedInUrl: null,
+    linkedInPostedAt: null,
     handedOverAt: now,
     closedAt: null,
     ownerId: row.ownerId,
@@ -2505,4 +2515,128 @@ export async function setPositionTeam(formData: FormData): Promise<void> {
       ? "Recorded, and the TA System will be told."
       : "Recorded. It goes to the TA System with the opening once TA confirms it.",
   );
+}
+
+/* ── Where the job is advertised (15, Phase 3 steps 14 to 16) ── */
+
+/**
+ * The LinkedIn post the TA made (step 16).
+ *
+ * The TA posts it; Ops holds the link, because the TA System will not let an
+ * opening go Live without one and because a client asking "where is my role
+ * advertised?" is answered from somebody's memory today. A wrong link is worse
+ * than none - it looks done - so only a real LinkedIn post address is taken.
+ */
+export async function recordLinkedInPost(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("Recording an advert is for ops or marketing.");
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const url = String(formData.get("url") ?? "");
+  const problem = problemWithLinkedIn(url);
+  if (problem) back(problem);
+
+  const tidy = tidyLinkedIn(url);
+  const now = Date.now();
+  await patchPosition(
+    positionId,
+    { linkedInUrl: tidy, linkedInPostedAt: now },
+    member.id,
+    "position.linkedInRecorded",
+    tidy,
+  );
+  // TA needs it on the opening: that is what unlocks Live on their side.
+  if (row.openingTaId) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/posts",
+      { channel: "linkedin", url: tidy, postedAt: now },
+      { type: "position", id: positionId },
+    );
+  }
+  revalidatePath(here);
+  back(
+    row.openingTaId
+      ? "Recorded, and the TA System will be told - that is what lets the opening go Live."
+      : "Recorded. It goes to the TA System with the opening once TA confirms it.",
+  );
+}
+
+/** Compile this week's Talent Pulse now, rather than waiting for Tuesday. */
+export async function compileTalentPulseNow(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect("/talent-pulse?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("Talent Pulse is for ops or marketing.");
+
+  const issue = await compileTalentPulse(member.id);
+  revalidatePath("/talent-pulse");
+  back(
+    issue
+      ? "This week's issue is ready to fill in: " +
+          issue.lines.length +
+          (issue.lines.length === 1 ? " position" : " positions") +
+          ". Next Tuesday it compiles itself."
+      : "Nothing to compile.",
+  );
+}
+
+/** The TA's line about one role, and where applications for it go. */
+export async function saveTalentPulseLine(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const issueId = String(formData.get("issueId") ?? "");
+  const positionId = String(formData.get("positionId") ?? "");
+  const back = (msg: string) => redirect("/talent-pulse?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("Talent Pulse is for ops or marketing.");
+  const db = await desk();
+  const issue = issueIn(db, issueId);
+  if (!issue) back("That issue is gone.");
+  const row = issue as NonNullable<typeof issue>;
+  if (row.state === "posted") back("That issue has been posted; this one is history.");
+
+  const note = String(formData.get("note") ?? "").trim();
+  const applyAddress = String(formData.get("applyAddress") ?? "").trim();
+  const lines = row.lines.map((l) => (l.positionId === positionId ? { ...l, note, applyAddress } : l));
+  if (lines.every((l, i) => l.note === row.lines[i].note && l.applyAddress === row.lines[i].applyAddress)) {
+    back("Nothing changed.");
+  }
+
+  await patchIssue(issueId, { lines }, member.id, "talentPulse.lineSaved", null);
+  revalidatePath("/talent-pulse");
+  const left = lines.filter((l) => !l.note).length;
+  back(left ? "Saved. " + left + " still with no line." : "Saved. Every role has its line; it can go to marketing.");
+}
+
+/** It has gone out. Marketing posts it; Ops records the day it happened. */
+export async function markTalentPulsePosted(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const issueId = String(formData.get("issueId") ?? "");
+  const back = (msg: string) => redirect("/talent-pulse?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("Talent Pulse is for ops or marketing.");
+  const db = await desk();
+  const issue = issueIn(db, issueId);
+  if (!issue) back("That issue is gone.");
+  const row = issue as NonNullable<typeof issue>;
+  if (row.state === "posted") back("Already recorded as posted.");
+
+  const problem = problemWithIssue(row.lines);
+  if (problem) back(problem);
+
+  await patchIssue(
+    issueId,
+    { state: "posted", postedAt: Date.now(), postedBy: member.id },
+    member.id,
+    "talentPulse.posted",
+    null,
+  );
+  revalidatePath("/talent-pulse");
+  back("Recorded as posted. Next Tuesday's issue compiles itself.");
 }

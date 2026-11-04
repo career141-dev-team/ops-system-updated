@@ -302,6 +302,8 @@ export default defineSchema({
     hundredPercentDay: v.union(v.string(), v.null()),
     taStatus: v.union(v.string(), v.null()),
     jdApprovedAt: v.union(v.number(), v.null()),
+    linkedInUrl: v.union(v.string(), v.null()),
+    linkedInPostedAt: v.union(v.number(), v.null()),
     handedOverAt: v.number(),
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
@@ -310,6 +312,20 @@ export default defineSchema({
   })
     .index("by_opening", ["openingTaId"])
     .index("by_stage", ["stage"])
+    .index("by_created", ["createdAt"]),
+
+  /** One week's Talent Pulse (15, Phase 3 steps 14 and 15). */
+  opsTalentPulse: defineTable({
+    weekOf: v.string(),
+    state: v.string(),
+    lines: v.any(),
+    postedAt: v.union(v.number(), v.null()),
+    postedBy: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
   opsEsa: defineTable({

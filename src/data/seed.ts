@@ -71,6 +71,7 @@ export function seed(now = Date.now()): OpsDatabase {
     holds: [],
     requirements: [],
     positions: [],
+    talentPulse: [],
     leads: [
       {
         id: "ld_new",
