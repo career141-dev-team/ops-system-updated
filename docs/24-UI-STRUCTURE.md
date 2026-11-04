@@ -124,6 +124,13 @@ screens is the same whether it is on or off:
 | Set, position, placement | A summary of where it stands, on request |
 | `/ai` | The ask box, read-only, naming what it used |
 
+**Built on 4 November, with the offers.** Walking the screens for this found
+that the message page imported `improveDraft`, `useImprovedDraft` and the
+proposal it redirects back with - and rendered none of them. The whole
+improve-a-draft feature existed and had no buttons. It has them now, and every
+offer above shows while the layer is off, with the reason beside it
+(`aiOffReason`, `app/AiOffer.tsx`), rather than disappearing.
+
 ## 6. Looking clean, in four decisions
 
 No colours were chosen, no component library added. "Clean" here means a

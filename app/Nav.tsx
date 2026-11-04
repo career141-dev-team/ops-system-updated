@@ -61,7 +61,7 @@ export default function Nav({
               className={
                 "flex items-center gap-1.5 rounded-full px-3 py-1 transition-transform duration-150 ease-out active:scale-[0.97] " +
                 (open === section.key
-                  ? "bg-ink text-paper"
+                  ? "bg-brand text-white"
                   : current
                     ? "bg-paper font-medium text-ink"
                     : "text-ink-soft hover:text-ink")
@@ -72,7 +72,7 @@ export default function Nav({
                 <span
                   className={
                     "text-[11.5px] " +
-                    (open === section.key ? "text-paper" : count.late ? "text-danger" : "text-ink-faint")
+                    (open === section.key ? "text-white" : count.late ? "text-danger" : "text-ink-faint")
                   }
                 >
                   {count.waiting}

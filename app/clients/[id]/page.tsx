@@ -4,8 +4,9 @@ import { notFound, redirect } from "next/navigation";
 import { moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
 import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
 import NextStep from "@/app/NextStep";
+import AiOffer from "@/app/AiOffer";
 import { clientNextStep } from "@/lib/nextStep";
-import { anyKeySet } from "@/lib/ai";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
 import { STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
@@ -40,6 +41,7 @@ export default async function ClientPage({
   const theirAudit = db.audit.filter((a) => a.subjectType === "client" && a.subjectId === client.id);
   const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
+  const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
 
 
   // What to do now, from their own rows (23, section 4).
@@ -75,6 +77,8 @@ export default async function ClientPage({
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
       <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      {!aiOn && <AiOffer label="Summarise their history" why={whyAiOff ?? ""} />}
 
       {aiOn && (
         <section className="rounded-2xl border border-rule bg-surface px-5 py-4">

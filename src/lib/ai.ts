@@ -237,6 +237,20 @@ export function anyKeySet(): boolean {
 }
 
 /**
+ * Why the AI is not offering to help, in one sentence (24, section 5).
+ *
+ * The screens used to hide every AI button while the layer was off, which is
+ * how the owner came to say on 4 November that the AI was not there at all.
+ * A feature nobody can see has not been built for them, so the offer now stays
+ * on the screen - quiet, not pressable - with this line beside it.
+ */
+export function aiOffReason(hasKey: boolean, switchedOn: boolean): string | null {
+  if (!hasKey) return "AI is off: no model key is set yet.";
+  if (!switchedOn) return "AI is off: the ops lead has not switched it on.";
+  return null;
+}
+
+/**
  * Ask a model, once, with a timeout.
  *
  * Both providers speak the same shape of request closely enough that one

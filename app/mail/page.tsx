@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { aiSwitches, desk, inboundRecent, inboundWaiting } from "@/data/desk";
-import { anyKeySet } from "@/lib/ai";
+import AiOffer from "@/app/AiOffer";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 import { fileThisMail, markMailDone, pretendMailArrives, readMailNow, readInbound } from "@/app/actions";
@@ -34,6 +35,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
   const waiting = inboundWaiting(db);
   const recent = inboundRecent(db);
   const aiOn = anyKeySet() && aiSwitches(db).on;
+  const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
   // What a person may file an email against: anything we have written about.
   const subjects = [
     ...new Map(
@@ -99,6 +101,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
               </select>
               <button className="rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper">File it</button>
             </form>
+            {!aiOn && <AiOffer label="Read what they said" why={whyAiOff ?? ""} />}
             {aiOn && (
               <form action={readInbound} className="mt-2">
                 <input type="hidden" name="inboundId" value={mail.id} />

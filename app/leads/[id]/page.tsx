@@ -23,7 +23,8 @@ import {
   markMeetingNotHeld,
 } from "@/app/actions";
 import { agreementForLead, aiSwitches, desk, leadIn, meetingsForLead, requirementForLead } from "@/data/desk";
-import { anyKeySet } from "@/lib/ai";
+import AiOffer from "@/app/AiOffer";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type DictatedRequirement } from "@/lib/aiTasks";
 import Dictate from "@/app/Dictate";
 import NextStep from "@/app/NextStep";
@@ -88,6 +89,7 @@ export default async function LeadPage({
     ? (JSON.parse(proposedJson) as DictatedRequirement)
     : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
+  const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
   const button = "rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
   const nameOf = (who: string | null) => (who ? db.members.find((m) => m.id === who)?.name ?? "somebody" : "nobody");
   const closed = lead.state.startsWith("closed") || lead.state === "declined_industry";
@@ -558,6 +560,10 @@ export default async function LeadPage({
                     {whenLocal(requirementMeeting.at)}
                     {requirementMeeting.brief ? " · the brief is written down" : ""}
                   </p>
+                )}
+
+                {mayManage && !aiOn && (
+                  <AiOffer label="Say the brief instead of typing it" why={whyAiOff ?? ""} />
                 )}
 
                 {mayManage && aiOn && (
