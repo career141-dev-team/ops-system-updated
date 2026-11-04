@@ -17,6 +17,7 @@ import {
   interviewNextStep,
   leadNextStep,
   placementNextStep,
+  positionNextStep,
   setNextStep,
 } from "@/lib/nextStep";
 import { workByPage, workInWords } from "@/lib/sectionWork";
@@ -643,4 +644,55 @@ test("a guarantee is ninety days, and only on a fee fully paid", () => {
     guaranteeNextStep(guarantee({ state: "refund_pending", refundPct: 50 }), gParts, NOW).clock ?? "",
     /waits for a person/,
   );
+});
+
+/* ── A position: whose move is it? (24, step 6) ────────────────── */
+
+test("a position card answers the only question a client asks", () => {
+  const position = (over = {}) => ({
+    stage: "searching",
+    title: "Head of finance",
+    openingTaId: "ta_j1",
+    primaryTaId: "ta_p1",
+    hundredPercentDay: "2026-11-05",
+    jdApprovedAt: NOW - DAY,
+    taStatus: "searching",
+    linkedInUrl: "https://linkedin.test/jobs/1",
+    ...over,
+  });
+  const parts = { queued: false, depthSaid: null, holdState: null, setsSent: 0 };
+
+  // Ops never invents an opening id: until TA's event comes back it says so.
+  const queued = positionNextStep(position({ openingTaId: null, stage: "handed_over" }), { ...parts, queued: true }, NOW);
+  assert.equal(queued.at, "queued");
+  assert.match(queued.waiting, /the TA System is creating the opening/);
+  assert.match(queued.clock ?? "", /retried until it goes through/);
+
+  // Queued nothing, and nothing came back: that is a person's problem.
+  const stuck = positionNextStep(position({ openingTaId: null, stage: "handed_over" }), parts, NOW);
+  assert.match(stuck.waiting, /Somebody has to look at why/);
+
+  // Ours, and it says which piece is missing.
+  assert.match(
+    positionNextStep(position({ primaryTaId: null, hundredPercentDay: null }), parts, NOW).waiting,
+    /Ours: set the primary TA and the 100% day/,
+  );
+  assert.match(positionNextStep(position({ hundredPercentDay: null }), parts, NOW).waiting, /set the 100% day/);
+  assert.match(positionNextStep(position({ linkedInUrl: null }), parts, NOW).waiting, /not optional/);
+
+  // Theirs, once everything of ours is done.
+  const theirs = positionNextStep(position(), parts, NOW);
+  assert.match(theirs.waiting, /Theirs: the TA System is searching/);
+  assert.match(theirs.where, /TA says searching/);
+
+  // The two holds say different things, because they are different things.
+  const quiet = positionNextStep(position(), { ...parts, holdState: "on_hold" }, NOW);
+  assert.match(quiet.waiting, /until the client comes back/);
+  assert.match(quiet.clock ?? "", /never closes by itself/);
+
+  const five = positionNextStep(position({ stage: "on_hold" }), { ...parts, depthSaid: "Five shortlisted." }, NOW);
+  assert.match(five.waiting, /no sixth CV/);
+  assert.match(five.clock ?? "", /opens itself back up/);
+
+  assert.match(positionNextStep(position({ stage: "closed" }), parts, NOW).waiting, /the close list has it/);
 });

@@ -154,15 +154,15 @@ list as [23](23-UI-PLAN.md) section 6, with the purpose lines now living in
 | Screen | Pattern | State | What it needs |
 |---|---|---|---|
 | Your day | list | **done 4 Nov** | the section summary, from the one count rule |
-| Mail | list | to do | needs-filing first; the reader's own state in words; the AI "read what they sent" offer |
+| Mail | list | **done 4 Nov** | the AI offer now shows while the layer is off; needs-filing was already first |
 | Calls | list | leave | already one purpose |
 | Task, Message | one thing | to do | the message page should say why a send would be refused, and offer the improve |
-| Leads | list | to do | one line per lead saying where it is, late first |
+| Leads | list | **done 4 Nov** | one line per lead, from the lead page's own rule |
 | Lead | one thing | **done (PR #19)** | — |
-| Clients | list | to do | stage, what is open, what is owed, in one line each |
+| Clients | list | **done 4 Nov** | what is waiting, from the client page's own rule |
 | Client | one thing | **done (PR #19)** | — |
-| Positions · Position | list · one thing | to do | whose move it is; the depth rule said out loud |
-| Adverts · Advert | list · one thing | to do | whose step: marketing, ops, TopJobs; the two-week clock |
+| Positions · Position | list · one thing | **done 4 Nov** | whose move it is, ours or TA's; the depth rule said out loud |
+| Adverts · Advert | list · one thing | left as it was | `adInWords` already says whose step it is, and the groups are work-ordered |
 | Talent Pulse | list | leave | — |
 | CV sets · Set | list · one thing | **done 4 Nov** | the card picks one clock of the four; late sets first on the list |
 | Holds · Hold | list · one thing | **done 4 Nov** | the review date, and that it never closes by itself |
@@ -207,7 +207,12 @@ process that found the faults in every phase of the backend.
    rule and not only the date, because these are the ones a wrong screen costs
    money for. The three money lists already ordered themselves by what is
    waiting, so they were left alone.
-6. The lists: leads, clients, positions, adverts, mail.
+6. ~~The lists: leads, clients, positions, adverts, mail~~ — **done 4 Nov.**
+   Every row now carries one line of plain words, read from the **same rule its
+   own page uses**, so a list and a page can never say different things. The
+   position gained its own rule and card (`positionNextStep`): whose move is
+   it, ours or the TA System's. Adverts and mail were already in the shape the
+   pattern asks for and were left alone.
 7. The rest, as each is opened for some other reason.
 
 Nothing in 4 to 7 blocks the pilot. What blocks the pilot is the server half

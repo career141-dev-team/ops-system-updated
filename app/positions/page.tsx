@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { clientIn, desk, member as memberIn, positionsNewestFirst, runClocks } from "@/data/desk";
+import { clientIn, desk, liveHoldFor, member as memberIn, outboxWaiting, positionsNewestFirst, runClocks } from "@/data/desk";
+import { depthInWords } from "@/lib/depth";
+import { positionNextStep } from "@/lib/nextStep";
 import { STAGE_MEANINGS, type PositionStage } from "@/lib/requirements";
 import { currentMember } from "@/lib/session";
 
@@ -22,6 +24,23 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const db = await desk();
   const positions = positionsNewestFirst(db);
   const order: PositionStage[] = ["handed_over", "searching", "on_hold", "closed"];
+  // One line per row, from the same rule the position's own page uses, so the
+  // list and the page can never say different things (24, section 3).
+  const now = Date.now();
+  const queuedIds = new Set(
+    outboxWaiting(db).filter((o) => o.subjectType === "position").map((o) => o.subjectId),
+  );
+  const stepFor = (position: (typeof positions)[number]) =>
+    positionNextStep(
+      position,
+      {
+        queued: queuedIds.has(position.id),
+        depthSaid: position.openingTaId ? depthInWords(position) : null,
+        holdState: position.openingTaId ? liveHoldFor(db, position.openingTaId)?.state ?? null : null,
+        setsSent: db.clientSets.filter((c) => c.openingTaId === position.openingTaId && c.state === "sent").length,
+      },
+      now,
+    );
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const row = "border-t border-rule py-3 first:border-t-0";
@@ -73,11 +92,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                       {memberIn(db, position.ownerId)?.name ?? "nobody"}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">
-                    {position.hundredPercentDay ? "100% day " + position.hundredPercentDay + " · " : ""}
-                    {position.jdApprovedAt ? "JD approved" : "JD not approved yet"}
-                    {position.taStatus ? " · TA says: " + position.taStatus : ""}
-                  </p>
+                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{stepFor(position).waiting}</p>
                 </div>
               );
             })}

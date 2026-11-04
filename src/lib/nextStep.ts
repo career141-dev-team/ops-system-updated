@@ -1076,3 +1076,126 @@ export function guaranteeNextStep(
       " with a notice and a place on the close list.",
   };
 }
+
+/* ── A position: whose move is it? (24, step 6) ────────────────── */
+
+export interface PositionStepLike {
+  stage: string;
+  title: string;
+  openingTaId: string | null;
+  primaryTaId: string | null;
+  hundredPercentDay: string | null;
+  jdApprovedAt: number | null;
+  taStatus: string | null;
+  linkedInUrl: string | null;
+}
+
+/**
+ * A position's own next step.
+ *
+ * Ops does not run the search - the TA System does - so this card exists to
+ * answer one question a client is always asking: whose move is it, ours or
+ * theirs? Saying "searching" tells nobody that we are the ones holding it up.
+ */
+export function positionNextStep(
+  position: PositionStepLike,
+  parts: {
+    /** The opening write is still in the outbox, waiting for TA. */
+    queued: boolean;
+    /** The depth rule in words, from the TA pipeline we last read. */
+    depthSaid: string | null;
+    /** A hold on this position: "proposed", "on_hold", or nothing. */
+    holdState: string | null;
+    /** Sets that have gone to the client. */
+    setsSent: number;
+  },
+  now: number,
+): Step {
+  void now;
+
+  if (position.stage === "closed") {
+    return {
+      at: "closed",
+      where: "Closed",
+      waiting: "Nothing: the search is over and the close list has it.",
+      clock: null,
+    };
+  }
+
+  // Ops never invents an opening id: until TA's own event comes back, the
+  // position is real here and nowhere else.
+  if (!position.openingTaId) {
+    return parts.queued
+      ? {
+          at: "queued",
+          where: "Handed over, waiting for the TA System",
+          waiting: "Nothing: the TA System is creating the opening. It appears here the moment their event comes back.",
+          clock: "The write is in the outbox and is retried until it goes through.",
+        }
+      : {
+          at: "queued",
+          where: "Handed over, nothing queued",
+          waiting: "Nothing is queued for the TA System and no opening has come back. Somebody has to look at why.",
+          clock: null,
+        };
+  }
+
+  if (parts.holdState === "proposed") {
+    return {
+      at: "hold",
+      where: "The client has gone quiet",
+      waiting: "A hold is proposed. It only holds once somebody approves the notice the client gets.",
+      clock: "Nothing is held without a person.",
+    };
+  }
+
+  if (parts.holdState === "on_hold" || position.stage === "on_hold") {
+    return {
+      at: "hold",
+      where: "On hold",
+      waiting:
+        parts.holdState === "on_hold"
+          ? "Nothing until the client comes back. Then lift the hold, with a reason."
+          : "Held at five shortlisted: the TA System is monitoring and sends no sixth CV." +
+            (parts.depthSaid ? " " + parts.depthSaid : ""),
+      clock:
+        parts.holdState === "on_hold"
+          ? "Looked at again every thirty days. It never closes by itself."
+          : "It opens itself back up when the client's shortlist drops below five.",
+    };
+  }
+
+  if (!position.primaryTaId || !position.hundredPercentDay) {
+    const missing = !position.primaryTaId
+      ? !position.hundredPercentDay
+        ? "the primary TA and the 100% day"
+        : "the primary TA"
+      : "the 100% day";
+    return {
+      at: "team",
+      where: "Open in the TA System",
+      waiting: "Ours: set " + missing + ", and the TA System is told.",
+      clock: null,
+    };
+  }
+
+  if (!position.linkedInUrl) {
+    return {
+      at: "adverts",
+      where: "Open in the TA System",
+      waiting: "Ours: record the LinkedIn post. It is the one advert that is not optional.",
+      clock: null,
+    };
+  }
+
+  return {
+    at: "search",
+    where: "Open in the TA System" + (position.taStatus ? " · TA says " + position.taStatus : ""),
+    waiting:
+      parts.setsSent === 0
+        ? "Theirs: the TA System is searching. A set comes to us when they say one is ready."
+        : "Theirs, unless a client answer is waiting on a set." +
+          (parts.depthSaid ? " " + parts.depthSaid : ""),
+    clock: parts.depthSaid && parts.setsSent > 0 ? null : "Nothing of ours runs on it until a set is ready.",
+  };
+}

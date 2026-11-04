@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { clientsNewestFirst, desk, member as memberIn } from "@/data/desk";
-import { STAGE_MEANINGS, type ClientStage, whereTheyStand } from "@/lib/clients";
+import { STAGE_MEANINGS, type ClientStage } from "@/lib/clients";
+import { clientNextStep } from "@/lib/nextStep";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -20,6 +21,17 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
 
   const db = await desk();
   const clients = clientsNewestFirst(db);
+  // The same rule the client's own page uses, so the list cannot say one
+  // thing and the page another (24, section 3).
+  const stepFor = (client: (typeof clients)[number]) =>
+    clientNextStep(client, {
+      positions: db.positions.filter((p) => p.clientId === client.id),
+      sets: db.clientSets.filter((c) => c.clientId === client.id),
+      owing: db.invoices.filter(
+        (i) => i.clientId === client.id && (i.state === "sent" || i.state === "partly_paid"),
+      ),
+      holds: db.holds.filter((h) => h.clientId === client.id),
+    });
   const order: ClientStage[] = ["active", "onboarding", "lead", "dormant", "closed"];
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
@@ -60,7 +72,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   <Link href={"/clients/" + client.id} className="text-[13.5px] text-brand hover:underline">
                     {client.name}
                   </Link>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{whereTheyStand(client)}</p>
+                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{stepFor(client).waiting}</p>
                 </div>
                 <span className="text-[12.5px] text-ink-soft">
                   {memberIn(db, client.ownerId)?.name ?? "nobody"}

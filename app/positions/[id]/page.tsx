@@ -6,6 +6,7 @@ import {
   clientIn,
   desk,
   liveAdFor,
+  liveHoldFor,
   member as memberIn,
   outboxWaiting,
   positionIn,
@@ -13,6 +14,9 @@ import {
 } from "@/data/desk";
 import { adInWords } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { positionNextStep } from "@/lib/nextStep";
 import { REQUIREMENT_FIELDS, STAGE_MEANINGS, type PositionStage, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -46,6 +50,16 @@ export default async function PositionPage({
   const theirAudit = db.audit.filter((a) => a.subjectType === "position" && a.subjectId === position.id);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
+  // What to do now (24, step 6). One question this page has to answer, which
+  // "searching" never did: whose move is it, ours or the TA System's?
+  const hold = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
+  const setsSent = db.clientSets.filter((c) => c.openingTaId === position.openingTaId && c.state === "sent").length;
+  const step = positionNextStep(
+    position,
+    { queued, depthSaid: position.openingTaId ? depthInWords(position) : null, holdState: hold ? hold.state : null, setsSent },
+    Date.now(),
+  );
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
@@ -74,8 +88,13 @@ export default async function PositionPage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What the client asked for</h2>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="What the client asked for"
+        says={"The six fields, and the brief TA reads"}
+        open={false}
+      >
         {!requirement && (
           <p className="mt-1 text-[13px] text-ink-soft">
             No requirement behind this one: a TA created the opening directly. Somebody should write down what the
@@ -98,10 +117,13 @@ export default async function PositionPage({
             </pre>
           </>
         )}
-      </section>
+      </Part>
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The TA side</h2>
+      <Part
+        title="The TA side"
+        says={position.primaryTaId ? "Primary TA set" : "No primary TA yet"}
+        open={step.at === "team" || step.at === "queued"}
+      >
         <p className="mt-1 text-[13px] text-ink-soft">
           {position.openingTaId
             ? "Opening " + position.openingTaId + (position.taStatus ? " · TA says: " + position.taStatus : "")
@@ -141,10 +163,13 @@ export default async function PositionPage({
             <button className={plain}>Record it</button>
           </form>
         )}
-      </section>
+      </Part>
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">How deep the client&rsquo;s shortlist is</h2>
+      <Part
+        title="How deep the client's shortlist is"
+        says={(position.stage === "closed" ? "As it stood when it closed: " : "") + depthInWords(position)}
+        open={step.at === "hold" || step.at === "search"}
+      >
         <p className="mt-1 text-[13px]">{depthInWords(position)}</p>
         {position.depthCheckedAt && (
           <p className="mt-1 text-[12px] text-ink-faint">Counted {whenLocal(position.depthCheckedAt)}, from TA&rsquo;s own pipeline.</p>
@@ -159,10 +184,13 @@ export default async function PositionPage({
           It is counted after every client decision and every stage move the TA System tells us about, so nobody has
           to keep a tally.
         </p>
-      </section>
+      </Part>
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Where it is advertised</h2>
+      <Part
+        title="Where it is advertised"
+        says={position.linkedInUrl ? "On LinkedIn" + (ad ? ", and a paid advert" : "") : "Not on LinkedIn yet"}
+        open={step.at === "adverts"}
+      >
         {position.linkedInUrl ? (
           <p className="mt-1 text-[13px]">
             On LinkedIn since {position.linkedInPostedAt ? whenLocal(position.linkedInPostedAt) : "—"} ·{" "}
@@ -213,11 +241,14 @@ export default async function PositionPage({
           Talent Pulse compiles itself every Tuesday. TopJobs is asked for here, marketing makes the flyer, and it
           comes down two weeks after it goes live.
         </p>
-      </section>
+      </Part>
 
       {position.stage !== "closed" && position.openingTaId && can(me, "client.manage") && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Closing it</h2>
+        <Part
+          title="Closing it"
+          says={"Only when everything on the close list is ticked"}
+          open={false}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             A guarantee ending, a refund or a write-off opens the close list by itself. This is for the other way: the
             client has stopped, or the role was never practical.
@@ -233,11 +264,14 @@ export default async function PositionPage({
             </label>
             <button className={plain}>Open the close list</button>
           </form>
-        </section>
+        </Part>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry, i) => (
           <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
@@ -248,7 +282,7 @@ export default async function PositionPage({
             </p>
           </div>
         ))}
-      </section>
+      </Part>
     </div>
   );
 }

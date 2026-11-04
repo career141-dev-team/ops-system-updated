@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createLead } from "@/app/actions";
-import { desk, leadIn, leadsNewestFirst, member as memberIn } from "@/data/desk";
+import { agreementForLead, desk, leadIn, leadsNewestFirst, meetingsForLead, member as memberIn, requirementForLead } from "@/data/desk";
+import { leadNextStep } from "@/lib/nextStep";
+import { REQUIREMENT_FIELDS } from "@/lib/requirements";
 import { whereItStands } from "@/lib/esa";
 import { KIND_MEANINGS, type MeetingKind, meetingsAhead, whenInWords } from "@/lib/meetings";
 import { LEAD_SOURCES, SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
@@ -28,6 +30,19 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   const db = await desk();
   const leads = leadsNewestFirst(db);
+  // One line per lead, from the same rule its own page uses: where it is, and
+  // whose move it is (24, section 3). A state name alone said neither.
+  const required = REQUIREMENT_FIELDS.filter((f) => f.required).map((f) => f.key);
+  const stepFor = (lead: (typeof leads)[number]) => {
+    const requirement = requirementForLead(db, lead.id);
+    return leadNextStep(lead, {
+      meetings: meetingsForLead(db, lead.id),
+      esa: agreementForLead(db, lead.id),
+      requirement,
+      position: requirement ? db.positions.find((p) => p.requirementId === requirement.id) ?? null : null,
+      requiredFields: required,
+    });
+  };
   const waiting = leads.filter((l) => l.state === "new");
   const working = leads.filter((l) => ["intro_call", "waiting_agreement", "requirement"].includes(l.state));
   const closed = leads.filter((l) => l.state.startsWith("closed") || l.state === "declined_industry");
@@ -43,22 +58,27 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const nameOf = (id: string) => db.members.find((m) => m.id === id)?.name ?? "somebody";
 
   const row = (lead: (typeof leads)[number]) => (
-    <div key={lead.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0">
-      <Link href={"/leads/" + lead.id} className="text-[13.5px] text-brand hover:underline">
-        {lead.company}
-      </Link>
-      <span className="text-[12px] text-ink-faint">{SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source}</span>
-      {lead.industryFlagged && (
-        <span className="rounded-full border border-rule px-2 py-0.5 text-[11.5px]">
-          banking or finance? · {lead.industryBecause}
+    <div key={lead.id} className="border-t border-rule py-3 first:border-t-0">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <Link href={"/leads/" + lead.id} className="text-[13.5px] text-brand hover:underline">
+          {lead.company}
+        </Link>
+        <span className="text-[12px] text-ink-faint">
+          {SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source}
         </span>
-      )}
-      {lead.clientTaId && <span className="text-[12px] text-ink-faint">already our client</span>}
-      <span className="ml-auto text-right text-[12px] text-ink-faint">
-        {STATE_MEANINGS[lead.state as LeadState] ?? lead.state}
-        {" · "}
-        {nameOf(lead.ownerId)}
-      </span>
+        {lead.industryFlagged && (
+          <span className="rounded-full border border-rule px-2 py-0.5 text-[11.5px]">
+            banking or finance? · {lead.industryBecause}
+          </span>
+        )}
+        {lead.clientTaId && <span className="text-[12px] text-ink-faint">already our client</span>}
+        <span className="ml-auto text-right text-[12px] text-ink-faint">
+          {STATE_MEANINGS[lead.state as LeadState] ?? lead.state}
+          {" · "}
+          {nameOf(lead.ownerId)}
+        </span>
+      </div>
+      <p className="mt-0.5 text-[12.5px] text-ink-soft">{stepFor(lead).waiting}</p>
     </div>
   );
 
