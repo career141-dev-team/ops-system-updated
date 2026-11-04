@@ -27,26 +27,32 @@ import {
   patchIssue,
   patchPosition,
   patchRequirement,
+  addAd,
   addClient,
   addInterview,
   addMember,
   addInvoice,
   addReference,
   buildWeeklyReport,
+  adIn,
   checklistIn,
   evaluateDepth,
   positionForSet,
   draftCandidateFeedback,
+  draftCreditNote,
+  draftSurchargeInvoice,
   guaranteeForPlacement,
   guaranteeIn,
   interviewIn,
   invoiceIn,
+  liveAdFor,
   liveInterviewFor,
   noticeCandidateOut,
   markLeaver,
   markPlacementJoined,
   openCloseChecklist,
   patchInterview,
+  patchAd,
   patchChecklist,
   patchGuarantee,
   patchInvoice,
@@ -107,6 +113,14 @@ import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
 import { fillDocx, problemWithFill } from "@/lib/docxFill";
 import {
+  AD_DAYS,
+  type AdState,
+  adClosesOn,
+  canMoveAdTo,
+  problemWithAdLive,
+  problemWithAdOrder,
+  problemWithAdRequest,
+  problemWithFlyer,
   problemWithIssue,
   problemWithLinkedIn,
   tidyLinkedIn,
@@ -3750,7 +3764,9 @@ export async function sendInvoice(formData: FormData): Promise<void> {
 
   const lines = invoiceLines({
     number: row.number,
-    candidateName: placement?.candidateName ?? "",
+    // A surcharge and a credit note have no placement: what they are about is
+    // written on the invoice itself.
+    candidateName: placement?.candidateName ?? row.about ?? "",
     positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
     clientName: client?.billingName || client?.name || "",
     feeWords: feeInWords({ feeMonths: placement?.feeMonths ?? 1, feeBasis: placement?.feeBasis ?? "gross" }),
@@ -3763,7 +3779,10 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     currency: row.currency,
   });
 
-  const wording = templateFor(db, "invoice.cover");
+  const wording = templateFor(
+    db,
+    row.kind === "surcharge" ? "invoice.surcharge" : row.kind === "credit_note" ? "invoice.credit_note" : "invoice.cover",
+  );
   const fill = (text: string) =>
     text
       .replace(/\{\{client\}\}/g, client?.name ?? "")
@@ -3772,6 +3791,11 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       .replace(/\{\{invoiceNumber\}\}/g, row.number)
       .replace(/\{\{invoice\}\}/g, lines)
       .replace(/\{\{dueDate\}\}/g, row.dueAt ? colomboDateInWords(row.dueAt) : "thirty days from the first working day")
+      .replace(/\{\{surchargePct\}\}/g, String(numberOf(db, "hire.surchargePct", 50)))
+      .replace(/\{\{amount\}\}/g, money(row.amount, row.currency))
+      .replace(/\{\{why\}\}/g, row.reason ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, row.number)
+      .replace(/\{\{sentDate\}\}/g, row.setId ? (clientSetIn(db, row.setId)?.sentAt ? colomboDateInWords(clientSetIn(db, row.setId)!.sentAt!) : "the day we sent it") : "")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
   const message = await draftMessage({
@@ -4309,4 +4333,325 @@ export async function runImport(formData: FormData): Promise<void> {
       (plan.problems.length ? ", " + plan.problems.length + " left for the sheet to be fixed" : "") +
       ".",
   );
+}
+
+/* ── TopJobs (15, Phase 3 steps 12 and 13) ────────────────────── */
+
+/** A TA or the owner asks for the paid advert. */
+export async function requestAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet.");
+  if (liveAdFor(db, row.openingTaId ?? "")) back("There is already a TopJobs advert on the go for this one.");
+
+  const kind = String(formData.get("kind") ?? "");
+  const problem = problemWithAdRequest(row.title, kind);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const ad = await addAd({
+    channel: "topjobs",
+    openingTaId: row.openingTaId ?? "",
+    positionId: row.id,
+    clientId: row.clientId,
+    title: row.title,
+    state: "requested",
+    kind,
+    cost: null,
+    flyerFileId: null,
+    applyAlias: null,
+    orderMessageId: null,
+    requestedAt: now,
+    orderedAt: null,
+    liveAt: null,
+    closesAt: null,
+    closedAt: null,
+    cvCount: null,
+    reason: null,
+    ownerId: row.ownerId,
+  });
+
+  // TA routes an apply address for this advert, so a CV that comes in through
+  // TopJobs is filed by TA with the source known. No CV passes through Ops.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/posts",
+    { channel: "portal", source: "topjobs", requestedAt: now },
+    { type: "ad", id: ad.id },
+  );
+  await createTask({
+    kind: "record",
+    title: "A flyer for TopJobs: " + row.title,
+    body:
+      "TopJobs takes an image, not a job description (the owner's note). Marketing makes the flyer, it is kept on the Files screen, and then the order can go.\n\n" +
+      (kind === "hr_and_marketing"
+        ? "The HR and marketing advert: LKR 12,700 on the board."
+        : "The single advert: LKR 5,400 on the board."),
+    assigneeId: db.members.find((m) => m.active && m.role === "marketing")?.id ?? row.ownerId,
+    dueAt: now,
+    subjectType: "ad",
+    subjectId: ad.id,
+    link: "/adverts/" + ad.id,
+  });
+  revalidatePath("/adverts");
+  redirect("/adverts/" + ad.id + "?msg=" + encodeURIComponent("Asked for. Marketing has the flyer to make."));
+}
+
+/** Marketing's flyer is ready and kept on the Files screen. */
+export async function recordAdFlyer(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const fileId = String(formData.get("flyerFileId") ?? "").trim() || null;
+  const problem = problemWithFlyer(fileId);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "flyer")) back("That advert is past the flyer.");
+
+  await patchAd(adId, { flyerFileId: fileId, state: "flyer" }, member.id, "ad.flyerReady", null);
+  revalidatePath(here);
+  back("The flyer is on it. The order to TopJobs can go now.");
+}
+
+/** The order to TopJobs: a drafted email with the flyer on it. */
+export async function orderAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const to = interviewersFrom(String(formData.get("to") ?? ""));
+  const cost = Number(formData.get("cost") ?? 0);
+  const alias = String(formData.get("applyAlias") ?? "").trim() || null;
+  const problem = problemWithAdOrder(row.flyerFileId, to, cost);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "ordered")) back("That advert cannot be ordered from where it is.");
+
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const wording = templateFor(db, "topjobs.order");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{position\}\}/g, row.title)
+      .replace(/\{\{client\}\}/g, client?.name ?? "our client")
+      .replace(/\{\{applyAlias\}\}/g, alias ?? "the address on the flyer")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Advert order: {{position}}"),
+    body: fill(
+      wording?.body ??
+        "Dear TopJobs,\n\nPlease run the attached advert for {{position}}. Applications to {{applyAlias}}.\n\nKind regards\n{{opsPerson}}\nCareer 141",
+    ),
+    templateKey: "topjobs.order",
+    subjectType: "ad",
+    subjectId: adId,
+    attachmentFileIds: row.flyerFileId ? [row.flyerFileId] : [],
+  });
+
+  await patchAd(
+    adId,
+    { state: "ordered", cost, applyAlias: alias, orderedAt: Date.now(), orderMessageId: message.id },
+    member.id,
+    "ad.ordered",
+    money(cost, "LKR"),
+  );
+  revalidatePath(here);
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("The order is drafted with the flyer attached. Read it, then approve it."),
+  );
+}
+
+/** TopJobs says it is live, which starts the two weeks. */
+export async function markAdLive(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+
+  const at = Date.parse(String(formData.get("liveAt") ?? "") + "T09:00:00+05:30");
+  const problem = problemWithAdLive(at, row.orderedAt);
+  if (problem) back(problem);
+  if (!canMoveAdTo(row.state as AdState, "live")) back("That advert is not waiting to go live.");
+
+  const closesAt = adClosesOn(at, numberOf(db, "ad.days", AD_DAYS));
+  const now = Date.now();
+  await patchAd(adId, { state: "live", liveAt: at, closesAt }, member.id, "ad.live", null);
+  await startTimer({
+    kind: "ad.close",
+    subjectType: "ad",
+    subjectId: adId,
+    startsAt: now,
+    dueAt: closesAt,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: row.title },
+  });
+  // TA records the advert channel on its own opening, which is what makes the
+  // CV counts and the "where did this come from" answer true on their side.
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/ad-channel",
+    { channel: "topjobs", state: "live", liveAt: at, closesAt, cost: row.cost, applyAlias: row.applyAlias },
+    { type: "ad", id: adId },
+  );
+  revalidatePath(here);
+  back("Live, and the TA System has been told. It comes down in two weeks; a clock will ask.");
+}
+
+/** It has come down. */
+export async function markAdClosed(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  const row = ad as NonNullable<typeof ad>;
+  if (!canMoveAdTo(row.state as AdState, "closed")) back("That advert is not live.");
+
+  const cvCount = Number(formData.get("cvCount") ?? NaN);
+  const now = Date.now();
+  await patchAd(
+    adId,
+    { state: "closed", closedAt: now, cvCount: Number.isFinite(cvCount) ? cvCount : row.cvCount },
+    member.id,
+    "ad.closed",
+    null,
+  );
+  await cancelClocksFor(db, "ad", adId, member.id, "The advert has come down.", null);
+  await queueTaWrite(
+    "/integrations/v1/openings/" + row.openingTaId + "/ad-channel",
+    { channel: "topjobs", state: "closed", closedAt: now, cvCount: Number.isFinite(cvCount) ? cvCount : null },
+    { type: "ad", id: adId },
+  );
+  revalidatePath(here);
+  back(
+    "Closed, and the TA System has been told." +
+      (Number.isFinite(cvCount) ? " " + cvCount + " CVs against it, which is what judges the next one." : ""),
+  );
+}
+
+/** Dropped before it ran - a reason, like everything else that stops. */
+export async function dropAd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const adId = String(formData.get("adId") ?? "");
+  const here = "/adverts/" + adId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write why it is not running.");
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad) redirect("/adverts?msg=" + encodeURIComponent("That advert is gone."));
+  if (!canMoveAdTo(ad.state as AdState, "dropped")) back("That advert is already live or closed.");
+
+  await patchAd(adId, { state: "dropped", reason }, member.id, "ad.dropped", reason);
+  await cancelClocksFor(db, "ad", adId, member.id, "The advert was dropped.", null);
+  revalidatePath(here);
+  back("Dropped, with your reason. Nothing was ordered.");
+}
+
+/* ── The unreported hire, and credit notes (15, Phase 6 steps 15 and 16) ─ */
+
+/** Somebody in a set was hired and nobody told us. */
+export async function confirmUnreportedHire(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const who = String(formData.get("candidateName") ?? "").trim();
+  const salary = Number(formData.get("monthlySalary") ?? 0);
+  if (!who) back("Which candidate were they?");
+  if (!Number.isFinite(salary) || salary <= 0) {
+    back("What are they being paid a month? The surcharge is a share of the fee, so a number is needed - the requirement's salary if nobody knows better.");
+  }
+
+  const answer = await draftSurchargeInvoice(setId, who, salary, member.id);
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (!answer.ok) back(answer.what);
+  redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
+}
+
+/** We were wrong, or the client explained it: no surcharge. */
+export async function dismissUnreportedHire(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const here = "/sets/" + setId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Write what they said, or how we know. This one is read if it comes up again.");
+  const db = await desk();
+  await patchClientSet(setId, {}, member.id, "clientSet.unreportedDismissed", reason);
+  await cancelClocksFor(db, "clientSet", setId, member.id, "Asked and answered.", ["hire.unreported"]);
+  revalidatePath(here);
+  back("Noted, and nothing is invoiced. The three-month question is closed for this set.");
+}
+
+/** A credit note: a refund under the guarantee, or a correction. */
+export async function raiseCreditNote(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+
+  const amount = Number(formData.get("amount") ?? 0);
+  const why = String(formData.get("why") ?? "").trim();
+  const db = await desk();
+  const against = invoiceIn(db, invoiceId);
+  if (!against) back("That invoice is gone.");
+  if (!Number.isFinite(amount) || amount <= 0) back("How much is being credited?");
+  if (amount > (against as NonNullable<typeof against>).amount + 0.5) {
+    back("That is more than the invoice itself. Credit the invoice, not more than it.");
+  }
+  if (why.length < 4) back("Write why. A credit note with no reason is the one the auditor asks about.");
+
+  const answer = await draftCreditNote(invoiceId, amount, why, member.id);
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (!answer.ok) back(answer.what);
+  redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
 }

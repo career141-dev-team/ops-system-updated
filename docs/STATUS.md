@@ -65,9 +65,7 @@ code is invented.
 
 | The weekly report | `src/lib/reports.ts`, `buildWeeklyReport` in `src/data/desk.ts`, screens `app/reports` | built at eight on a Monday by its own clock, which sets the next Monday itself; one line per open position read from TA's pipeline and our own rows; a position TA cannot be read for keeps its line and says so rather than showing a zero; the ops lead reads it, and only then is the Director's email drafted |
 
-Still to come in phase 3: **TopJobs** — requested, the flyer, the order, live,
-and closed after two weeks — which the owner paused on 3 Nov because it is the
-one with money in it.
+| TopJobs, the paid advert | `src/lib/adverts.ts`, `src/data/desk.ts`, screens `app/adverts` | a TA asks from the position, marketing's flyer (an image, never a JD), the order drafted with the flyer attached and what they charge written down, TopJobs' own live date, two weeks, then closed with the CV count TA gives us. TA is told the apply alias and the advert channel. Nothing spends anything by itself |
 
 ## Built: phase 4, the client side of the search
 
@@ -95,9 +93,10 @@ System rather than on an opening Ops created itself.
 | Three left means search again, five shortlisted means hold | `src/lib/depth.ts`, `evaluateDepth` in `src/data/desk.ts` | counted from TA's own pipeline after every client decision and every stage move TA tells us about; the hold is read first, so a full client is never told to search; below five again opens the opening back up by itself |
 | A held client gets no sixth CV | `problemWithAnotherSet`, used by `sendClientSet` | refused with the reason; the ops lead can override, and the override is written to the audit |
 
+| The unreported hire | `askAboutUnreportedHire`, `draftSurchargeInvoice` | three months after a set goes, a clock **asks**; a person confirms with the salary they know, and the surcharge is 50% of the fee. Nobody is invoiced by a clock, and "we were wrong" closes the question with its reason |
+
 Still to come in phase 4: the inbound reader that proposes a client's decisions
-instead of them being typed (that is Phase 9 step 8), and the surcharge invoice
-an unreported hire leads to (the invoice engine is Phase 6).
+instead of them being typed (that is Phase 9 step 8).
 
 ## Built: phase 5, interviews and the reference
 
@@ -145,11 +144,14 @@ part that pays for everything.
 | Writing it off | `writeOffInvoice` | not before ninety days unless the Director of Operations decides; the guarantee is void and the position closes |
 | Screens | `app/placements`, `app/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
 
+| The surcharge and the credit note | `draftSurchargeInvoice`, `draftCreditNote` | both are invoices of their own kind, with what they are about written on them; a credit note is a document against an invoice, never a negative payment |
+| The money as a file | `src/lib/exports.ts`, `app/api/exports/[what]` | invoices.csv and payments.csv, accounts only, one row per thing; a cell that starts with `=` is defused, because a CSV that runs formulas is a hole |
+| Where we and TA may disagree | `invoiceDrift`, shown on `app/invoices` | a sent invoice whose write to TA never got through - TA's closing checklist reads that state, so it matters |
+
 Still to come in phase 6: the **invoice document** (it waits on a template
 from the owner, exactly as the agreement did - until then the lines go in the
-body of the email), tax lines, the surcharge invoice for an unreported hire
-(phase 4's step), credit notes (they belong with phase 7's refunds), the CSV
-exports, and the nightly check of our invoice state against TA's.
+body of the email), tax lines, and tax lines. The nightly automatic check is not built; the drift is shown on
+the invoices screen instead, which is where somebody would act on it.
 
 ## Built: phase 7, the guarantee and the close
 
@@ -168,10 +170,10 @@ exports, and the nightly check of our invoice state against TA's.
 
 The weekly report (step 9) was built on 3 November and is above.
 
-Still to come in phase 7: the **analytics** (step 16 - ESA return time, client
-wait on a set, slipped hires, time to fill, kept weekly as KPIs), and the
-credit note **document**, which waits on the same template work as the
-invoice.
+| The numbers | `src/lib/numbers.ts`, screen `app/numbers` | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
+
+Still to come in phase 7: the credit note **document**, which waits on the same
+template work as the invoice.
 
 ## Built: phase 8, the hardening
 
@@ -193,8 +195,7 @@ itself (steps 17 to 22).
 
 ## Not built
 
-TopJobs, phase 7's analytics, the server and pilot half of phase 8, and
-phase 9's AI layer.
+The server and pilot half of phase 8, and phase 9's AI layer.
 
 **The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
 data, because the TA side of the API does not exist yet. Making it real is a
@@ -245,7 +246,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 36 suites, each in its own process
+node tests/run.mjs        # all 37 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 

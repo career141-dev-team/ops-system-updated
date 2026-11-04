@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -82,6 +82,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsInvoices").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsGuarantees").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsCloseChecklists").withIndex("by_created").order("desc").take(200),
+      ctx.db.query("opsAds").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -121,6 +122,7 @@ export const snapshot = internalQuery({
       invoices: invoices.map(row),
       guarantees: guarantees.map(row),
       closeChecklists: closeChecklists.map(row),
+      ads: ads.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -634,6 +636,70 @@ export const addMember = internalMutation({
   },
 });
 
+/** One paid advert (15, Phase 3 step 12). */
+export const addAd = internalMutation({
+  args: {
+    channel: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    title: v.string(),
+    state: v.string(),
+    kind: v.string(),
+    cost: v.union(v.number(), v.null()),
+    flyerFileId: v.union(v.string(), v.null()),
+    applyAlias: v.union(v.string(), v.null()),
+    orderMessageId: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    orderedAt: v.union(v.number(), v.null()),
+    liveAt: v.union(v.number(), v.null()),
+    closesAt: v.union(v.number(), v.null()),
+    closedAt: v.union(v.number(), v.null()),
+    cvCount: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsAds", { ...args, createdAt: now, updatedAt: now });
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "ad.requested",
+      subjectType: "ad",
+      subjectId: id as string,
+      after: args.channel + ", " + args.title,
+    });
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const patchAd = internalMutation({
+  args: {
+    adId: v.string(),
+    patch: v.any(),
+    by: v.union(v.string(), v.null()),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.adId as Id<"opsAds">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "ad",
+      subjectId: found._id as string,
+      before: found.state,
+      after: after?.state ?? null,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
 /** One guarantee (15, Phase 7 step 2). */
 export const addGuarantee = internalMutation({
   args: {
@@ -819,6 +885,9 @@ export const addInvoice = internalMutation({
     number: v.string(),
     kind: v.string(),
     placementId: v.union(v.string(), v.null()),
+    about: v.union(v.string(), v.null()),
+    setId: v.union(v.string(), v.null()),
+    againstInvoiceId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
     state: v.string(),
     amount: v.number(),

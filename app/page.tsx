@@ -35,6 +35,7 @@ function clockInWords(kind: string): string {
     "lead.inviteBack": "a client to invite back",
     "talentpulse.compile": "Talent Pulse, on Tuesday",
     "report.weekly": "the weekly report, on Monday",
+    "ad.close": "a TopJobs advert to close",
     "interview.day": "the interview itself",
     "interview.report": "a date the client owes us",
     "silence.hold": "two weeks of client silence",

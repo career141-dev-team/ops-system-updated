@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { desk, invoicesNewestFirst, runClocks } from "@/data/desk";
+import { invoiceDrift } from "@/lib/exports";
 import { balanceOf, invoiceInWords, money } from "@/lib/money";
+import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -27,6 +29,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const waiting = owing.filter((i) => !i.dueAt || i.dueAt >= now);
   const settled = all.filter((i) => i.state === "paid" || i.state === "written_off");
   const owed = owing.reduce((sum, i) => sum + balanceOf(i), 0);
+  // Where our state and TA's may have drifted apart (Phase 6 step 19).
+  const drift = invoiceDrift(all, db.outbox);
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
@@ -73,10 +77,43 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
+      {drift.length > 0 && (
+        <section className="rounded-2xl border border-warning bg-surface px-5 py-4">
+          <h2 className="text-[14.5px] font-medium">The TA System may not know</h2>
+          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
+            TA&rsquo;s own closing checklist reads the invoice state, so a write that never got through means they
+            think nothing was billed. The{" "}
+            <Link href="/ta" className="text-brand hover:underline">
+              TA System screen
+            </Link>{" "}
+            is where a stuck write is pushed again.
+          </p>
+          {drift.map((row) => (
+            <p key={row.number} className="mt-2 text-[13px]">
+              {row.number} — <span className="text-ink-soft">{row.what}</span>
+            </p>
+          ))}
+        </section>
+      )}
+
       {list("Late", late, "Nothing is late.")}
       {list("Waiting for accounts", drafts, "Nothing waiting to be sent.")}
       {list("Sent, not due yet", waiting, "Nothing outstanding.")}
       {settled.length > 0 && list("Settled", settled, "")}
+
+      {can(me, "money.manage") && (
+        <p className="text-[12.5px] text-ink-soft">
+          For accounts, as a file:{" "}
+          <a href="/api/exports/invoices.csv" className="text-brand hover:underline">
+            every invoice
+          </a>{" "}
+          ·{" "}
+          <a href="/api/exports/payments.csv" className="text-brand hover:underline">
+            every payment
+          </a>
+          . One row per thing, checkable line by line against the bank.
+        </p>
+      )}
     </div>
   );
 }

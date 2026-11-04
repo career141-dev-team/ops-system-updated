@@ -44,6 +44,12 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "invoice.dueDays", value: 30, updatedBy: null, updatedAt: null },
       // The invoice series, and how long before somebody must decide to write
       // an unpaid fee off (15, Phase 6 steps 9 and 14).
+      // TopJobs comes down two weeks after it goes live (the owner's rule).
+      { key: "ad.days", value: 14, updatedBy: null, updatedAt: null },
+      // An unreported hire: three months from the day the set went, and the
+      // agreement's 50% surcharge (docs/15 Part B; the ESA says 50%).
+      { key: "hire.unreportedMonths", value: 3, updatedBy: null, updatedAt: null },
+      { key: "hire.surchargePct", value: 50, updatedBy: null, updatedAt: null },
       { key: "invoice.series", value: "C141", updatedBy: null, updatedAt: null },
       { key: "invoice.writeOffDays", value: 90, updatedBy: null, updatedAt: null },
       // From the agreement itself, which the owner said is the truth (3 Nov):
@@ -94,6 +100,7 @@ export function seed(now = Date.now()): OpsDatabase {
     invoices: [],
     guarantees: [],
     closeChecklists: [],
+    ads: [],
     leads: [
       {
         id: "ld_new",
@@ -381,6 +388,64 @@ Career 141`,
         body: `{{client}} > {{position}} > SET {{setNumber}}
 
 {{cvCount}} CVs are in your email. Any feedback on each one helps us carry on in the right direction.`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "topjobs.order",
+        channel: "email",
+        name: "Ordering a TopJobs advert",
+        subject: "Advert order: {{position}}",
+        body: `Dear TopJobs,
+
+Please run the attached advert for our client's {{position}} role.
+
+Applications should come to {{applyAlias}}.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.surcharge",
+        channel: "email",
+        name: "The unreported-hire surcharge",
+        subject: "{{client}} - invoice {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+Our records show that {{candidate}}, whose CV we sent you on {{sentDate}}, was hired without our being told.
+
+Our agreement provides for a surcharge of {{surchargePct}}% of the fee in that case. The invoice is below.
+
+{{invoice}}
+
+If we have this wrong, tell us and we will withdraw it at once.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.credit_note",
+        channel: "email",
+        name: "A credit note",
+        subject: "{{client}} - credit note against {{invoiceNumber}}",
+        body: `Dear {{contact}},
+
+This is our credit note for {{amount}} against invoice {{invoiceNumber}}.
+
+{{why}}
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
         approvedForAuto: false,
         updatedBy: null,
         updatedAt: null,

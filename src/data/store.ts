@@ -24,6 +24,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsAd,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -649,6 +650,40 @@ export const repo = {
     const before = row.state;
     Object.assign(row, patch, { updatedAt: Date.now() });
     audit({ actorId: by, action: what, subjectType: "talentPulse", subjectId: row.id, before, after: row.state, reason });
+    save();
+  },
+
+  /* ── Paid adverts (15, Phase 3 step 12) ─────────────────── */
+
+  adIn(adId: Id): OpsAd | null {
+    return load().ads.find((a) => a.id === adId) ?? null;
+  },
+
+  addAd(input: Omit<OpsAd, "id" | "createdAt" | "updatedAt">): OpsAd {
+    const db = load();
+    const now = Date.now();
+    const row: OpsAd = { ...input, id: id("ad"), createdAt: now, updatedAt: now };
+    db.ads.push(row);
+    audit({
+      actorId: input.ownerId,
+      action: "ad.requested",
+      subjectType: "ad",
+      subjectId: row.id,
+      before: null,
+      after: row.channel + ", " + row.title,
+      reason: null,
+    });
+    save();
+    return row;
+  },
+
+  patchAd(adId: Id, patch: Partial<OpsAd>, by: Id | null, what: string, reason: string | null = null): void {
+    const db = load();
+    const row = db.ads.find((a) => a.id === adId);
+    if (!row) return;
+    const before = row.state;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action: what, subjectType: "ad", subjectId: row.id, before, after: row.state, reason });
     save();
   },
 

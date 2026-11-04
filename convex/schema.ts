@@ -332,6 +332,34 @@ export default defineSchema({
     .index("by_week", ["weekOf"])
     .index("by_created", ["createdAt"]),
 
+  /** One paid advert, TopJobs today (15, Phase 3 step 12). */
+  opsAds: defineTable({
+    channel: v.string(),
+    openingTaId: v.string(),
+    positionId: v.union(v.string(), v.null()),
+    clientId: v.union(v.string(), v.null()),
+    title: v.string(),
+    state: v.string(),
+    kind: v.string(),
+    cost: v.union(v.number(), v.null()),
+    flyerFileId: v.union(v.string(), v.null()),
+    applyAlias: v.union(v.string(), v.null()),
+    orderMessageId: v.union(v.string(), v.null()),
+    requestedAt: v.number(),
+    orderedAt: v.union(v.number(), v.null()),
+    liveAt: v.union(v.number(), v.null()),
+    closesAt: v.union(v.number(), v.null()),
+    closedAt: v.union(v.number(), v.null()),
+    cvCount: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
+    ownerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opening", ["openingTaId"])
+    .index("by_state", ["state"])
+    .index("by_created", ["createdAt"]),
+
   /** One guarantee: ninety days from joining, on a paid fee (15, Phase 7). */
   opsGuarantees: defineTable({
     placementId: v.string(),
@@ -409,6 +437,9 @@ export default defineSchema({
     number: v.string(),
     kind: v.string(),
     placementId: v.union(v.string(), v.null()),
+    about: v.union(v.string(), v.null()),
+    setId: v.union(v.string(), v.null()),
+    againstInvoiceId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
     state: v.string(),
     amount: v.number(),

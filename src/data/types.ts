@@ -775,8 +775,14 @@ export interface OpsPlacement {
 export interface OpsInvoice {
   id: Id;
   number: string;
+  /** "fee", "surcharge" or "credit_note". */
   kind: string;
   placementId: Id | null;
+  /** What it is about, when there is no placement to read it from. */
+  about: string | null;
+  /** The set an unreported hire came from, and the invoice a credit note is against. */
+  setId: Id | null;
+  againstInvoiceId: Id | null;
   clientId: Id | null;
   state: string;
   amount: number;
@@ -853,6 +859,42 @@ export interface OpsCloseChecklist {
   updatedAt: number;
 }
 
+/**
+ * One paid advert (15, Phase 3 steps 12 and 13).
+ *
+ * TopJobs only, today: LinkedIn is recorded on the position and Talent Pulse
+ * has its own issue. It is its own row because it has money, a flyer, a date
+ * TopJobs gives us and a two-week clock - none of which belongs on a position.
+ */
+export interface OpsAd {
+  id: Id;
+  channel: string;
+  openingTaId: string;
+  positionId: Id | null;
+  clientId: Id | null;
+  title: string;
+  state: string;
+  /** Which advert, and what they are charging for it. */
+  kind: string;
+  cost: number | null;
+  /** Marketing's flyer, kept on the Files screen. */
+  flyerFileId: Id | null;
+  /** The apply address TA routes for this advert, so a CV knows where it came from. */
+  applyAlias: string | null;
+  orderMessageId: Id | null;
+  requestedAt: number;
+  orderedAt: number | null;
+  liveAt: number | null;
+  closesAt: number | null;
+  closedAt: number | null;
+  /** What TA counted against the advert's own alias. */
+  cvCount: number | null;
+  reason: string | null;
+  ownerId: Id;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -877,6 +919,7 @@ export interface OpsDatabase {
   invoices: OpsInvoice[];
   guarantees: OpsGuarantee[];
   closeChecklists: OpsCloseChecklist[];
+  ads: OpsAd[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

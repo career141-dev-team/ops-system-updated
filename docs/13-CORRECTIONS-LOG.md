@@ -354,3 +354,15 @@ is the kind of arithmetic that is wrong for years.
 Also: `deploy/production/.env.production.example` would have been swallowed by
 `.gitignore`, exactly as the preview's was on 3 November. Checked with
 `git add --dry-run` this time rather than discovered later.
+
+## 4 November 2026 - two small ones from the last of the plan
+
+**The nav had "Numbers" twice.** A shell command that wrote a file failed, but
+the edit beside it had already run, so the link was added twice. The lesson is
+small and real: when a command does two things and the first fails, check the
+second did not happen anyway.
+
+**An advert asked for a flyer that could not exist.** The flyer picker showed
+an empty dropdown when no image had been kept on the Files screen - which is
+the normal state before marketing has made one. It says so now, rather than
+offering a choice of nothing.

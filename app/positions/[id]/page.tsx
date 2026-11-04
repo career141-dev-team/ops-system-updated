@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { openCloseByHand, recordLinkedInPost, setPositionTeam } from "@/app/actions";
+import { openCloseByHand, recordLinkedInPost, requestAd, setPositionTeam } from "@/app/actions";
 import {
   clientIn,
   desk,
+  liveAdFor,
   member as memberIn,
   outboxWaiting,
   positionIn,
   requirementIn,
 } from "@/data/desk";
+import { adInWords } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
 import { REQUIREMENT_FIELDS, STAGE_MEANINGS, type PositionStage, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
@@ -40,6 +42,7 @@ export default async function PositionPage({
   const queued = outboxWaiting(db).some((o) => o.subjectType === "position" && o.subjectId === position.id);
   const taSide = await taPeople();
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+  const ad = position.openingTaId ? liveAdFor(db, position.openingTaId) : null;
   const theirAudit = db.audit.filter((a) => a.subjectType === "position" && a.subjectId === position.id);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
@@ -183,9 +186,32 @@ export default async function PositionPage({
             <button className={plain}>Record it</button>
           </form>
         )}
+        {ad ? (
+          <p className="mt-3 text-[13px]">
+            TopJobs:{" "}
+            <Link href={"/adverts/" + ad.id} className="text-brand hover:underline">
+              {adInWords(ad, Date.now())}
+            </Link>
+          </p>
+        ) : (
+          can(me, "advert.manage") &&
+          position.openingTaId && (
+            <form action={requestAd} className="mt-3 flex flex-wrap items-end gap-2 border-t border-rule pt-3">
+              <input type="hidden" name="positionId" value={position.id} />
+              <label className="flex min-w-[260px] flex-col gap-1 text-[12.5px] text-ink-soft">
+                TopJobs, the one that costs money
+                <select name="kind" className={field} defaultValue="single">
+                  <option value="single">The single advert &mdash; LKR 5,400</option>
+                  <option value="hr_and_marketing">HR and marketing &mdash; LKR 12,700</option>
+                </select>
+              </label>
+              <button className={plain}>Ask for it</button>
+            </form>
+          )
+        )}
         <p className="mt-2 text-[12px] text-ink-faint">
-          TopJobs and Talent Pulse are the other two. Talent Pulse compiles itself every Tuesday; TopJobs is paused
-          until the owner says otherwise, because it is the one that costs money.
+          Talent Pulse compiles itself every Tuesday. TopJobs is asked for here, marketing makes the flyer, and it
+          comes down two weeks after it goes live.
         </p>
       </section>
 

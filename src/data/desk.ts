@@ -12,6 +12,7 @@ import type {
   OpsHold,
   OpsPosition,
   OpsRequirement,
+  OpsAd,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -343,6 +344,15 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   },
   "replacement.deadline": async (timer, now) => {
     await askAboutRefund(timer.subjectId, now);
+  },
+  // Two weeks live and the TopJobs advert comes down (Phase 3 step 12).
+  "ad.close": async (timer, now) => {
+    await askAboutClosingAd(timer.subjectId, now);
+  },
+  // Three months after a set went: was anybody in it hired without our being
+  // told? The clock asks; a person decides (Phase 4, Phase 6 step 15).
+  "hire.unreported": async (timer, now) => {
+    await askAboutUnreportedHire(timer.subjectId, now);
   },
 };
 
@@ -1180,6 +1190,240 @@ export async function compileTalentPulse(by: Id, now = Date.now()): Promise<OpsT
   return issue;
 }
 
+/**
+ * Three months after a set went out: was anybody in it hired? (15, Phase 4.)
+ *
+ * The clock only asks. Nobody is invoiced because a clock fired - a person
+ * checks with the client and with TA, and the surcharge goes only when
+ * somebody says they are sure, because the whole point of it is that we were
+ * not told and might be wrong about why.
+ */
+export async function askAboutUnreportedHire(setId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return;
+  // A set whose candidates we know were placed is not a question.
+  const placed = db.placements.some((p) => p.openingTaId === set.openingTaId && p.state !== "cancelled");
+  if (placed) return;
+
+  const months = numberOf(db, "hire.unreportedMonths", 3);
+  await createTask({
+    kind: "decide",
+    title: "Three months on: was anybody from " + set.name + " hired?",
+    body:
+      "The set went out " +
+      months +
+      " months ago and nothing came back. Ask the client, and look at the candidates on LinkedIn.\n\n" +
+      "If one of them is working there, the agreement provides for a surcharge of " +
+      numberOf(db, "hire.surchargePct", 50) +
+      "% of the fee. Confirm it on the set's page - and if we are wrong, dismiss it with a reason. Nobody is invoiced by a clock.",
+    assigneeId: set.ownerId,
+    dueAt: now,
+    subjectType: "clientSet",
+    subjectId: setId,
+    link: "/sets/" + setId,
+  });
+}
+
+/**
+ * The surcharge invoice for a hire we were never told about (15, Phase 6 step 15).
+ *
+ * The salary is typed in by a person, because a client who did not tell us
+ * they hired somebody has not told us the package either. It is the
+ * requirement's salary unless somebody knows better, and whatever is used is
+ * written on the invoice so the client can argue with the number rather than
+ * with us.
+ */
+export async function draftSurchargeInvoice(
+  setId: Id,
+  candidateName: string,
+  monthlySalary: number,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) return { ok: false, what: "That set is gone.", invoiceId: null };
+  const already = db.invoices.find((i) => i.setId === setId && i.kind === "surcharge");
+  if (already) {
+    return { ok: false, what: "A surcharge for this set has already been raised.", invoiceId: already.id };
+  }
+
+  const position = positionForSet(db, set);
+  const client = set.clientId ? clientIn(db, set.clientId) : null;
+  const agreement = client?.leadId
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    : null;
+  const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
+  const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+  const pct = numberOf(db, "hire.surchargePct", 50);
+  const fee = feeAmount({ feeMonths, feeBasis }, monthlySalary);
+  const amount = Math.round(fee * (pct / 100) * 100) / 100;
+
+  const invoice = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
+    kind: "surcharge",
+    about:
+      candidateName +
+      " (" +
+      (position?.title ?? set.role) +
+      "), hired without our being told - " +
+      pct +
+      "% of " +
+      feeInWords({ feeMonths, feeBasis }) +
+      " of " +
+      money(monthlySalary, "LKR"),
+    setId,
+    againstInvoiceId: null,
+    placementId: null,
+    clientId: set.clientId,
+    state: "draft",
+    amount,
+    currency: "LKR",
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: dueOn(now, numberOf(db, "invoice.dueDays", DUE_DAYS)),
+    paidAt: null,
+    writtenOffAt: null,
+    reason: null,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+
+  await createTask({
+    kind: "approve",
+    title: "A surcharge invoice: " + invoice.number,
+    body:
+      "For " +
+      candidateName +
+      ", who was hired without our being told. Read it before it goes - this one starts an argument if the facts are wrong.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    link: "/invoices/" + invoice.id,
+  });
+  return { ok: true, what: "Surcharge " + invoice.number + " drafted: " + money(amount, "LKR") + ".", invoiceId: invoice.id };
+}
+
+/**
+ * A credit note (15, Phase 6 step 16).
+ *
+ * For a refund under the guarantee, or a correction to an invoice we got
+ * wrong. It is its own row rather than a negative payment, because what the
+ * client holds is a document of its own and the two have to agree.
+ */
+export async function draftCreditNote(
+  againstInvoiceId: Id,
+  amount: number,
+  why: string,
+  by: Id,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
+  const db = await desk();
+  const against = invoiceIn(db, againstInvoiceId);
+  if (!against) return { ok: false, what: "That invoice is gone.", invoiceId: null };
+
+  const note = await addInvoice({
+    number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now) + "-CN",
+    kind: "credit_note",
+    about: "Credit note against " + against.number + ". " + why,
+    setId: null,
+    againstInvoiceId,
+    placementId: against.placementId,
+    clientId: against.clientId,
+    state: "draft",
+    amount,
+    currency: against.currency,
+    lateCharge: 0,
+    lateMonths: 0,
+    disputed: false,
+    disputedReason: null,
+    payments: [],
+    sentAt: null,
+    sentMessageId: null,
+    dueAt: null,
+    paidAt: null,
+    writtenOffAt: null,
+    reason: why,
+    ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
+  });
+  await createTask({
+    kind: "approve",
+    title: "A credit note: " + note.number,
+    body: money(amount, against.currency) + " against " + against.number + ".\n\n" + why,
+    assigneeId: note.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: note.id,
+    link: "/invoices/" + note.id,
+  });
+  return { ok: true, what: "Credit note " + note.number + " drafted.", invoiceId: note.id };
+}
+
+/* ── Paid adverts: TopJobs (15, Phase 3 step 12) ───────────────── */
+
+export async function addAd(input: Omit<OpsAd, "id" | "createdAt" | "updatedAt">): Promise<OpsAd> {
+  if (!usingConvex()) return repo.addAd(input);
+  return (await convexMutation<OpsAd>("ops/data:addAd", input)) as OpsAd;
+}
+
+export async function patchAd(
+  adId: Id,
+  patch: Partial<OpsAd>,
+  by: Id | null,
+  what: string,
+  reason: string | null = null,
+): Promise<void> {
+  if (!usingConvex()) {
+    repo.patchAd(adId, patch, by, what, reason);
+    return;
+  }
+  await convexMutation("ops/data:patchAd", { adId, patch, by, what, reason });
+}
+
+export function adIn(db: OpsDatabase, adId: Id): OpsAd | null {
+  return db.ads.find((a) => a.id === adId) ?? null;
+}
+
+export function adsNewestFirst(db: OpsDatabase): OpsAd[] {
+  return [...db.ads].sort((a, b) => b.requestedAt - a.requestedAt);
+}
+
+export function liveAdFor(db: OpsDatabase, openingTaId: string): OpsAd | null {
+  return (
+    db.ads.find((a) => a.openingTaId === openingTaId && a.state !== "closed" && a.state !== "dropped") ?? null
+  );
+}
+
+/**
+ * Two weeks are up: the advert comes down (step 12).
+ *
+ * TopJobs tells ops when it closes and ops tells the TA; the clock is here so
+ * that an advert nobody took down is noticed by us rather than by a candidate
+ * applying to a job that has gone.
+ */
+export async function askAboutClosingAd(adId: Id, now = Date.now()): Promise<void> {
+  const db = await desk();
+  const ad = adIn(db, adId);
+  if (!ad || ad.state !== "live") return;
+  await createTask({
+    kind: "check",
+    title: "The TopJobs advert is two weeks old: " + ad.title,
+    body:
+      "It should come down now. TopJobs usually tells us; if they have not, ask them. Then tick it closed here and the TA System is told, so nobody is left applying to a job that has gone.",
+    assigneeId: ad.ownerId,
+    dueAt: now,
+    subjectType: "ad",
+    subjectId: adId,
+    link: "/adverts/" + adId,
+  });
+}
+
 /* ── Guarantees and the close checklist (15, Phase 7) ──────────── */
 
 export async function addGuarantee(
@@ -1869,6 +2113,9 @@ export async function draftFeeInvoice(
   const invoice = await addInvoice({
     number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
     kind: "fee",
+    about: null,
+    setId: null,
+    againstInvoiceId: null,
     placementId,
     clientId: placement.clientId,
     state: "draft",

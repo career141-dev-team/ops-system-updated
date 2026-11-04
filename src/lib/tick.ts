@@ -59,6 +59,11 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "The client booked an interview and has not told us the date",
     body: "They said they would book it themselves. Ask them when it is, or nothing after it can be tracked.",
   },
+  "ad.close": {
+    kind: "check",
+    title: "A TopJobs advert is two weeks old",
+    body: "It comes down now. Tick it closed and the TA System is told, so nobody applies to a job that has gone.",
+  },
   "report.weekly": {
     kind: "record",
     title: "The weekly report: it is Monday",

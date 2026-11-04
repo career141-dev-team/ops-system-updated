@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { markInvoiceDisputed, recordPayment, sendInvoice, writeOffInvoice } from "@/app/actions";
+import { markInvoiceDisputed, raiseCreditNote, recordPayment, sendInvoice, writeOffInvoice } from "@/app/actions";
 import { clientIn, desk, invoiceIn, member as memberIn, placementIn, positionIn } from "@/data/desk";
 import {
   INVOICE_MEANINGS,
@@ -37,6 +37,7 @@ export default async function InvoicePage({
   const theirAudit = db.audit.filter((a) => a.subjectType === "invoice" && a.subjectId === id).slice(0, 12);
   const mayMoney = can(me, "money.manage") || can(me, "refund.decide");
   const balance = balanceOf(invoice);
+  const notes = db.invoices.filter((i) => i.againstInvoiceId === invoice.id);
 
   const lines = invoiceLines({
     number: invoice.number,
@@ -79,6 +80,7 @@ export default async function InvoicePage({
             </>
           )}
         </p>
+        {invoice.about && <p className="mt-1 max-w-[70ch] text-[12.5px] text-ink-faint">{invoice.about}</p>}
         {invoice.disputed && (
           <p className="mt-1 text-[12.5px] text-warning">
             Disputed in good faith, so no late charge is added: {invoice.disputedReason}
@@ -185,6 +187,49 @@ export default async function InvoicePage({
             </form>
           )}
         </section>
+      )}
+
+      {invoice.kind !== "credit_note" && invoice.state !== "draft" && mayMoney && (
+        <section className={card}>
+          <h2 className="text-[14.5px] font-medium">A credit note</h2>
+          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
+            For a refund under the guarantee, or a correction to an invoice we got wrong. It is a document of its own,
+            drafted for the client like everything else.
+          </p>
+          {notes.length > 0 &&
+            notes.map((note) => (
+              <p key={note.id} className="mt-2 text-[13px]">
+                <Link href={"/invoices/" + note.id} className="text-brand hover:underline">
+                  {note.number}
+                </Link>{" "}
+                <span className="text-ink-soft">
+                  — {money(note.amount, note.currency)} · {note.reason}
+                </span>
+              </p>
+            ))}
+          <form action={raiseCreditNote} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="invoiceId" value={invoice.id} />
+            <label className="flex w-[150px] flex-col gap-1 text-[12.5px] text-ink-soft">
+              How much
+              <input name="amount" type="number" step="0.01" min="0" className={field} />
+            </label>
+            <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
+              Why
+              <input name="why" className={field} />
+            </label>
+            <button className={plain}>Raise it</button>
+          </form>
+        </section>
+      )}
+
+      {invoice.kind === "credit_note" && invoice.againstInvoiceId && (
+        <p className="text-[13px]">
+          Against{" "}
+          <Link href={"/invoices/" + invoice.againstInvoiceId} className="text-brand hover:underline">
+            {invoiceIn(db, invoice.againstInvoiceId)?.number ?? "the invoice"}
+          </Link>
+          .
+        </p>
       )}
 
       <section className={card}>

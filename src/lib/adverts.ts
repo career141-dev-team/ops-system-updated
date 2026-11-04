@@ -120,3 +120,100 @@ export function issueInWords(issue: { state: string; weekOf: string; lines: Issu
     (missing ? " · " + missing + " still with no line" : "")
   );
 }
+
+/* ── TopJobs (15, Phase 3 steps 12 and 13) ─────────────────────── */
+
+/**
+ * The paid advert, which is the one with money in it.
+ *
+ * Five steps, each a person's: a TA asks for it, marketing makes the flyer,
+ * ops orders it from TopJobs, TopJobs says when it is live, and it closes two
+ * weeks later. Nothing here spends anything by itself - the order is a
+ * drafted email somebody approves, and the cost is written down as it was
+ * agreed, not guessed from a price list.
+ */
+export type AdState = "requested" | "flyer" | "ordered" | "live" | "closed" | "dropped";
+
+export const AD_MEANINGS: Record<AdState, string> = {
+  requested: "Asked for - marketing is making the flyer",
+  flyer: "The flyer is ready - the order can go",
+  ordered: "Ordered, waiting for TopJobs to make it live",
+  live: "Live on TopJobs",
+  closed: "Closed",
+  dropped: "Dropped before it ran",
+};
+
+const AD_NEXT: Record<AdState, AdState[]> = {
+  requested: ["flyer", "dropped"],
+  flyer: ["ordered", "dropped"],
+  ordered: ["live", "dropped"],
+  live: ["closed"],
+  closed: [],
+  dropped: [],
+};
+
+export function canMoveAdTo(from: AdState, to: AdState): boolean {
+  return AD_NEXT[from].includes(to);
+}
+
+/** Two weeks live, then it closes - the owner's rule. */
+export const AD_DAYS = 14;
+
+/**
+ * What TopJobs charges, as the owner's board records it: 5,400 for an advert
+ * and 12,700 for the HR-plus-marketing one. Written down so a cost nobody
+ * recognises is obvious, not so the system decides to spend it.
+ */
+export const AD_PRICES: Record<string, number> = {
+  single: 5_400,
+  hr_and_marketing: 12_700,
+};
+
+export function problemWithAdRequest(positionTitle: string, kind: string): string | null {
+  if (!positionTitle.trim()) return "Which position is it for?";
+  if (!(kind in AD_PRICES)) return "Say which advert: the single one, or the HR and marketing one.";
+  return null;
+}
+
+/** TopJobs takes a flyer, never a job description. */
+export function problemWithFlyer(fileId: string | null): string | null {
+  if (!fileId) {
+    return "TopJobs takes an image, not a job description. Keep marketing's flyer on the Files screen first, then attach it here.";
+  }
+  return null;
+}
+
+export function problemWithAdOrder(fileId: string | null, to: string[], cost: number): string | null {
+  const flyer = problemWithFlyer(fileId);
+  if (flyer) return flyer;
+  if (!to.length) return "Who at TopJobs does the order go to? One address a line.";
+  if (!Number.isFinite(cost) || cost <= 0) return "What are they charging? It goes on the record, so somebody can check the bill.";
+  return null;
+}
+
+export function problemWithAdLive(at: number, orderedAt: number | null, now = Date.now()): string | null {
+  if (!Number.isFinite(at)) return "Give the day TopJobs made it live.";
+  if (at > now + 86_400_000) return "That is in the future.";
+  if (orderedAt && at < orderedAt - 86_400_000) return "It cannot have gone live before it was ordered.";
+  return null;
+}
+
+/** When a live advert comes down, counted in plain days from going live. */
+export function adClosesOn(liveAt: number, days = AD_DAYS): number {
+  return liveAt + days * DAY;
+}
+
+export function adInWords(
+  ad: { state: string; liveAt: number | null; closesAt: number | null; cost: number | null; cvCount: number | null },
+  now = Date.now(),
+): string {
+  const bits = [AD_MEANINGS[ad.state as AdState] ?? ad.state];
+  if (ad.state === "live" && ad.closesAt) {
+    const left = Math.ceil((ad.closesAt - now) / DAY);
+    bits.push(left > 0 ? left + (left === 1 ? " day left" : " days left") : "due to come down");
+  }
+  if (ad.cost) bits.push("LKR " + ad.cost.toLocaleString("en-US"));
+  // The CV count is TA's: they hold the CVs, and the advert is judged on it.
+  if (ad.cvCount !== null) bits.push(ad.cvCount + (ad.cvCount === 1 ? " CV" : " CVs"));
+  return bits.join(" · ");
+}

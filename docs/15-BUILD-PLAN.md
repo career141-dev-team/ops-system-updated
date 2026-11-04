@@ -850,7 +850,7 @@ TA) so the shape is visible in days rather than weeks, and the rest of Phase 1 f
     with `briefAppend` → TA bell "requirement changed".
 11. **TA: T6** (team save keeps modes; TA lead editable) and **T4** (follow-up escalation,
     retire old flow) land in this phase.
-12. TopJobs: `ads.request(openingTaId)` (TA or owner) → task to marketing (flyer) →
+12. **Built 4 Nov.** TopJobs: `ads.request(openingTaId)` (TA or owner) → task to marketing (flyer) →
     `ads.flyerReady(fileId)` → `ads.send` (email `topjobs.order` to TopJobs drafted →
     approved → sent, cost recorded) → `ads.markLive(date)` → timer `ad.close` 14 days →
     `ads.markClosed` → **TA:** `POST openings/{id}/ad-channel` at live and closed; `notify`
@@ -1051,16 +1051,19 @@ written down rather than quietly done:
 14. Write-off: at `invoice.writeOffDays` unpaid → task "write off?" to accounts (escalates
     to director_ops) → `invoices.writeOff(reason)` → guarantee `void` → close checklist (P7)
     → **TA:** status `closed`.
-15. Surcharge invoices (from P4 unreported hire): `invoices.draftSurcharge(setId)`; same
+15. **Built 4 Nov**, with the salary typed in by a person (a client who did not tell us
+    they hired somebody has not told us the package either). Surcharge invoices (from P4 unreported hire): `invoices.draftSurcharge(setId)`; same
     approve/send; ⚪ chase path (default: same as a fee invoice).
-16. Credit notes: `invoices.creditNote(invoiceId, amount, reason)` for refunds (P7) and
+16. **Built 4 Nov.** Credit notes: `invoices.creditNote(invoiceId, amount, reason)` for refunds (P7) and
     corrections.
-17. Exports: `invoices.exportCsv(range)`, `payments.exportCsv(range)` to R2 with a signed
+17. **Built 4 Nov** as two routes under `/api/exports`, accounts only. Exports: `invoices.exportCsv(range)`, `payments.exportCsv(range)` to R2 with a signed
     link (no accounting tool yet).
 18. Views: "placements this month", "joining this week", "invoices due / late / unpaid by
     client", "payments received".
-19. Reconciliation query: Ops invoice state vs TA `placements.invoice*` fields; a nightly
-    check flags differences.
+19. **Built 4 Nov** as what a laptop can really see: a sent invoice whose write to TA
+    never got through, shown on the invoices screen rather than as a nightly job - the
+    screen is where somebody would act on it. Reconciliation query: Ops invoice state vs
+    TA `placements.invoice*` fields.
 20. Phase test: placement event → notice to Asma (test) → DOJ reminders → joined → invoice
     drafted → approved → sent (test) → clock to day 30 → chase with 5% → payment recorded →
     paid; the no-show path; the cancel path; a replacement produces no invoice.
@@ -1119,7 +1122,8 @@ note document, which waits on the same template work as the invoice.
     checklist opened in "TA closed first" mode (remaining Ops items only).
 15. Lead closure mirror: a closed position with no other open positions for the client →
     the client profile shows "no active work"; nothing else.
-16. Analytics queries (no UI): ESA return time (sent → signed), client wait on sets (set
+16. **Built 4 Nov** with a screen after all (`/numbers`), because numbers nobody can see
+    are numbers nobody checks. Analytics queries (no UI): ESA return time (sent → signed), client wait on sets (set
     sent → first decision), slipped hires (DOJ moves), time to fill (opened → placed), by
     client and by owner; stored weekly in `opsReports` kind `kpis` for the owner's
     "measure today's numbers" wish.
