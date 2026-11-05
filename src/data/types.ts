@@ -105,6 +105,14 @@ export interface OpsMessage {
    * in: it cannot be worked out in advance, and guessing it was a bug.
    */
   providerMessageId: string | null;
+  /**
+   * The provider id of the message this one answers (5 Nov).
+   *
+   * It is what makes a reply land in the client's own thread rather than as a
+   * new email, and it is how our own mailbox screen joins a conversation back
+   * together when somebody rewrites the subject.
+   */
+  inReplyToProviderId?: string | null;
   /** Why it was blocked or failed, in words a person can act on. */
   note: string | null;
   /**

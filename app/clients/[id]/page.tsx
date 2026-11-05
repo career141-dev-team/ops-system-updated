@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
 import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
 import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { buildThreads, threadInWords } from "@/lib/mailbox";
 import AiOffer from "@/app/AiOffer";
 import { clientNextStep } from "@/lib/nextStep";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
@@ -42,6 +44,20 @@ export default async function ClientPage({
   const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
+
+  // What we have sent them, and what they sent back (24, section 7). Theirs
+  // is anything filed against the client itself or against one of their own
+  // things - so "what did we say to them?" is one place, not Outlook.
+  const theirIds = new Set<string>([
+    client.id,
+    ...db.leads.filter((l) => l.clientTaId === client.taClientId).map((l) => l.id),
+    ...db.clientSets.filter((c) => c.clientId === client.id).map((c) => c.id),
+    ...db.invoices.filter((i) => i.clientId === client.id).map((i) => i.id),
+    ...db.positions.filter((p) => p.clientId === client.id).map((p) => p.id),
+  ]);
+  const theirThreads = buildThreads(db.inbound, db.messages).filter(
+    (thread) => thread.clientId === client.id || (thread.about && theirIds.has(thread.about.id)),
+  );
 
 
   // What to do now, from their own rows (23, section 4).
@@ -115,6 +131,33 @@ export default async function ClientPage({
           )}
         </section>
       )}
+
+      <Part
+        title="What we have said to them"
+        says={
+          theirThreads.length === 0
+            ? "Nothing yet"
+            : theirThreads.length + (theirThreads.length === 1 ? " conversation" : " conversations")
+        }
+        open={false}
+      >
+        {theirThreads.length === 0 ? (
+          <p className="text-[13px] text-ink-soft">
+            Nothing has gone to them from this system yet, and nothing has come back.
+          </p>
+        ) : (
+          theirThreads.map((thread) => (
+            <div key={thread.key} className="border-t border-rule py-2.5 first:border-t-0">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+                {thread.subject}
+              </Link>
+              <p className="mt-0.5 text-[12.5px] text-ink-soft">
+                {thread.withName} · {threadInWords(thread, Date.now())}
+              </p>
+            </div>
+          ))
+        )}
+      </Part>
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">Where they came from</h2>

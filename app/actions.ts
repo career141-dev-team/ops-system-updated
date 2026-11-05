@@ -111,6 +111,14 @@ import {
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, needsApproval } from "@/lib/messages";
+import {
+  addressesFrom,
+  buildThreads,
+  problemWithCompose,
+  problemWithReply,
+  replySubject,
+  type Thread,
+} from "@/lib/mailbox";
 import { settingChange } from "@/lib/settingsRules";
 import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
@@ -393,6 +401,96 @@ export async function fileThisMail(formData: FormData): Promise<void> {
   redirect("/mail?msg=" + encodeURIComponent(stopped ? "Filed. " + stopped + " chases stopped." : "Filed."));
 }
 
+/* ── The mailbox: answering, and writing (24, section 7) ────────── */
+
+/**
+ * Reply to a conversation.
+ *
+ * It drafts, like everything else that leaves this building: the reply is a
+ * message in the same state as any other, and nothing goes until a person
+ * approves it. What this adds is the thread - the provider id of the message
+ * being answered travels with it, so the client sees it under the email they
+ * wrote rather than as a new one.
+ */
+export async function replyInThread(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const threadKey = String(formData.get("threadKey") ?? "");
+  const here = "/mail/" + encodeURIComponent(threadKey);
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+
+  const to = addressesFrom(String(formData.get("to") ?? ""));
+  const body = String(formData.get("body") ?? "");
+  const subject = String(formData.get("subject") ?? "");
+  const problem = problemWithReply(to, body);
+  if (problem) back(problem);
+
+  const db = await desk();
+  const threads = buildThreads(db.inbound, db.messages);
+  const thread = threads.find((t) => t.key === threadKey);
+  if (!thread) redirect("/mail?msg=" + encodeURIComponent("That conversation is gone."));
+  const answering = [...(thread as Thread).items].reverse().find((item) => item.direction === "in");
+
+  await draftMessage({
+    channel: "email",
+    to,
+    subject: subject.trim() || replySubject((thread as Thread).subject),
+    body,
+    templateKey: null,
+    subjectType: (thread as Thread).about?.type ?? null,
+    subjectId: (thread as Thread).about?.id ?? null,
+    inReplyToProviderId: answering?.providerId ?? null,
+  });
+
+  revalidatePath(here);
+  revalidatePath("/mail");
+  back("Drafted. Read it once more, then approve it to send.");
+}
+
+/**
+ * Write to somebody, about nothing in particular.
+ *
+ * The one message that belongs to no step of the flow, and the reason people
+ * still had Outlook open. It can be tied to a client or a position so that it
+ * is findable afterwards, and it can carry files we already hold - because an
+ * attachment pulled off somebody's laptop is how a client gets the wrong CV.
+ */
+export async function writeNewMessage(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const backTo = String(formData.get("back") ?? "/mail");
+  const back = (msg: string) => redirect(backTo + (backTo.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "message.approve")) back(refusal("message.approve"));
+
+  const to = addressesFrom(String(formData.get("to") ?? ""));
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const problem = problemWithCompose(to, subject, body);
+  if (problem) back(problem);
+
+  const about = String(formData.get("about") ?? "");
+  const [subjectType, subjectId] = about.includes("|") ? about.split("|") : [null, null];
+  const attachmentFileIds = formData
+    .getAll("fileId")
+    .map((value) => String(value))
+    .filter(Boolean);
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: subject.trim(),
+    body,
+    templateKey: null,
+    subjectType,
+    subjectId,
+    attachmentFileIds,
+  });
+
+  revalidatePath("/mail");
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Drafted. Nothing goes until you approve it."));
+}
+
 export async function markMailDone(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -512,6 +610,7 @@ export async function approveAndSend(formData: FormData): Promise<void> {
             // their message. A file whose bytes are gone stops the send
             // rather than sending the covering note alone.
             attachments: await filesFor(db, message.attachmentFileIds),
+            inReplyTo: message.inReplyToProviderId ?? null,
           });
 
   // Test mode's note matters as much as the sender's, so both are kept.

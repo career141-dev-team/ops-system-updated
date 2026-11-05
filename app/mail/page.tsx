@@ -6,7 +6,10 @@ import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
 import { currentMember, devSignInAllowed } from "@/lib/session";
-import { fileThisMail, markMailDone, pretendMailArrives, readMailNow, readInbound } from "@/app/actions";
+import { fileThisMail, markMailDone, pretendMailArrives, readMailNow, readInbound, writeNewMessage } from "@/app/actions";
+import Part from "@/app/Part";
+import { buildThreads, threadInWords } from "@/lib/mailbox";
+import { can } from "@/lib/roles";
 
 /**
  * What came in (07, the mailbox part of the inbox screens).
@@ -45,6 +48,21 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
     ).values(),
   ];
 
+  // Every conversation, ours and theirs, newest first (24, section 7).
+  const now = Date.now();
+  const threads = buildThreads(db.inbound, db.messages);
+  const answerUs = threads.filter((t) => t.hasDraft || t.waitingOnUs || t.hasTrouble);
+  const quiet = threads.filter((t) => !(t.hasDraft || t.waitingOnUs || t.hasTrouble));
+  const mayWrite = can(member, "message.approve");
+  const writeTo = [
+    ...new Map(
+      db.clients
+        .filter((c) => c.stage !== "closed")
+        .map((c) => ["client|" + c.id, { value: "client|" + c.id, label: "Client · " + c.name }]),
+    ).values(),
+    ...db.positions.map((p) => ({ value: "position|" + p.id, label: "Position · " + p.title })),
+  ].slice(0, 200);
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const when = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
@@ -76,6 +94,87 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
       </div>
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+
+      {mayWrite && (
+        <Part title="Write to somebody" says="A plain email, from your own address" open={false}>
+          <p className="text-[13px] text-ink-soft">
+            For the message that belongs to no step of the flow - the one people still opened Outlook for. It is
+            drafted like every other message, and nothing goes until you approve it.
+          </p>
+          <form action={writeNewMessage} className="mt-3 flex flex-col gap-3">
+            <input type="hidden" name="back" value="/mail" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-[12px] text-ink-soft">To</span>
+                <input name="to" placeholder="hr@example.test, md@example.test" className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[12px] text-ink-soft">About, so it is findable later</span>
+                <select name="about" className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]" defaultValue="">
+                  <option value="">Nothing in particular</option>
+                  {writeTo.map((thing) => (
+                    <option key={thing.value} value={thing.value}>
+                      {thing.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-ink-soft">Subject</span>
+              <input name="subject" className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-ink-soft">Message</span>
+              <textarea name="body" rows={7} className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]" />
+            </label>
+            <button className="self-start rounded-full bg-brand px-4 py-1.5 text-[13px] font-medium text-white">
+              Draft it
+            </button>
+          </form>
+        </Part>
+      )}
+
+      <section className={card}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[14.5px] font-medium">Conversations waiting on us</h2>
+          <span className="text-[12.5px] text-ink-soft">{answerUs.length}</span>
+        </div>
+        {answerUs.length === 0 && (
+          <p className="mt-2 text-[13px] text-ink-soft">Nobody is waiting for an answer.</p>
+        )}
+        {answerUs.map((thread) => (
+          <div key={thread.key} className="border-t border-rule py-3 first:border-t-0">
+            <div className="flex flex-wrap items-baseline gap-x-3">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+                {thread.subject}
+              </Link>
+              <span className="text-[12px] text-ink-faint">{thread.withName}</span>
+              <span className="ml-auto text-[12px] text-ink-faint">
+                {thread.items.length} {thread.items.length === 1 ? "message" : "messages"}
+              </span>
+            </div>
+            <p className={"mt-0.5 text-[12.5px] " + (thread.hasTrouble ? "text-danger" : "text-ink-soft")}>
+              {threadInWords(thread, now)}
+            </p>
+          </div>
+        ))}
+      </section>
+
+      {quiet.length > 0 && (
+        <Part title="The rest of the conversations" says={quiet.length + " with nothing waiting"} open={false}>
+          {quiet.map((thread) => (
+            <div key={thread.key} className="border-t border-rule py-2.5 first:border-t-0">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+                {thread.subject}
+              </Link>
+              <p className="mt-0.5 text-[12.5px] text-ink-soft">
+                {thread.withName} · {threadInWords(thread, now)}
+              </p>
+            </div>
+          ))}
+        </Part>
+      )}
 
       <section className={card}>
         <h2 className="text-[14.5px] font-medium">Needs filing</h2>

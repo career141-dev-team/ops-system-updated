@@ -122,6 +122,14 @@ export interface EmailToSend {
   body: string;
   /** Files that go with it, read from the file registry (3 Nov). */
   attachments?: { name: string; mime: string; bytes: Uint8Array }[];
+  /**
+   * The message this one answers (5 Nov).
+   *
+   * Without it a reply arrives as a new email beside the conversation, which
+   * is exactly what made people go back to Outlook. Microsoft threads on the
+   * headers, so they are set on the draft rather than on the send.
+   */
+  inReplyTo?: string | null;
 }
 
 /**
@@ -168,6 +176,14 @@ export async function sendEmail(mail: EmailToSend): Promise<SendOutcome> {
         body: { contentType: "Text", content: mail.body },
         toRecipients: mail.to.map((address) => ({ emailAddress: { address } })),
         ccRecipients: copyTo && !mail.to.includes(copyTo) ? [{ emailAddress: { address: copyTo } }] : [],
+        ...(mail.inReplyTo
+          ? {
+              internetMessageHeaders: [
+                { name: "In-Reply-To", value: mail.inReplyTo },
+                { name: "References", value: mail.inReplyTo },
+              ],
+            }
+          : {}),
       }),
       signal: stop,
     });

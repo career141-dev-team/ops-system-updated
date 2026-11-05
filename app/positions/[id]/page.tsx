@@ -16,6 +16,7 @@ import { adInWords } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
 import NextStep from "@/app/NextStep";
 import Part from "@/app/Part";
+import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
 import { REQUIREMENT_FIELDS, STAGE_MEANINGS, type PositionStage, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
@@ -58,6 +59,16 @@ export default async function PositionPage({
     position,
     { queued, depthSaid: position.openingTaId ? depthInWords(position) : null, holdState: hold ? hold.state : null, setsSent },
     Date.now(),
+  );
+
+  // Everything said to the client about this position, including about the
+  // sets that went out on it (24, section 7).
+  const aboutIds = new Set<string>([
+    position.id,
+    ...db.clientSets.filter((c) => c.openingTaId === position.openingTaId).map((c) => c.id),
+  ]);
+  const itsThreads = buildThreads(db.inbound, db.messages).filter(
+    (thread) => thread.about !== null && aboutIds.has(thread.about.id),
   );
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
@@ -241,6 +252,31 @@ export default async function PositionPage({
           Talent Pulse compiles itself every Tuesday. TopJobs is asked for here, marketing makes the flyer, and it
           comes down two weeks after it goes live.
         </p>
+      </Part>
+
+      <Part
+        title="What the client was told"
+        says={
+          itsThreads.length === 0
+            ? "Nothing yet"
+            : itsThreads.length + (itsThreads.length === 1 ? " conversation" : " conversations")
+        }
+        open={false}
+      >
+        {itsThreads.length === 0 ? (
+          <p className="text-[13px] text-ink-soft">Nothing has gone to the client about this position yet.</p>
+        ) : (
+          itsThreads.map((thread) => (
+            <div key={thread.key} className="border-t border-rule py-2.5 first:border-t-0">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+                {thread.subject}
+              </Link>
+              <p className="mt-0.5 text-[12.5px] text-ink-soft">
+                {thread.withName} · {threadInWords(thread, Date.now())}
+              </p>
+            </div>
+          ))
+        )}
       </Part>
 
       {position.stage !== "closed" && position.openingTaId && can(me, "client.manage") && (

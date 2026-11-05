@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fillTemplate, gate, needsApproval, type SendContext } from "@/lib/messages";
+import { fillTemplate, gate, needsApproval, unfilledHoles, type SendContext } from "@/lib/messages";
 
 const ctx = (over: Partial<SendContext> = {}): SendContext => ({
   outreachLive: false,
@@ -98,4 +98,42 @@ test("a group post passes with no address, because a person posts it", () => {
 
   // It still waits for a person, like everything else.
   assert.equal(gate({ ...post, state: "draft" }, ctx()).ok, false);
+});
+
+const BREAK = String.fromCharCode(10);
+
+test("a hole nobody filled never reaches a client", () => {
+  // The mailbox walk on 5 November: a drop-out notice drafted, approved and
+  // signed "{{opsPerson}}". fillTemplate always said a hole stops the send;
+  // the gate was the place that never asked.
+  assert.deepEqual(unfilledHoles("Dear all," + BREAK + "Kind regards" + BREAK + "{{opsPerson}}"), ["opsPerson"]);
+  assert.deepEqual(unfilledHoles("nothing to fill"), []);
+
+  const verdict = gate(
+    {
+      to: ["hr@example.test"],
+      channel: "email",
+      state: "approved",
+      subject: "{{candidate}} - interview",
+      body: "Kind regards" + BREAK + "{{opsPerson}}",
+    },
+    {
+      doNotContact: [],
+      sentToClientToday: 0,
+      dailyCapPerClient: 5,
+      outreachLive: true,
+      testRecipient: null,
+    },
+  );
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.ok === false && verdict.state, "blocked");
+  assert.match(verdict.ok === false ? verdict.note ?? "" : "", /\{\{candidate\}\}, \{\{opsPerson\}\}/);
+  assert.match(verdict.ok === false ? verdict.note ?? "" : "", /nobody filled/);
+
+  // Nothing changes for a message whose words are finished.
+  const fine = gate(
+    { to: ["hr@example.test"], channel: "email", state: "approved", subject: "The set", body: "Attached." },
+    { doNotContact: [], sentToClientToday: 0, dailyCapPerClient: 5, outreachLive: true, testRecipient: null },
+  );
+  assert.equal(fine.ok, true);
 });

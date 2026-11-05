@@ -40,7 +40,7 @@ export default async function MessagePage({
       <Link href="/" className="text-[12.5px] text-brand hover:underline">
         Back to your day
       </Link>
-      <h1 className="mt-2 text-[17px] font-medium">{message.templateKey ?? "Message"}</h1>
+      <h1 className="mt-2 text-[17px] font-medium">{message.subject || message.templateKey || "Message"}</h1>
       <p className="mt-0.5 text-[13px] text-ink-soft">
         {messageInWords(message)} · {message.state}
       </p>

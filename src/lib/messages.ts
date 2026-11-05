@@ -32,11 +32,37 @@ export function needsApproval(message: Pick<OpsMessage, "state" | "channel">): b
   return message.state === "draft";
 }
 
-export function gate(message: Pick<OpsMessage, "to" | "channel" | "state">, ctx: SendContext): GateResult {
+/**
+ * Holes nobody filled: `{{opsPerson}}` and the like, still in the words.
+ *
+ * `fillTemplate` has always said a hole stops the send, and the gate never
+ * checked - so a drop-out notice sat in the mailbox signed "{{opsPerson}}"
+ * until somebody read the whole conversation on one screen (5 Nov).
+ */
+export function unfilledHoles(text: string): string[] {
+  return [...(text ?? "").matchAll(/\{\{([^}]{1,60})\}\}/g)].map((match) => match[1].trim());
+}
+
+export function gate(
+  message: Pick<OpsMessage, "to" | "channel" | "state"> & { subject?: string; body?: string },
+  ctx: SendContext,
+): GateResult {
   if (message.channel === "internal") return { ok: true, to: message.to, note: null };
 
   if (message.state !== "approved") {
     return { ok: false, state: "blocked", note: "Nobody has approved this message yet." };
+  }
+
+  const holes = [...unfilledHoles(message.subject ?? ""), ...unfilledHoles(message.body ?? "")];
+  if (holes.length) {
+    return {
+      ok: false,
+      state: "blocked",
+      note:
+        "It still has " +
+        holes.map((hole) => "{{" + hole + "}}") .join(", ") +
+        " in it: a template hole nobody filled. Write the words in, then approve it again.",
+    };
   }
 
   const recipients = message.to.map((t) => t.trim()).filter(Boolean);
