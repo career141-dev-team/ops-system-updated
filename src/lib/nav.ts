@@ -75,6 +75,7 @@ export const COVERS: Record<string, string[]> = {
   "/reports": ["/reports", "/numbers"],
   "/settings": ["/settings", "/templates", "/files", "/ta", "/import", "/health", "/ai", "/holidays", "/baseline"],
   "/mail": ["/mail", "/calls", "/messages", "/tasks"],
+  "/work": ["/work", "/find"],
 };
 
 /**

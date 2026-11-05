@@ -1,87 +1,94 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { clientsNewestFirst, desk, member as memberIn } from "@/data/desk";
-import { STAGE_MEANINGS, type ClientStage } from "@/lib/clients";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { clientNextStep } from "@/lib/nextStep";
 import { currentMember } from "@/lib/session";
 
 /**
- * The clients: the companies we work for (15, Phase 2 step 19).
+ * The clients, as a table (25, section 7).
  *
- * A lead is somebody who asked; a client is a company with an agreement
- * behind them. One record each, one owner each, and the two things that live
- * in somebody's inbox today - who we invoice and which WhatsApp group is
- * theirs - kept here instead.
+ * A company we work for. The record is made when they turn out to be a client
+ * the TA System already has, or when the agreement is countersigned - nobody
+ * types one by hand.
+ *
+ * Four columns, and the same four on every list in the app: what it is and
+ * what is waiting on it, its state, who owns it, when it last moved. The
+ * search and the order are a plain GET form, so a search worth keeping is a
+ * URL you can send somebody.
  */
-export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
 
   const db = await desk();
-  const clients = clientsNewestFirst(db);
-  // The same rule the client's own page uses, so the list cannot say one
-  // thing and the page another (24, section 3).
-  const stepFor = (client: (typeof clients)[number]) =>
-    clientNextStep(client, {
-      positions: db.positions.filter((p) => p.clientId === client.id),
-      sets: db.clientSets.filter((c) => c.clientId === client.id),
+  const rows: Listed[] = clientsNewestFirst(db).map((client) => {
+    const step = clientNextStep(client, {
+      positions: db.positions.filter((row) => row.clientId === client.id),
+      sets: db.clientSets.filter((row) => row.clientId === client.id),
       owing: db.invoices.filter(
-        (i) => i.clientId === client.id && (i.state === "sent" || i.state === "partly_paid"),
+        (row) => row.clientId === client.id && (row.state === "sent" || row.state === "partly_paid"),
       ),
-      holds: db.holds.filter((h) => h.clientId === client.id),
+      holds: db.holds.filter((row) => row.clientId === client.id),
     });
-  const order: ClientStage[] = ["active", "onboarding", "lead", "dormant", "closed"];
+    const open = db.positions.filter((row) => row.clientId === client.id && row.stage !== "closed").length;
+    const owing = db.invoices.filter(
+      (row) => row.clientId === client.id && (row.state === "sent" || row.state === "partly_paid"),
+    ).length;
+    const owner = memberIn(db, client.ownerId)?.name ?? "nobody";
+    return {
+      id: client.id,
+      href: "/clients/" + client.id,
+      title: client.name,
+      words: [owner, client.billingEmail, client.nameKey],
+      says: step.waiting,
+      at: client.updatedAt ?? client.createdAt,
+      late: owing > 0,
+      who: owner,
+      chips: [
+        { what: client.stage.replace(/_/g, " "), tone: "quiet" as const },
+        ...(open ? [{ what: open + (open === 1 ? " position" : " positions"), tone: "brand" as const }] : []),
+        ...(owing ? [{ what: owing === 1 ? "1 unpaid" : owing + " unpaid", tone: "late" as const }] : []),
+      ],
+    };
+  });
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
+  const shown = listed(rows, q, sort);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-[14.5px] font-medium">Clients</h2>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
-          A company we work for. The record is made when they turn out to be a client the TA System already has, or
-          when the agreement is countersigned — nobody types one by hand.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-3">
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      {clients.length === 0 && (
-        <section className={card}>
-          <p className="text-[13px] text-ink-soft">
-            No clients yet. The first one appears the moment an agreement is countersigned.
-          </p>
-        </section>
-      )}
+      <Toolbar action="/clients" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
 
-      {order.map((stage) => {
-        const theirs = clients.filter((c) => c.stage === stage);
-        if (!theirs.length) return null;
-        return (
-          <section key={stage} className={card}>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-[14.5px] font-medium">{STAGE_MEANINGS[stage]}</h2>
-              <span className="text-[12.5px] text-ink-soft">{theirs.length}</span>
-            </div>
-            {theirs.map((client) => (
-              <div key={client.id} className={row}>
-                <div className="min-w-0 flex-1">
-                  <Link href={"/clients/" + client.id} className="text-[13.5px] text-brand hover:underline">
-                    {client.name}
-                  </Link>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{stepFor(client).waiting}</p>
-                </div>
-                <span className="text-[12.5px] text-ink-soft">
-                  {memberIn(db, client.ownerId)?.name ?? "nobody"}
-                </span>
-              </div>
-            ))}
-          </section>
-        );
-      })}
+      {shown.length === 0 ? (
+        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+          {rows.length === 0
+            ? "No clients yet. The first one appears the moment an agreement is countersigned, or when an enquiry turns out to be a company the TA System already works for."
+            : foundInWords(0, rows.length, q)}
+        </p>
+      ) : (
+        <Table head={LIST_HEAD}>
+          {shown.map((row) => (
+            <ListRow
+              key={row.id}
+              href={row.href}
+              title={row.title}
+              says={row.says}
+              chips={row.chips}
+              who={row.who}
+              when={day(row.at)}
+              late={row.late}
+            />
+          ))}
+        </Table>
+      )}
     </div>
   );
 }

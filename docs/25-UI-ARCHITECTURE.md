@@ -130,8 +130,29 @@ where it is reached from and what sits around it.
 4. **The client page.**
 5. **Money and Settings** as tabbed pages.
 6. **Empty tabs that say what would fill them**, everywhere.
-7. The list pages as tables, and one search box - the last of
-   [24](24-UI-STRUCTURE.md) section 13.
+7. ~~The list pages as tables, and one search box~~ — **done 5 Nov.**
+
+## 9. The lists, and the one box
+
+Every list page is the same four columns, and the same four everywhere:
+**Name** (with the one line of plain words under it), **State** (short chips,
+a word each - never a sentence), **Owner**, **Last moved**. Above it a plain
+GET form: a search box, a "sorted by", and what was found. Because it is a
+form and not JavaScript, a search worth keeping is a URL you can send
+somebody, and the back button does what it should.
+
+The rules are in `src/lib/listing.ts` with their own tests: every word of a
+search has to appear somewhere ("nippon finance" is the finance role at
+Nippon, not everything at Nippon and everything in finance); the default
+order is **late first, then whatever has waited longest**; an unknown order
+is the default rather than a blank table; and an empty table says *why* it is
+empty, naming what the search looks at.
+
+`/find` is one box over everything the desk keeps - enquiries, clients,
+positions, CV sets, interviews, placements and invoices - because a person
+knows the client's name, not which of eight places a thing is filed under. It
+is the search at the top of the sidebar, and it uses the same rule as every
+list, so what it finds and what a list finds are the same thing.
 
 ## 8. What this does not change
 

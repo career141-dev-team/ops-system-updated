@@ -211,3 +211,110 @@ export function Cell({
 export function Empty({ what }: { what: string }) {
   return <p className="px-4 py-6 text-[13px] text-ink-soft">{what}</p>;
 }
+
+/* ── A list page: the toolbar, and the table it sits over ───────── */
+
+/**
+ * Search, order, and what was found (25, section 7).
+ *
+ * A plain GET form, so it works with no JavaScript, the browser's back button
+ * does what it should, and a search a person wants to keep is a URL they can
+ * send somebody. The owner's reference screen has the same three things in
+ * the same order.
+ */
+export function Toolbar({
+  action,
+  q,
+  sort,
+  found,
+  sorts,
+  extra,
+}: {
+  action: string;
+  q?: string;
+  sort?: string;
+  found: string;
+  sorts: { key: string; what: string }[];
+  extra?: React.ReactNode;
+}) {
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-rule-strong bg-surface px-3 py-1.5">
+        <span className="text-ink-faint" aria-hidden="true">
+          ⌕
+        </span>
+        <input
+          name="q"
+          defaultValue={q ?? ""}
+          placeholder="Search by name, client, owner or what it says"
+          className="w-full bg-transparent text-[13px] outline-none placeholder:text-ink-faint"
+        />
+      </label>
+
+      <label className="flex items-center gap-2 rounded-lg border border-rule-strong bg-surface px-3 py-1.5 text-[12.5px] text-ink-soft">
+        <span className="whitespace-nowrap">Sorted by</span>
+        <select name="sort" defaultValue={sort ?? sorts[0].key} className="bg-transparent text-[12.5px] text-ink outline-none">
+          {sorts.map((one) => (
+            <option key={one.key} value={one.key}>
+              {one.what}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <button className={quietButtonClass}>Apply</button>
+      {extra}
+      <span className="ml-auto text-[12.5px] text-ink-faint">{found}</span>
+    </form>
+  );
+}
+
+/**
+ * One row of a list, in the shape every list uses.
+ *
+ * The name and its one line of plain words in the first column - because that
+ * is what a person reads - then the chips, then who owns it and when it last
+ * moved. Four columns, and the same four everywhere.
+ */
+export function ListRow({
+  href,
+  title,
+  says,
+  chips,
+  who,
+  when,
+  late,
+}: {
+  href: string;
+  title: string;
+  says: string;
+  chips?: { what: string; tone?: "quiet" | "brand" | "late" | "careful" | "done" }[];
+  who: string;
+  when: string;
+  late?: boolean;
+}) {
+  return (
+    <Row>
+      <Cell className="min-w-[280px]">
+        <Link href={href} className="text-[13.5px] font-medium text-brand hover:underline">
+          {title}
+        </Link>
+        <p className={"mt-0.5 text-[12.5px] " + (late ? "text-danger" : "text-ink-soft")}>{says}</p>
+      </Cell>
+      <Cell>
+        <span className="flex flex-wrap gap-1">
+          {(chips ?? []).map((chip, i) => (
+            <Chip key={chip.what + i} tone={chip.tone}>
+              {chip.what}
+            </Chip>
+          ))}
+        </span>
+      </Cell>
+      <Cell className="whitespace-nowrap text-[12.5px] text-ink-soft">{who}</Cell>
+      <Cell className="whitespace-nowrap text-[12.5px] text-ink-faint">{when}</Cell>
+    </Row>
+  );
+}
+
+/** The four columns every list has, so no two lists disagree. */
+export const LIST_HEAD = ["Name", "State", "Owner", "Last moved"];

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { desk, invoicesNewestFirst, runClocks } from "@/data/desk";
+import { desk, invoicesNewestFirst, member as memberIn, runClocks } from "@/data/desk";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { invoiceDrift } from "@/lib/exports";
 import { balanceOf, invoiceInWords, money } from "@/lib/money";
 import { can } from "@/lib/roles";
@@ -14,52 +16,52 @@ import { currentMember } from "@/lib/session";
  * out and not due yet, and settled. The late ones are first because that is
  * the only list anybody has to act on.
  */
-export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
 
   await runClocks();
   const now = Date.now();
   const db = await desk();
   const all = invoicesNewestFirst(db);
-  const drafts = all.filter((i) => i.state === "draft");
   const owing = all.filter((i) => (i.state === "sent" || i.state === "partly_paid") && balanceOf(i) > 0);
-  const late = owing.filter((i) => i.dueAt && i.dueAt < now);
-  const waiting = owing.filter((i) => !i.dueAt || i.dueAt >= now);
-  const settled = all.filter((i) => i.state === "paid" || i.state === "written_off");
   const owed = owing.reduce((sum, i) => sum + balanceOf(i), 0);
   // Where our state and TA's may have drifted apart (Phase 6 step 19).
   const drift = invoiceDrift(all, db.outbox);
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
-
-  const list = (title: string, rows: typeof all, empty: string) => (
-    <section className={card}>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[14.5px] font-medium">{title}</h2>
-        <span className="text-[12.5px] text-ink-soft">{rows.length}</span>
-      </div>
-      {rows.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">{empty}</p>}
-      {rows.map((invoice) => (
-        <div key={invoice.id} className={row}>
-          <div className="min-w-0 flex-1">
-            <Link href={"/invoices/" + invoice.id} className="text-[13.5px] text-brand hover:underline">
-              {invoice.number}
-            </Link>
-            <p className="mt-0.5 text-[12.5px] text-ink-soft">
-              {invoiceInWords(invoice, now)}
-              {invoice.disputed && " · disputed, so nothing is charged"}
-            </p>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
+  // One table, ordered by what is late (25, section 7). The four lists it
+  // replaced said the same thing in four boxes; a column of states says it
+  // once and lets a person sort it themselves.
+  const rows: Listed[] = all.map((invoice) => {
+    const owner = memberIn(db, invoice.ownerId)?.name ?? "nobody";
+    const balance = balanceOf(invoice);
+    return {
+      id: invoice.id,
+      href: "/invoices/" + invoice.id,
+      title: invoice.number,
+      words: [owner, invoice.kind, invoice.about ?? "", invoice.state],
+      says: invoiceInWords(invoice, now) + (invoice.disputed ? " · disputed, so nothing is charged" : ""),
+      at: invoice.sentAt ?? invoice.createdAt,
+      late: Boolean(invoice.dueAt && invoice.dueAt < now && balance > 0),
+      who: owner,
+      chips: [
+        { what: invoice.state, tone: invoice.state === "paid" ? ("done" as const) : ("quiet" as const) },
+        ...(invoice.kind === "fee" ? [] : [{ what: invoice.kind, tone: "quiet" as const }]),
+        ...(balance > 0 ? [{ what: money(balance, invoice.currency) + " owed", tone: "brand" as const }] : []),
+        ...(invoice.lateCharge ? [{ what: money(invoice.lateCharge, invoice.currency) + " late charge", tone: "late" as const }] : []),
+        ...(invoice.disputed ? [{ what: "disputed", tone: "careful" as const }] : []),
+      ],
+    };
+  });
+  const shown = listed(rows, q, sort);
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-[14.5px] font-medium">Invoices</h2>
         <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
@@ -96,10 +98,30 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         </section>
       )}
 
-      {list("Late", late, "Nothing is late.")}
-      {list("Waiting for accounts", drafts, "Nothing waiting to be sent.")}
-      {list("Sent, not due yet", waiting, "Nothing outstanding.")}
-      {settled.length > 0 && list("Settled", settled, "")}
+      <Toolbar action="/invoices" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
+
+      {shown.length === 0 ? (
+        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+          {rows.length === 0
+            ? "Nothing has been invoiced yet. A fee is drafted the day somebody joins, from the agreement's own rule, and appears here with the thirty days it is due in."
+            : foundInWords(0, rows.length, q)}
+        </p>
+      ) : (
+        <Table head={LIST_HEAD}>
+          {shown.map((row) => (
+            <ListRow
+              key={row.id}
+              href={row.href}
+              title={row.title}
+              says={row.says}
+              chips={row.chips}
+              who={row.who}
+              when={day(row.at)}
+              late={row.late}
+            />
+          ))}
+        </Table>
+      )}
 
       {can(me, "money.manage") && (
         <p className="text-[12.5px] text-ink-soft">

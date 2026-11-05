@@ -40,13 +40,19 @@ export default function Sidebar({
         <span className="text-[14px] font-medium">Career 141 Ops</span>
       </div>
 
-      <Link
-        href="/work"
-        className="flex items-center gap-2 rounded-lg border border-rule bg-sunk px-2.5 py-1.5 text-[12.5px] text-ink-faint hover:text-ink"
-      >
-        <span aria-hidden="true">⌕</span>
-        <span>Find a client or a position</span>
-      </Link>
+      {/* One box over everything the desk keeps. A person knows the client's
+          name, not which of eight places a thing is filed under. */}
+      <form action="/find" className="flex items-center gap-2 rounded-lg border border-rule bg-sunk px-2.5 py-1.5">
+        <span className="text-ink-faint" aria-hidden="true">
+          ⌕
+        </span>
+        <input
+          name="q"
+          placeholder="Find anything"
+          aria-label="Find a client, a position, a set, an invoice"
+          className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-ink-faint"
+        />
+      </form>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
         {NAV.map((section) => {
