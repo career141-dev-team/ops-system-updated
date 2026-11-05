@@ -223,8 +223,13 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ stage: "dormant" }), theirs()).waiting, /this client is dormant/);
 });
 
-test("the shell has five sections, and every page is in exactly one", () => {
-  assert.equal(NAV.length, 5);
+test("the shell is the journey, and every page is in exactly one section", () => {
+  // Four, not five: "clients" and "the search" were two drawers of one
+  // journey, so they are one section whose front page is the board
+  // (24, section 12).
+  assert.equal(NAV.length, 4);
+  assert.deepEqual(NAV.map((section) => section.key), ["today", "work", "money", "setup"]);
+  assert.equal(NAV[1].pages[0].href, "/work", "the board is the front of the work");
   const seen = new Map<string, number>();
   for (const section of NAV) {
     for (const page of section.pages) seen.set(page.href, (seen.get(page.href) ?? 0) + 1);
@@ -233,6 +238,7 @@ test("the shell has five sections, and every page is in exactly one", () => {
   // The pages that exist are all there: a page in no section cannot be found.
   for (const href of [
     "/",
+    "/work",
     "/leads",
     "/clients",
     "/positions",
@@ -287,7 +293,7 @@ test("work is counted on the page its own link points at", () => {
   );
 
   assert.deepEqual(counts["/sets"], { waiting: 2, late: 1 });
-  assert.deepEqual(counts["search"], { waiting: 2, late: 1 });
+  assert.deepEqual(counts["work"], { waiting: 2, late: 1 });
   assert.deepEqual(counts["/invoices"], { waiting: 1, late: 1 });
   assert.deepEqual(counts["money"], { waiting: 1, late: 1 });
   // Nothing is ever lost: a task with nowhere to go lands on the day.
@@ -303,7 +309,7 @@ test("work is counted on the page its own link points at", () => {
 
 test("a path finds its own page, not only its section", () => {
   assert.equal(pageAndSectionFor("/sets/set_1")?.page.href, "/sets");
-  assert.equal(pageAndSectionFor("/sets/set_1")?.section.key, "search");
+  assert.equal(pageAndSectionFor("/sets/set_1")?.section.key, "work");
   assert.equal(pageAndSectionFor("/")?.page.href, "/");
   assert.equal(pageAndSectionFor("/nowhere"), null);
 });
@@ -311,9 +317,10 @@ test("a path finds its own page, not only its section", () => {
 test("the section is found from the path, and the longest page wins", () => {
   assert.equal(sectionFor("/").key, "today");
   assert.equal(sectionFor("/mail").key, "today");
-  assert.equal(sectionFor("/leads").key, "clients");
-  assert.equal(sectionFor("/leads/lead_1").key, "clients");
-  assert.equal(sectionFor("/sets/set_1").key, "search");
+  assert.equal(sectionFor("/work").key, "work");
+  assert.equal(sectionFor("/leads").key, "work");
+  assert.equal(sectionFor("/leads/lead_1").key, "work");
+  assert.equal(sectionFor("/sets/set_1").key, "work");
   assert.equal(sectionFor("/invoices/inv_1").key, "money");
   assert.equal(sectionFor("/ai").key, "setup");
   // Something nobody put in a section falls back to the day, not to nothing.

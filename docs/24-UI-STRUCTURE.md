@@ -272,3 +272,58 @@ never asked.
 **Still outside the system**, and each one is a person's decision, not code:
 the Graph permissions to read *and* send on the desk's boxes, the Ops WhatsApp
 number, and the Teams calendar permission.
+
+## 12. The flow, not the filing cabinet (5 November)
+
+The owner's words: the TA System's screens follow how a TA works - the
+pipeline, the headhunting tab, the research tab - so a TA opens it and sees
+their work. Ops had everything in a top bar, grouped by what things *are*
+(clients, the search, money) rather than by where the work *is*. That is a
+filing cabinet. A person opening it still has to know which drawer their
+Tuesday is in.
+
+### The spine
+
+Every piece of Ops work sits on a line that runs one way:
+
+**Enquiry → Intro call → Agreement → Requirement → With the TA System →
+With the client → Interviews → Offer and joining → The money → Guarantee →
+Closed.**
+
+Before the agreement it is a **lead**; after it, a **position**. Nothing else
+is a thing in its own right: a set, a hold, an interview, an invoice and a
+guarantee all belong to a position, and that is why they were hard to find -
+they were filed as categories instead of shown as stages of one journey.
+
+### The board
+
+One screen, `/work`, the front of everything that is not Today:
+
+- One row per lead and per position, placed in its stage.
+- Each row: the client and the role, **one line saying what is waiting and on
+  whom** - the same sentence its own page shows, from the same rule - how long
+  it has been in that stage, and who owns it.
+- Late first inside each stage.
+- A stage with nothing in it still shows, with a dash. A person learns the
+  shape of the work from the empty ones as much as the full ones.
+
+Clicking a row opens the thing itself, which is unchanged: the card, the
+record in parts, the audit.
+
+### What the shell becomes
+
+| Before | After |
+|---|---|
+| Today · Clients · The search · Money · Set up | **Today · The work · Money · Set up** |
+
+*Clients* and *The search* were two drawers of one journey, so they become one
+section whose front page is the board. The lists they held (leads, clients,
+positions, sets, holds, interviews) stay underneath it for when somebody wants
+all of one kind. Money stays its own section because accounts live there and
+the permissions differ.
+
+### Why this and not a straight list
+
+Because the question an ops person asks is never "show me all sets". It is
+"where is everything, and what is stuck". A stage answers that in one look;
+a list of sets does not.

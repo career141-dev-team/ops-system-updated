@@ -49,25 +49,19 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    key: "clients",
-    what: "Clients",
-    about: "Everyone we work for: the enquiry, the agreement, and what they asked us to fill",
+    key: "work",
+    what: "The work",
+    about: "Every enquiry and every position, in the stage it is really in",
     pages: [
+      { href: "/work", what: "The board", about: "Where everything is, from the first enquiry to a closed position" },
       { href: "/leads", what: "Leads", about: "An enquiry from anywhere, through to a signed agreement" },
       { href: "/clients", what: "Clients", about: "Who they are, who owns them, where to invoice, their WhatsApp group" },
       { href: "/positions", what: "Positions", about: "What each client asked for, and the opening the TA System runs" },
-      { href: "/adverts", what: "Adverts", about: "TopJobs and LinkedIn: ordered, live, and closed after two weeks" },
-      { href: "/talent-pulse", what: "Talent Pulse", about: "Tuesday's list of open roles, for marketing to post on Wednesday" },
-    ],
-  },
-  {
-    key: "search",
-    what: "The search",
-    about: "The client's side of the search only: the candidate stays the TA System's",
-    pages: [
       { href: "/sets", what: "CV sets", about: "Five CVs or more, drafted, approved, sent, and the clocks that follow" },
       { href: "/holds", what: "Holds", about: "A search paused because the client went quiet, reviewed every thirty days" },
       { href: "/interviews", what: "Interviews", about: "Times agreed, the invite, who turned up, and what the client decided" },
+      { href: "/adverts", what: "Adverts", about: "TopJobs and LinkedIn: ordered, live, and closed after two weeks" },
+      { href: "/talent-pulse", what: "Talent Pulse", about: "Tuesday's list of open roles, for marketing to post on Wednesday" },
     ],
   },
   {
