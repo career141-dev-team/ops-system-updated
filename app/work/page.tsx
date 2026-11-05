@@ -172,51 +172,90 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
 
   const mine = rows.filter((row) => row.ownerId === me.id).length;
 
+  // In progress above, closed below: the owner's two screens do the same, and
+  // for the same reason - finished work is a record, not a queue.
+  const live = STAGES.filter((stage) => stage.key !== "closed");
+  const done = rowsInStage(rows, "closed");
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-[17px] font-medium">The work</h1>
         <p className="mt-0.5 max-w-[80ch] text-[13px] text-ink-soft">
           Every enquiry and every position, in the stage it is really in. {rows.length}{" "}
-          {rows.length === 1 ? "thing" : "things"} in all, {mine} of them yours. Late first inside each stage, then
-          whatever has sat longest.
+          {rows.length === 1 ? "thing" : "things"} in all, {mine} of them yours. A stage is where the work has got
+          to, not something you drag: it moves when the thing itself moves.
         </p>
       </div>
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <div className="flex flex-col gap-3">
-        {STAGES.map((stage) => {
-          const theirs = rowsInStage(rows, stage.key);
-          return (
-            <section key={stage.key} className="rounded-2xl border border-rule bg-surface px-5 py-4">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="text-[14.5px] font-medium">{stage.what}</h2>
-                <span className="text-[12.5px] text-ink-soft">{stage.about}</span>
-                <span className="ml-auto text-[12.5px] text-ink-faint">
-                  {theirs.length === 0 ? "—" : theirs.length}
-                </span>
-              </div>
+      <section>
+        <h2 className="text-[13px] font-medium text-ink-soft">
+          In progress <span className="ml-1 text-ink-faint">{rows.length - done.length}</span>
+        </h2>
 
-              {theirs.map((row) => (
-                <div key={row.id} className="border-t border-rule py-2.5 first:mt-2">
-                  <div className="flex flex-wrap items-baseline gap-x-3">
-                    <Link href={row.href} className="text-[13.5px] text-brand hover:underline">
-                      {row.title}
-                    </Link>
-                    <span className="text-[12px] text-ink-faint">
-                      {sittingFor(row.since, now)} here · {row.under}
-                    </span>
+        {/* The board. It scrolls sideways rather than wrapping: eleven stages
+            in a fixed order is the point, and a wrapped column is a column
+            somebody stops trusting the order of. */}
+        <div className="mt-2 flex gap-3 overflow-x-auto pb-2">
+          {live.map((stage) => {
+            const theirs = rowsInStage(rows, stage.key);
+            return (
+              <div key={stage.key} className="flex w-[260px] shrink-0 flex-col gap-2">
+                <div className="rounded-xl border border-rule bg-surface px-3 py-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-rule-strong" aria-hidden="true" />
+                    <span className="text-[13px] font-medium">{stage.what}</span>
+                    <span className="ml-auto text-[12px] text-ink-faint">{theirs.length || "—"}</span>
                   </div>
-                  <p className={"mt-0.5 text-[12.5px] " + (row.late ? "text-danger" : "text-ink-soft")}>
-                    {row.waiting}
-                  </p>
+                  <p className="mt-0.5 text-[11.5px] leading-snug text-ink-faint">{stage.about}</p>
                 </div>
-              ))}
-            </section>
-          );
-        })}
-      </div>
+
+                {theirs.map((row) => (
+                  <Link
+                    key={row.id}
+                    href={row.href}
+                    className="block rounded-xl border border-rule bg-surface px-3 py-2.5 hover:border-rule-strong"
+                  >
+                    <p className="text-[13px] font-medium leading-snug">{row.title}</p>
+                    <p className={"mt-1 text-[12px] leading-snug " + (row.late ? "text-danger" : "text-ink-soft")}>
+                      {row.waiting}
+                    </p>
+                    <p className="mt-1.5 text-[11.5px] text-ink-faint">
+                      {sittingFor(row.since, now)} here · {row.under}
+                    </p>
+                  </Link>
+                ))}
+
+                {theirs.length === 0 && (
+                  <p className="px-3 py-2 text-[12px] text-ink-faint">Nothing here.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {done.length > 0 && (
+        <section>
+          <h2 className="text-[13px] font-medium text-ink-soft">
+            Closed <span className="ml-1 text-ink-faint">{done.length}</span>
+          </h2>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {done.map((row) => (
+              <Link
+                key={row.id}
+                href={row.href}
+                className="block rounded-xl border border-rule bg-paper px-3 py-2.5 hover:border-rule-strong"
+              >
+                <p className="text-[13px] leading-snug text-ink-soft">{row.title}</p>
+                <p className="mt-1 text-[11.5px] text-ink-faint">{row.waiting}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

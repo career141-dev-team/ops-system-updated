@@ -327,3 +327,45 @@ the permissions differ.
 Because the question an ops person asks is never "show me all sets". It is
 "where is everything, and what is stuck". A stage answers that in one look;
 a list of sets does not.
+
+## 13. The shape the owner showed (5 November)
+
+The owner sent two screens of an ATS and said: this kind of UI, for the Ops
+system, attached to our own process. Two rules came with it, and they decide
+everything below.
+
+1. **The UI adapts to the system, not the system to the UI.** The process was
+   built first on purpose. Nothing in the flow changes to suit a screen.
+2. **Take the *categorisation* idea from the TA System, not its flow.** A
+   recruiter's pipeline is candidates through stages. Ops's is clients and
+   positions through a different set of stages. Borrowing the shape is right;
+   borrowing the stages would be wrong.
+
+### What the two screens actually teach
+
+| What is on the screen | What it is for | What we take |
+|---|---|---|
+| A **left sidebar**, grouped: Workspace, Records, Tools | everything reachable from anywhere, in categories that do not change as you work | the same, with our own groups |
+| **Search at the top**, one box | one way in when you know the name | later: one box over leads, clients, positions, candidates |
+| A **board of stage columns**, cards inside | where every piece of work is, at a glance | our eleven stages, our cards |
+| **In process / Rejected** groups under the board | the live work above, the finished below | **In progress / Closed**, same idea |
+| **Tabs on one record** (Pipeline, Details, Advertising, Tasks…) | one thing, many faces, without leaving it | a position's own tabs, later in this plan |
+| A **table view** with columns and chips | all of one kind, compared | the list pages become this, later |
+
+### What it does **not** mean
+
+- No overlays, modals or drawers. The owner's own rule, and none of the two
+  screens needs one.
+- No dragging a card between columns. On this desk a stage is the consequence
+  of a decision - a set sent, a fee paid - not a thing you drag. Moving a card
+  by hand would mean the board could lie about what the system did.
+- No colour as information on its own. A dot marks a stage; the words carry
+  the meaning.
+
+### The order
+
+1. The sidebar, replacing the top bar.
+2. The board as stage columns with cards, grouped In progress / Closed.
+3. Record tabs on a position and a client.
+4. The list pages as proper tables with the columns a person actually sorts by.
+5. One search box.
