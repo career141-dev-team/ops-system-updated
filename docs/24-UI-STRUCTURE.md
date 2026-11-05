@@ -226,3 +226,49 @@ of phase 8.
 - No dashboard. The owner's rule, twice.
 - No overlays, modals or drawers. The header panel is in the flow of the page.
 - No animation that a person has to wait for.
+
+## 11. The mailbox (5 November)
+
+The owner's goal, in his own words: the desk should work inside this system,
+not in Outlook, and not in Excel. Reading what arrived was already here, and
+so was sending - but every message belonged to a step of a flow, so there was
+no way to read a conversation, answer it, or write to somebody about nothing
+in particular. That is what kept Outlook open, and the record of what was
+said went with it.
+
+**What a thread is.** `src/lib/mailbox.ts`, with its own tests:
+
+- `Re:`, `FW:` and `Ref:` are stripped, however many are stacked, so one
+  conversation does not appear as four.
+- What a message is **filed against** beats the subject: if both ends know
+  they are about the same agreement, that is the thread.
+- Otherwise it is the subject **and the other party**: two clients writing
+  "Invoice" are two conversations.
+- A reply carrying `In-Reply-To` joins the message it answers even when
+  somebody rewrote the subject. It is the one join we can be certain of, so it
+  wins over everything above.
+- A **draft** waiting for approval and a **blocked** message are said
+  differently, because they need different people.
+
+**The screens.** `/mail` is conversations, waiting-on-us first, the rest shut
+below, with "write to somebody" for the plain email that belongs to no step.
+`/mail/[key]` is one conversation, both directions, oldest first, with the
+reply written there. The client page says what we have said to them; the
+position page says what the client was told.
+
+**Nothing about the one way out changed.** A reply and a plain email are
+drafts like every other message: a person approves, the sender sends from
+their own address with the common box copied, under the outbound lock. The
+reply carries `In-Reply-To` and `References` on the Graph draft, so it lands
+under the email they wrote instead of beside it.
+
+**What the walk found**, and why this was worth building: a drop-out notice
+sat drafted and approved, signed `{{opsPerson}}` - a template hole nobody
+filled, on its way to a client. The notice now fills the name, and the gate
+refuses any message whose subject or body still has a hole, naming it.
+`fillTemplate` always said a hole stops the send; the gate was the place that
+never asked.
+
+**Still outside the system**, and each one is a person's decision, not code:
+the Graph permissions to read *and* send on the desk's boxes, the Ops WhatsApp
+number, and the Teams calendar permission.
