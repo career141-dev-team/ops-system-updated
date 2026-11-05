@@ -41,7 +41,16 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
       <p className="mt-1 text-[13.5px] text-ink-soft">{windowInWords()}</p>
       {fakeTa() && (
         <p className="mt-2 text-[12.5px] text-ink-faint">
-          Nothing on this page is real. The TA side of the API is still to be built, so a stand-in answers.
+          Nothing on this page is real: a stand-in is answering. The TA side exists now (its endpoints are in
+          ta-system, docs/OPS-SYSTEM-API.md). To use it, set OPS_TA_BASE_URL and OPS_TA_TOKEN, turn
+          OPS_TA_READS_ENABLED on, and turn OPS_TA_FAKE off.
+        </p>
+      )}
+      {!fakeTa() && !writesEnabled() && (
+        <p className="mt-2 text-[12.5px] text-ink-faint">
+          Writes are queued, not sent. Both sides have to agree: OPS_TA_WRITES_ENABLED here, and
+          OPS_API_WRITES_ENABLED on the TA server. Either one off and a write waits in the outbox rather than
+          being lost.
         </p>
       )}
 
