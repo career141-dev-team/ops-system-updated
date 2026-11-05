@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { startInterview } from "@/app/actions";
-import { desk, interviewsNewestFirst, positionsNewestFirst, runClocks } from "@/data/desk";
+import { desk, interviewsNewestFirst, member as memberIn, positionsNewestFirst, runClocks } from "@/data/desk";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { interviewInWords } from "@/lib/interviews";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -14,21 +16,39 @@ import { currentMember } from "@/lib/session";
  * agreed, the ones booked, and the ones held that the client has not decided
  * on. Everything a person has to do is on the interview's own page.
  */
-export default async function InterviewsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function InterviewsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
 
   await runClocks();
   const now = Date.now();
   const db = await desk();
   const all = interviewsNewestFirst(db);
-  const agreeing = all.filter((i) => i.state === "slots" || i.state === "agreed");
-  const booked = all.filter((i) => i.state === "booked" || i.state === "reconfirmed");
-  const waiting = all.filter((i) => i.state === "attended" && !i.decision);
-  const done = all.filter(
-    (i) => (i.state === "attended" && i.decision) || i.state === "cancelled" || i.state === "no_show",
-  );
+  const rows: Listed[] = all.map((interview) => {
+    const owner = memberIn(db, interview.ownerId)?.name ?? "nobody";
+    return {
+      id: interview.id,
+      href: "/interviews/" + interview.id,
+      title: interview.candidateName,
+      words: [owner, interview.openingTaId, interview.applicationTaId, interview.state],
+      says: interviewInWords(interview, now),
+      at: interview.at ?? interview.createdAt,
+      late: interview.state === "slots" && interview.slotLoops >= 3,
+      who: owner,
+      chips: [
+        { what: "round " + interview.round, tone: "quiet" as const },
+        { what: interview.state.replace(/_/g, " "), tone: interview.state === "attended" ? ("done" as const) : ("quiet" as const) },
+        ...(interview.decision ? [{ what: interview.decision, tone: "brand" as const }] : []),
+      ],
+    };
+  });
+  const shown = listed(rows, q, sort);
+
   const openings = positionsNewestFirst(db).filter((p) => p.openingTaId && p.stage !== "closed");
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
@@ -36,30 +56,10 @@ export default async function InterviewsPage({ searchParams }: { searchParams: P
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
 
-  const list = (title: string, rows: typeof all, empty: string) => (
-    <section className={card}>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[14.5px] font-medium">{title}</h2>
-        <span className="text-[12.5px] text-ink-soft">{rows.length}</span>
-      </div>
-      {rows.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">{empty}</p>}
-      {rows.map((interview) => (
-        <div key={interview.id} className={row}>
-          <div className="min-w-0 flex-1">
-            <Link href={"/interviews/" + interview.id} className="text-[13.5px] text-brand hover:underline">
-              {interview.candidateName}
-            </Link>
-            <p className="mt-0.5 text-[12.5px] text-ink-soft">{interviewInWords(interview, now)}</p>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div>
-        <h1 className="text-[17px] font-medium">Interviews</h1>
+        <h2 className="text-[14.5px] font-medium">Interviews</h2>
         <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
           The client&rsquo;s side of an interview: the times, the booking, the invite to the interviewers, the
           day-before reminder, and what the client decided. The candidate stays the TA&rsquo;s — they invite them,
@@ -69,9 +69,30 @@ export default async function InterviewsPage({ searchParams }: { searchParams: P
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      {list("Agreeing a time", agreeing, "None waiting on a time.")}
-      {list("Booked", booked, "Nothing booked.")}
-      {list("Held, waiting on the client", waiting, "Nothing waiting on a client’s decision.")}
+      <Toolbar action="/interviews" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
+
+      {shown.length === 0 ? (
+        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+          {rows.length === 0
+            ? "Nobody has been interviewed yet. An interview starts when the client shortlists somebody from a set and a time is agreed."
+            : foundInWords(0, rows.length, q)}
+        </p>
+      ) : (
+        <Table head={LIST_HEAD}>
+          {shown.map((row) => (
+            <ListRow
+              key={row.id}
+              href={row.href}
+              title={row.title}
+              says={row.says}
+              chips={row.chips}
+              who={row.who}
+              when={day(row.at)}
+              late={row.late}
+            />
+          ))}
+        </Table>
+      )}
 
       {can(me, "client.manage") && (
         <section className={card}>
@@ -118,7 +139,6 @@ export default async function InterviewsPage({ searchParams }: { searchParams: P
         </section>
       )}
 
-      {done.length > 0 && list("Finished", done, "")}
     </div>
   );
 }

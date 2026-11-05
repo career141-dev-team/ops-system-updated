@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { createLead } from "@/app/actions";
 import { agreementForLead, desk, leadIn, leadsNewestFirst, meetingsForLead, member as memberIn, requirementForLead } from "@/data/desk";
 import { leadNextStep } from "@/lib/nextStep";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { REQUIREMENT_FIELDS } from "@/lib/requirements";
 import { whereItStands } from "@/lib/esa";
 import { KIND_MEANINGS, type MeetingKind, meetingsAhead, whenInWords } from "@/lib/meetings";
@@ -22,10 +24,14 @@ import { currentMember } from "@/lib/session";
  * Two things are shown on every row without opening it: whether the industry
  * rule has flagged it, and whether anybody has decided yet.
  */
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
   const mayManage = can(member, "client.manage");
 
   const db = await desk();
@@ -57,30 +63,28 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const nameOf = (id: string) => db.members.find((m) => m.id === id)?.name ?? "somebody";
 
-  const row = (lead: (typeof leads)[number]) => (
-    <div key={lead.id} className="border-t border-rule py-3 first:border-t-0">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Link href={"/leads/" + lead.id} className="text-[13.5px] text-brand hover:underline">
-          {lead.company}
-        </Link>
-        <span className="text-[12px] text-ink-faint">
-          {SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source}
-        </span>
-        {lead.industryFlagged && (
-          <span className="rounded-full border border-rule px-2 py-0.5 text-[11.5px]">
-            banking or finance? · {lead.industryBecause}
-          </span>
-        )}
-        {lead.clientTaId && <span className="text-[12px] text-ink-faint">already our client</span>}
-        <span className="ml-auto text-right text-[12px] text-ink-faint">
-          {STATE_MEANINGS[lead.state as LeadState] ?? lead.state}
-          {" · "}
-          {nameOf(lead.ownerId)}
-        </span>
-      </div>
-      <p className="mt-0.5 text-[12.5px] text-ink-soft">{stepFor(lead).waiting}</p>
-    </div>
-  );
+  const rows: Listed[] = leads.map((lead) => {
+    const owner = nameOf(lead.ownerId);
+    const esa = agreementForLead(db, lead.id);
+    return {
+      id: lead.id,
+      href: "/leads/" + lead.id,
+      title: lead.company,
+      words: [owner, lead.source, lead.state, lead.contactEmail ?? ""],
+      says: stepFor(lead).waiting,
+      at: esa?.sentAt ?? lead.createdAt,
+      late: Boolean(esa?.expiresAt && esa.expiresAt < now),
+      who: owner,
+      chips: [
+        { what: (STATE_MEANINGS[lead.state as LeadState] ?? lead.state).toLowerCase(), tone: "quiet" as const },
+        ...(lead.industryFlagged && !lead.industryConfirmedBy
+          ? [{ what: "banking or finance?", tone: "careful" as const }]
+          : []),
+        ...(lead.clientTaId ? [{ what: "already ours", tone: "brand" as const }] : []),
+      ],
+    };
+  });
+  const shown = listed(rows, q, sort);
 
   return (
     <div className="max-w-[860px]">
@@ -156,37 +160,32 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         })}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">
-          Nobody has looked yet
-          <span className="ml-2 text-[12px] font-normal text-ink-faint">{waiting.length}</span>
-        </h2>
-        {waiting.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing waiting.</p>}
-        {waiting.map(row)}
-      </section>
+      <div className="mt-4 flex flex-col gap-3">
+        <Toolbar action="/leads" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">
-          In hand
-          <span className="ml-2 text-[12px] font-normal text-ink-faint">{working.length}</span>
-        </h2>
-        {working.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing in hand.</p>}
-        {/* By the state it is in: waiting on a call is not the same work as
-            waiting on a signature, and one list hid the difference. */}
-        {(["intro_call", "waiting_agreement", "requirement"] as LeadState[]).map((state) => {
-          const theirs = working.filter((l) => l.state === state);
-          if (!theirs.length) return null;
-          return (
-            <div key={state} className="mt-3 first:mt-2">
-              <p className="text-[12.5px] text-ink-soft">
-                {STATE_MEANINGS[state]}
-                <span className="ml-2 text-ink-faint">{theirs.length}</span>
-              </p>
-              {theirs.map(row)}
-            </div>
-          );
-        })}
-      </section>
+        {shown.length === 0 ? (
+          <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+            {rows.length === 0
+              ? "No enquiry yet. One arrives from the website form, an email, a WhatsApp or a call, and the first thing asked is whether they are already our client."
+              : foundInWords(0, rows.length, q)}
+          </p>
+        ) : (
+          <Table head={LIST_HEAD}>
+            {shown.map((one) => (
+              <ListRow
+                key={one.id}
+                href={one.href}
+                title={one.title}
+                says={one.says}
+                chips={one.chips}
+                who={one.who}
+                when={day(one.at)}
+                late={one.late}
+              />
+            ))}
+          </Table>
+        )}
+      </div>
 
       <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
         <h2 className="text-[14.5px] font-medium">Write down a new lead</h2>

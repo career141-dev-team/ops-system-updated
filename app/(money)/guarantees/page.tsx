@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { desk, guaranteesNewestFirst, runClocks } from "@/data/desk";
+import { desk, guaranteesNewestFirst, member as memberIn, runClocks } from "@/data/desk";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { daysLeftInWords, guaranteeInWords } from "@/lib/guarantee";
 import { currentMember } from "@/lib/session";
 
@@ -13,10 +15,14 @@ import { currentMember } from "@/lib/session";
  * are over. "Ending this month" is first, because that is the one worth
  * reading on a Monday.
  */
-export default async function GuaranteesPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function GuaranteesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
 
   await runClocks();
   const now = Date.now();
@@ -24,44 +30,37 @@ export default async function GuaranteesPage({ searchParams }: { searchParams: P
   const db = await desk();
   const all = guaranteesNewestFirst(db);
   const holidays = db.holidays.map((h) => h.date);
-  const running = all.filter((g) => g.state === "running" || g.state === "warned");
-  const endingSoon = running.filter((g) => g.endsAt - now < month);
-  const later = running.filter((g) => g.endsAt - now >= month);
-  const left = all.filter((g) => g.state === "replacing" || g.state === "refund_pending");
-  const over = all.filter(
-    (g) => g.state === "ended_clean" || g.state === "replaced" || g.state === "void" || g.state === "refunded",
-  );
-
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
-
-  const list = (title: string, rows: typeof all, empty: string) => (
-    <section className={card}>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[14.5px] font-medium">{title}</h2>
-        <span className="text-[12.5px] text-ink-soft">{rows.length}</span>
-      </div>
-      {rows.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">{empty}</p>}
-      {rows.map((guarantee) => (
-        <div key={guarantee.id} className={row}>
-          <div className="min-w-0 flex-1">
-            <Link href={"/guarantees/" + guarantee.id} className="text-[13.5px] text-brand hover:underline">
-              {guarantee.candidateName}
-            </Link>
-            <p className="mt-0.5 text-[12.5px] text-ink-soft">
-              {guaranteeInWords(guarantee, now, holidays)}
-              {!guarantee.feePaidAt && (guarantee.state === "running" || guarantee.state === "warned")
-                ? " · the fee is not paid in full, so it would not hold"
-                : ""}
-            </p>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
+  const rows: Listed[] = all.map((guarantee) => {
+    const owner = memberIn(db, guarantee.ownerId)?.name ?? "nobody";
+    const unpaid = !guarantee.feePaidAt && (guarantee.state === "running" || guarantee.state === "warned");
+    return {
+      id: guarantee.id,
+      href: "/guarantees/" + guarantee.id,
+      title: guarantee.candidateName,
+      words: [owner, guarantee.openingTaId, guarantee.state],
+      says:
+        guaranteeInWords(guarantee, now, holidays) +
+        (unpaid ? " · the fee is not paid in full, so it would not hold" : ""),
+      at: guarantee.endsAt,
+      late: unpaid || guarantee.state === "replacing",
+      who: owner,
+      chips: [
+        { what: guarantee.state.replace(/_/g, " "), tone: guarantee.state === "ended_clean" ? ("done" as const) : ("quiet" as const) },
+        ...(guarantee.state === "running" || guarantee.state === "warned"
+          ? [{ what: daysLeftInWords(guarantee.endsAt, now), tone: "brand" as const }]
+          : []),
+        ...(unpaid ? [{ what: "fee unpaid", tone: "late" as const }] : []),
+      ],
+    };
+  });
+  const shown = listed(rows, q, sort);
+  // The one a person asks about on a Monday: the next guarantee to end.
+  const soonest = all
+    .filter((one) => one.state === "running" || one.state === "warned")
+    .sort((a, b) => a.endsAt - b.endsAt)[0];
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-[14.5px] font-medium">Guarantees</h2>
         <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
@@ -73,14 +72,34 @@ export default async function GuaranteesPage({ searchParams }: { searchParams: P
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      {list("Ending within the month", endingSoon, "None ending this month.")}
-      {list("Somebody left", left, "Nobody has left inside a guarantee.")}
-      {list("Running", later, "None running.")}
-      {over.length > 0 && list("Over", over, "")}
+      <Toolbar action="/guarantees" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
 
-      {endingSoon.length > 0 && (
+      {shown.length === 0 ? (
+        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+          {rows.length === 0
+            ? "No guarantee is running. One starts by itself the day somebody joins, and runs ninety days from that day."
+            : foundInWords(0, rows.length, q)}
+        </p>
+      ) : (
+        <Table head={LIST_HEAD}>
+          {shown.map((row) => (
+            <ListRow
+              key={row.id}
+              href={row.href}
+              title={row.title}
+              says={row.says}
+              chips={row.chips}
+              who={row.who}
+              when={day(row.at)}
+              late={row.late}
+            />
+          ))}
+        </Table>
+      )}
+
+      {soonest && (
         <p className="text-[12px] text-ink-faint">
-          The soonest ends in {daysLeftInWords(endingSoon[endingSoon.length - 1].endsAt, now)}.
+          The soonest ends in {daysLeftInWords(soonest.endsAt, now)}.
         </p>
       )}
     </div>
