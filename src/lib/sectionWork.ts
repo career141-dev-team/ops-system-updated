@@ -14,7 +14,7 @@
  * Nothing here touches a database.
  */
 
-import { NAV, pageAndSectionFor } from "@/lib/nav";
+import { COVERS, NAV, pageAndSectionFor } from "@/lib/nav";
 
 export interface WorkCount {
   /** Open work on this page, late included. */
@@ -43,6 +43,9 @@ export function workByPage(things: WorkThing[], now: number): Record<string, Wor
     for (const page of section.pages) counts[page.href] = empty();
   }
 
+  // A page under an entry counts on that entry: a late invoice is Money's,
+  // and a set waiting is the Positions entry's, because that is where a
+  // person goes looking for it (25, section 3).
   for (const thing of things) {
     const found = thing.link ? pageAndSectionFor(thing.link) : null;
     const href = found ? found.page.href : "/";
@@ -52,6 +55,14 @@ export function workByPage(things: WorkThing[], now: number): Record<string, Wor
     counts[href].late += late;
     counts[key].waiting += 1;
     counts[key].late += late;
+    // The page it really points at is counted too, for a tab's own badge.
+    const exact = (thing.link ?? "").split("?")[0];
+    const under = (COVERS[href] ?? []).find((one) => exact === one || exact.startsWith(one + "/"));
+    if (under && under !== href) {
+      counts[under] = counts[under] ?? empty();
+      counts[under].waiting += 1;
+      counts[under].late += late;
+    }
   }
 
   return counts;

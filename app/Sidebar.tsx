@@ -34,11 +34,19 @@ export default function Sidebar({
   const path = usePathname() ?? "/";
 
   return (
-    <nav className="flex h-full w-[232px] shrink-0 flex-col gap-4 border-r border-rule bg-surface px-3 py-4">
+    <nav className="flex h-screen w-[228px] shrink-0 flex-col gap-3 border-r border-rule bg-surface px-3 py-4">
       <div className="flex items-center gap-2 px-2">
         <span className="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true" />
         <span className="text-[14px] font-medium">Career 141 Ops</span>
       </div>
+
+      <Link
+        href="/work"
+        className="flex items-center gap-2 rounded-lg border border-rule bg-sunk px-2.5 py-1.5 text-[12.5px] text-ink-faint hover:text-ink"
+      >
+        <span aria-hidden="true">⌕</span>
+        <span>Find a client or a position</span>
+      </Link>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
         {NAV.map((section) => {
@@ -59,8 +67,8 @@ export default function Sidebar({
                     title={page.about}
                     aria-current={here ? "page" : undefined}
                     className={
-                      "flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13.5px] transition-colors " +
-                      (here ? "bg-paper font-medium text-ink" : "text-ink-soft hover:bg-paper hover:text-ink")
+                      "flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors " +
+                      (here ? "bg-bg-brand font-medium text-brand" : "text-ink-soft hover:bg-sunk hover:text-ink")
                     }
                   >
                     <span className="min-w-0 flex-1 truncate">{page.what}</span>
@@ -77,10 +85,10 @@ export default function Sidebar({
         })}
       </div>
 
-      <div className="border-t border-rule px-2 pt-3">
+      <div className="border-t border-rule px-2.5 pt-3">
         <p className="text-[12.5px]">{who.name}</p>
         <p className="text-[11.5px] text-ink-faint">{who.role}</p>
-        <p className="mt-2 inline-block rounded-full bg-bg-warning px-2 py-0.5 text-[11px] text-warning">
+        <p className="mt-2 inline-block rounded-md bg-bg-warning px-2 py-0.5 text-[11px] text-warning">
           Test data only
         </p>
       </div>

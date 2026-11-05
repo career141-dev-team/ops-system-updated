@@ -15,14 +15,21 @@ export default function Part({
   title,
   says,
   open,
+  tab,
+  here,
   children,
 }: {
   title: string;
   /** What this part holds, in a few words, readable while it is shut. */
   says?: string;
   open?: boolean;
+  /** Which tab of its page this part belongs to (25, section 2). */
+  tab?: string;
+  /** Which tab the page is showing. Set both, and it shows only on its own. */
+  here?: string;
   children: React.ReactNode;
 }) {
+  if (tab && here && tab !== here) return null;
   return (
     <details open={open} className="rounded-2xl border border-rule bg-surface px-5 py-4">
       <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-2 gap-y-0.5">

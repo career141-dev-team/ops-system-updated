@@ -8,7 +8,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NAV, isHere, pageAndSectionFor, sectionFor } from "@/lib/nav";
+import { COVERS, NAV, isHere, pageAndSectionFor } from "@/lib/nav";
+import {
+  CLIENT_TABS,
+  INBOX_TABS,
+  MONEY_TABS,
+  POSITION_TABS,
+  REPORT_TABS,
+  SETTINGS_TABS,
+  clientTabs,
+  positionTabs,
+  tabFrom,
+} from "@/lib/tabs";
 import {
   clientNextStep,
   guaranteeNextStep,
@@ -223,18 +234,27 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ stage: "dormant" }), theirs()).waiting, /this client is dormant/);
 });
 
-test("the shell is a sidebar in groups, and every page is in exactly one", () => {
-  // Four groups, and the work itself is not one of them: it is on the board
-  // (24, section 13). The owner's two screens of 5 November.
-  assert.deepEqual(NAV.map((section) => section.key), ["today", "workspace", "records", "tools"]);
-  assert.equal(NAV[0].pages[1].href, "/work", "the board sits right under the day");
+test("the sidebar is eight entries, and every page is under one of them", () => {
+  // Eight, from twenty-seven (25, section 3). A hold, a set, an advert and an
+  // interview are faces of a position, not places of their own, so they are
+  // reached through it and marked against it.
+  const entries = NAV.flatMap((section) => section.pages);
+  assert.equal(entries.length, 8, "eight entries, and the list never grows");
+  assert.deepEqual(
+    entries.map((page) => page.href),
+    ["/", "/work", "/mail", "/clients", "/positions", "/money", "/reports", "/settings"],
+  );
 
-  const seen = new Map<string, number>();
-  for (const section of NAV) {
-    for (const page of section.pages) seen.set(page.href, (seen.get(page.href) ?? 0) + 1);
+  // Every page in the app is under exactly one entry.
+  const seen = new Map<string, string[]>();
+  for (const page of entries) {
+    for (const under of COVERS[page.href] ?? [page.href]) {
+      seen.set(under, [...(seen.get(under) ?? []), page.href]);
+    }
   }
-  for (const [href, count] of seen) assert.equal(count, 1, href + " is in more than one group");
-  // Every page that exists is there: a page in no group cannot be found.
+  for (const [under, owners] of seen) {
+    assert.equal(owners.length, 1, under + " is under " + owners.join(" and "));
+  }
   for (const href of [
     "/",
     "/work",
@@ -262,13 +282,12 @@ test("the shell is a sidebar in groups, and every page is in exactly one", () =>
     "/settings",
     "/health",
   ]) {
-    assert(seen.has(href), href + " is in no group");
+    assert(seen.has(href), href + " is under no sidebar entry");
   }
 });
 
-test("every group and every page says what it is for", () => {
+test("every entry says what it is for", () => {
   for (const section of NAV) {
-    assert.ok(section.about.length > 20, section.key + " has no purpose line");
     for (const page of section.pages) {
       assert.ok(page.about.length > 20, page.href + " has no purpose line");
       assert.ok(!/^The page/i.test(page.about), page.href + " describes itself, not its work");
@@ -276,7 +295,7 @@ test("every group and every page says what it is for", () => {
   }
 });
 
-test("work is counted on the page its own link points at", () => {
+test("work counts on the entry a person would look under", () => {
   const counts = workByPage(
     [
       { link: "/sets/set_1", dueAt: NOW - DAY },
@@ -288,47 +307,58 @@ test("work is counted on the page its own link points at", () => {
     NOW,
   );
 
-  assert.deepEqual(counts["/sets"], { waiting: 2, late: 1 });
-  assert.deepEqual(counts["records"], { waiting: 3, late: 2 }, "sets and invoices are both records");
+  // A set is a face of a position, so it counts against Positions - which is
+  // where somebody goes looking for it.
+  assert.deepEqual(counts["/positions"], { waiting: 2, late: 1 });
+  assert.deepEqual(counts["/sets"], { waiting: 2, late: 1 }, "and against its own page, for its tab");
+  assert.deepEqual(counts["/money"], { waiting: 1, late: 1 });
   assert.deepEqual(counts["/invoices"], { waiting: 1, late: 1 });
   // Nothing is ever lost: a task with nowhere to go lands on the day.
   assert.deepEqual(counts["/"], { waiting: 2, late: 0 });
   assert.deepEqual(counts["today"], { waiting: 2, late: 0 });
-  assert.deepEqual(counts["/holds"], { waiting: 0, late: 0 });
 
-  assert.equal(workInWords(counts["/holds"]), "Nothing waiting");
-  assert.equal(workInWords(counts["/invoices"]), "1 thing waiting, 1 late");
-  assert.equal(workInWords(counts["/sets"]), "2 things waiting, 1 late");
+  assert.equal(workInWords(counts["/money"]), "1 thing waiting, 1 late");
+  assert.equal(workInWords(counts["/positions"]), "2 things waiting, 1 late");
   assert.equal(workInWords(undefined), "Nothing waiting");
 });
 
-test("a path finds its own page, not only its group", () => {
-  assert.equal(pageAndSectionFor("/sets/set_1")?.page.href, "/sets");
-  assert.equal(pageAndSectionFor("/sets/set_1")?.section.key, "records");
-  assert.equal(pageAndSectionFor("/work")?.section.key, "today");
+test("a path finds the entry it belongs under", () => {
+  assert.equal(pageAndSectionFor("/sets/set_1")?.page.href, "/positions");
+  assert.equal(pageAndSectionFor("/holds/h1")?.page.href, "/positions");
+  assert.equal(pageAndSectionFor("/leads/l1")?.page.href, "/clients");
+  assert.equal(pageAndSectionFor("/invoices/i1")?.page.href, "/money");
+  assert.equal(pageAndSectionFor("/templates/x")?.page.href, "/settings");
+  assert.equal(pageAndSectionFor("/work")?.page.href, "/work");
   assert.equal(pageAndSectionFor("/")?.page.href, "/");
   assert.equal(pageAndSectionFor("/nowhere"), null);
-});
 
-test("the section is found from the path, and the longest page wins", () => {
-  assert.equal(sectionFor("/").key, "today");
-  assert.equal(sectionFor("/work").key, "today");
-  assert.equal(sectionFor("/mail").key, "workspace");
-  assert.equal(sectionFor("/leads").key, "records");
-  assert.equal(sectionFor("/leads/lead_1").key, "records");
-  assert.equal(sectionFor("/sets/set_1").key, "records");
-  assert.equal(sectionFor("/invoices/inv_1").key, "records");
-  assert.equal(sectionFor("/ai").key, "tools");
-  // Something nobody put in a section falls back to the day, not to nothing.
-  assert.equal(sectionFor("/nowhere").key, "today");
-
+  // And the sidebar marks that entry, not some other one.
+  assert.equal(isHere("/sets/set_1", "/positions"), true);
+  assert.equal(isHere("/sets/set_1", "/money"), false);
   assert.equal(isHere("/", "/"), true);
   assert.equal(isHere("/leads", "/"), false, "the day is only the day");
-  assert.equal(isHere("/leads/lead_1", "/leads"), true);
-  assert.equal(isHere("/leadsomething", "/leads"), false, "a prefix is not a match");
 });
 
-/* ── The search's three cards (24, step 4) ─────────────────────── */
+test("one tab bar per area, and every tab points somewhere real", () => {
+  const bars = [INBOX_TABS, CLIENT_TABS, POSITION_TABS, MONEY_TABS, REPORT_TABS, SETTINGS_TABS];
+  for (const bar of bars) {
+    assert.ok(bar.length >= 2, "a bar with one tab is not a bar");
+    const keys = bar.map((tab) => tab.key);
+    assert.equal(new Set(keys).size, keys.length, "two tabs with the same key: " + keys.join(", "));
+    for (const tab of bar) {
+      assert.ok(tab.href.startsWith("/"), tab.key + " does not point anywhere");
+      assert.ok(pageAndSectionFor(tab.href), tab.href + " is under no sidebar entry");
+    }
+  }
+
+  // A record's own bar: one level, and every tab on the same record.
+  const tabs = positionTabs("pos_1");
+  assert.equal(tabs[0].href, "/positions/pos_1");
+  for (const tab of tabs) assert.ok(tab.href.startsWith("/positions/pos_1"), tab.key + " leaves the record");
+  assert.equal(tabFrom(tabs, "sets"), "sets");
+  assert.equal(tabFrom(tabs, "nonsense"), "overview", "an unknown tab is the first one, never a blank page");
+  assert.equal(tabFrom(clientTabs("c1"), undefined), "overview");
+});
 
 const cv = (name: string, over = {}) => ({ name, fileId: "f_1", problem: null, ...over });
 const aSet = (over = {}) => ({

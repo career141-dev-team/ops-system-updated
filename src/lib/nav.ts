@@ -37,53 +37,45 @@ export const NAV: NavSection[] = [
     pages: [
       { href: "/", what: "Your day", about: "To approve, due today, late, and every clock that is running" },
       { href: "/work", what: "The work", about: "Every enquiry and position in the stage it is really in" },
-    ],
-  },
-  {
-    key: "workspace",
-    what: "Workspace",
-    about: "What came in, and what you owe somebody",
-    pages: [
-      { href: "/mail", what: "Inbox", about: "Every conversation, email and WhatsApp, and the replies to them" },
-      { href: "/calls", what: "Calls", about: "Calls the system asked for, and what was said on them" },
-      { href: "/reports", what: "Report", about: "Monday's active-positions report, read here before the Director gets it" },
+      { href: "/mail", what: "Inbox", about: "Every conversation, email and WhatsApp, and the calls we were asked to make" },
     ],
   },
   {
     key: "records",
     what: "Records",
-    about: "All of one kind, when you want to compare them",
+    about: "The three things this desk keeps, and the money that comes of them",
     pages: [
-      { href: "/leads", what: "Leads", about: "An enquiry from anywhere, through to a signed agreement" },
-      { href: "/clients", what: "Clients", about: "Who they are, who owns them, where to invoice, their WhatsApp group" },
-      { href: "/positions", what: "Positions", about: "What each client asked for, and the opening the TA System runs" },
-      { href: "/sets", what: "CV sets", about: "Five CVs or more, drafted, approved, sent, and the clocks that follow" },
-      { href: "/interviews", what: "Interviews", about: "Times agreed, the invite, who turned up, and what the client decided" },
-      { href: "/placements", what: "Placements", about: "A hire from the TA System: the package, the joining day, the fee rule" },
-      { href: "/invoices", what: "Invoices", about: "Drafted on the joining day, due in thirty, chased at 1% a month" },
-      { href: "/guarantees", what: "Guarantees", about: "Ninety days from joining, valid only on a fee that is fully paid" },
-      { href: "/holds", what: "Holds", about: "A search paused because the client went quiet, reviewed every thirty days" },
-      { href: "/closes", what: "Closing", about: "The checklist every ending goes through before a position is closed" },
-      { href: "/adverts", what: "Adverts", about: "TopJobs and LinkedIn: ordered, live, and closed after two weeks" },
-      { href: "/talent-pulse", what: "Talent Pulse", about: "Tuesday's list of open roles, for marketing to post on Wednesday" },
+      { href: "/clients", what: "Clients", about: "The companies we work for, and the enquiries that are not one yet" },
+      { href: "/positions", what: "Positions", about: "What each client asked for, and everything the search does for it" },
+      { href: "/money", what: "Money", about: "Placements, invoices, the guarantee, and closing a position properly" },
     ],
   },
   {
     key: "tools",
-    what: "Tools",
-    about: "The numbers, the wording, and the switches",
+    what: "",
+    about: "Read once a week, and set up once",
     pages: [
-      { href: "/numbers", what: "Numbers", about: "How long each step really takes, and what each number is made of", needs: "report.read" },
-      { href: "/ai", what: "AI", about: "What the model may do, what it cost today, and how often it was right" },
-      { href: "/templates", what: "What we send", about: "The wording of every routine notice, in one place" },
-      { href: "/files", what: "Files", about: "The agreement template, and every CV exactly as the client got it" },
-      { href: "/ta", what: "TA System", about: "The link to the recruiters: what we read, what we wrote, what is waiting" },
-      { href: "/import", what: "First day", about: "The one-off import of clients, owners, people and holidays", needs: "settings.manage" },
-      { href: "/settings", what: "Settings", about: "Every number the rules use, and the switches that stop things going out" },
-      { href: "/health", what: "Health", about: "Everything the system does by itself, and when it last did it" },
+      { href: "/reports", what: "Reports", about: "Monday's report for the Director, and the numbers behind the desk" },
+      { href: "/settings", what: "Settings", about: "The switches, the wording, the people, the files and the links" },
     ],
   },
 ];
+
+/**
+ * The pages a group's own page covers, for the counts.
+ *
+ * "Money" is one entry in the sidebar and four tabs underneath; a late
+ * invoice still has to show against Money, so a page says what it covers
+ * rather than the sidebar guessing.
+ */
+export const COVERS: Record<string, string[]> = {
+  "/clients": ["/clients", "/leads"],
+  "/positions": ["/positions", "/sets", "/interviews", "/holds", "/adverts", "/talent-pulse"],
+  "/money": ["/money", "/placements", "/invoices", "/guarantees", "/closes"],
+  "/reports": ["/reports", "/numbers"],
+  "/settings": ["/settings", "/templates", "/files", "/ta", "/import", "/health", "/ai", "/holidays", "/baseline"],
+  "/mail": ["/mail", "/calls", "/messages", "/tasks"],
+};
 
 /**
  * Which group a path is in.
@@ -95,19 +87,32 @@ export function sectionFor(path: string): NavSection {
   return pageAndSectionFor(path)?.section ?? NAV[0];
 }
 
-/** The page a path belongs to, and its group. Null where nothing matches. */
+/**
+ * The page a path belongs to, and its group.
+ *
+ * A sidebar entry covers more than its own path: /sets/abc is the Positions
+ * entry, because a CV set is a face of a position and not a place of its own
+ * (25, section 3). What each entry covers is in COVERS, so one list decides
+ * both the marking and the counts.
+ */
 export function pageAndSectionFor(path: string): { page: NavPage; section: NavSection } | null {
   let best: { page: NavPage; section: NavSection; length: number } | null = null;
   for (const section of NAV) {
     for (const page of section.pages) {
-      const matches = page.href === "/" ? path === "/" : path === page.href || path.startsWith(page.href + "/");
-      if (matches && (!best || page.href.length > best.length)) best = { page, section, length: page.href.length };
+      for (const under of COVERS[page.href] ?? [page.href]) {
+        const matches = under === "/" ? path === "/" : path === under || path.startsWith(under + "/");
+        if (matches && (!best || under.length > best.length)) {
+          best = { page, section, length: under.length };
+        }
+      }
     }
   }
   return best ? { page: best.page, section: best.section } : null;
 }
 
-/** Is this the page we are on? The same rule, for marking it. */
+/** Is this the entry we are under? The same rule, for marking it. */
 export function isHere(path: string, href: string): boolean {
-  return href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
+  return (COVERS[href] ?? [href]).some((under) =>
+    under === "/" ? path === "/" : path === under || path.startsWith(under + "/"),
+  );
 }
