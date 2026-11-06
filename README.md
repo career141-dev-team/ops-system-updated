@@ -85,6 +85,7 @@ npm run typecheck
 | [25](docs/25-UI-ARCHITECTURE.md) | The layout as built: three levels, eight sidebar entries, one tab bar per page |
 | [**26**](docs/26-RUN-IT-FOR-REAL.md) | **Page one: running the whole thing for real on one laptop** - every stand-in, what replaces it, and what each step waits on |
 | [**27**](docs/27-DEPLOYMENT-AND-KEYS.md) | **Page two: the deployment** - every key, account and permission, where each goes, and what breaks without it |
+| [**28**](docs/28-WHATSAPP.md) | **WhatsApp**: what the desk uses it for, what Meta now allows (the Groups API changed the answer in Oct 2025), and the three steps to build it |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).
