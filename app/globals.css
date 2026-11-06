@@ -18,6 +18,23 @@
   --color-surface: #ffffff;
   --color-sunk: #f4f6f4;
 
+  /*
+   * The shell: the sidebar, in ash (6 Nov).
+   *
+   * It was white on white - the only thing dividing the navigation from the
+   * work was a hairline, so the eye had to look for the edge instead of
+   * seeing it. Ash gives the frame a weight of its own and lets the white of
+   * the work read as the thing you are actually in.
+   *
+   * It is a warm grey with a trace of the green in it rather than a flat
+   * neutral. A pure grey beside a green accent looks like a grey nobody
+   * chose; this one looks like part of the same palette, which is the whole
+   * difference between quiet and cheap.
+   */
+  --color-shell: #eceeec;
+  --color-shell-sunk: #e3e6e3;
+  --color-shell-rule: #d9ddda;
+
   /* Ink, in three weights and no more (24, section 6). */
   --color-ink: #16181a;
   --color-ink-soft: #5b6360;

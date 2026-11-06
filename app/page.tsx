@@ -154,8 +154,19 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         </div>
       </section>
 
-      <section className={card}>
+      {/*
+        The three lists side by side (6 Nov).
+        
+        They were stacked, so "waiting for your approval" filled the screen
+        and "due today" and "late" were below the fold - an ops person opening
+        the app saw one of the three things they came to see. A desk screen is
+        wide, so they go across it, and each one scrolls inside itself rather
+        than pushing the other two down.
+      */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 xl:[&>section]:max-h-[46vh]">
+      <section className={card + " flex min-w-0 flex-col"}>
         <h2 className="text-[14.5px] font-medium">Waiting for your approval</h2>
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {drafts.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing is waiting.</p>}
         {drafts.map((message) => (
           <div key={message.id} className={row}>
@@ -171,11 +182,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             </Link>
           </div>
         ))}
+        </div>
       </section>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <section className={card}>
+        <section className={card + " flex min-w-0 flex-col"}>
           <h2 className="text-[14.5px] font-medium">Due today</h2>
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {due.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing due today.</p>}
           {due.map((task) => (
             <div key={task.id} className={row}>
@@ -188,10 +200,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
               </Link>
             </div>
           ))}
+          </div>
         </section>
 
-        <section className={card}>
+        <section className={card + " flex min-w-0 flex-col"}>
           <h2 className="text-[14.5px] font-medium">Late, and clocks</h2>
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {late.length === 0 && clocks.length === 0 && (
             <p className="mt-2 text-[13px] text-ink-soft">Nothing late, nothing running out.</p>
           )}
@@ -231,6 +245,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
               </div>
             );
           })}
+          </div>
         </section>
       </div>
     </div>

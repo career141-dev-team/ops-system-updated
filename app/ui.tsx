@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import Icon from "@/app/Icon";
+
 /**
  * The pieces every screen is made of (25, section 2).
  *
@@ -240,9 +242,7 @@ export function Toolbar({
   return (
     <form action={action} className="flex flex-wrap items-center gap-2">
       <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-rule-strong bg-surface px-3 py-1.5">
-        <span className="text-ink-faint" aria-hidden="true">
-          ⌕
-        </span>
+        <Icon name="search" className="text-ink-faint" size={15} />
         <input
           name="q"
           defaultValue={q ?? ""}
