@@ -156,3 +156,82 @@ hours is free-form; the first message is not.
 - **No reading of the TA System's WhatsApp.** Those eight numbers are the
   recruiters' own and stay separate. This is the Ops number only.
 - **No candidate WhatsApp.** The candidate belongs to the TA System.
+
+---
+
+## 8. The objection that changes the plan
+
+The owner asked the question that undoes most of section 5:
+
+> I am an ops person. I have WhatsApp. Without using WhatsApp, why would I use
+> the ops system? That is not possible, right?
+
+He is right. Rushda has WhatsApp open all day. Typing into a web form is
+slower than typing into WhatsApp, and a system that is slower than the thing
+it replaces does not get used - it gets worked around, and then the records
+are wrong **and** people are annoyed.
+
+**Meta built a mode for exactly this.** It is called Coexistence, and it was
+not in section 3 because section 3 asked the wrong question.
+
+### What Coexistence is
+
+One phone number, used **at the same time** by the WhatsApp Business app on a
+person's phone **and** by the Cloud API. Meta: *"They can still send messages
+on a one-to-one basis using the WhatsApp Business app, and WhatsApp keeps
+messaging history between both apps in sync."*
+
+| | |
+|---|---|
+| Rushda types on her phone, as always | the system gets a copy - the `smb_message_echoes` webhook, which Meta says *"describes any new messages your client sends with the WhatsApp Business app"* |
+| The system sends something | it appears in her phone's chat. Meta: *"Messages sent and received are mirrored between the Cloud API and WhatsApp Business app"* |
+| The six months before we started | synced once, at onboarding |
+| What she sends from the phone | **free.** Only Cloud API sends are charged |
+
+**Nobody changes how they work.** That is the whole point, and it is the only
+version of this that actually gets adopted.
+
+### What it costs
+
+One thing, and it is the thing section 5 built step three on:
+
+> **Group chats: Not supported. Group chats will not be synchronized.**
+
+So with Coexistence the system never sees inside a WhatsApp group. Groups go
+back to being exactly what they are today: the system drafts the post, a
+person pastes it.
+
+### So the plan changes
+
+| Step | Was | Now |
+|---|---|---|
+| One - hear WhatsApp | a webhook on an Ops number | **Coexistence**, so it hears what ops people already type, with no new habit |
+| Two - the 1:1 messages | send from the system | unchanged, and now optional: the drafted message can be approved and sent by the system, or copied to the phone |
+| Three - system groups | create groups through the API | **dropped**, unless a second number is worth it. Coexistence and the Groups API cannot share a number |
+
+Losing system groups costs nothing against today, because today the system
+cannot see a group either. Gaining Coexistence means every one-to-one message
+the desk already sends becomes a record without anybody doing anything.
+
+### Three things to find out before committing
+
+Honest unknowns, not details:
+
+1. **Is Sri Lanka supported?** Meta's changelog lists the countries added for
+   Coexistence - India in May 2025, then Australia, Japan, the Philippines,
+   Russia, South Korea, Turkey, the EEA, the EU and the UK in October 2025.
+   **Sri Lanka is not named in either list.** This is the first thing to check,
+   because nothing else matters if the answer is no.
+2. **It needs a provider.** Coexistence is onboarded through a Solution Partner
+   or Tech Provider using Embedded Signup - not something switched on alone.
+   Career 141 already routes TA WhatsApp through WhatChimp, so the question is
+   whether they do Coexistence, or whether another partner is needed.
+3. **The version deadline has passed.** Meta: *"Embedded Signup v2 and v3 will
+   be deprecated on October 15, 2026."* That is three weeks ago. Any provider
+   we use has to be on v4 or v5 already.
+
+### What is still true either way
+
+The Ops WhatsApp number is still the first thing. Coexistence needs a number
+in the WhatsApp Business app to coexist **with**, and today there is none for
+Ops.
