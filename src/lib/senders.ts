@@ -347,6 +347,8 @@ export function groupPostIsManual(): SendOutcome {
   return {
     ok: true,
     providerMessageId: null,
-    reason: "Post it from your phone: no system can write to a WhatsApp group.",
+    reason:
+      "Post it from your phone. This group was made on somebody's phone, and " +
+      "Meta gives no way for the system to join one it did not create (6 Nov).",
   };
 }
