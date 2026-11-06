@@ -12,6 +12,9 @@ import {
   sendClientSet,
 } from "@/app/actions";
 import { clientIn, clientSetIn, desk, fileIn, liveHoldFor, member as memberIn, numberOf } from "@/data/desk";
+import NextStep from "@/app/NextStep";
+import Part from "@/app/Part";
+import { setNextStep } from "@/lib/nextStep";
 import { MIN_CVS, STATE_MEANINGS, type SetState, dueInWords, whereItStands } from "@/lib/clientSets";
 import {
   CLIENT_DECISIONS,
@@ -71,6 +74,20 @@ export default async function SetPage({
   const hold = liveHoldFor(db, set.openingTaId);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
+  // What to do now (24, step 4). Everything it needs is already on this page;
+  // the words come from the rule so the card cannot promise a step the
+  // buttons would refuse.
+  const step = setNextStep(
+    set,
+    {
+      minCvs: MIN_CVS,
+      ownershipClosesAt: window && window.closesAt > now ? window.closesAt : null,
+      feedback,
+      holdState: hold ? hold.state : null,
+    },
+    now,
+  );
+
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
   const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
@@ -98,13 +115,13 @@ export default async function SetPage({
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      <section className={card}>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-[14.5px] font-medium">Who is in it</h2>
-          <span className="text-[12.5px] text-ink-soft">
-            {set.candidates.length} of at least {MIN_CVS}
-          </span>
-        </div>
+      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+
+      <Part
+        title="Who is in it"
+        says={set.candidates.length + " candidates" + (missing.length ? ", " + missing.length + " without a CV" : "")}
+        open={step.at === "candidates" || step.at === "review" || step.at === "decisions" || step.at === "feedback"}
+      >
         {set.candidates.map((who) => {
           const file = who.fileId ? fileIn(db, who.fileId) : null;
           return (
@@ -187,11 +204,14 @@ export default async function SetPage({
             <button className={plain}>{set.candidates.some((c) => c.fileId) ? "Fetch anything missing" : "Read the set and keep the CVs"}</button>
           </form>
         )}
-      </section>
+      </Part>
 
       {set.state !== "sent" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Send it</h2>
+        <Part
+          title="Send it"
+          says={ready ? "Ready to go" : "Not until five CVs are ready"}
+          open={step.at === "send"}
+        >
           <p className="mt-1 text-[13px] text-ink-soft">
             It goes to the client&apos;s own people — whoever the TA System has marked “hr” — with you copied, as a
             drafted email you approve. The CVs go with it.
@@ -214,12 +234,15 @@ export default async function SetPage({
               <button className={button}>Draft the email and send</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {set.state === "sent" && window && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">The clocks this set started</h2>
+        <Part
+          title="The clocks this set started"
+          says={"Counted from the day the client received it"}
+          open={step.at === "feedback" || step.at === "hold"}
+        >
           <p className={"mt-1 text-[13px] " + (now > window.closesAt ? "text-ink-soft" : "")}>
             {windowInWords(window, now, holidays)}. After it, a claim that a candidate was already theirs is refused.
           </p>
@@ -240,12 +263,15 @@ export default async function SetPage({
               {hold.reason}
             </p>
           )}
-        </section>
+        </Part>
       )}
 
       {set.state === "sent" && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">When they received it</h2>
+        <Part
+          title="When they received it"
+          says={set.receivedAt ? "Recorded" : "Not recorded yet, so nothing is running"}
+          open={step.at === "received"}
+        >
           <p className="mt-1 text-[13px] text-ink-soft">
             Sent {set.sentAt ? whenLocal(set.sentAt) : "—"} to {set.sentTo.join(", ") || "nobody recorded"}.
             {set.sentMessageId && (
@@ -277,12 +303,15 @@ export default async function SetPage({
               <button className={plain}>Correct the date</button>
             </form>
           )}
-        </section>
+        </Part>
       )}
 
       {set.state === "sent" && mayManage && !surcharge && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Was anybody in this set hired?</h2>
+        <Part
+          title="Was anybody in this set hired?"
+          says={"Asked three months after it went, by a clock"}
+          open={false}
+        >
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
             Three months after a set goes out, a clock asks. If one of these people is working there and nobody told
             us, the agreement provides for a surcharge; if we are wrong, say so and the question closes. Nobody is
@@ -315,7 +344,7 @@ export default async function SetPage({
             </label>
             <button className={plain}>Close the question</button>
           </form>
-        </section>
+        </Part>
       )}
 
       {surcharge && (
@@ -328,8 +357,11 @@ export default async function SetPage({
         </p>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
+      <Part
+        title="What happened to it"
+        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+        open={false}
+      >
         {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {theirAudit.map((entry, i) => (
           <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
@@ -340,7 +372,7 @@ export default async function SetPage({
             </p>
           </div>
         ))}
-      </section>
+      </Part>
     </div>
   );
 }

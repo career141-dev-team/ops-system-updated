@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import Nav from "@/app/Nav";
+import Sidebar from "@/app/Sidebar";
+import { desk, openTasksFor } from "@/data/desk";
+import { workByPage } from "@/lib/sectionWork";
 import { currentMember } from "@/lib/session";
 import { ROLE_LABEL, can } from "@/lib/roles";
 import "./globals.css";
@@ -13,13 +14,18 @@ export const metadata: Metadata = {
 };
 
 /**
- * One header, one page per thing. No overlays, no drawers: everything opens as
- * its own page (owner's rule, 2 Nov).
+ * The shell (24, sections 3, 12 and 13).
  *
- * The header has two levels and no more: five sections, and under them the
- * pages of the section you are in (23, section 3). What a person may see is
- * worked out here, where the session is, and handed to the navigation - which
- * knows which page you are on and nothing else.
+ * A sidebar on the left, the page on the right, and nothing over the top of
+ * anything: no overlays, no modals, no drawers (the owner's rule, 2 Nov).
+ *
+ * It was a top bar until 5 November. Twenty-six pages do not fit across a
+ * screen, and the ones that fitted were the ones there was room for rather
+ * than the ones somebody needed. The owner showed two screens of an ATS and
+ * asked for this shape instead.
+ *
+ * What a person may see is worked out here, where the session is, and handed
+ * to the sidebar - which knows which page you are on and nothing else.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const member = await currentMember();
@@ -29,26 +35,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     "report.read": member ? can(member, "report.read") : false,
   };
 
+  // The counts beside the pages. They are your own open tasks, placed on the
+  // page their link points at, so the sidebar and the day page can never
+  // disagree about where the work is (24, section 4).
+  const counts = member ? workByPage(openTasksFor(await desk(), member.id), Date.now()) : {};
+
   return (
     <html lang="en">
       <body className="min-h-screen">
-        <header className="border-b border-rule bg-surface">
-          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3">
-            <Link href="/" className="text-[14px] font-medium">
-              Career 141 Ops
-            </Link>
-            {member && <Nav may={may} />}
-            <span className="ml-auto rounded-full bg-bg-warning px-2.5 py-1 text-[11.5px] text-warning">
-              Test data only
-            </span>
-            {member && (
-              <span className="text-[12.5px] text-ink-soft">
-                {member.name} · {ROLE_LABEL[member.role]}
-              </span>
-            )}
+        {member ? (
+          <div className="flex min-h-screen items-stretch">
+            <Sidebar may={may} counts={counts} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+            <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
           </div>
-        </header>
-        <main className="mx-auto max-w-[1100px] px-5 py-6">{children}</main>
+        ) : (
+          <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>
+        )}
       </body>
     </html>
   );

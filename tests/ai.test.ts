@@ -19,6 +19,7 @@ import {
   type AiTask,
   DAILY_BUDGET,
   MODELS,
+  aiOffReason,
   PRICE_PER_MTOK,
   costOf,
   nothing,
@@ -334,4 +335,13 @@ test("a run against a stubbed model: the request, the cost, and a bad answer", a
     globalThis.fetch = realFetch;
     delete process.env.DEEPSEEK_API_KEY;
   }
+});
+
+test("the screens are told why the AI is not offering to help", () => {
+  // The offer stays on the screen when the layer is off, so the sentence
+  // beside it has to be true and short (24, section 5).
+  assert.equal(aiOffReason(false, false), "AI is off: no model key is set yet.");
+  assert.equal(aiOffReason(false, true), "AI is off: no model key is set yet.");
+  assert.equal(aiOffReason(true, false), "AI is off: the ops lead has not switched it on.");
+  assert.equal(aiOffReason(true, true), null, "nothing to say when it is working");
 });

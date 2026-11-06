@@ -1,24 +1,51 @@
 @import "tailwindcss";
 
 /*
- * The TA System's look, in one place (owner's decision, 2 Nov): quiet paper,
- * one ink, one brand green, hairline rules. No overlays anywhere in this app,
- * so there are no dialog or backdrop styles to define.
+ * The look, in one place (24 and 25; the owner's reference screens, 5 Nov).
+ *
+ * Light, quiet, and one green. The owner sent two screens of an ATS and asked
+ * for the same feel: a white page, hairline rules, small type, soft tinted
+ * chips, and one accent that is ours rather than theirs - green, not blue.
+ *
+ * Nothing here is decoration. Every token below is used to tell one thing
+ * from another: what is a surface, what is a rule, what is late, what is
+ * done. No overlays anywhere in this app, so there are no dialog or backdrop
+ * styles to define.
  */
 @theme {
-  --color-paper: #faf9f5;
+  /* Surfaces: the page, the cards on it, and the quiet fill inside a card. */
+  --color-paper: #f7f8f7;
   --color-surface: #ffffff;
-  --color-ink: #1d1c1a;
-  --color-ink-soft: #55534e;
-  --color-ink-faint: #8b8880;
-  --color-rule: #e6e3da;
-  --color-rule-strong: #cfcbc0;
-  --color-brand: #1f6f54;
-  --color-danger: #a32d2d;
-  --color-warning: #854f0b;
-  --color-bg-warning: #faeeda;
-  --color-bg-danger: #fcebeb;
-  --color-bg-ok: #eaf3de;
+  --color-sunk: #f4f6f4;
+
+  /* Ink, in three weights and no more (24, section 6). */
+  --color-ink: #16181a;
+  --color-ink-soft: #5b6360;
+  --color-ink-faint: #8d9693;
+
+  /* Hairlines. The whole layout is made of these. */
+  --color-rule: #e6e9e7;
+  --color-rule-strong: #d2d8d5;
+
+  /* The one accent. */
+  --color-brand: #0f7a4d;
+  --color-brand-strong: #0b5f3c;
+  --color-bg-brand: #e8f5ee;
+
+  /* Meaning, not decoration: late, careful, settled. */
+  --color-danger: #b03030;
+  --color-warning: #8a5a12;
+  --color-bg-warning: #fdf3e3;
+  --color-bg-danger: #fdecec;
+  --color-bg-ok: #eaf5ec;
+
+  /* The soft chips on a row, as the reference screens use them. */
+  --color-chip-a: #eef2ff;
+  --color-chip-a-ink: #3f4ea8;
+  --color-chip-b: #fdeef2;
+  --color-chip-b-ink: #a33a5b;
+  --color-chip-c: #eef7ee;
+  --color-chip-c-ink: #2f6b3a;
 }
 
 html,
@@ -26,4 +53,20 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * One focus ring for the whole app, in the accent. Keyboard people are the
+ * ones who need it, so it only shows for them.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* A quiet scrollbar for the board, which scrolls sideways on purpose. */
+.board-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-rule-strong) transparent;
 }

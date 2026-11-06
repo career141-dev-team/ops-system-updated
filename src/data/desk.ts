@@ -2612,7 +2612,11 @@ export async function noticeCandidateOut(
     text
       .replace(/\{\{candidate\}\}/g, interview.candidateName)
       .replace(/\{\{when\}\}/g, interview.at ? colomboDateInWords(interview.at) : "the agreed time")
-      .replace(/\{\{reason\}\}/g, reason);
+      .replace(/\{\{reason\}\}/g, reason)
+      // The template signs off with the ops person's name. Nothing filled it
+      // in, so the draft read "{{opsPerson}}" - found in the mailbox on
+      // 5 November, where a whole conversation can be read at once.
+      .replace(/\{\{opsPerson\}\}/g, member(db, interview.ownerId)?.name ?? "Career 141");
 
   const message = await draftMessage({
     channel: "email",

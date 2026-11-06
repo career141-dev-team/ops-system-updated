@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { clientIn, desk, holdsNewestFirst, member as memberIn, runClocks } from "@/data/desk";
+import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
+import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
 import { currentMember } from "@/lib/session";
 
@@ -12,24 +14,43 @@ import { currentMember } from "@/lib/session";
  * to be looked at — what is waiting for somebody to approve a notice, what is
  * held and for how long, and which ones are due their thirty-day review.
  */
-export default async function HoldsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function HoldsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, q, sort } = await searchParams;
 
   await runClocks();
   const now = Date.now();
   const db = await desk();
   const holds = holdsNewestFirst(db);
-  const groups: { state: HoldState; rows: typeof holds }[] = [
-    { state: "proposed", rows: holds.filter((h) => h.state === "proposed") },
-    { state: "on_hold", rows: holds.filter((h) => h.state === "on_hold") },
-    { state: "lifted", rows: holds.filter((h) => h.state === "lifted") },
-  ];
-
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "border-t border-rule py-3 first:border-t-0";
   const days = (from: number) => Math.max(0, Math.round((now - from) / 86_400_000));
+  const rows: Listed[] = holds.map((hold) => {
+    const owner = memberIn(db, hold.ownerId)?.name ?? "nobody";
+    const client = hold.clientId ? clientIn(db, hold.clientId) : null;
+    return {
+      id: hold.id,
+      href: "/holds/" + hold.id,
+      title: client?.name ?? hold.openingTaId,
+      words: [owner, hold.openingTaId, hold.state, hold.reason],
+      says:
+        (HOLD_MEANINGS[hold.state as HoldState] ?? hold.state) +
+        " · " +
+        (hold.state === "lifted" ? (hold.liftedReason ?? hold.reason) : hold.reason),
+      at: hold.liftedAt ?? hold.heldAt ?? hold.proposedAt,
+      late: hold.state === "proposed" || Boolean(hold.reviewAt && hold.reviewAt < now),
+      who: owner,
+      chips: [
+        { what: hold.state.replace(/_/g, " "), tone: hold.state === "lifted" ? ("done" as const) : ("quiet" as const) },
+        ...(hold.state === "on_hold" ? [{ what: days(hold.heldAt ?? hold.proposedAt) + " days held", tone: "brand" as const }] : []),
+        ...(hold.state === "proposed" ? [{ what: "needs a person", tone: "late" as const }] : []),
+      ],
+    };
+  });
+  const shown = listed(rows, q, sort);
 
   return (
     <div className="flex max-w-[860px] flex-col gap-4">
@@ -43,50 +64,31 @@ export default async function HoldsPage({ searchParams }: { searchParams: Promis
 
       {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
 
-      {holds.length === 0 && (
-        <section className={card}>
-          <p className="text-[13px] text-ink-soft">
-            Nothing is on hold. One appears here when a set has been with a client for two weeks with nothing back.
-          </p>
-        </section>
-      )}
 
-      {groups.map(({ state, rows }) => {
-        if (!rows.length) return null;
-        return (
-          <section key={state} className={card}>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-[14.5px] font-medium">{HOLD_MEANINGS[state]}</h2>
-              <span className="text-[12.5px] text-ink-soft">{rows.length}</span>
-            </div>
-            {rows.map((hold) => {
-              const client = hold.clientId ? clientIn(db, hold.clientId) : null;
-              const due = hold.reviewAt !== null && hold.reviewAt <= now;
-              return (
-                <div key={hold.id} className={row}>
-                  <div className="flex flex-wrap items-baseline gap-x-3">
-                    <Link href={"/holds/" + hold.id} className="text-[13.5px] text-brand hover:underline">
-                      {client?.name ?? hold.openingTaId}
-                    </Link>
-                    {state === "on_hold" && (
-                      <span className={"text-[12px] " + (due ? "text-warning" : "text-ink-faint")}>
-                        {days(hold.heldAt ?? hold.proposedAt)} days
-                        {due ? " · due its thirty-day look" : ""}
-                      </span>
-                    )}
-                    <span className="ml-auto text-[12px] text-ink-faint">
-                      {memberIn(db, hold.ownerId)?.name ?? "nobody"}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">
-                    {hold.state === "lifted" ? hold.liftedReason ?? hold.reason : hold.reason}
-                  </p>
-                </div>
-              );
-            })}
-          </section>
-        );
-      })}
+      <Toolbar action="/holds" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
+
+      {shown.length === 0 ? (
+        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
+          {rows.length === 0
+            ? "Nothing is held. A hold is proposed by a clock when a client goes quiet for two weeks, and only holds once somebody approves the notice they get."
+            : foundInWords(0, rows.length, q)}
+        </p>
+      ) : (
+        <Table head={LIST_HEAD}>
+          {shown.map((one) => (
+            <ListRow
+              key={one.id}
+              href={one.href}
+              title={one.title}
+              says={one.says}
+              chips={one.chips}
+              who={one.who}
+              when={day(one.at)}
+              late={one.late}
+            />
+          ))}
+        </Table>
+      )}
     </div>
   );
 }

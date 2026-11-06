@@ -658,6 +658,8 @@ export default defineSchema({
     sentAt: v.union(v.number(), v.null()),
     /** What the mail server called it when it went; a reply quotes this. */
     providerMessageId: v.union(v.string(), v.null()),
+    /** The message this one answers, so a reply lands in their own thread. */
+    inReplyToProviderId: v.optional(v.union(v.string(), v.null())),
     /** Why it was blocked or failed, in words a person can act on. */
     note: v.union(v.string(), v.null()),
     attachmentFileIds: v.optional(v.array(v.string())),
