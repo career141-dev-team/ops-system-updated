@@ -1,8 +1,13 @@
 # Where the build actually is
 
-Updated 3 November 2026. This is the one page that says what exists. The eight
-phases are planned in [15](15-BUILD-PLAN.md); **phases 1 and 2 are built, tested
-and merged**, and nothing of phases 3 to 8 is written yet.
+Updated 6 November 2026. This is the one page that says what exists.
+
+**Every phase of [15](15-BUILD-PLAN.md) is built, and so are the screens.** The
+nine phases are below, each with where its pieces live and what proves them.
+What is **not** built is one thing of size - the server and pilot half of
+phase 8, which is a person's work rather than code's ([22](22-GO-LIVE.md) is
+the order) - and a short list of small ones, each named under *Not built* with
+the reason it waits.
 
 No staff, client or candidate names belong on this page. The sample data in the
 code is invented.
@@ -15,26 +20,26 @@ code is invented.
 | Who may do what | `src/lib/roles.ts` | `tests/roles.test.ts` |
 | The desk, one API over two stores | `src/data/desk.ts` (JSON file or the Ops Convex backend) | every suite |
 | The Colombo calendar and working days | `src/lib/calendar.ts` | `tests/calendar.test.ts` |
-| Settings, each change needing a reason | `src/lib/settingsRules.ts`, `app/settings` | `tests/settings.test.ts` |
+| Settings, each change needing a reason | `src/lib/settingsRules.ts`, `app/(settings)/settings` | `tests/settingsrules.test.ts` |
 | The clocks: warn, fire, leave a task | `src/lib/tick.ts`, `src/lib/timers.ts` | `tests/tick.test.ts`, `tests/timers.test.ts` |
 | A fired clock doing the work, not only the task | `AFTER_FIRED` in `src/data/desk.ts` | `tests/esa.test.ts` |
 | The clocks running themselves every five minutes | `convex/crons.ts` → `convex/ops/clock.ts` → `POST /api/clock` | `tests/clockpass.test.ts`, and curl |
-| Escalation after a day | `src/lib/escalation.ts` | `tests/escalation.test.ts` |
+| Escalation after a day | `src/lib/escalation.ts` | `tests/tick.test.ts` |
 | One way out: draft, approve, send | `src/lib/messages.ts`, `app/messages` | `tests/messages.test.ts` |
 | The three switches under sending | `src/lib/senders.ts` (`OPS_SEND`, the settings switch, `OPS_OUTBOUND_LOCK`) | `tests/senders.test.ts` |
-| Wording the ops lead can edit | `src/lib/templates.ts`, `app/templates` | `tests/templates.test.ts` |
-| Reading the mailboxes, matching a reply | `src/lib/graphMail.ts`, `src/lib/mailMatch.ts`, `app/mail` | `tests/mailmatch.test.ts` |
-| Files, and Word → PDF | `src/lib/files.ts`, `src/data/fileStore.ts`, `src/lib/docxToPdf.ts`, `app/files` | `tests/files.test.ts`, `tests/docxtopdf.test.ts` |
-| Call tasks (a person calls; the outcome is written down) | `src/lib/calls.ts`, `app/calls` | `tests/calls.test.ts` |
-| The TA link: reads, writes, events | `src/lib/ta.ts`, `src/lib/outbox.ts`, `src/lib/taEvents.ts`, `app/ta` | `tests/outbox.test.ts`, `tests/taevents.test.ts` |
-| The holiday list, today's numbers | `src/lib/holidays.ts`, `src/lib/baseline.ts` | `tests/holidays.test.ts`, `tests/baseline.test.ts` |
+| Wording the ops lead can edit | `src/lib/templates.ts`, `app/(settings)/templates` | `tests/templates.test.ts` |
+| Reading the mailboxes, matching a reply | `src/lib/graphMail.ts`, `src/lib/mailMatch.ts`, `app/(inbox)/mail` | `tests/mailmatch.test.ts` |
+| Files, and Word → PDF | `src/lib/files.ts`, `src/data/fileStore.ts`, `src/lib/docxToPdf.ts`, `app/(settings)/files` | `tests/files.test.ts`, `tests/docxtopdf.test.ts` |
+| Call tasks (a person calls; the outcome is written down) | `src/lib/calls.ts`, `app/(inbox)/calls` | `tests/calls.test.ts` |
+| The TA link: reads, writes, events | `src/lib/ta.ts`, `src/lib/outbox.ts`, `src/lib/taEvents.ts`, `app/(settings)/ta` | `tests/outbox.test.ts`, `tests/taevents.test.ts` |
+| The holiday list, today's numbers | `src/lib/holidays.ts`, `src/lib/baseline.ts` | `tests/holidays.test.ts`, `tests/runthrough.test.ts` |
 | One run-through of the whole phase | — | `tests/runthrough.test.ts` |
 
 ## Built: phase 2, client onboarding
 
 | Piece | Where | Notes |
 |---|---|---|
-| Leads from anywhere | `src/lib/leads.ts`, `app/leads` | one way to reply is required |
+| Leads from anywhere | `src/lib/leads.ts`, `app/(clients)/leads` | one way to reply is required |
 | Website leads posting themselves in | `app/api/leads/website`, `src/lib/webLead.ts` | key in a header; see [WEBSITE-LEAD-FORM.md](WEBSITE-LEAD-FORM.md) |
 | Is this company already ours? | `duplicateMatch` in `src/lib/leads.ts` | exact match linked, near match only offered |
 | The banking and finance rule | `flagIndustry` in `src/lib/leads.ts` | reads the company and what they say they do, **never what they want to hire** |
@@ -44,8 +49,8 @@ code is invented.
 | The chase: email, WhatsApp, email, WhatsApp, email, call | `CHASE_PLAN`, `chaseTheAgreement` in `src/data/desk.ts` | the clock drafts it; a person approves it; a reply stops it |
 | They want changes | `recordChangesWanted` in `app/actions.ts` | chasing stops, the version moves on, the two weeks keep running |
 | Signed, countersigned, declined | `app/actions.ts` | settling an agreement stops every clock on it |
-| The client record | `src/lib/clients.ts`, `app/clients` | made by the system, never typed; one company, one record, one owner |
-| The desk's two morning views | top of `app/leads/page.tsx` | meetings booked; agreements not back yet |
+| The client record | `src/lib/clients.ts`, `app/(clients)/clients` | made by the system, never typed; one company, one record, one owner |
+| The desk's two morning views | top of `app/(clients)/leads/page.tsx` | meetings booked; agreements not back yet |
 
 ## Built: phase 3, the hand-over
 
@@ -58,12 +63,12 @@ code is invented.
 | Handing it to TA | `handOverToTa` | refused before the agreement is signed and refused on a half-written requirement; the opening is **queued**, never created here |
 | TA confirming the opening | `takeOpeningCreated` in `src/data/desk.ts` | from TA's own event; a TA opening one by hand for our client becomes a position with "link a requirement" |
 | What TA says afterwards | `takeOpeningUpdate` | the JD approved, the working stage, the closing |
-| The primary TA and the 100% day | `setPositionTeam`, screens `app/positions` | the TA lead decides; Ops records it and tells TA |
+| The primary TA and the 100% day | `setPositionTeam`, screens `app/(positions)/positions` | the TA lead decides; Ops records it and tells TA |
 
 | The LinkedIn post recorded | `recordLinkedInPost`, `src/lib/adverts.ts` | only a real LinkedIn post address is taken (a wrong link looks done), the share tail is cut, and TA is told because that is what unlocks Live |
-| Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
+| Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/(positions)/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
 
-| The weekly report | `src/lib/reports.ts`, `buildWeeklyReport` in `src/data/desk.ts`, screens `app/reports` | built at eight on a Monday by its own clock, which sets the next Monday itself; one line per open position read from TA's pipeline and our own rows; a position TA cannot be read for keeps its line and says so rather than showing a zero; the ops lead reads it, and only then is the Director's email drafted |
+| The weekly report | `src/lib/reports.ts`, `buildWeeklyReport` in `src/data/desk.ts`, screens `app/(reports)/reports` | built at eight on a Monday by its own clock, which sets the next Monday itself; one line per open position read from TA's pipeline and our own rows; a position TA cannot be read for keeps its line and says so rather than showing a zero; the ops lead reads it, and only then is the Director's email drafted |
 
 | TopJobs, the paid advert | `src/lib/adverts.ts`, `src/data/desk.ts`, screens `app/adverts` | a TA asks from the position, marketing's flyer (an image, never a JD), the order drafted with the flyer attached and what they charge written down, TopJobs' own live date, two weeks, then closed with the CV count TA gives us. TA is told the apply alias and the advert channel. Nothing spends anything by itself |
 
@@ -142,11 +147,11 @@ part that pays for everything.
 | Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
 | Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
 | Writing it off | `writeOffInvoice` | not before ninety days unless the Director of Operations decides; the guarantee is void and the position closes |
-| Screens | `app/placements`, `app/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
+| Screens | `app/(money)/placements`, `app/(money)/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
 
 | The surcharge and the credit note | `draftSurchargeInvoice`, `draftCreditNote` | both are invoices of their own kind, with what they are about written on them; a credit note is a document against an invoice, never a negative payment |
 | The money as a file | `src/lib/exports.ts`, `app/api/exports/[what]` | invoices.csv and payments.csv, accounts only, one row per thing; a cell that starts with `=` is defused, because a CSV that runs formulas is a hole |
-| Where we and TA may disagree | `invoiceDrift`, shown on `app/invoices` | a sent invoice whose write to TA never got through - TA's closing checklist reads that state, so it matters |
+| Where we and TA may disagree | `invoiceDrift`, shown on `app/(money)/invoices` | a sent invoice whose write to TA never got through - TA's closing checklist reads that state, so it matters |
 
 Still to come in phase 6: the **invoice document** (it waits on a template
 from the owner, exactly as the agreement did - until then the lines go in the
@@ -164,13 +169,13 @@ the invoices screen instead, which is where somebody would act on it.
 | Somebody left | `markLeaver`, and the owner's button | unpaid fee → **void**, nothing replaced and nothing refunded, the position closes; paid fee → **replacing**: TA is told they left, the position reopens, and sixty **working** days start |
 | A replacement | `takeReplacement`, from the next `placement.created` on that opening | marked a replacement so nothing is invoiced again, the old guarantee closes as replaced, and the new one starts its own ninety days |
 | The refund | `askAboutRefund` clock → the Director's decision in `decideRefund` | **50% of what was paid** (the agreement; our board said 25%), by decision and never by a clock. The Director may decide before the sixty days are up, and that is written down as what it was |
-| The close list | `openCloseChecklist`, `tickCloseItem`, `completeClose`; screens `app/closes` | every way a position ends opens it: a clean end, a refund, a write-off, a void guarantee, a client who stopped, or a TA who closed the opening first. Only the items this position really had, and closing the opening in TA is an item of its own - an opening closed with a live advert is how somebody applies to a job that has gone |
+| The close list | `openCloseChecklist`, `tickCloseItem`, `completeClose`; screens `app/(money)/closes` | every way a position ends opens it: a clean end, a refund, a write-off, a void guarantee, a client who stopped, or a TA who closed the opening first. Only the items this position really had, and closing the opening in TA is an item of its own - an opening closed with a live advert is how somebody applies to a job that has gone |
 | Nothing left open for a client | `completeClose` | their last position closing leaves a task, not an automatic change: whether they are finished with us is a person's call |
-| Screens | `app/guarantees`, `app/closes` | ending this month first, then who has left, then the rest |
+| Screens | `app/(money)/guarantees`, `app/(money)/closes` | ending this month first, then who has left, then the rest |
 
 The weekly report (step 9) was built on 3 November and is above.
 
-| The numbers | `src/lib/numbers.ts`, screen `app/numbers` | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
+| The numbers | `src/lib/numbers.ts`, screen `app/(reports)/numbers` | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
 
 Still to come in phase 7: the credit note **document**, which waits on the same
 template work as the invoice.
@@ -182,7 +187,7 @@ template work as the invoice.
 | The whole flow in one test | `tests/wholeflow.test.ts` | enquiry to close: a set out, the client's decision, the depth counted, an interview held, a placement, the fee invoiced and paid, ninety clean days, the position closed - and a last check that every client message is still only a draft |
 | TA down, a handler throwing, every switch off | `tests/hardening.test.ts` | writes queue with their keys and wait longer each time, reads answer "could not be read" rather than throwing, one bad clock does not stop the pass, and with the senders off nothing can leave the building |
 | The ops lead's own TA-writes switch | `pushOutbox` in `src/data/desk.ts` | it now really holds the link: the writes stay queued while it is off. It was read from the environment only, so the switch on the Settings screen did nothing |
-| The first-day import | `src/lib/importer.ts`, screen `app/import` | clients and who owns each, the holiday list, the ops people. A dry run first every time, and the same code builds the dry run and the real run; a bad row stops itself and names its line; a file run twice adds nothing |
+| The first-day import | `src/lib/importer.ts`, screen `app/(settings)/import` | clients and who owns each, the holiday list, the ops people. A dry run first every time, and the same code builds the dry run and the real run; a bad row stops itself and names its line; a file run twice adds nothing |
 | Production deploy files | `deploy/production/` | the preview's shape with production names and ports, **every switch off on the first deploy**, and the order to turn them on written at the top of the env example |
 | Runbooks | `docs/runbooks/` | the wrong recipient, the mail reader stalled, the TA link down, events stuck, pausing Ops, restoring, rotating a key - and every switch in one table |
 | Going live | [22](22-GO-LIVE.md) | the server once, backups rehearsed, the first deploy with everything off, one switch a day, the pilot, which sheet stops when, and what is still not built |
@@ -208,8 +213,8 @@ rather than breaking.
 | Reading what a client sent | `readInbound` | proposes the decisions per candidate in the client's own words, the times offered, a claim, a cancellation - into a task to confirm. It records nothing |
 | Improving a draft | `improveDraft`, `useImprovedDraft` | rewrite, shorter, warmer, more formal; the new words are offered **beside** the draft, and "use this" or "leave it" is recorded as the accuracy sample |
 | Summaries | `summariseClient` | a client's own rows in a paragraph, with what it could not see named |
-| The ask box | `askTheDesk`, screen `app/ai` | read-only, from our own rows, inside what that person could read anyway, naming what it used |
-| Costed, sampled, switchable | screen `app/ai`, settings `switch.aiEnabled`, `ai.dailyBudget`, `ai.task.*` | today's spend against the cap, and how often each task's proposals were used as they came - under half and the screen says to fix the prompt or switch it off |
+| The ask box | `askTheDesk`, screen `app/(settings)/ai` | read-only, from our own rows, inside what that person could read anyway, naming what it used |
+| Costed, sampled, switchable | screen `app/(settings)/ai`, settings `switch.aiEnabled`, `ai.dailyBudget`, `ai.task.*` | today's spend against the cap, and how often each task's proposals were used as they came - under half and the screen says to fix the prompt or switch it off |
 
 What it will never do, and why: no AI telephone calls (the owner's decision
 7); no AI deciding a rejection, a hold or a decline; no AI sending anything;
@@ -220,31 +225,73 @@ Still to come in phase 9: the reply drafting screen (the rule and the prompt
 are built, the button is not), "why this first" on the day page, and the ask
 box that *does* things (step 14) - which is deliberately last.
 
-## Built: the screens, step one and two (23)
+## Built: the screens
 
-The plan for every screen is [23](23-UI-PLAN.md): what is wrong now, the five
-rules, the three page patterns, screen by screen, and the order to build it.
-Steps one and two of that order are done.
+Three documents, in the order they were written, and the last one is the one
+that counts: [23](23-UI-PLAN.md) is the first plan, [24](24-UI-STRUCTURE.md)
+says what every screen must carry and where the AI appears, and
+[25](25-UI-ARCHITECTURE.md) is the layout as it stands - written after the
+owner said on 5 November that the screens were still sloppy, with tabs inside
+tabs and nothing joining the parts. 25 replaced the layout halves of 23 and 24;
+their rules about *wording* still hold.
+
+The rule is three levels and never four: the sidebar, the page, and one tab bar
+on that page.
 
 | Piece | Where | Notes |
 |---|---|---|
-| The shell: five sections, two levels | `src/lib/nav.ts`, `app/Nav.tsx`, `app/layout.tsx` | Today, Clients, The search, Money, Set up - and under them the pages of the section you are in. Twenty-four links in one row was the fault; nothing is hidden behind a hover, and a page in no section would fail a test |
-| "What to do now" | `app/NextStep.tsx`, `src/lib/nextStep.ts` | the card at the top of a page about one thing: what is waiting and on whom, the one button that moves it, and what will happen by itself and when. Every word comes from the same rules the buttons obey, so it cannot drift |
-| The lead, rebuilt | `app/leads/[id]` | the card, then the record in sections, with the section the step belongs to outlined. Nine forms at once was the complaint on 3 Nov |
-| The client, rebuilt | `app/clients/[id]` | the card says what the record is missing (a billing address, the group's name) or points at where the work really is |
+| The sidebar: eight entries that never grow | `src/lib/nav.ts`, `app/Sidebar.tsx` | Your day · The work · Inbox · Clients · Positions · Money · Reports · Settings. It was 27 entries. `COVERS` says which pages each one covers, so the "you are here" mark and the counts read one list and cannot disagree. A new feature belongs to one of the eight or it belongs in Settings |
+| One tab bar per page, never a second | `app/ui.tsx` (`Tabs`), `app/AreaHead.tsx`, `src/lib/tabs.ts`, six `(area)/layout.tsx` files | the area's bar lives in a route-group layout, and steps aside on a record, which has its own. A record's header - name, state, owner, the next-step card - sits **above** the bar and never changes between tabs |
+| Every sidebar entry has a page behind it | `tests/nav.test.ts` | Money pointed at `/money`, which had no page, so clicking it gave a 404 (6 Nov). The test reads the sidebar against the filesystem rather than against anybody's memory |
+| "What to do now" | `app/NextStep.tsx`, `src/lib/nextStep.ts` | the card on a page about one thing: what is waiting and on whom, the one button that moves it, and what happens by itself and when. Every word comes from the rules the buttons obey, so it cannot drift. One per kind: lead, client, set, hold, interview, position, placement, invoice, guarantee |
+| The board | `app/work/page.tsx`, `src/lib/journey.ts` | `/work` is a column per stage in the order work moves. A lead's agreement outranks its meeting; a position is read **backwards from the end**, because forwards puts a placed candidate back in "with the client" over one unanswered old set. Deliberately not draggable: a stage is the consequence of a decision, not a thing you move |
+| The mailbox | `app/(inbox)/mail`, `src/lib/mailbox.ts` | conversations, not messages: `Re:`/`FW:` stripped, filed-against beating the subject, two clients two threads, `In-Reply-To` joining what it answers. A reply is written in the thread and carries the header, so it lands under their email. "What we have said to them" on the client, "what the client was told" on the position |
+| Every list, the same four columns | `app/ui.tsx` (`Toolbar`, `Table`, `ListRow`), `src/lib/listing.ts` | name with its one plain line · state as short chips · owner · last moved, over a plain GET form. Every word of a search must appear; late first is the default order; an unknown order is the default rather than a blank table; an empty table says what would fill it |
+| One box that finds anything | `app/find/page.tsx` | enquiries, clients, positions, sets, interviews, placements and invoices in one search, on the same rule the lists use, so what it finds and what a list finds are the same thing |
+| Light and green, in one place | `app/globals.css`, `app/ui.tsx` | one header, one tab bar, one table, one chip. Twenty-six screens cannot drift into twenty-six shapes if there is one of each |
+| The AI, offered while it is off | `app/AiOffer.tsx`, `aiOffReason` in `src/lib/ai.ts` | a dashed chip saying *why* it is off - no key, or the switch - rather than a disabled button that explains nothing |
 
-Still to come, in the order 23 gives: the search's screens, money's screens,
-and the day page's section counts. Every one of them works today, and gets
-the pattern as it is opened for another reason.
+Nothing is a modal, a drawer or an overlay, and nothing hides behind a hover.
 
 ## Not built
 
-The server and pilot half of phase 8.
+**The server and pilot half of phase 8**, which is a person's work, not code's.
+[22](22-GO-LIVE.md) is the order: the server once, backups rehearsed before
+anything real is in it, the first deploy with every switch off, then one switch
+a day, then two weeks with one client.
 
-**The link to TA is a stand-in.** `OPS_TA_FAKE=on` answers with recorded sample
-data, because the TA side of the API does not exist yet. Making it real is a
-pull request in the TA repository (Part E of the plan), API only, adding
-endpoints and never changing what TA already has.
+Small things still open, each with its reason:
+
+| Thing | Why it waits |
+|---|---|
+| The invoice and credit-note **documents** | they wait on a template from the owner, exactly as the agreement did. Until then an invoice goes as lines in the body of an email, which works and is not our paperwork |
+| The Teams meeting made from the Ops mailbox | a calendar permission nobody has granted |
+| The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
+| Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
+| The AI's "what to do first today", and an ask box that *acts* | phase 9 steps 12 and 14. Everything else of phase 9 is built and switched off |
+| Reading the client's offered interview times; the ICS export | phase 9, and small |
+| Contract tests shared with the TA repo, and the load check | both need the real API answering rather than the stand-in |
+| TopJobs | built end to end; **paused by the owner on 3 November** |
+
+## The link to TA is real, and shut
+
+The TA side of the API **exists and is live**. ta-system PR #361 was merged on
+5 November and released, so `convex/integrations/opsRead.ts`, `opsReadHttp.ts`,
+`opsWrite.ts`, `opsWriteHttp.ts` and `convex/lib/opsEvents.ts` - all in the
+**ta-system** repository - are running in production. The contract is
+`docs/OPS-SYSTEM-API.md` there.
+
+It answers 401 until somebody sets the token, so Ops still runs on the stand-in
+(`OPS_TA_FAKE=on`) and every screen says so. Three settings open it, in order:
+
+| Set this | Where | What it does |
+|---|---|---|
+| `OPS_API_TOKEN` | the TA deployment | opens the door at all. The same value goes on Ops as `OPS_TA_TOKEN` |
+| `OPS_TA_FAKE=off`, `OPS_TA_READS_ENABLED=on` | Ops | real people, real openings, the real events feed |
+| `OPS_API_WRITES_ENABLED=on` + `OPS_API_ACTOR_EMAIL` | the TA deployment | lets Ops write. Ops needs `OPS_TA_WRITES_ENABLED` **and** `switch.taWritesEnabled` in Settings as well |
+
+Either side off and a write waits in our outbox. Nothing is lost, and nothing
+goes twice: every write carries an idempotency key the TA side keeps.
 
 ## Planned, and worth reading before anything AI is built
 
@@ -252,7 +299,7 @@ endpoints and never changing what TA already has.
 the AI productivity layer - dictation into our own fields, reading what arrives,
 improving the drafts we already make, summaries, and one ask box - with what the TA
 System already does (and so is never rebuilt here), what is refused and why, the cost
-and accuracy machinery, and the priority order. Nothing of it is built.
+and accuracy machinery, and the priority order. It is **built and switched off** - see phase 9 above; what is left of it is in *Not built*.
 
 ## Waiting on a person, not on code
 
@@ -268,6 +315,13 @@ and accuracy machinery, and the priority order. Nothing of it is built.
   anything but the lines in an email.
 - A calendar permission for the Ops mailbox, or an interview's Teams link
   stays something a person pastes in.
+- `OPS_API_TOKEN` on the TA deployment, and the same value as `OPS_TA_TOKEN`
+  here, or the link stays shut and Ops runs on recorded sample data.
+- The Ops WhatsApp number bought and verified, or there is no WhatsApp
+  conversation to show.
+- An `ANTHROPIC_API_KEY` or a `DEEPSEEK_API_KEY`, then `switch.aiEnabled` in
+  Settings. Either key alone is enough; with none the layer is off and every
+  screen says which of the two reasons it is.
 
 ## Rules the code enforces, and why
 
@@ -290,7 +344,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 39 suites, each in its own process
+node tests/run.mjs        # all 43 suites, each in its own process
 npx tsc --noEmit          # types
 ```
 
