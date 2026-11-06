@@ -11,7 +11,7 @@ code is invented.
 
 | Piece | Where | Proved by |
 |---|---|---|
-| Sign-in (pick a name, development only) | `src/lib/session.ts`, `app/sign-in` | clicking it |
+| **Sign-in: Microsoft, with the ops team as the allow-list** | `src/lib/signIn.ts`, `src/lib/seal.ts`, `src/lib/session.ts`, `app/sign-in` | `tests/signin.test.ts`. Built 6 Nov, because there was none: you picked a name from a list. Pick-your-name remains for development and is **refused outright** wherever Microsoft is set up |
 | Who may do what | `src/lib/roles.ts` | `tests/roles.test.ts` |
 | The desk, one API over two stores | `src/data/desk.ts` (JSON file or the Ops Convex backend) | every suite |
 | The Colombo calendar and working days | `src/lib/calendar.ts` | `tests/calendar.test.ts` |

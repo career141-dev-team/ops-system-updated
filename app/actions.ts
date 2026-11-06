@@ -120,7 +120,7 @@ import {
   type Thread,
 } from "@/lib/mailbox";
 import { settingChange } from "@/lib/settingsRules";
-import { groupPostIsManual, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
+import { groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
@@ -579,7 +579,10 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   const verdict = gate(
     { ...message, state: "approved" },
     {
-      outreachLive: switchedOn(db, "switch.outreachLive"),
+      // Both have to agree: the environment may permit it and the desk must
+      // have switched it on. A restored database carries the setting; it
+      // cannot carry the environment (6 Nov).
+      outreachLive: switchedOn(db, "switch.outreachLive") && outreachLiveInEnv(),
       testRecipient: (process.env.OPS_TEST_EMAIL ?? "").trim() || "test@example.test",
       doNotContact: [],
       sentToClientToday: 0,

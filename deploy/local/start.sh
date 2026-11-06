@@ -32,6 +32,14 @@ export CONVEX_SELF_HOSTED_ADMIN_KEY="$LOCAL_ADMIN_KEY"
 export OPS_SESSION_SECRET="$LOCAL_SESSION_SECRET"
 export OPS_STORE=convex
 export OPS_DEV_SIGNIN=on
+
+# The backend starts empty. Without this it has no functions, so the first
+# read fails and every screen is an error (found 6 Nov writing docs/26). It is
+# the same `convex deploy` the preview workflow runs, and it is safe for
+# exactly one reason: CONVEX_SELF_HOSTED_URL is 127.0.0.1, which is this
+# laptop's own backend and can be nothing else.
+echo "Pushing the Ops functions to the local backend..."
+npx convex deploy -y
 echo "Backend:   http://127.0.0.1:3310"
 echo "Dashboard: http://127.0.0.1:6891"
 exec npx next dev -p "${PORT:-3300}" --webpack

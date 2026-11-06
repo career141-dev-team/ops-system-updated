@@ -38,8 +38,14 @@ own versions. That bucket is Ops' own, never TA's.
 ## 3. The first deploy: everything off
 
 `OPS_SEND=off`, `OPS_OUTREACH_LIVE` empty, `OPS_OUTBOUND_LOCK=on`,
-`OPS_MAIL_READ=off`, `OPS_TA_FAKE=on`, both TA switches off, and
-`OPS_DEV_SIGNIN=off` with Clerk as the door. In that state Ops cannot reach a
+`OPS_MAIL_READ=off`, `OPS_TA_FAKE=on`, both TA switches off, and **Microsoft
+sign-in** - `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `OPS_APP_URL`
+and `OPS_SESSION_SECRET`, which between them refuse the development door
+whatever `OPS_DEV_SIGNIN` says. (This line read "`OPS_DEV_SIGNIN=off` with
+Clerk as the door" until 6 November. Clerk was never built, and in that state
+the app served nobody at all: every page redirected to a sign-in that could
+sign nobody in. Microsoft replaced it because the same admin is already
+granting the Graph mail permissions.) In that state Ops cannot reach a
 client, a candidate or the TA System's database however hard anybody clicks.
 
 Then the first day's data, on the **First day** screen: the clients and who
@@ -57,9 +63,10 @@ once reads are on.
 |---|---|---|
 | 1 | `OPS_MAIL_READ=on` | the Mail screen's last run per mailbox; replies filing against the right lead or set |
 | 2 | `OPS_TA_READS_ENABLED=on`, `OPS_TA_FAKE=off` | the TA System screen: real people, real openings; the events cursor age |
-| 3 | `OPS_TA_WRITES_ENABLED=on` **and** `switch.taWritesEnabled` in Settings | the outbox draining in order, nothing stuck |
+| 3 | `OPS_TA_WRITES_ENABLED=on` **and** `switch.taWritesEnabled` in Settings, **and** `OPS_API_WRITES_ENABLED=on` + `OPS_API_ACTOR_EMAIL` on the **TA** deployment | the outbox draining in order, nothing stuck. All four, and two of them are on the other system |
 | 4 | `OPS_SEND=on`, the lock still on and holding the pilot client's addresses | one real message, read before it goes |
-| later | `OPS_OUTREACH_LIVE=on`, the lock off | everybody |
+| 5 | `OPS_OUTREACH_LIVE=on` **and** `switch.outreachLive` in Settings | real clients receive what we send, instead of the test address. Both, and the Health screen names whichever is still off |
+| later | the lock off | everybody. This is the real step, and the one that needs the most thought |
 
 Every one of those is reversible in under a minute, and nothing is lost while
 one is off: clocks keep their dates, writes stay queued, messages record as
@@ -99,7 +106,7 @@ only from an event.
 
 | Thing | Why it waits |
 |---|---|
-| The TA-side API (`/integrations/v1/...`) | a TA pull request; until it exists production runs on the stand-in and says so on every screen |
+| ~~The TA-side API~~ | **Built, merged and live since 5 November** (ta-system #361). It answers 401 until `OPS_API_TOKEN` is set, so production still runs on the stand-in and says so on every screen |
 | The invoice and credit note documents | they wait on a template from the owner, exactly as the agreement did |
 | The Teams meeting made from the Ops mailbox | a calendar permission the owner has yet to grant |
 | TopJobs | paused by the owner on 3 November |

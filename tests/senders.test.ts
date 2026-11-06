@@ -12,6 +12,8 @@ import test from "node:test";
 import {
   emailAllowed,
   groupPostIsManual,
+  outreachInWords,
+  outreachLiveInEnv,
   phoneAllowed,
   sendEmail,
   sendWhatsApp,
@@ -79,4 +81,32 @@ test("a WhatsApp group is posted by a person, and the system says so plainly", (
   assert.equal(outcome.ok, true);
   assert.equal(outcome.providerMessageId, null);
   assert.match(outcome.reason ?? "", /from your phone/);
+});
+
+test("outreach to real people needs the environment as well as the desk", () => {
+  // The setting lives in the database, so it travels with a restored backup.
+  // The environment does not, which is the whole point of having both (6 Nov).
+  delete process.env.OPS_OUTREACH_LIVE;
+  assert.equal(outreachLiveInEnv(), false, "unset is off, like every other switch here");
+  process.env.OPS_OUTREACH_LIVE = "off";
+  assert.equal(outreachLiveInEnv(), false);
+  process.env.OPS_OUTREACH_LIVE = "ON";
+  assert.equal(outreachLiveInEnv(), true, "the case of the word is not the point");
+  process.env.OPS_OUTREACH_LIVE = " on ";
+  assert.equal(outreachLiveInEnv(), true, "a space in an env file is not a decision");
+  process.env.OPS_OUTREACH_LIVE = "true";
+  assert.equal(outreachLiveInEnv(), false, "only the word we document turns it on");
+  delete process.env.OPS_OUTREACH_LIVE;
+});
+
+test("the health screen says which of the two is off, not just that it is off", () => {
+  assert.match(outreachInWords(true, true), /^on/);
+  assert.match(outreachInWords(false, false), /neither/);
+  // The two that send somebody looking in the wrong place unless they are named.
+  assert.match(outreachInWords(false, true), /OPS_OUTREACH_LIVE/);
+  assert.match(outreachInWords(true, false), /switch\.outreachLive/);
+  // Three of the four are test mode, and each says so in the first words.
+  for (const [a, b] of [[false, false], [false, true], [true, false]] as const) {
+    assert.match(outreachInWords(a, b), /^test mode/);
+  }
 });
