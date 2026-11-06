@@ -344,7 +344,8 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 43 suites, each in its own process
+node tests/run.mjs        # all 46 suites, each in its own process, on the JSON store
+npm run test:convex       # the same 46 against the Ops backend on this laptop
 npx tsc --noEmit          # types
 ```
 
