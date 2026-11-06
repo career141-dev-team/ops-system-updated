@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
+import type * as ops_clock from "../ops/clock.js";
 import type * as ops_data from "../ops/data.js";
 
 import type {
@@ -17,6 +19,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
+  "ops/clock": typeof ops_clock;
   "ops/data": typeof ops_data;
 }>;
 

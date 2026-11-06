@@ -284,6 +284,7 @@ export const seed = internalMutation({
         sentAt: null,
         providerMessageId: null,
         note: null,
+        attachmentFileIds: [],
         createdAt: message.createdAt,
       });
     }
@@ -1380,6 +1381,8 @@ export const draftMessage = internalMutation({
       sentAt: null,
       providerMessageId: null,
       note: null,
+      // A caller may leave it out; the row never does (6 Nov).
+      attachmentFileIds: args.attachmentFileIds ?? [],
       createdAt: Date.now(),
     });
     await writeAudit(ctx, {

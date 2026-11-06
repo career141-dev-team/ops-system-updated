@@ -64,7 +64,6 @@ export default defineSchema({
     active: v.boolean(),
     /** The same person in the TA System, matched by email. */
     taUserId: v.union(v.string(), v.null()),
-    clerkUserId: v.optional(v.string()),
   })
     .index("by_email", ["email"])
     .index("by_role", ["role"]),
@@ -662,7 +661,16 @@ export default defineSchema({
     inReplyToProviderId: v.optional(v.union(v.string(), v.null())),
     /** Why it was blocked or failed, in words a person can act on. */
     note: v.union(v.string(), v.null()),
-    attachmentFileIds: v.optional(v.array(v.string())),
+    /**
+     * Always a list, never missing (6 Nov).
+     *
+     * It was optional, so a message written without it came back from Convex
+     * with no field at all, while the TypeScript type says `Id[]` - and the
+     * mailbox read `.length` of it. Every screen was fine on the JSON store
+     * and /mail was a 500 on the real one. A field the type calls required is
+     * required here too.
+     */
+    attachmentFileIds: v.array(v.string()),
     createdAt: v.number(),
   })
     .index("by_state", ["state"])

@@ -104,13 +104,26 @@ code behind it is real and finished — `convex/ops/data.ts` is 2,081 lines and
 
 **You need:** Docker Desktop running. Nothing else, no account, no key.
 
-**I do:** fix the missing deploy step (1.3), then run the whole suite against
-the Convex store rather than the JSON one. Every test today proves the rules
-on JSON; the Convex path has never been exercised end to end, and that is the
-sort of gap that only shows up with real data in it.
+**Done, 6 November.** The backend was brought up, the functions pushed, and
+the app walked on the real store: every page, a lead written, the record read
+back, and the clocks run. It found three things, which is why it was worth
+doing rather than assuming:
 
-**Proved by:** the app running with `OPS_STORE=convex`, the Convex dashboard
-at 127.0.0.1:6891 showing the rows, and the suites green against it.
+| Found | What it was |
+|---|---|
+| **`/mail` was a 500 on Convex and fine on JSON** | `attachmentFileIds` was `v.optional` in the schema while the TypeScript type says `Id[]`. A row written without it came back with no field at all, and the mailbox read `.length` of undefined. The schema says required now, both inserts fill it, and `tests/schema.test.ts` names the fields that may be optional so the next one is a deliberate act |
+| **The checked-in Convex index was stale** | `convex/_generated/api.d.ts` was missing `crons` and `ops/clock`. This is the same staleness that failed a TA release on 5 November |
+| **`clerkUserId` in the schema** | read by nothing, written by nothing, left from when the plan assumed Clerk. Gone |
+
+One thing that looked like a fault and was not: a saved lead bounced back to
+the sign-in screen. The cookie held a member id from a seed that had since
+been wiped, so the person it named no longer existed. Being asked to sign in
+again is the right answer to that.
+
+**Still to do here:** the suites themselves run against the JSON repository
+directly, not through the desk, so they do not exercise the Convex path. What
+proves it today is the walk. A test that runs the same rules against both
+stores is worth having before real data goes in.
 
 ---
 
