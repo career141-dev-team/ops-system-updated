@@ -81,6 +81,10 @@ npm run typecheck
 | 21 | [Where AI earns its place](docs/21-AI-OPPORTUNITIES.md) | The AI register, module by module: what the TA System already does (and so is never rebuilt here), what is worth adding, what is refused and why, the cost and accuracy rules, and the priority order. Built as Phase 9 |
 | [22](docs/22-GO-LIVE.md) | Going live: the order, the pilot, the sheets, and what stays behind |
 | [23](docs/23-UI-PLAN.md) | The screens: what is wrong, the patterns, screen by screen, and the order |
+| [24](docs/24-UI-STRUCTURE.md) | What every screen must carry, where the AI appears, and what it says while it is off |
+| [25](docs/25-UI-ARCHITECTURE.md) | The layout as built: three levels, eight sidebar entries, one tab bar per page |
+| [**26**](docs/26-RUN-IT-FOR-REAL.md) | **Page one: running the whole thing for real on one laptop** - every stand-in, what replaces it, and what each step waits on |
+| [**27**](docs/27-DEPLOYMENT-AND-KEYS.md) | **Page two: the deployment** - every key, account and permission, where each goes, and what breaks without it |
 
 Source material (the full analysis, the connection points in detail, the canvas flows as
 step lists, earlier reports) is in [`docs/reference/`](docs/reference/).
