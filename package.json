@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start -p 3300",
     "test": "node tests/run.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:convex": "sh deploy/local/test-on-convex.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

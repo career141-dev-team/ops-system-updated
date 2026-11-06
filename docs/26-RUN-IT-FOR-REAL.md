@@ -120,10 +120,30 @@ the sign-in screen. The cookie held a member id from a seed that had since
 been wiped, so the person it named no longer existed. Being asked to sign in
 again is the right answer to that.
 
-**Still to do here:** the suites themselves run against the JSON repository
-directly, not through the desk, so they do not exercise the Convex path. What
-proves it today is the walk. A test that runs the same rules against both
-stores is worth having before real data goes in.
+**Done, 6 November, and it needed one correction first.** The suites did not
+run against the JSON repository "directly" - sixteen of them import
+`src/data/desk.ts`. What was true is sharper and worse: **no test had ever
+awaited `desk()`**. They take the plain helpers that live in that file and
+never the async path, so every `usingConvex()` branch - 97 functions here, 64
+on the backend - ran for the first time when a person opened a page.
+
+The runner also forced `OPS_STORE=json` on every child process, so
+`OPS_STORE=convex node tests/run.mjs` ran on JSON and printed *All 45 suites
+passed*. A green run that proved nothing, and one I reported before noticing
+it finished in the same 95 milliseconds as the JSON run.
+
+Both are fixed:
+
+| | |
+|---|---|
+| `tests/bothstores.test.ts` | writes and reads back through the real path - a lead, a message, a clock, the audit - and checks **shape**: every field the type promises is actually there. It fails on a backend with the old schema and passes on JSON, which is the fault exactly |
+| `tests/run.mjs` | takes `OPS_TEST_STORE`, says which store it ran on in its last line, and **refuses** to fall back to JSON when asked for a backend it has not been given |
+| `npm run test:convex` | brings the backend up, pushes the functions, runs all 46 suites against it |
+
+The suite writes rows, so it refuses any address that is not this machine.
+
+**46 suites green on both stores**, and the Convex run takes 1.3 seconds where
+JSON takes 12 milliseconds - which is how you can tell it really went.
 
 ---
 
