@@ -480,7 +480,7 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
 export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
-): Promise<{ ok: boolean; reason?: string; read: number; already: number; filed: number; waiting: number; chasesStopped: number }> {
+): Promise<{ ok: boolean; reason?: string; read: number; already: number; filed: number; waiting: number; chasesStopped: number; ignored: number }> {
   // Each box carries on from the newest thing we already have from it, so a
   // pass never re-reads and never skips. A box we have never read starts from
   // the reader's own short window.
@@ -488,11 +488,11 @@ export async function readTheMailboxes(
   for (const i of (await desk()).inbound) {
     if (i.mailbox && i.receivedAt > (since[i.mailbox] ?? 0)) since[i.mailbox] = i.receivedAt + 1000;
   }
-  const { mail, problems } = await readAllMailboxes(since);
+  const { mail, problems, ignored } = await readAllMailboxes(since);
   const taken = await takeInbound(mail, by, now);
   // Some boxes may be readable and others not; say so rather than claiming
   // either a clean run or a total failure.
-  return { ...taken, ok: problems.length === 0, reason: problems.join(" ") || undefined };
+  return { ...taken, ignored, ok: problems.length === 0, reason: problems.join(" ") || undefined };
 }
 
 /** The same pass over mail from anywhere, so it can be tested and demonstrated. */

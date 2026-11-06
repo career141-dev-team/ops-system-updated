@@ -197,7 +197,7 @@ Neither has a stand-in. They need credentials and nothing else.
 | `MS_CLIENT_SECRET` | its secret |
 | **`Mail.Read`** | application permission, admin consent granted |
 | **`Mail.Send`** | application permission, admin consent granted |
-| `ops@career141.com` | the box the system sends from |
+| ~~`ops@career141.com`~~ | **Not needed, 6 Nov.** This page said it was "the box the system sends from". It is not: `app/actions.ts` sends `from: member.email`, the person's own address, always - which is the 2 November mailbox decision, so the client sees Rushda and replies to Rushda. The only shared address the code has a use for is `OPS_COMMON_MAILBOX`, copied on every client email so a thread is never one person's alone, and `opsteam@career141.com` already exists and is already read |
 
 A word on the permissions, because they are broader than they sound.
 Application permissions of this kind grant access to **every** mailbox in the

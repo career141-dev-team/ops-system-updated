@@ -28,7 +28,7 @@ code is invented.
 | One way out: draft, approve, send | `src/lib/messages.ts`, `app/messages` | `tests/messages.test.ts` |
 | The three switches under sending | `src/lib/senders.ts` (`OPS_SEND`, the settings switch, `OPS_OUTBOUND_LOCK`) | `tests/senders.test.ts` |
 | Wording the ops lead can edit | `src/lib/templates.ts`, `app/(settings)/templates` | `tests/templates.test.ts` |
-| Reading the mailboxes, matching a reply | `src/lib/graphMail.ts`, `src/lib/mailMatch.ts`, `app/(inbox)/mail` | `tests/mailmatch.test.ts` |
+| Reading the mailboxes, matching a reply | `src/lib/graphMail.ts`, `src/lib/mailMatch.ts`, `app/(inbox)/mail` | `tests/mailmatch.test.ts`. **Run against the real boxes on 6 Nov** with the TA System's own Microsoft keys - no new app registration was needed. 34 real messages in 19 seconds; 20 of them newsletters, billing and automatic replies, which `machineMail` now leaves out and the screen says it has |
 | Files, and Word → PDF | `src/lib/files.ts`, `src/data/fileStore.ts`, `src/lib/docxToPdf.ts`, `app/(settings)/files` | `tests/files.test.ts`, `tests/docxtopdf.test.ts` |
 | Call tasks (a person calls; the outcome is written down) | `src/lib/calls.ts`, `app/(inbox)/calls` | `tests/calls.test.ts` |
 | The TA link: reads, writes, events | `src/lib/ta.ts`, `src/lib/outbox.ts`, `src/lib/taEvents.ts`, `app/(settings)/ta` | `tests/outbox.test.ts`, `tests/taevents.test.ts` |

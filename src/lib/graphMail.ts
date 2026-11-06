@@ -37,7 +37,7 @@ import "server-only";
  * like good news.
  */
 
-import { isOurs } from "./mailMatch";
+import { isOurs, machineMail } from "./mailMatch";
 
 export interface InboundMail {
   /** Which of our mailboxes it arrived in. */
@@ -52,7 +52,7 @@ export interface InboundMail {
 }
 
 export type ReadResult =
-  | { ok: true; mail: InboundMail[]; mailbox: string; ms: number }
+  | { ok: true; mail: InboundMail[]; mailbox: string; /** Newsletters and the like, left out on purpose. */ ignored: number; ms: number }
   | { ok: false; mailbox: string; reason: string };
 
 /** How many to take in one pass, and how long the whole pass may take. */
@@ -193,8 +193,21 @@ export async function readOneMailbox(address: string, since: number): Promise<Re
     }
     const json = (await response.json()) as { value?: GraphMessage[] };
 
+    // Our own people first, then anything no person sent (6 Nov). The second
+    // one is counted rather than silently dropped: the screen says how many
+    // and why, because quietly losing a client's email would be far worse
+    // than showing a newsletter.
+    let ignored = 0;
     const mail: InboundMail[] = (json.value ?? [])
       .filter((m) => !isOurs(m.from?.emailAddress?.address ?? "", ourDomains()))
+      .filter((m) => {
+        const why = machineMail({
+          from: m.from?.emailAddress?.address ?? "",
+          headers: m.internetMessageHeaders ?? [],
+        });
+        if (why) ignored += 1;
+        return !why;
+      })
       .map((m) => ({
       mailbox: address,
       providerId: m.id,
@@ -207,7 +220,7 @@ export async function readOneMailbox(address: string, since: number): Promise<Re
         m.internetMessageHeaders?.find((h) => h.name.toLowerCase() === "in-reply-to")?.value ?? null,
       }));
 
-    return { ok: true, mail, mailbox: address, ms: Date.now() - started };
+    return { ok: true, mail, mailbox: address, ignored, ms: Date.now() - started };
   } catch (e) {
     const timedOut = (e as Error)?.name === "TimeoutError";
     return {
@@ -225,23 +238,25 @@ export async function readOneMailbox(address: string, since: number): Promise<Re
  */
 export async function readAllMailboxes(
   since: Record<string, number> = {},
-): Promise<{ mail: InboundMail[]; problems: string[]; read: string[] }> {
+): Promise<{ mail: InboundMail[]; problems: string[]; read: string[]; ignored: number }> {
   const mail: InboundMail[] = [];
   const problems: string[] = [];
   const read: string[] = [];
+  let ignored = 0;
   const list = mailboxes();
-  if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read };
+  if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read, ignored };
 
   for (const address of list) {
     const result = await readOneMailbox(address, since[address] ?? defaultSince());
     if (result.ok) {
       mail.push(...result.mail);
+      ignored += result.ignored;
       read.push(address);
     } else {
       problems.push(result.reason);
     }
   }
-  return { mail, problems, read };
+  return { mail, problems, read, ignored };
 }
 
 /**

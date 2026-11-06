@@ -358,7 +358,10 @@ export async function readMailNow(): Promise<void> {
   const r = await readTheMailboxes(member.id);
   const counted =
     r.read + " new, " + r.filed + " filed, " + r.waiting + " waiting for you, " + r.chasesStopped + " chases stopped" +
-    (r.already ? ", " + r.already + " we had already" : "") + ".";
+    (r.already ? ", " + r.already + " we had already" : "") +
+    // Said out loud: a person should know the reader left things out, and
+    // roughly how much, rather than wondering where an email went (6 Nov).
+    (r.ignored ? ", " + r.ignored + " newsletters and automatic messages left out" : "") + ".";
   const said = r.ok ? counted : (r.reason ?? "The mailboxes could not be read.") + " " + counted;
   revalidatePath("/mail");
   redirect("/mail?msg=" + encodeURIComponent(said));

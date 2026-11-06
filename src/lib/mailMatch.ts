@@ -272,3 +272,75 @@ export function matchInbound(
 export function stopsChasing(match: Match): boolean {
   return match.method === "reference" || match.method === "thread" || match.method === "house";
 }
+
+/**
+ * Mail no person sent, and none expects an answer to (6 Nov).
+ *
+ * Found the first time the reader was pointed at the real boxes: 34 messages
+ * came in, and 14 of them were LinkedIn newsletters, AWS billing, a GITEX
+ * mailing and cold sales mail. Most of that was in one ops person's own box,
+ * which is exactly the box card c719 says to read, because that is where a
+ * client's reply lands. Read it whole and the desk's inbox is unusable on the
+ * first morning, and somebody goes back to Outlook - the one outcome this
+ * system exists to prevent.
+ *
+ * The test is the mail's own headers rather than a list of senders to
+ * remember. Anything bulk enough to carry an unsubscribe link, or marked as
+ * machine-sent, is machine-sent whoever it is from, and a list of newsletter
+ * domains is a list somebody has to keep.
+ *
+ * It returns the reason rather than a flag, because the screen says how many
+ * were left out and why. Quietly dropping a client's email would be far worse
+ * than showing a newsletter.
+ */
+const NEVER_REPLIES = [
+  "noreply",
+  "no-reply",
+  "no_reply",
+  "donotreply",
+  "do-not-reply",
+  "mailer-daemon",
+  "postmaster",
+  "bounce",
+  "bounces",
+];
+
+export function machineMail(mail: {
+  from: string;
+  headers?: { name: string; value: string }[];
+}): string | null {
+  const from = (mail.from ?? "").trim().toLowerCase();
+  const local = from.split("@")[0] ?? "";
+  // The word on its own, or with a +tag, and nothing looser: a test written
+  // from the real boxes caught "postmaster.general@" being thrown away as
+  // machine mail when it is a person (6 Nov). Anything beyond an exact match
+  // is guessing, and the headers below catch the rest without guessing.
+  // The word on its own, or followed by + or - and a tag:
+  // "no-reply-_eVZfV_J5kKKwglOL5ixfQ@" is three of the real messages, and
+  // "+tag" is the standard way of sub-addressing.
+  //
+  // A dot is deliberately **not** a separator here. It is how people write
+  // their own names, and the test caught this rule twice: first swallowing
+  // "postmaster.general@", a person, and then doing it again when the dot was
+  // let back in. Showing a newsletter costs a glance; dropping a client's
+  // email costs the client.
+  if (NEVER_REPLIES.some((word) => local === word || /^[+-]/.test(local.slice(word.length)) && local.startsWith(word))) {
+    return "sent from " + from + ", which nobody can reply to";
+  }
+
+  const header = (name: string) =>
+    (mail.headers ?? []).find((h) => (h.name ?? "").toLowerCase() === name)?.value?.trim().toLowerCase() ?? "";
+
+  // One unsubscribe link and it was sent to a list, not to us.
+  if (header("list-unsubscribe")) return "a mailing with an unsubscribe link";
+
+  const precedence = header("precedence");
+  if (["bulk", "list", "junk"].includes(precedence)) return "marked as " + precedence + " mail";
+
+  // Out-of-office and other automatic replies say so in the standard way.
+  const auto = header("auto-submitted");
+  if (auto && auto !== "no") return "an automatic reply";
+  if (header("x-auto-response-suppress")) return "an automatic message";
+
+  return null;
+}

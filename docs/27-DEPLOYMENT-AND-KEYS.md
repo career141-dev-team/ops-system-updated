@@ -65,7 +65,7 @@ on the page; start it first.
 | **`Mail.Read`**, application, admin-consented | the app registration | no reply is ever read; the desk goes back to Outlook |
 | **`Mail.Send`**, application, admin-consented | the app registration | every approved message records as *blocked* instead of going |
 | **An application access policy** | the tenant | without one, those two permissions reach **every mailbox in the company**, not only ours. Ask for a policy restricting the app to a group holding exactly the boxes below |
-| `ops@career141.com` | created as a mailbox | the system has no address to send from |
+| ~~`ops@career141.com`~~ | **Not needed (6 Nov)** | Every message goes from the person's own address, never a shared one. Point `OPS_COMMON_MAILBOX` at `opsteam@`, which already exists and is already read, and create nothing |
 | `OPS_MAILBOXES` | the app | nothing is polled |
 | `OPS_COMMON_MAILBOX` | the app | a client thread is one person's alone |
 
