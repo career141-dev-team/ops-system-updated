@@ -9,18 +9,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  domainOf,
-  houseSubject,
-  isOurs,
-  matchInbound,
-  referenceFor,
-  referenceIn,
-  sameName,
-  stopsChasing,
-  stripReplyPrefixes,
-  tailOf,
-} from "@/lib/mailMatch";
+import { domainOf, houseSubject, isOurs, machineMail, matchInbound, referenceFor, referenceIn, sameName, stopsChasing, stripReplyPrefixes, tailOf } from "@/lib/mailMatch";
 
 const known = {
   threads: [{ providerMessageId: "<msg-1@ours>", subjectType: "clientSet", subjectId: "cs_11112222" }],
@@ -241,4 +230,53 @@ test("it refuses rather than guesses", () => {
   const m = matchInbound({ from: "hr@sampleclient.test", subject: "RE: Same Co > Driver > SET 1" }, twins);
   assert.equal(m.method, "none");
   assert.match(m.note, /more than one of our sets/);
+});
+
+/* ── Mail no person sent (6 Nov) ─────────────────────────────────── */
+
+test("a newsletter is left out, and says why", () => {
+  // Every one of these came out of the real boxes on the first real read:
+  // 34 messages, 14 of them like this, most in one person's own box.
+  const unsub = machineMail({
+    from: "newsletters-noreply@linkedin.com",
+    headers: [{ name: "List-Unsubscribe", value: "<https://www.linkedin.com/e/unsub>" }],
+  });
+  assert.ok(unsub);
+  assert.match(unsub, /unsubscribe/);
+
+  // The address alone is enough, with no headers at all.
+  assert.ok(machineMail({ from: "PowerAutomateNoReply@microsoft.com" }) === null, "noreply has to be its own word");
+  assert.match(machineMail({ from: "noreply@clc.linkedin.com" }) ?? "", /nobody can reply/);
+  assert.match(machineMail({ from: "no-reply@aws.com" }) ?? "", /nobody can reply/);
+  // A random tag after the word, which is what Anthropic's own mail does.
+  assert.match(machineMail({ from: "no-reply-_eVZfV_J5kKKwglOL5ixfQ@mail.anthropic.com" }) ?? "", /nobody can reply/);
+  assert.match(machineMail({ from: "noreply+ticket99@vendor.test" }) ?? "", /nobody can reply/);
+  assert.match(machineMail({ from: "MAILER-DAEMON@career141.com" }) ?? "", /nobody can reply/);
+
+  // Bulk and automatic, said the standard way.
+  assert.match(machineMail({ from: "x@y.test", headers: [{ name: "Precedence", value: "bulk" }] }) ?? "", /bulk/);
+  assert.match(machineMail({ from: "x@y.test", headers: [{ name: "Auto-Submitted", value: "auto-replied" }] }) ?? "", /automatic/);
+  assert.match(machineMail({ from: "x@y.test", headers: [{ name: "X-Auto-Response-Suppress", value: "All" }] }) ?? "", /automatic/);
+});
+
+test("a real person is never left out, however they write", () => {
+  // This is the half that matters. Dropping a client's email is far worse
+  // than showing a newsletter, so every one of these has to come through.
+  const keep = [
+    { from: "hr@nipponpaint.test" },
+    { from: "md@client.test", headers: [{ name: "Auto-Submitted", value: "no" }] },
+    // A person whose address happens to contain the word, which is not the
+    // same as being that word.
+    { from: "noreplyneeded@client.test" },
+    { from: "bouncer@client.test" },
+    // The dot is how people write their own names, so it is never a
+    // separator here. This line caught the rule twice (6 Nov).
+    { from: "noreply.team@client.test" },
+    { from: "postmaster.general@client.test" },
+    // A reply to something we sent, with ordinary threading headers.
+    { from: "hr@client.test", headers: [{ name: "In-Reply-To", value: "<abc@career141.com>" }] },
+  ];
+  for (const mail of keep) {
+    assert.equal(machineMail(mail), null, mail.from + " is a person and must come through");
+  }
 });
