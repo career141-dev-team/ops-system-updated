@@ -51,6 +51,41 @@ const list = (name: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/**
+ * The environment's own veto on reaching real people (6 Nov).
+ *
+ * Test mode has always been real - `switch.outreachLive` in Settings, which
+ * sends every client message to the test address instead - but that switch
+ * lives in the database, so it travels with the data. Restore a production
+ * backup onto a laptop to rehearse the restore, as 22 tells you to, and the
+ * switch arrives saying "on".
+ *
+ * So the environment gets a veto the data cannot carry. Both have to agree:
+ * this says the machine may talk to the outside world at all, the setting says
+ * the desk is doing it for real. Off here and every client message goes to the
+ * test address, whatever the database thinks.
+ *
+ * This is also the switch `.env.example`, 15 and 22 have named all along, while
+ * nothing read it. Now something does.
+ */
+export function outreachLiveInEnv(): boolean {
+  return (process.env.OPS_OUTREACH_LIVE ?? "").trim().toLowerCase() === "on";
+}
+
+/**
+ * Which of the two is off, said on the Health screen.
+ *
+ * "Test mode" on its own sends somebody looking in the wrong place: the
+ * setting and the environment are in different buildings, and a person
+ * checking one never thinks of the other.
+ */
+export function outreachInWords(inEnv: boolean, onTheDesk: boolean): string {
+  if (inEnv && onTheDesk) return "on - real clients receive what we send";
+  if (!inEnv && !onTheDesk) return "test mode - neither this machine nor the desk has it on";
+  if (!inEnv) return "test mode - the desk has it on, but this machine does not permit it (OPS_OUTREACH_LIVE)";
+  return "test mode - this machine permits it, but the desk has not switched it on (switch.outreachLive)";
+}
+
 export function outboundLocked(): boolean {
   return (process.env.OPS_OUTBOUND_LOCK ?? "").trim().toLowerCase() === "on";
 }

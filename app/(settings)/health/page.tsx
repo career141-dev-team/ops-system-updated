@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
-import { outboundLocked, sendingEnabled } from "@/lib/senders";
+import { outboundLocked, outreachInWords, outreachLiveInEnv, sendingEnabled } from "@/lib/senders";
 import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
 import { desk, liveTimers, switchedOn } from "@/data/desk";
 import { usingConvex } from "@/data/convexClient";
@@ -46,7 +46,7 @@ export default async function HealthPage() {
         <h2 className="text-[14.5px] font-medium">What can leave the building</h2>
         <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
           <p>Sending: {sendingEnabled() ? "on" : "switched off"}</p>
-          <p>Outreach to real clients: {switchedOn(db, "switch.outreachLive") ? "on" : "test mode"}</p>
+          <p>Outreach to real clients: {outreachInWords(outreachLiveInEnv(), switchedOn(db, "switch.outreachLive"))}</p>
           <p>Reading the mailboxes: {readerEnabled() ? "on" : "switched off"}</p>
           <p className="text-ink-soft">
             {mailboxesInWords()}
