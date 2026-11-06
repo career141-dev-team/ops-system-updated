@@ -68,15 +68,17 @@ last row of the switch table in [22](22-GO-LIVE.md), which says to turn it
 **No application code reads it.** The only thing in the repository that looks
 at it is a deploy script that refuses to push if it is set.
 
-The guards that really exist are `OPS_SEND`, the settings switch, and
-`OPS_OUTBOUND_LOCK` with its allow-lists. The lock is the real one. So the
-instruction in 22 — turn this on, turn the lock off — would turn off the only
-guard that works and turn on one that does nothing. Nobody would have noticed
-until the first message went to the wrong person.
+What *does* exist, and is tested, is `switch.outreachLive` on the Settings
+screen: with it off, every client message goes to the test address instead of
+the client. So test mode has always been real — the documents simply name the
+wrong lever, and following 22's last row would set an environment variable
+that does nothing while taking off the outbound lock, which does.
 
-Either the switch gets built or it gets deleted from every document. I would
-build it: a named switch that says "this system may talk to the outside world"
-is worth having, and it belongs in the same place as the other two.
+The fix, built on 6 November: the environment variable becomes a **veto the
+data cannot carry**, and both have to agree. A setting lives in the database,
+so it travels with a restored backup — and 22 tells you to rehearse a restore
+on the laptop. The Health screen now names whichever of the two is off, because
+"test mode" on its own sends somebody looking in the wrong place.
 
 ### 1.3 The local backend never receives its own code
 

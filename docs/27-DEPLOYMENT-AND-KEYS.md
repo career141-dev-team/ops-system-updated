@@ -24,8 +24,8 @@ whole page, not a detail of it.
 
 | | Why it is a stopper |
 |---|---|
-| **Real sign-in exists** | otherwise the app either refuses everybody or lets anybody be the Director. Real client data cannot sit behind that |
-| **`OPS_OUTREACH_LIVE` is real or gone** | page one, 1.2. Today the plan's last switch does nothing, and its instruction turns off the lock that does. Correct this before anybody follows the table |
+| ~~**Real sign-in exists**~~ | **Built 6 November** (#23): Microsoft, with the ops team as the allow-list and a signed session cookie. It needs the four `MS_*`/`OPS_APP_URL` settings and `OPS_SESSION_SECRET` |
+| ~~**`OPS_OUTREACH_LIVE` is real or gone**~~ | **Done 6 November** (#23): it is now a veto the environment holds, and `switch.outreachLive` must agree. Test mode itself was always real — the documents named the wrong lever |
 | **A restore has been rehearsed** | a backup nobody has restored is not a backup |
 | **The agreement template has been read by you** | the first real agreement is a contract. It should not be the first time anybody read the file |
 
