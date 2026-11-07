@@ -153,7 +153,21 @@ test("Monday builds one report a week, leaves it to be read, and sets next Monda
   const desk = await import("@/data/desk");
   repo.reset();
 
-  const now = Date.now();
+  /*
+   * A fixed Tuesday, not the real clock (7 Nov).
+   *
+   * This read `Date.now()`, and the last assertion asks twice in one week -
+   * `now` and `now + 2 * DAY` - to prove the clock and the button cannot make
+   * two reports. A report's week starts on **Monday**, so from a Saturday
+   * those two land in different weeks, a second report is correctly built,
+   * and the test fails. It passed Monday to Friday and failed at the weekend,
+   * which is the worst kind of test: green all week, red when somebody looks
+   * on a Sunday, and nothing wrong with the code either time.
+   *
+   * Every record below is built relative to this, so pinning it changes
+   * nothing the test is actually about.
+   */
+  const now = TUESDAY;
   const client = repo.addClient({
     leadId: null,
     taClientId: "ta_c1",

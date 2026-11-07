@@ -42,7 +42,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <body className="min-h-screen">
+      {/*
+        `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
+        
+        Browser extensions write their own attributes onto `<body>` before
+        React hydrates - ColorZilla adds `cz-shortcut-listen`, and password
+        managers and translators do the same - so the server HTML and the
+        browser's DOM differ on an attribute nothing of ours put there. React
+        reports it as a hydration mismatch, which reads like a bug in this
+        app and is not one.
+        
+        It is deliberately only this element. The flag covers an element's own
+        attributes and not its children, so every real mismatch inside the app
+        is still reported. Our own code sets exactly one thing here, the class
+        name, and that cannot drift between the server and the browser.
+      */}
+      <body className="min-h-screen" suppressHydrationWarning>
         {member ? (
           <div className="flex min-h-screen items-stretch">
             <Sidebar may={may} counts={counts} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
