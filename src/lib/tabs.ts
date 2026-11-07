@@ -83,6 +83,8 @@ export function clientTabs(id: string): Tab[] {
     { key: "people", what: "People & group", href: at("people") },
     { key: "messages", what: "Messages", href: at("messages") },
     { key: "money", what: "Money", href: at("money") },
+    // Everything that happened with them, in order (UX order 4).
+    { key: "history", what: "History", href: at("history") },
   ];
 }
 

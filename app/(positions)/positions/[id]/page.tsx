@@ -23,6 +23,7 @@ import { positionNextStep } from "@/lib/nextStep";
 import { REQUIREMENT_FIELDS, STAGE_MEANINGS, type PositionStage, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { byDay, subjectsOfPosition, timeline } from "@/lib/timeline";
 import { people as taPeople } from "@/lib/ta";
 
 /** One position: the requirement behind it, and what TA has done with it. */
@@ -50,7 +51,10 @@ export default async function PositionPage({
   const taSide = await taPeople();
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
   const ad = position.openingTaId ? liveAdFor(db, position.openingTaId) : null;
-  const theirAudit = db.audit.filter((a) => a.subjectType === "position" && a.subjectId === position.id);
+  // Everything the search did for this position - its sets, interviews,
+  // placement, invoice, guarantee, adverts - in order, in words (UX order 4).
+  const history = byDay(timeline(db, subjectsOfPosition(db, position), (who) => (who ? (memberIn(db, who)?.name ?? null) : null)));
+  const entries = history.reduce((n, g) => n + g.entries.length, 0);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   // What to do now (24, step 6). One question this page has to answer, which
@@ -388,20 +392,36 @@ export default async function PositionPage({
       )}
 
       <Part
-        title="What happened to it"
+        title="What happened with it"
         tab="history"
         here={here}
-        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
-        open={false}
+        says={entries === 0 ? "nothing yet" : entries + (entries === 1 ? " thing, in order" : " things, in order")}
+        open={true}
       >
-        {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
-        {theirAudit.map((entry, i) => (
-          <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
-            <p className="text-[13px]">{entry.action}</p>
-            <p className="mt-0.5 text-[12px] text-ink-soft">
-              {whenLocal(entry.at)}
-              {entry.reason ? " · " + entry.reason : ""}
-            </p>
+        {entries === 0 && (
+          <p className="mt-2 text-[13px] text-ink-soft">
+            Nothing yet. The first line appears the moment anything is done with this position - a set sent,
+            an interview booked, a clock started.
+          </p>
+        )}
+        {history.map((group) => (
+          <div key={group.day} className="mt-3">
+            <p className="text-[11.5px] uppercase tracking-[0.06em] text-ink-faint">{group.day}</p>
+            {group.entries.map((entry) => (
+              <div key={entry.id} className="flex gap-3 border-t border-rule py-2.5 first:border-t-0">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-rule-strong" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px]">{entry.said}</p>
+                  <p className="mt-0.5 text-[12px] text-ink-soft">
+                    {new Date(entry.at + 5.5 * 3_600_000).toISOString().slice(11, 16)}
+                    {" · "}
+                    {entry.about}
+                    {entry.by ? " · " + entry.by : " · by itself"}
+                    {entry.because && !entry.said.includes(entry.because) ? " · " + entry.because : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </Part>

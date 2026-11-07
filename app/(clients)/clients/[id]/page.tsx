@@ -16,6 +16,7 @@ import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
 import { STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
 
 /** One client, on its own page: who owns them, who pays, where they are. */
 export default async function ClientPage({
@@ -42,7 +43,9 @@ export default async function ClientPage({
   const stages = (Object.keys(STAGE_MEANINGS) as ClientStage[]).filter((s) =>
     canMoveStage(client.stage as ClientStage, s),
   );
-  const theirAudit = db.audit.filter((a) => a.subjectType === "client" && a.subjectId === client.id);
+  // Everything that happened with them - the client, the enquiry, every
+  // position and everything under it - in order, in words (UX order 4).
+  const history = byDay(timeline(db, subjectsOfClient(db, client), (who) => (who ? (memberIn(db, who)?.name ?? null) : null)));
   const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
@@ -368,20 +371,41 @@ export default async function ClientPage({
       </section>
       )}
 
-      {here === "overview" && (
+      {here === "history" && (
         <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to them</h2>
-        {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
-        {theirAudit.map((entry, i) => (
-          <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
-            <p className="text-[13px]">{entry.action}</p>
-            <p className="mt-0.5 text-[12px] text-ink-soft">
-              {new Date(entry.at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ")}
-              {entry.reason ? " · " + entry.reason : ""}
+          <h2 className="text-[14.5px] font-medium">What happened with them</h2>
+          <p className="mt-0.5 text-[12.5px] text-ink-soft">
+            Every change to this client and to everything under them - the enquiry, each position, its CV sets,
+            interviews, placements and invoices - newest first. Nothing is added to the record; this is the
+            record, read out in order.
+          </p>
+          {history.length === 0 && (
+            <p className="mt-3 text-[13px] text-ink-soft">
+              Nothing yet. The first line appears the moment anything is done with this client - a call logged,
+              an agreement sent, a set on its way.
             </p>
-          </div>
-        ))}
-      </section>
+          )}
+          {history.map((group) => (
+            <div key={group.day} className="mt-4">
+              <p className="text-[11.5px] uppercase tracking-[0.06em] text-ink-faint">{group.day}</p>
+              {group.entries.map((entry) => (
+                <div key={entry.id} className="flex gap-3 border-t border-rule py-2.5 first:border-t-0">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-rule-strong" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px]">{entry.said}</p>
+                    <p className="mt-0.5 text-[12px] text-ink-soft">
+                      {new Date(entry.at + 5.5 * 3_600_000).toISOString().slice(11, 16)}
+                      {" · "}
+                      {entry.about}
+                      {entry.by ? " · " + entry.by : " · by itself"}
+                      {entry.because && !entry.said.includes(entry.because) ? " · " + entry.because : ""}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
       )}
     </div>
   );
