@@ -1,3 +1,6 @@
+import { Suspense } from "react";
+
+import Toast from "@/app/Toast";
 import type { Metadata } from "next";
 
 import Sidebar from "@/app/Sidebar";
@@ -58,6 +61,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         name, and that cannot drift between the server and the browser.
       */}
       <body className="min-h-screen" suppressHydrationWarning>
+        {/* The three-second confirmation. Suspense because it reads the
+            address bar, which is not known until the browser has it. */}
+        <Suspense fallback={null}>
+          <Toast />
+        </Suspense>
         {member ? (
           <div className="flex min-h-screen items-stretch">
             <Sidebar may={may} counts={counts} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />

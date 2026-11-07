@@ -180,7 +180,7 @@ export default async function MessagePage({
           <input type="hidden" name="messageId" value={message.id} />
           <p className="text-[13px] text-ink-soft">
             {message.channel === "group_post"
-              ? "Nothing can send this: no system can post to a WhatsApp group. Approve it, copy it and post it from your phone - that it is yours to post is written here."
+              ? "Nothing can send this. The group was made on somebody's phone, and Meta gives no way for a system to join a group it did not create. Approve it, copy it and post it from your phone - that it is yours to post is written here."
               : "Approving sends it. While the system is in test mode it goes to the test address instead, and the result is written here."}
           </p>
           <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-white">

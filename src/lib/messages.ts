@@ -152,3 +152,24 @@ export function messageTitle(message: { subject: string; body: string }): string
   const first = message.body.split("\n").find((line) => line.trim()) ?? "";
   return first.trim() || "No subject";
 }
+
+/**
+ * Is this draft a routine notice (7 Nov, UX order 2)?
+ *
+ * The owner's rule, in the type already: a template a person approved once
+ * (`approvedForAuto`) may go without anybody reading it, and only for
+ * notices - never for anything written to a client about one position. So
+ * "approve all routine notices" is exactly the drafts whose template carries
+ * that flag, and nothing else: not a hand-written draft, not a template no
+ * one approved, not a key that no longer names a template.
+ *
+ * Pure, so the button and the test agree on what "routine" means.
+ */
+export function isRoutine(
+  message: { templateKey: string | null; state: string },
+  template: { approvedForAuto: boolean } | null,
+): boolean {
+  if (message.state !== "draft") return false;
+  if (!message.templateKey) return false;
+  return Boolean(template?.approvedForAuto);
+}
