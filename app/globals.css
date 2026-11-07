@@ -100,3 +100,13 @@ body {
     transform: translate(-50%, 0);
   }
 }
+
+/* The bell when its number goes up: one swing and still. Not a loop - a
+   bell that keeps ringing is a bell somebody silences. */
+@keyframes ring {
+  0% { transform: rotate(0); }
+  20% { transform: rotate(14deg); }
+  45% { transform: rotate(-10deg); }
+  70% { transform: rotate(5deg); }
+  100% { transform: rotate(0); }
+}

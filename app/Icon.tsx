@@ -24,7 +24,8 @@ export type IconName =
   | "money"
   | "reports"
   | "settings"
-  | "search";
+  | "search"
+  | "bell";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -91,6 +92,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <circle cx="9" cy="7" r="2" />
       <circle cx="15" cy="12" r="2" />
       <circle cx="8" cy="17" r="2" />
+    </>
+  ),
+  // What is waiting on you, kept live (UX order 3).
+  bell: (
+    <>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
     </>
   ),
   // Find anything.

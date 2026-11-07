@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import Bell from "@/app/Bell";
 import Icon, { ICON_FOR } from "@/app/Icon";
+import type { Bell as BellCount } from "@/lib/bell";
 import { NAV, isHere } from "@/lib/nav";
 import type { WorkCount } from "@/lib/sectionWork";
 
@@ -27,10 +29,13 @@ export default function Sidebar({
   may,
   counts,
   who,
+  bell,
 }: {
   may: Record<string, boolean>;
   counts: Record<string, WorkCount>;
   who: { name: string; role: string };
+  /** What is waiting on this person right now, kept live by the bell itself. */
+  bell: BellCount;
 }) {
   const path = usePathname() ?? "/";
 
@@ -38,7 +43,9 @@ export default function Sidebar({
     <nav className="flex h-screen w-[232px] shrink-0 flex-col gap-3 border-r border-shell-rule bg-shell px-3 py-4">
       <div className="flex items-center gap-2 px-2">
         <span className="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true" />
-        <span className="text-[14px] font-medium">Career 141 Ops</span>
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">Career 141 Ops</span>
+        {/* The one number that follows you around (UX order 3). */}
+        <Bell initial={bell} />
       </div>
 
       {/* One box over everything the desk keeps. A person knows the client's

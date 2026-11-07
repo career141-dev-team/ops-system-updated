@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 
 import Sidebar from "@/app/Sidebar";
 import { desk, openTasksFor } from "@/data/desk";
+import { bellOf } from "@/lib/bell";
 import { workByPage } from "@/lib/sectionWork";
 import { currentMember } from "@/lib/session";
 import { ROLE_LABEL, can } from "@/lib/roles";
@@ -41,7 +42,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // The counts beside the pages. They are your own open tasks, placed on the
   // page their link points at, so the sidebar and the day page can never
   // disagree about where the work is (24, section 4).
-  const counts = member ? workByPage(openTasksFor(await desk(), member.id), Date.now()) : {};
+  const now = Date.now();
+  const db = member ? await desk() : null;
+  const counts = member && db ? workByPage(openTasksFor(db, member.id), now) : {};
+  // The bell's first number comes with the page; the bell keeps it live after.
+  const bell = member && db ? bellOf(db, member.id, now) : { waiting: 0, late: 0, inbox: 0 };
 
   return (
     <html lang="en">
@@ -68,7 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </Suspense>
         {member ? (
           <div className="flex min-h-screen items-stretch">
-            <Sidebar may={may} counts={counts} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+            <Sidebar may={may} counts={counts} bell={bell} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
             <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
           </div>
         ) : (
