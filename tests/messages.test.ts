@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fillTemplate, gate, needsApproval, unfilledHoles, type SendContext } from "@/lib/messages";
+import { fillTemplate, gate, isRoutine, needsApproval, type SendContext, unfilledHoles } from "@/lib/messages";
 
 const ctx = (over: Partial<SendContext> = {}): SendContext => ({
   outreachLive: false,
@@ -136,4 +136,27 @@ test("a hole nobody filled never reaches a client", () => {
     { doNotContact: [], sentToClientToday: 0, dailyCapPerClient: 5, outreachLive: true, testRecipient: null },
   );
   assert.equal(fine.ok, true);
+});
+
+/* ── Which drafts "approve all routine" may take (7 Nov, UX order 2) ── */
+
+test("a routine notice is one from a template somebody approved once, and nothing else", () => {
+  const approved = { approvedForAuto: true };
+  const notApproved = { approvedForAuto: false };
+
+  // The owner's rule: wording approved once, for notices only.
+  assert.equal(isRoutine({ templateKey: "task.notice", state: "draft" }, approved), true);
+
+  // A template nobody approved for this: a person reads it.
+  assert.equal(isRoutine({ templateKey: "esa.chase2", state: "draft" }, notApproved), false);
+
+  // Hand-written is never routine, whatever else is true.
+  assert.equal(isRoutine({ templateKey: null, state: "draft" }, approved), false);
+
+  // A key that no longer names a template: refuse, do not guess.
+  assert.equal(isRoutine({ templateKey: "gone.template", state: "draft" }, null), false);
+
+  // Only a draft. An approved or sent one is already settled.
+  assert.equal(isRoutine({ templateKey: "task.notice", state: "approved" }, approved), false);
+  assert.equal(isRoutine({ templateKey: "task.notice", state: "sent" }, approved), false);
 });

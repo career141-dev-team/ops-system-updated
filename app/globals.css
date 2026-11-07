@@ -87,3 +87,16 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--color-rule-strong) transparent;
 }
+
+/* The confirmation line arriving: up a little, and in. Under 300ms, ease-out,
+   and skipped for anyone who asked their system for less motion. */
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}

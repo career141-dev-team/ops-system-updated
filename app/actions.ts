@@ -81,6 +81,7 @@ import {
   cancelMeetingClocks,
   createTask,
   desk,
+  draftsWaiting,
   leadIn,
   meetingIn,
   meetingsForLead,
@@ -110,7 +111,7 @@ import {
 } from "@/data/desk";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
-import { gate, needsApproval } from "@/lib/messages";
+import { gate, isRoutine, needsApproval } from "@/lib/messages";
 import {
   addressesFrom,
   buildThreads,
@@ -274,7 +275,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { OpsMember } from "@/data/types";
+import type { OpsDatabase, OpsMember, OpsMessage } from "@/data/types";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -562,22 +563,19 @@ export async function saveDraft(formData: FormData): Promise<void> {
   redirect("/messages/" + messageId + "?msg=" + encodeURIComponent("Saved."));
 }
 
-export async function approveAndSend(formData: FormData): Promise<void> {
-  const member = await currentMember();
-  if (!member) redirect("/sign-in");
-  const messageId = String(formData.get("messageId") ?? "");
-  const here = "/messages/" + messageId;
-
-  if (!can(member, "message.approve")) {
-    redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
-  }
-  const db = await desk();
-  const message = db.messages.find((m) => m.id === messageId);
-  if (!message) redirect("/?msg=" + encodeURIComponent("That message no longer exists."));
-  if (!needsApproval(message)) {
-    redirect(here + "?msg=" + encodeURIComponent("That message has already been settled."));
-  }
-
+/**
+ * One draft through the gate and out, and the sentence that says what
+ * happened (7 Nov, UX order 2).
+ *
+ * Pulled out of approveAndSend so that approving from the day page, from the
+ * message's own page, and approving every routine notice at once are the
+ * same code path with the same gate - a second way to approve that skipped
+ * the gate would be the hole in the one rule this system has.
+ *
+ * It returns the sentence instead of redirecting, because the caller knows
+ * where the person is standing.
+ */
+async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessage): Promise<string> {
   // Approved first, then the gate decides what really happens to it.
   const verdict = gate(
     { ...message, state: "approved" },
@@ -594,8 +592,8 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   );
 
   if (!verdict.ok) {
-    await settleMessage(messageId, member.id, verdict.state, message.to, verdict.note);
-    redirect(here + "?msg=" + encodeURIComponent(verdict.note));
+    await settleMessage(message.id, member.id, verdict.state, message.to, verdict.note);
+    return verdict.note;
   }
 
   // The gate said yes. Now it actually goes, from this person's own mailbox,
@@ -622,7 +620,7 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   // Test mode's note matters as much as the sender's, so both are kept.
   const said = [verdict.note, outcome.reason].filter(Boolean).join(" ") || null;
   await settleMessage(
-    messageId,
+    message.id,
     member.id,
     // Switched off on purpose is not the same as a send that went wrong. A
     // preview with no credentials would otherwise report every message as
@@ -640,8 +638,90 @@ export async function approveAndSend(formData: FormData): Promise<void> {
     said,
     outcome.providerMessageId,
   );
+  return said ?? "Sent.";
+}
+
+/**
+ * The query that carries a three-second confirmation (7 Nov).
+ *
+ * `at` is the moment, not information: two identical confirmations in a row
+ * - approve two drafts to the same address, and the gate says the same
+ * sentence twice - gave the toast the same `did` twice, React saw an
+ * unchanged dependency, and the second one never showed. The walk found it.
+ * A timestamp beside it changes every time, so every confirmation is new.
+ */
+function confirmed(said: string): string {
+  return "?did=" + encodeURIComponent(said) + "&at=" + Date.now();
+}
+
+/** Where a form came from, so the person lands back where they were standing. */
+function backTo(formData: FormData, fallback: string): string {
+  const back = String(formData.get("back") ?? "").trim();
+  // Only our own paths: a redirect to wherever a form said is an open door.
+  return back.startsWith("/") && !back.startsWith("//") ? back : fallback;
+}
+
+export async function approveAndSend(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const messageId = String(formData.get("messageId") ?? "");
+  const here = backTo(formData, "/messages/" + messageId);
+
+  if (!can(member, "message.approve")) {
+    redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
+  }
+  const db = await desk();
+  const message = db.messages.find((m) => m.id === messageId);
+  if (!message) redirect("/?msg=" + encodeURIComponent("That message no longer exists."));
+  if (!needsApproval(message)) {
+    redirect(here + "?msg=" + encodeURIComponent("That message has already been settled."));
+  }
+
+  const said = await approveOne(member, db, message);
   revalidatePath("/");
-  redirect(here + "?msg=" + encodeURIComponent(said ?? "Sent."));
+  // `did` is the three-second confirmation; `msg` stays the banner that
+  // waits to be read. Approving sends, so there is no Undo on this one.
+  redirect(here + confirmed(said));
+}
+
+/**
+ * Every routine notice at once (7 Nov, UX order 2).
+ *
+ * Nineteen drafts was thirty-eight clicks. Most of a morning's pile is
+ * reminders from a template somebody approved once, and the owner's rule
+ * says those may go unread. So one button, and it takes exactly the drafts
+ * `isRoutine` says it may - the same gate, one at a time, each written down
+ * as it goes. Nothing hand-written, nothing about one position, is touched.
+ */
+export async function approveAllRoutine(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const here = backTo(formData, "/");
+  if (!can(member, "message.approve")) {
+    redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
+  }
+
+  const db = await desk();
+  const routine = draftsWaiting(db).filter((m) => isRoutine(m, m.templateKey ? templateFor(db, m.templateKey) : null));
+  if (routine.length === 0) {
+    redirect(here + confirmed("Nothing routine is waiting: every draft here needs a person to read it."));
+  }
+
+  let went = 0;
+  let held = 0;
+  for (const message of routine) {
+    const said = await approveOne(member, db, message);
+    // A gate refusal says "blocked" or names a hole; a send says "Sent." or
+    // what the sender said. Counting them apart is what makes the sentence
+    // honest about a batch where some went and some did not.
+    if (/^Sent|went|sent to/i.test(said)) went += 1;
+    else held += 1;
+  }
+  revalidatePath("/");
+  const sentence =
+    went + (went === 1 ? " routine notice" : " routine notices") + " approved and sent" +
+    (held ? ", " + held + " held back by the gate - open them to see why" : "") + ".";
+  redirect(here + confirmed(sentence));
 }
 
 /**

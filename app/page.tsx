@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { messageInWords, messageTitle } from "@/lib/messages";
-import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks } from "@/data/desk";
+import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
+import { approveAllRoutine, approveAndSend } from "@/app/actions";
+import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks, templateFor } from "@/data/desk";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
@@ -71,6 +72,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const now = Date.now();
   const db = await desk();
   const drafts = draftsWaiting(db);
+  // The ones the "approve all" button may take: the owner's rule, in one place.
+  const routine = drafts.filter((m) => isRoutine(m, m.templateKey ? templateFor(db, m.templateKey) : null));
   const tasks = openTasksFor(db, member.id);
   const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
   const late = tasks.filter((t) => t.dueAt < now);
@@ -165,21 +168,69 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       */}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 xl:[&>section]:max-h-[46vh]">
       <section className={card + " flex min-w-0 flex-col"}>
-        <h2 className="text-[14.5px] font-medium">Waiting for your approval</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 className="text-[14.5px] font-medium">Waiting for your approval</h2>
+          {/*
+            Every routine notice at once (7 Nov, UX order 2). Only the drafts
+            whose template a person approved once; it says so when there are
+            none, rather than showing a button that does nothing.
+          */}
+          {drafts.length > 0 && (
+            <form action={approveAllRoutine}>
+              <input type="hidden" name="back" value="/" />
+              <button
+                className={
+                  routine.length
+                    ? "rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]"
+                    : "rounded-full border border-rule px-3 py-1 text-[12.5px] text-ink-faint"
+                }
+                title={
+                  routine.length
+                    ? "Sends every draft made from a template somebody approved once. Nothing hand-written."
+                    : "None of these is a routine notice: each needs a person to read it."
+                }
+              >
+                {routine.length ? "Approve all " + routine.length + " routine" : "No routine notices"}
+              </button>
+            </form>
+          )}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
         {drafts.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing is waiting.</p>}
+        {/*
+          Read it here, approve it here (7 Nov, UX order 2). Nineteen drafts
+          was thirty-eight clicks: open, read, approve, back. The body is a
+          `details` under the title - shut, so the list stays a list, and open
+          with one click when the title is not enough. Approve posts the same
+          action as the message's own page, through the same gate, and comes
+          back here. "Open" is still there for anyone who wants to change it.
+        */}
         {drafts.map((message) => (
           <div key={message.id} className={row}>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13.5px]">{messageTitle(message)}</p>
-              <p className="mt-0.5 text-[12.5px] text-ink-soft">{messageInWords(message)}</p>
+            <details className="min-w-0 flex-1 group">
+              <summary className="cursor-pointer list-none">
+                <p className="text-[13.5px] group-open:font-medium">{messageTitle(message)}</p>
+                <p className="mt-0.5 text-[12.5px] text-ink-soft">{messageInWords(message)}</p>
+              </summary>
+              <pre className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-sunk px-3 py-2 font-[inherit] text-[12.5px] leading-relaxed text-ink">
+                {message.body}
+              </pre>
+            </details>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href={"/messages/" + message.id}
+                className="text-[12.5px] text-ink-soft hover:text-ink hover:underline"
+              >
+                Open
+              </Link>
+              <form action={approveAndSend}>
+                <input type="hidden" name="messageId" value={message.id} />
+                <input type="hidden" name="back" value="/" />
+                <button className="rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]">
+                  {message.channel === "group_post" ? "Approve" : "Approve and send"}
+                </button>
+              </form>
             </div>
-            <Link
-              href={"/messages/" + message.id}
-              className="rounded-full border border-rule-strong px-3 py-1 text-[12.5px] hover:bg-paper"
-            >
-              Read it
-            </Link>
           </div>
         ))}
         </div>

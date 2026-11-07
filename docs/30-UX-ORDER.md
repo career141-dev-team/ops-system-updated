@@ -15,8 +15,8 @@ pull request, walked in the browser, with nothing hidden and nothing removed.
 
 | # | What | The decision behind it |
 |---|---|---|
-| 1 | **The board**: ash column containers, white cards inside, and an empty stage collapses to a thin strip with only its name | The cards had borders and the columns did not, so nine "Nothing here" labels floated in white space. Same ash-and-white relationship as the sidebar against the page |
-| 2 | **Approve from the list**, and one button to approve every routine notice at once; a small confirmation after every action - *Saved · Sent · Approved* - gone in three seconds, with Undo where safe | Nineteen drafts was thirty-eight clicks. Each owner approves their own: one ops owner per client is a locked decision. The app said nothing when you clicked |
+| 1 | ✓ 7 Nov · **The board**: ash column containers, white cards inside, and an empty stage collapses to a thin strip with only its name | The cards had borders and the columns did not, so nine "Nothing here" labels floated in white space. Same ash-and-white relationship as the sidebar against the page |
+| 2 | ✓ 7 Nov · **Approve from the list**, and one button to approve every routine notice at once; a small confirmation after every action - *Saved · Sent · Approved* - gone in three seconds, with Undo where safe | Nineteen drafts was thirty-eight clicks. Each owner approves their own: one ops owner per client is a locked decision. The app said nothing when you clicked |
 | 3 | **A bell** in the sidebar with a live count, and nothing else | A WhatsApp to the ops person's phone is a second inbox; email a third. One place, in the system |
 | 4 | **A timeline** on the client and on the position: everything that happened, in order, from the audit that already exists | "What happened with Nippon?" is the first question when the phone rings |
 | 5 | **Quick-add from anywhere**: log a call, a note, a lead, without leaving the page you are on | A client rings while you are on the invoices page |
