@@ -19,6 +19,7 @@ import {
   type AiTask,
   DAILY_BUDGET,
   MODELS,
+  deepseekRoute,
   aiOffReason,
   PRICE_PER_MTOK,
   costOf,
@@ -344,4 +345,43 @@ test("the screens are told why the AI is not offering to help", () => {
   assert.equal(aiOffReason(false, true), "AI is off: no model key is set yet.");
   assert.equal(aiOffReason(true, false), "AI is off: the ops lead has not switched it on.");
   assert.equal(aiOffReason(true, true), null, "nothing to say when it is working");
+});
+
+/* ── Two doors to DeepSeek (7 Nov) ──────────────────────────────── */
+
+test("DeepSeek is reached through OpenRouter when that key is set", () => {
+  // The owner buys DeepSeek through OpenRouter rather than direct, so there
+  // are two doors to one provider. Everything above this stays "deepseek":
+  // the ledger, the pricing and the screens are untouched.
+  const through = deepseekRoute({ OPENROUTER_API_KEY: "sk-or-test" });
+  assert.equal(through?.through, "openrouter");
+  assert.match(through?.url ?? "", /openrouter\.ai/);
+  assert.equal(through?.key, "sk-or-test");
+
+  // Their workspace guardrail allows exactly one DeepSeek model. Asking for
+  // deepseek/deepseek-chat comes back 404 "Model blocked by guardrail", which
+  // reads like the model does not exist - it does, it is not allowed. So the
+  // one their account really serves is named rather than guessed.
+  assert.equal(through?.model, "deepseek/deepseek-v4-flash");
+
+  // And it can be corrected without a deploy if the guardrail changes.
+  assert.equal(
+    deepseekRoute({ OPENROUTER_API_KEY: "k", OPENROUTER_MODEL: "deepseek/other" })?.model,
+    "deepseek/other",
+  );
+});
+
+test("the direct door still works, and a key somebody set is the one used", () => {
+  const direct = deepseekRoute({ DEEPSEEK_API_KEY: "sk-ds" });
+  assert.equal(direct?.through, "deepseek");
+  assert.match(direct?.url ?? "", /api\.deepseek\.com/);
+  assert.equal(direct?.model, MODELS.deepseek);
+
+  // Both set: OpenRouter wins, because a key somebody put there is a key they
+  // meant to use.
+  assert.equal(deepseekRoute({ OPENROUTER_API_KEY: "k", DEEPSEEK_API_KEY: "d" })?.through, "openrouter");
+
+  // Neither: the layer is off and says so, rather than calling nothing.
+  assert.equal(deepseekRoute({}), null);
+  assert.equal(deepseekRoute({ OPENROUTER_API_KEY: "   " }), null, "whitespace is not a key");
 });
