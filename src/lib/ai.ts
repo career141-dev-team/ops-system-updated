@@ -91,6 +91,47 @@ export const MODELS: Record<Exclude<Provider, "none">, string> = {
 };
 
 /**
+ * Where DeepSeek is reached, and as which model (7 Nov).
+ *
+ * The owner buys DeepSeek through **OpenRouter** rather than direct, so there
+ * are two doors to the same provider. OpenRouter speaks the same
+ * chat-completions shape as DeepSeek, so nothing above this function changes:
+ * the provider is still "deepseek", the ledger still says deepseek, and the
+ * screens are untouched.
+ *
+ * Their OpenRouter workspace has a **guardrail** that allows exactly one
+ * DeepSeek model - deepseek/deepseek-v4-flash. Asking for deepseek/deepseek-chat
+ * comes back 404 "Model blocked by guardrail", which reads like the model
+ * does not exist. It does; it is not allowed. So the model is named here
+ * rather than guessed, and it is the one their account actually serves
+ * (checked with a real call, 7 Nov).
+ *
+ * OPENROUTER_API_KEY wins where both are set: a key somebody put there is a
+ * key they meant to use.
+ */
+export function deepseekRoute(env: Record<string, string | undefined> = process.env): {
+  url: string;
+  key: string;
+  model: string;
+  through: "openrouter" | "deepseek";
+} | null {
+  const openrouter = (env.OPENROUTER_API_KEY ?? "").trim();
+  if (openrouter) {
+    return {
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      key: openrouter,
+      model: (env.OPENROUTER_MODEL ?? "").trim() || "deepseek/deepseek-v4-flash",
+      through: "openrouter",
+    };
+  }
+  const direct = (env.DEEPSEEK_API_KEY ?? "").trim();
+  if (direct) {
+    return { url: "https://api.deepseek.com/chat/completions", key: direct, model: MODELS.deepseek, through: "deepseek" };
+  }
+  return null;
+}
+
+/**
  * What a run costs, in rupees, per million tokens.
  *
  * Written down so the ledger means something; the numbers are the published
@@ -222,7 +263,8 @@ export interface AskModel {
 function keys(): { claude: boolean; deepseek: boolean } {
   return {
     claude: Boolean((process.env.ANTHROPIC_API_KEY ?? "").trim()),
-    deepseek: Boolean((process.env.DEEPSEEK_API_KEY ?? "").trim()),
+    // Either door counts: direct, or through OpenRouter (7 Nov).
+    deepseek: deepseekRoute() !== null,
   };
 }
 
@@ -265,7 +307,8 @@ export async function ask<T>(input: AskModel): Promise<Proposal<T>> {
 
   const started = Date.now();
   const { text: prompt, trimmed } = trimForModel(input.prompt);
-  const model = MODELS[provider];
+  const route = provider === "deepseek" ? deepseekRoute() : null;
+  const model = route ? route.model : MODELS[provider];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -289,7 +332,7 @@ export async function ask<T>(input: AskModel): Promise<Proposal<T>> {
           };
 
     const response = await fetch(
-      provider === "claude" ? "https://api.anthropic.com/v1/messages" : "https://api.deepseek.com/chat/completions",
+      provider === "claude" ? "https://api.anthropic.com/v1/messages" : (route?.url ?? "https://api.deepseek.com/chat/completions"),
       {
         method: "POST",
         signal: controller.signal,
@@ -303,7 +346,12 @@ export async function ask<T>(input: AskModel): Promise<Proposal<T>> {
               }
             : {
                 "content-type": "application/json",
-                authorization: "Bearer " + (process.env.DEEPSEEK_API_KEY ?? "").trim(),
+                authorization: "Bearer " + (route?.key ?? ""),
+                // OpenRouter asks who is calling; it is in their dashboard
+                // beside the spend, which is where the owner will look.
+                ...(route?.through === "openrouter"
+                  ? { "http-referer": "https://ops.career141.com", "x-title": "Career 141 Ops" }
+                  : {}),
               },
         body: JSON.stringify(body),
       },
