@@ -199,15 +199,45 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
             in a fixed order is the point, and a wrapped column is a column
             somebody stops trusting the order of. */}
         <div className="mt-2 flex gap-3 overflow-x-auto pb-2">
+          {/*
+            Each stage is a container, and the cards sit inside it (7 Nov).
+
+            It was the other way round: the cards had borders and the columns
+            had none, so nine "Nothing here" labels floated in white space
+            with no shape holding them. The column is ash now and the cards
+            are white inside it - the same relationship the sidebar has with
+            the page - so the eye reads "nine stages" before it reads a card.
+
+            An empty stage collapses to a strip with only its name. The order
+            is still the whole point of the board, so the strip keeps its
+            place; but three enquiries beside nine columns of "Nothing here"
+            read as a broken page, and a desk with three enquiries is the
+            normal case.
+          */}
           {live.map((stage) => {
             const theirs = rowsInStage(rows, stage.key);
-            return (
-              <div key={stage.key} className="flex w-[260px] shrink-0 flex-col gap-2">
-                <div className="rounded-xl border border-rule bg-surface px-3 py-2">
+            if (theirs.length === 0) {
+              return (
+                <div
+                  key={stage.key}
+                  title={stage.about}
+                  className="flex w-[128px] shrink-0 flex-col rounded-xl bg-shell px-3 py-2.5"
+                >
                   <div className="flex items-baseline gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-rule-strong" aria-hidden="true" />
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-shell-rule" aria-hidden="true" />
+                    <span className="truncate text-[12.5px] text-ink-soft">{stage.what}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-ink-faint">—</p>
+                </div>
+              );
+            }
+            return (
+              <div key={stage.key} className="flex w-[264px] shrink-0 flex-col gap-2 rounded-xl bg-shell p-2">
+                <div className="px-1.5 pt-1 pb-0.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
                     <span className="text-[13px] font-medium">{stage.what}</span>
-                    <span className="ml-auto text-[12px] text-ink-faint">{theirs.length || "—"}</span>
+                    <span className="ml-auto rounded-full bg-surface px-2 text-[11.5px] text-ink-soft">{theirs.length}</span>
                   </div>
                   <p className="mt-0.5 text-[11.5px] leading-snug text-ink-faint">{stage.about}</p>
                 </div>
@@ -216,7 +246,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
                   <Link
                     key={row.id}
                     href={row.href}
-                    className="block rounded-xl border border-rule bg-surface px-3 py-2.5 hover:border-rule-strong"
+                    className="block rounded-lg bg-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(22,24,26,0.06)] transition-shadow hover:shadow-[0_2px_6px_rgba(22,24,26,0.10)]"
                   >
                     <p className="text-[13px] font-medium leading-snug">{row.title}</p>
                     <p className={"mt-1 text-[12px] leading-snug " + (row.late ? "text-danger" : "text-ink-soft")}>
@@ -227,10 +257,6 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
                     </p>
                   </Link>
                 ))}
-
-                {theirs.length === 0 && (
-                  <p className="px-3 py-2 text-[12px] text-ink-faint">Nothing here.</p>
-                )}
               </div>
             );
           })}
