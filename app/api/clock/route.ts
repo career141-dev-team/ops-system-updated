@@ -1,4 +1,5 @@
-import { noteClockPass, pushOutbox, readTaEvents, runClocks } from "@/data/desk";
+import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks } from "@/data/desk";
+import { readerEnabled } from "@/lib/graphMail";
 import { keyAccepted, onePass } from "@/lib/clockPass";
 
 /**
@@ -27,7 +28,12 @@ export async function POST(request: Request): Promise<Response> {
     const clocks = await runClocks();
     const out = await pushOutbox();
     const events = await readTaEvents();
-    return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read };
+    // The mailboxes too (8 Nov, docs/31 part 2). Until today the reader ran
+    // only from the button on /mail, while the page said "every two
+    // minutes": nothing scheduled it. A chase stopped by a reply read here is
+    // stopped before the next pass, which is the point of one pass.
+    const mail = readerEnabled() ? await readTheMailboxes(CLOCK_ACTOR) : { read: 0, filed: 0, ok: true };
+    return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok };
   });
   if (answer.pass) await noteClockPass(JSON.stringify(answer.pass));
   // 409 for "a pass is already going": the scheduler should come back, not

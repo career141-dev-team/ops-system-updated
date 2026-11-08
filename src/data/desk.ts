@@ -481,6 +481,9 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
  * guessed at. Recording is keyed on the mail server's own id, so a second pass
  * over the same mailbox records nothing twice.
  */
+/** The clock pass as an actor: the audit and the timeline read it as "by itself". */
+export const CLOCK_ACTOR = "clock";
+
 export async function readTheMailboxes(
   by: Id,
   now = Date.now(),

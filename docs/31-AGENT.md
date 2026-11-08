@@ -60,7 +60,7 @@ test@… instead", or a refusal - are what the thread shows.
 | PR | What | State |
 |---|---|---|
 | 1 | The column and the daily set: `chat` table on both stores, `agent.ts` with eleven intents (approve a draft, approve all routine, mark mail done, file mail, finish a task, log a call, keep a note, a new enquiry, write an email, record a payment, send an invoice), `chatSay` / `chatDo` / `toggleChat`, `app/Chat.tsx`, the column in the layout, `/chat` for the phone, the toggle in the sidebar | built 8 Nov |
-| 2 | The feed: `src/lib/feed.ts`, `/api/chat` polled every 30 s like the bell, new mail and fired clocks and TA events as lines with buttons; mail reading moved into the clock pass so it runs every five minutes without a button | next |
+| 2 | The feed: `src/lib/feed.ts` (tested), `/api/chat` polled every 30 s like the bell and on the tab coming back; new mail with a *Mark it done* button, a clock of yours that ran out, a task made or passed to you, a TA event - each kept once as a feed row, marked by its source. Mail reading is in the clock pass now, so it runs every five minutes without the button | built 8 Nov |
 | 3 | The rest of the catalogue, and the "ask for the missing field" turn | after |
 | 4 | Memory of yesterday at the top of today; the agent's accuracy on `/ai` | after |
 
