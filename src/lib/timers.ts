@@ -60,3 +60,45 @@ export function timeLeft(dueAt: number, now: number): { text: string; tone: "cal
   if (ms <= 24 * 3_600_000) return { text: amount + " left", tone: "soon" };
   return { text: amount + " left", tone: "calm" };
 }
+
+/**
+ * What a clock is, in words.
+ *
+ * The screens showed the kind as it is written in the code - "esa.send" - and
+ * a person reading their own day should not have to translate (2 Nov).
+ */
+export function clockInWords(kind: string): string {
+  const words: Record<string, string> = {
+    "esa.send": "the agreement has to go out",
+    "esa.chase": "chasing the agreement",
+    "esa.decline": "two weeks with no signed agreement",
+    "esa.countersign": "the Director has to countersign",
+    "meeting.reminder.day": "a client meeting tomorrow",
+    "meeting.reminder.hour": "a client meeting in an hour",
+    "meeting.rebook": "a meeting to book again",
+    "feedback.chase": "waiting on client feedback",
+    "feedback.call": "a client to ring about feedback",
+    "lead.inviteBack": "a client to invite back",
+    "talentpulse.compile": "Talent Pulse, on Tuesday",
+    "report.weekly": "the weekly report, on Monday",
+    "ad.close": "a TopJobs advert to close",
+    "interview.day": "the interview itself",
+    "interview.report": "a date the client owes us",
+    "silence.hold": "two weeks of client silence",
+    "hold.review": "a hold to look at again",
+    "hire.unreported": "a possible unreported hire",
+    "set.due": "a set due at the client",
+    "set.ownership": "the CV ownership window",
+    "invoice.chase": "an unpaid invoice",
+    "invoice.due": "an invoice due",
+    "doj.remind.week": "somebody joining in a week",
+    "doj.remind.day": "somebody joining tomorrow",
+    "doj.join": "a joining day",
+    "guarantee.warn": "the guarantee, fifteen days left",
+    "guarantee.end": "the guarantee ends",
+    "replacement.deadline": "the time to replace somebody",
+    "interview.reconfirm": "an interview to reconfirm",
+    "test.clock": "a test clock",
+  };
+  return words[kind] ?? kind;
+}

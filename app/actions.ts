@@ -10,6 +10,8 @@ import {
   addFile,
   addHolidays,
   addLead,
+  dayItems,
+  whyFirstKept,
   addMeeting,
   agreementForLead,
   addPosition,
@@ -175,6 +177,7 @@ import {
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
+import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import {
@@ -191,6 +194,8 @@ import {
   inboundReadPrompt,
   notSaidInWords,
   summarisePrompt,
+  type WhyFirst,
+  whyFirstPrompt,
 } from "@/lib/aiTasks";
 import {
   CLOSE_TRIGGERS,
@@ -5245,4 +5250,35 @@ export async function quickAdd(formData: FormData): Promise<void> {
   revalidatePath("/leads");
   said("Saved. " + input.company + " is on the leads list with its two checks waiting.");
   void lead;
+}
+
+/**
+ * Why today's first thing is first, in the model's one line (8 Nov, UX
+ * order 6; Phase 9 step 12).
+ *
+ * The order is the rules' and is already on the screen before this is
+ * pressed. The model is handed the first thing and the rest and asked only
+ * why; it cannot reorder anything. It runs from a press, never from a
+ * render (the 3 Nov rule), and is kept per person, day and first thing, so
+ * the second visit reads the same line for nothing.
+ */
+export async function explainFirst(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const now = Date.now();
+  const db = await desk();
+  const day = whatFirst(dayItems(db, member.id, now));
+  if (!day) redirect("/" + confirmed("Nothing is waiting, so there is nothing to put first."));
+  const key = whatFirstKey(member.id, colomboDate(now), day.first);
+  if (whyFirstKept(db, key)) redirect("/");
+  const answer = await runAi<WhyFirst>(
+    "whatfirst",
+    whyFirstPrompt(day.first.said, day.others.map((o) => o.said), colomboDateInWords(now)),
+    member.id,
+    { type: "whatfirst", id: key },
+    [day.others.length + 1 + " things on your day, in the rules' order"],
+    now,
+  );
+  revalidatePath("/");
+  redirect("/" + (answer.problem ? confirmed("No line: " + answer.problem) : ""));
 }

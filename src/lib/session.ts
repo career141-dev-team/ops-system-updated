@@ -94,7 +94,11 @@ export async function startSession(memberId: string): Promise<void> {
 export async function signInAs(memberId: string): Promise<void> {
   if (!devSignInAllowed()) throw new Error("Development sign-in is switched off.");
   const jar = await cookies();
-  jar.set(DEV, memberId, { httpOnly: true, sameSite: "lax", path: "/" });
+  // Kept as long as the real one (8 Nov). Without a maxAge it was a session
+  // cookie, and the browser pane the walks run in drops those when it is
+  // hidden for a while - every long walk ended on /sign-in with nothing of
+  // ours having signed anybody out, and an hour went on the wrong suspect.
+  jar.set(DEV, memberId, { httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_DAYS * 24 * 60 * 60 });
 }
 
 export async function signOut(): Promise<void> {

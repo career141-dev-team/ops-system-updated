@@ -20,7 +20,7 @@ pull request, walked in the browser, with nothing hidden and nothing removed.
 | 3 | ✓ 7 Nov · **A bell** in the sidebar with a live count, and nothing else | A WhatsApp to the ops person's phone is a second inbox; email a third. One place, in the system |
 | 4 | ✓ 7 Nov · **A timeline** on the client and on the position: everything that happened, in order, from the audit that already exists | "What happened with Nippon?" is the first question when the phone rings |
 | 5 | ✓ 8 Nov · **Quick-add from anywhere**: log a call, a note, a lead, without leaving the page you are on | A client rings while you are on the invoices page |
-| 6 | **"What to do first today"** - the AI line at the top of Your day | The key is in now (OpenRouter, DeepSeek). It is the ten minutes of working out where to start |
+| 6 | ✓ 8 Nov · **"What to do first today"** - the AI line at the top of Your day | The key is in now (OpenRouter, DeepSeek). It is the ten minutes of working out where to start |
 | 7 | **A phone layout** for Your day, the Inbox and quick-add - not the whole app | Desk first, because reading CVs and approving drafts is desk work; the phone is for the call that just came in and the reply that just landed, and those three screens are ninety per cent of it |
 | 8 | **Keyboard**: J/K to move, A to approve, / to search | Last, because it only helps once everything else is right |
 

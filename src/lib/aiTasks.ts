@@ -199,15 +199,17 @@ export interface WhyFirst {
   notSaid: string[];
 }
 
-export function whyFirstPrompt(task: string, others: string[]): PromptFor {
+export function whyFirstPrompt(task: string, others: string[], today?: string): PromptFor {
   return {
     system:
       HOUSE +
       " The order of the day's work is already decided by the system's rules. You are writing one short line" +
       " saying why the first one matters today - you are not re-ordering anything and you must not suggest a" +
-      " different order." +
+      " different order. Dates in the list are the dates of the things themselves, not today's date." +
       ' Shape: {"because":"","notSaid":[]}. One sentence, under twenty words.',
-    prompt: "First: " + task + "\n\nAlso waiting:\n- " + others.join("\n- "),
+    // Today's date goes in (8 Nov): without it the model called tomorrow's
+    // interview "today's interview", which is the one thing the line must not get wrong.
+    prompt: (today ? "Today is " + today + ".\n\n" : "") + "First: " + task + "\n\nAlso waiting:\n- " + others.join("\n- "),
   };
 }
 
