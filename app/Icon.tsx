@@ -25,10 +25,13 @@ export type IconName =
   | "reports"
   | "settings"
   | "search"
-  | "bell";
+  | "bell"
+  | "plus";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
+  // Add: the plainest plus there is, because it sits beside eight pictures already.
+  plus: <path d="M12 5v14M5 12h14" />,
   // A day: a calendar with today marked.
   day: (
     <>
