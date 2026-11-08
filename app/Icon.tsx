@@ -26,12 +26,15 @@ export type IconName =
   | "settings"
   | "search"
   | "bell"
-  | "plus";
+  | "plus"
+  | "menu";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
   // Add: the plainest plus there is, because it sits beside eight pictures already.
   plus: <path d="M12 5v14M5 12h14" />,
+  // The menu: three lines, the one picture everybody already reads.
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   // A day: a calendar with today marked.
   day: (
     <>

@@ -59,7 +59,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
           <h1 className="text-[17px] font-medium">Your day</h1>
           <p className="mt-0.5 text-[13px] text-ink-soft">{colomboDate(now)} · Colombo</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {/* Desk tools: a phone has no business running the clocks by hand. */}
+        <div className="hidden flex-wrap gap-2 md:flex">
           <form action={runClocksNow}>
             <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
               Run the clocks now

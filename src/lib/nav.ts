@@ -117,3 +117,11 @@ export function isHere(path: string, href: string): boolean {
     under === "/" ? path === "/" : path === under || path.startsWith(under + "/"),
   );
 }
+
+/**
+ * The four pages a phone is for (UX order 7), along its bottom bar. The desk
+ * is for reading CVs and approving drafts; the phone is for the call that
+ * just came in and the reply that just landed. Everything else is behind
+ * the menu, one tap away, not gone.
+ */
+export const PHONE_PAGES = ["/", "/mail", "/work", "/clients"] as const;
