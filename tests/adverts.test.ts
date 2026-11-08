@@ -112,7 +112,8 @@ test("Tuesday compiles one issue a week, and sets the next Tuesday's clock", asy
   const desk = await import("@/data/desk");
   repo.reset();
 
-  const now = Date.now();
+  // Pinned, not Date.now(): run on a Sunday, "two days later" is a new week (8 Nov).
+  const now = TUESDAY_HALF_NINE;
   const client = repo.addClient({
     leadId: null,
     taClientId: "ta_c1",

@@ -77,3 +77,26 @@ test("changing a setting keeps the old value and demands a reason", () => {
   assert.equal(entry.after, "6");
   assert.equal(entry.reason, "The client asked for six");
 });
+
+test("a write by another copy of the store is seen, not overwritten (8 Nov)", () => {
+  // In `next dev` the action, the page and the route handler each hold their
+  // own copy of this module. The page's clock pass saved a stale cache over
+  // a note the action had just written. So: when the file changes under us,
+  // the next load reads it rather than trusting the cache.
+  const file = path.join(process.env.OPS_DATA_DIR as string, "ops.json");
+  const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+  onDisk.tasks.push({
+    id: "k_from_elsewhere", kind: "remind", title: "Written by the other copy", body: "", assigneeId: "m_owner",
+    dueAt: Date.now(), state: "open", subjectType: null, subjectId: null, link: null, outcome: null, doneBy: null, doneAt: null, createdAt: Date.now(),
+  });
+  // A later mtime, as a real second write has: the clock is coarse on some disks.
+  fs.writeFileSync(file, JSON.stringify(onDisk, null, 2));
+  const later = new Date(Date.now() + 5_000);
+  fs.utimesSync(file, later, later);
+
+  assert.ok(repo.all().tasks.some((t) => t.id === "k_from_elsewhere"), "the other copy's task is read, not lost");
+  // And our own next write keeps it.
+  repo.createTask({ kind: "remind", title: "Ours", body: "", assigneeId: "m_owner", dueAt: Date.now(), subjectType: null, subjectId: null, link: null });
+  const after = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.ok(after.tasks.some((t: { id: string }) => t.id === "k_from_elsewhere"), "still there after our save");
+});

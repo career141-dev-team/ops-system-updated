@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import Bell from "@/app/Bell";
 import Icon, { ICON_FOR } from "@/app/Icon";
+import QuickAdd from "@/app/QuickAdd";
 import type { Bell as BellCount } from "@/lib/bell";
 import { NAV, isHere } from "@/lib/nav";
 import type { WorkCount } from "@/lib/sectionWork";
@@ -30,12 +31,15 @@ export default function Sidebar({
   counts,
   who,
   bell,
+  clients,
 }: {
   may: Record<string, boolean>;
   counts: Record<string, WorkCount>;
   who: { name: string; role: string };
   /** What is waiting on this person right now, kept live by the bell itself. */
   bell: BellCount;
+  /** Names for the quick-add box to file a call or a note under. */
+  clients: { id: string; name: string }[];
 }) {
   const path = usePathname() ?? "/";
 
@@ -62,6 +66,9 @@ export default function Sidebar({
           className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-ink-faint"
         />
       </form>
+
+      {/* A call, a note, an enquiry - from any page, without leaving it (UX order 5). */}
+      <QuickAdd clients={clients} />
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
         {NAV.map((section) => {

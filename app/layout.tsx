@@ -47,6 +47,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const counts = member && db ? workByPage(openTasksFor(db, member.id), now) : {};
   // The bell's first number comes with the page; the bell keeps it live after.
   const bell = member && db ? bellOf(db, member.id, now) : { waiting: 0, late: 0, inbox: 0 };
+  // The clients' names, for the quick-add box to file a call or a note under.
+  const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name })) : [];
 
   return (
     <html lang="en">
@@ -73,7 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </Suspense>
         {member ? (
           <div className="flex min-h-screen items-stretch">
-            <Sidebar may={may} counts={counts} bell={bell} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+            <Sidebar may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
             <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
           </div>
         ) : (

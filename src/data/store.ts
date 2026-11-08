@@ -58,9 +58,29 @@ const dir = process.env.OPS_DATA_DIR || path.join(process.cwd(), ".data");
 const file = path.join(dir, "ops.json");
 
 let cache: OpsDatabase | null = null;
+/** The file's modification time when the cache was built, so another copy's write is seen. */
+let cacheStamp = 0;
+
+/**
+ * The file on disk when it changed under us (8 Nov).
+ *
+ * In `next dev` a server action, a page and a route handler are separate
+ * bundles, and each has its own copy of this module and so its own cache. A
+ * quick-add note was saved by the action, and the page it redirected to ran
+ * its clock pass from a cache loaded minutes before, saved, and the note was
+ * gone - last writer wins, and the line had already said "Kept". So the cache
+ * is trusted only while the file is as it was when the cache was built.
+ */
+function stamp(): number {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
 
 function load(): OpsDatabase {
-  if (cache) return cache;
+  if (cache && stamp() === cacheStamp) return cache;
   try {
     const onDisk = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<OpsDatabase>;
     // A file written before a collection existed has no key for it, and the
@@ -72,6 +92,7 @@ function load(): OpsDatabase {
     for (const key of Object.keys(fresh) as (keyof OpsDatabase)[]) {
       if (!Array.isArray(cache[key])) (cache as unknown as Record<string, unknown>)[key] = fresh[key];
     }
+    cacheStamp = stamp();
   } catch {
     cache = seed();
     save();
@@ -83,6 +104,7 @@ function save(): void {
   if (!cache) return;
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(cache, null, 2));
+  cacheStamp = stamp();
 }
 
 function id(prefix: string): Id {

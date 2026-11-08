@@ -174,6 +174,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import {
@@ -5153,4 +5154,95 @@ export async function recordAiUse(formData: FormData): Promise<void> {
   if (!["used", "edited", "ignored"].includes(outcome)) redirect(back);
   if (runId) await recordAiOutcome(runId, outcome, null, member.id);
   redirect(back + (back.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent("Noted. It is in the AI record."));
+}
+
+/**
+ * Quick-add from anywhere (7 Nov, UX order 5).
+ *
+ * A call, a note or an enquiry from the sidebar, saved through the same
+ * writes the full screens use, and the person sent back to the page they
+ * were standing on with the three-second line. Nothing new is stored: a
+ * call is the call log, an enquiry is a lead, and a note is a task to
+ * yourself due the next nine in the morning.
+ *
+ * A refusal comes back as the same line, because the sidebar has no banner
+ * of its own and the browser already refused the empty fields before the
+ * form was sent. The server's rule is the backstop, not the first check.
+ */
+export async function quickAdd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/");
+  const said = (line: string) => redirect(back + confirmed(line));
+  const kind = String(formData.get("kind") ?? "") as QuickKind;
+  if (!(QUICK_KINDS as readonly string[]).includes(kind)) said("Not saved: that is not a thing the desk keeps.");
+
+  const db = await desk();
+  const client = clientNamed(String(formData.get("about") ?? ""), db.clients);
+  const about = client ? { subjectType: "client", subjectId: client.id, link: "/clients/" + client.id } : null;
+
+  if (kind === "call") {
+    if (!can(member, "task.do")) said("Not saved: " + refusal("task.do"));
+    const input = {
+      to: String(formData.get("to") ?? "").trim(),
+      spokeTo: String(formData.get("spokeTo") ?? "").trim(),
+      outcome: String(formData.get("outcome") ?? "").trim(),
+    };
+    const problem = problemWithCall(input);
+    if (problem) said("Not saved: " + problem);
+    await logCall({
+      taskId: null,
+      to: tidyPhone(input.to) ?? input.to,
+      toName: client?.name ?? "",
+      purpose: "other",
+      spokeTo: input.spokeTo,
+      outcome: input.outcome,
+      subjectType: about?.subjectType ?? null,
+      subjectId: about?.subjectId ?? null,
+      by: member.id,
+    });
+    revalidatePath("/calls");
+    said("Written down." + (client ? " Filed under " + client.name + "." : ""));
+  }
+
+  if (kind === "note") {
+    const text = String(formData.get("text") ?? "");
+    const problem = problemWithNote(text);
+    if (problem) said("Not saved: " + problem);
+    await createTask(noteToTask(text, member.id, Date.now(), about));
+    revalidatePath("/");
+    said("Kept. It is on Your day tomorrow morning." + (client ? " Filed under " + client.name + "." : ""));
+  }
+
+  // An enquiry: the same lead as /leads, with its two checks waiting on its page.
+  if (!can(member, "client.manage")) said("Not saved: " + refusal("client.manage"));
+  const input = {
+    company: String(formData.get("company") ?? "").trim(),
+    contactName: String(formData.get("contactName") ?? "").trim(),
+    contactEmail: String(formData.get("contactEmail") ?? "").trim(),
+    contactPhone: String(formData.get("contactPhone") ?? "").trim(),
+    source: String(formData.get("source") ?? "call"),
+  };
+  const problem = problemWithNewLead(input);
+  if (problem) said("Not saved: " + problem);
+  const flag = flagIndustry({ company: input.company, industry: "", website: "", notes: "" });
+  const lead = await addLead({
+    ...input,
+    nameKey: nameKey(input.company),
+    industry: "",
+    website: "",
+    notes: "",
+    industryFlagged: flag.flagged,
+    industryBecause: flag.because,
+    industryConfirmedBy: null,
+    state: "new",
+    reason: null,
+    doNotInvite: false,
+    clientTaId: null,
+    ownerId: member.id,
+    createdBy: member.id,
+  });
+  revalidatePath("/leads");
+  said("Saved. " + input.company + " is on the leads list with its two checks waiting.");
+  void lead;
 }
