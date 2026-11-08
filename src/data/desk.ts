@@ -14,6 +14,7 @@ import type {
   OpsRequirement,
   OpsAd,
   OpsAiRun,
+  OpsChatRow,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -1381,6 +1382,39 @@ export async function draftCreditNote(
 }
 
 /* ── The AI layer (15, Phase 9) ────────────────────────────────── */
+
+/** One line of the desk assistant's thread (8 Nov, docs/31). */
+export async function addChatRow(input: Omit<OpsChatRow, "id">): Promise<OpsChatRow> {
+  if (!usingConvex()) return repo.addChatRow(input);
+  return (await convexMutation<OpsChatRow>("ops/data:addChatRow", input)) as OpsChatRow;
+}
+
+export async function updateChatRow(rowId: Id, patch: Partial<Pick<OpsChatRow, "state" | "text" | "actionName">>): Promise<void> {
+  if (!usingConvex()) {
+    repo.updateChatRow(rowId, patch);
+    return;
+  }
+  await convexMutation("ops/data:updateChatRow", { rowId, ...patch });
+}
+
+/** What is pinned at the top of the chat: the desk's state in four chips, the same counts Your day shows. */
+export function pinsOf(db: OpsDatabase, memberId: Id, now: number): { label: string; value: string; late?: boolean }[] {
+  const drafts = db.messages.filter((m) => m.state === "draft").length;
+  const fresh = db.inbound.filter((i) => i.readState === "new").length;
+  const mine = db.tasks.filter((t) => t.state === "open" && t.assigneeId === memberId);
+  const late = mine.filter((t) => t.dueAt < now).length;
+  return [
+    { label: "To approve", value: String(drafts) },
+    { label: "New email", value: String(fresh) },
+    { label: "Your tasks", value: String(mine.length) },
+    { label: "Late", value: String(late), late: late > 0 },
+  ];
+}
+
+/** This person's thread, oldest first, the newest `limit` lines. */
+export function chatFor(db: OpsDatabase, memberId: Id, limit = 80): OpsChatRow[] {
+  return db.chat.filter((r) => r.memberId === memberId).sort((a, b) => a.at - b.at).slice(-limit);
+}
 
 export async function addAiRun(input: Omit<OpsAiRun, "id">): Promise<OpsAiRun> {
   if (!usingConvex()) return repo.addAiRun(input);

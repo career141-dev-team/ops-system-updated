@@ -27,7 +27,8 @@ export type IconName =
   | "search"
   | "bell"
   | "plus"
-  | "menu";
+  | "menu"
+  | "chat";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -35,6 +36,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   // The menu: three lines, the one picture everybody already reads.
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  // The chat: one speech shape, the way every phone draws it.
+  chat: <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6z" />,
   // A day: a calendar with today marked.
   day: (
     <>
@@ -151,6 +154,7 @@ export const ICON_FOR: Record<string, IconName> = {
   "/": "day",
   "/work": "work",
   "/mail": "inbox",
+  "/chat": "chat",
   "/clients": "clients",
   "/positions": "positions",
   "/money": "money",

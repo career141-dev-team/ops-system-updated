@@ -10,6 +10,9 @@ import {
   addFile,
   addHolidays,
   addLead,
+  addChatRow,
+  chatFor,
+  updateChatRow,
   dayItems,
   whyFirstKept,
   addMeeting,
@@ -178,6 +181,10 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { getURLFromRedirectError } from "next/dist/client/components/redirect";
+import { cookies } from "next/headers";
+import { type ChatButton, type Runnable, catalogueInWords, resolveIntent } from "@/lib/agent";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import {
@@ -194,6 +201,8 @@ import {
   inboundReadPrompt,
   notSaidInWords,
   summarisePrompt,
+  type AgentSaid,
+  agentPrompt,
   type WhyFirst,
   whyFirstPrompt,
 } from "@/lib/aiTasks";
@@ -5281,4 +5290,134 @@ export async function explainFirst(): Promise<void> {
   );
   revalidatePath("/");
   redirect("/" + (answer.problem ? confirmed("No line: " + answer.problem) : ""));
+}
+
+/* ── The desk assistant (8 Nov, docs/31) ───────────────────────── */
+
+/**
+ * The actions the chat may press, by name. The type is the catalogue's own
+ * list, so adding an intent that names an action not here fails to compile
+ * rather than failing at three in the afternoon.
+ */
+const RUNNABLE: Record<Runnable, (fd: FormData) => Promise<void>> = {
+  approveAndSend,
+  approveAllRoutine,
+  markMailDone,
+  fileThisMail,
+  finishTask,
+  recordCall,
+  quickAdd,
+  writeNewMessage,
+  recordPayment,
+  sendInvoice,
+};
+
+/**
+ * What a person typed, turned into one line and a button (or a question,
+ * or a refusal). The person's row is written before the model is asked, so
+ * the thread shows what was said even when the model is slow or down. A
+ * question goes the ask box's way and the answer comes back as a line.
+ */
+export async function chatSay(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/chat");
+  if (!can(member, "inbox.read")) redirect(back + confirmed("Not allowed: " + refusal("inbox.read")));
+  const said = String(formData.get("text") ?? "").trim();
+  if (!said) redirect(back);
+  const now = Date.now();
+  await addChatRow({ memberId: member.id, who: "person", text: said, buttons: [], state: "said", actionName: null, runId: null, at: now });
+
+  const db = await desk();
+  const context = [
+    "Today is " + colomboDateInWords(now) + ".",
+    db.messages.filter((m) => m.state === "draft").length + " drafts wait for approval.",
+    db.inbound.filter((i) => i.readState === "new").length + " new emails.",
+    "Clients: " + db.clients.map((c) => c.name).join("; ") + ".",
+  ];
+  const answer = await runAi<AgentSaid>("agent", agentPrompt(said, catalogueInWords(), context), member.id, { type: "chat", id: member.id }, ["the words typed and the counts"], now);
+  const line = (text: string, state: "proposed" | "refused" | "done", buttons: ChatButton[] = []) =>
+    addChatRow({ memberId: member.id, who: "desk", text, buttons, state, actionName: null, runId: answer.runId, at: Date.now() });
+
+  // The model answered with nothing usable (no key, the cap, no JSON): the
+  // person still gets the offers, and the ledger has why.
+  if (!answer.proposal.ok || !answer.proposal.data) {
+    const why = (answer.problem ?? "nothing came back").replace(/\.+$/, "");
+    const offers = resolveIntent({ intent: "", fields: {}, question: "", notSaid: [] }, db, member, now);
+    await line("I could not work that out (" + why + "). " + (offers.kind === "refuse" ? offers.said : ""), "refused");
+    revalidatePath(back);
+    redirect(back);
+  }
+  const got = answer.proposal.data as AgentSaid;
+  const resolved = resolveIntent({ intent: got.intent, fields: got.fields ?? {}, question: got.question ?? "", notSaid: got.notSaid ?? [] }, db, member, now);
+  if (resolved.kind === "question") {
+    const rows = [
+      "Today is " + colomboDate(now) + " in Colombo.",
+      "Clients: " + db.clients.map((c) => c.name + " (" + c.stage + ")").join("; "),
+      "Positions: " + db.positions.map((p) => p.title + " (" + p.stage + ")").join("; "),
+      "Drafts waiting: " + db.messages.filter((m) => m.state === "draft").length,
+      "Your open tasks: " + db.tasks.filter((t) => t.state === "open" && t.assigneeId === member.id).map((t) => t.title).join("; "),
+    ];
+    const asked = await runAi<Answer>("ask", askPrompt(said, rows), member.id, { type: "chat", id: member.id }, ["the desk's own rows"], now);
+    const text = asked.proposal.ok && asked.proposal.data ? (asked.proposal.data as Answer).answer : "I could not answer: " + (asked.problem ?? "nothing came back") + ".";
+    await line(text, "done");
+  } else if (resolved.kind === "proposal") {
+    await line(resolved.said, "proposed", resolved.buttons);
+  } else {
+    await line(resolved.said, resolved.kind === "refuse" ? "refused" : "done");
+  }
+  revalidatePath(back);
+  redirect(back);
+}
+
+/**
+ * A button pressed: the row's action runs exactly as the screen would run
+ * it, with the same FormData, through the same gate. Every action ends in a
+ * redirect carrying ?msg= or ?did=, so the result is read off the URL the
+ * action would have landed on, and written into the thread.
+ */
+export async function chatDo(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/chat");
+  const db = await desk();
+  const rowId = String(formData.get("rowId") ?? "");
+  const which = Number(formData.get("button") ?? "0");
+  const row = chatFor(db, member.id, 1000).find((r) => r.id === rowId);
+  const button = row?.buttons[which];
+  if (!row || !button || row.state !== "proposed") redirect(back + confirmed("That button has already been used."));
+  const run = RUNNABLE[button.action as Runnable];
+  if (!run) redirect(back + confirmed("That action is not one the chat may run."));
+
+  await updateChatRow(row.id, { state: "running", actionName: button.action });
+  const fd = new FormData();
+  for (const [k, val] of Object.entries(button.fields)) fd.set(k, val);
+  fd.set("back", back);
+
+  let result = "Done.";
+  let refused = false;
+  try {
+    await run(fd);
+  } catch (error) {
+    if (!isRedirectError(error)) {
+      await updateChatRow(row.id, { state: "refused", text: row.text + "\n\nIt failed: " + (error instanceof Error ? error.message : String(error)) });
+      revalidatePath(back);
+      redirect(back);
+    }
+    const url = new URL(getURLFromRedirectError(error), "http://ops.local");
+    const msg = url.searchParams.get("did") ?? url.searchParams.get("msg");
+    if (msg) result = msg;
+    refused = /^(not |refused|cannot|could not|no )/i.test(result) || /not allowed|refus|cannot/i.test(result);
+  }
+  await updateChatRow(row.id, { state: refused ? "refused" : "done", text: row.text + "\n\n" + (refused ? "Not done: " : "") + result });
+  revalidatePath(back);
+  redirect(back + confirmed(result));
+}
+
+/** The desk's column, open or shut, kept in a cookie so the page renders it without a flicker. */
+export async function toggleChat(formData: FormData): Promise<void> {
+  const jar = await cookies();
+  const open = jar.get("ops_chat_open")?.value === "1";
+  jar.set("ops_chat_open", open ? "0" : "1", { path: "/", sameSite: "lax", maxAge: 365 * 24 * 60 * 60 });
+  redirect(backTo(formData, "/"));
 }

@@ -114,6 +114,7 @@ export function seed(now = Date.now()): OpsDatabase {
     closeChecklists: [],
     ads: [],
     aiRuns: [],
+    chat: [],
     leads: [
       {
         id: "ld_new",

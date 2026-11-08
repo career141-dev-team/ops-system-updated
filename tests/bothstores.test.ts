@@ -29,7 +29,7 @@ import test from "node:test";
 // not leave anything behind in the data a person is looking at.
 process.env.OPS_DATA_DIR ??= fs.mkdtempSync(path.join(os.tmpdir(), "ops-both-"));
 
-const { addLead, desk, draftMessage, settleMessage, startTimer } = await import("@/data/desk");
+const { addChatRow, addLead, chatFor, desk, draftMessage, settleMessage, startTimer, updateChatRow } = await import("@/data/desk");
 const { usingConvex } = await import("@/data/convexClient");
 
 const WHICH = usingConvex() ? "convex" : "json";
@@ -185,4 +185,26 @@ test("every write left a trail", async () => {
     assert.equal(typeof entry.action, "string");
     assert.ok(entry.action.length > 0, "an audit line with no action says nothing");
   }
+});
+
+test("a chat line written through the desk comes back whole, buttons and all (docs/31)", async () => {
+  const me = (await desk()).members[0].id;
+  const row = await addChatRow({
+    memberId: me,
+    who: "desk",
+    text: "Ready when you are.",
+    buttons: [{ label: "Approve and send: x", action: "approveAndSend", fields: { messageId: "msg_x", back: "/" }, shows: [{ label: "Draft", value: "x" }] }],
+    state: "proposed",
+    actionName: null,
+    runId: null,
+    at: Date.now(),
+  });
+  hasEveryField(row as unknown as Record<string, unknown>, ["id", "memberId", "who", "text", "buttons", "state", "actionName", "runId", "at"], "A chat row");
+  assert.equal(row.buttons[0].fields.messageId, "msg_x");
+  assert.equal(row.buttons[0].shows[0].label, "Draft");
+  await updateChatRow(row.id, { state: "done", actionName: "approveAndSend" });
+  const back = chatFor(await desk(), me, 1000).find((r) => r.id === row.id);
+  assert.equal(back?.state, "done");
+  assert.equal(back?.actionName, "approveAndSend");
+  assert.equal(back?.buttons[0].shows[0].value, "x", "the rows a person read before pressing are kept");
 });

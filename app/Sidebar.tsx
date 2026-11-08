@@ -7,7 +7,8 @@ import Bell from "@/app/Bell";
 import Icon, { ICON_FOR } from "@/app/Icon";
 import QuickAdd from "@/app/QuickAdd";
 import type { Bell as BellCount } from "@/lib/bell";
-import { NAV, PHONE_PAGES, isHere } from "@/lib/nav";
+import { toggleChat } from "@/app/actions";
+import { NAV, PHONE_ONLY, PHONE_PAGES, isHere } from "@/lib/nav";
 import type { WorkCount } from "@/lib/sectionWork";
 
 /**
@@ -39,6 +40,7 @@ export default function Sidebar({
   who,
   bell,
   clients,
+  chatOpen,
 }: {
   may: Record<string, boolean>;
   counts: Record<string, WorkCount>;
@@ -47,6 +49,8 @@ export default function Sidebar({
   bell: BellCount;
   /** Names for the quick-add box to file a call or a note under. */
   clients: { id: string; name: string }[];
+  /** Whether the chat column is open on the desk. */
+  chatOpen: boolean;
 }) {
   const path = usePathname() ?? "/";
 
@@ -114,6 +118,17 @@ export default function Sidebar({
           <span className="min-w-0 flex-1 truncate text-[14px] font-medium">Career 141 Ops</span>
           {/* The one number that follows you around (UX order 3). */}
           <Bell initial={bell} />
+          {/* The chat column, open or shut (docs/31). A form, so it works before hydration. */}
+          <form action={toggleChat}>
+            <input type="hidden" name="back" value={path} />
+            <button
+              title={chatOpen ? "Close the chat column" : "Open the chat column"}
+              aria-pressed={chatOpen}
+              className={"rounded-md p-1 transition-colors hover:bg-shell-sunk " + (chatOpen ? "text-brand" : "text-ink-faint")}
+            >
+              <Icon name="chat" size={16} />
+            </button>
+          </form>
         </div>
 
         {/* One box over everything the desk keeps. A person knows the client's
@@ -167,7 +182,7 @@ export default function Sidebar({
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {PHONE_PAGES.map((href) => {
-          const page = NAV.flatMap((s) => s.pages).find((p) => p.href === href);
+          const page = NAV.flatMap((s) => s.pages).find((p) => p.href === href) ?? PHONE_ONLY[href];
           if (!page) return null;
           const here = isHere(path, href);
           const count = counts[href];
