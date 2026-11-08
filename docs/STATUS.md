@@ -1,6 +1,6 @@
 # Where the build actually is
 
-Updated 6 November 2026. This is the one page that says what exists.
+Updated 8 November 2026. This is the one page that says what exists.
 
 **Every phase of [15](15-BUILD-PLAN.md) is built, and so are the screens.** The
 nine phases are below, each with where its pieces live and what proves them.
@@ -253,6 +253,25 @@ on that page.
 
 Nothing is a modal, a drawer or an overlay, and nothing hides behind a hover.
 
+### The UX order (docs/30), all eight built 7 to 8 November
+
+The owner asked, as the ops person on the phone all day: would you use this?
+The answer was "partly", seven questions were put with a recommended answer
+each, and he said *all yes*. [30](30-UX-ORDER.md) is the order; every step
+was its own pull request, walked in the browser before it merged, and most
+walks found something the tests had passed.
+
+| Step | Where | What it is |
+|---|---|---|
+| 1 The board | `app/work/page.tsx` | ash stage containers, white cards, an empty stage collapses to a strip |
+| 2 Approve from the list | `app/page.tsx`, `approveOne` in `app/actions.ts`, `app/Toast.tsx` | a draft reads inline under a `details` and approves there through the same gate; "approve all routine" takes exactly the template-approved drafts; a three-second line confirms every action |
+| 3 The bell | `src/lib/bell.ts`, `app/Bell.tsx`, `app/api/bell/route.ts` | one number in the sidebar, the top of Your day added up, polled every 30 seconds and on the tab coming back; red when something is late; a link to Your day and nothing more |
+| 4 The timeline | `src/lib/timeline.ts`, the History tab on a client and a position | everything under a client or a position, as plain sentences, newest day first. Every action the desk writes has words; an unnamed state move still reads "went from X to Y" |
+| 5 Quick-add | `app/QuickAdd.tsx`, `src/lib/quickAdd.ts` | a call, a note or an enquiry from the sidebar on any page, saved through the same writes and leaving you where you were; a note is a task to yourself due the next nine in the morning. Its walk found and fixed the JSON store's stale-cache overwrite in `next dev` (`src/data/store.ts` re-reads when the file's mtime moved) |
+| 6 What first | `src/lib/whatFirst.ts`, `dayItems` in `src/data/desk.ts`, the "First today" card on Your day | the rules choose the first thing (late, a draft a person must read, due today, a clock, routine); the AI writes one line only when a person asks, kept per person, day and first thing |
+| 7 The phone | `app/Sidebar.tsx`, `PHONE_PAGES` in `src/lib/nav.ts` | under 768px a top bar, an in-flow menu and a bottom bar with Your day · Inbox · The work · Clients; the desk unchanged |
+| 8 The keyboard | `src/lib/keys.ts`, `app/Keys.tsx` | J/K move, A approves, Enter opens, / finds; nothing while typing; pages mark their rows with `data-row`, `data-open`, `data-approve` |
+
 ## Not built
 
 **The server and pilot half of phase 8**, which is a person's work, not code's.
@@ -344,7 +363,7 @@ Each of these exists because of something that went wrong, written in
 ## How it is checked
 
 ```bash
-node tests/run.mjs        # all 46 suites, each in its own process, on the JSON store
+node tests/run.mjs        # all 51 suites, each in its own process, on the JSON store
 npm run test:convex       # the same 46 against the Ops backend on this laptop
 npx tsc --noEmit          # types
 ```
