@@ -71,7 +71,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[14.5px] font-medium">What came in</h2>
-          <p className="mt-0.5 text-[13px] text-ink-soft">
+          <p className="mt-0.5 break-words text-[13px] text-ink-soft">
             {mailboxesInWords()} ·{" "}
             {readerEnabled() ? "read every two minutes" : "reading is switched off until the mailboxes are named"}
           </p>

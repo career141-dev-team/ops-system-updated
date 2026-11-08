@@ -74,9 +74,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Toast />
         </Suspense>
         {member ? (
-          <div className="flex min-h-screen items-stretch">
+          <div className="flex min-h-screen flex-col md:flex-row md:items-stretch">
             <Sidebar may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
-            <main className="min-w-0 flex-1 px-6 py-6">{children}</main>
+            {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
+            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:px-6 md:py-6">{children}</main>
           </div>
         ) : (
           <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>
