@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { chatDo, chatSay } from "@/app/actions";
@@ -36,9 +37,46 @@ export default function Chat({
   const path = usePathname() ?? "/";
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+
+  // What arrived since the page was rendered (part 2). The server's rows are
+  // the truth; these are appended until the next render replaces them. The
+  // poll is the bell's: every half minute, and when the tab comes back.
+  const [arrived, setArrived] = useState<OpsChatRow[]>([]);
+  const all = [...rows, ...arrived.filter((a) => !rows.some((r) => r.id === a.id))];
+  useEffect(() => {
+    setArrived([]);
+  }, [rows]);
+  useEffect(() => {
+    let stopped = false;
+    let after = rows.reduce((m, r) => Math.max(m, r.at), 0);
+    const ask = async () => {
+      try {
+        const res = await fetch("/api/chat?after=" + after, { cache: "no-store" });
+        if (!res.ok || stopped) return;
+        const got = (await res.json()) as { ok: boolean; rows: OpsChatRow[] };
+        if (!got.ok || stopped || !got.rows.length) return;
+        after = got.rows.reduce((m, r) => Math.max(m, r.at), after);
+        setArrived((have) => [...have, ...got.rows.filter((r) => !have.some((h) => h.id === r.id))]);
+      } catch {
+        // The network being away is not news.
+      }
+    };
+    const timer = window.setInterval(ask, 30_000);
+    const onShow = () => {
+      if (document.visibilityState === "visible") void ask();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    void ask();
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
+    };
+  }, [rows]);
+
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [rows.length]);
+  }, [all.length]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -59,13 +97,13 @@ export default function Chat({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {rows.length === 0 && (
+        {all.length === 0 && (
           <Said>
             Say what you want done. For example: &ldquo;approve the last email&rdquo;, &ldquo;note: Nippon want the set by
             Friday&rdquo;, &ldquo;record 450,000 against C141-2026-0001&rdquo; - or ask a question.
           </Said>
         )}
-        {rows.map((row) => (
+        {all.map((row) => (
           <Line key={row.id} row={row} back={path} onEdit={() => box.current?.focus()} />
         ))}
         <div ref={end} />
@@ -104,6 +142,40 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: ()
   const [first, ...rest] = row.text.split("\n\n");
   const result = rest.join("\n\n");
   const button = row.buttons[0];
+
+  if (row.who === "feed") {
+    const [said, open] = first.split("\n");
+    return (
+      <div className="mb-3 pr-6">
+        <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint">Arrived</p>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-ink">
+          {said}
+          {open && (
+            <>
+              {" "}
+              <Link href={open} className="text-brand hover:underline">
+                Open
+              </Link>
+            </>
+          )}
+        </p>
+        {row.state === "proposed" && row.buttons.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {row.buttons.map((b, i) => (
+              <form key={i} action={chatDo}>
+                <input type="hidden" name="rowId" value={row.id} />
+                <input type="hidden" name="button" value={String(i)} />
+                <input type="hidden" name="back" value={back} />
+                <Press label={b.label} />
+              </form>
+            ))}
+          </div>
+        )}
+        {row.state === "running" && <p className="mt-1 text-[12px] text-ink-soft">Working…</p>}
+        {result && <p className={"mt-1 text-[12px] " + (row.state === "refused" ? "text-danger" : "text-ink-soft")}>{result.replace(/^Not done: /, "Not done: ")}</p>}
+      </div>
+    );
+  }
 
   return (
     <Said tone={row.state === "refused" ? "text-danger" : ""}>
