@@ -6,6 +6,7 @@ import { approveAllRoutine, approveAndSend } from "@/app/actions";
 import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
 import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
+import { KEYS_IN_WORDS } from "@/lib/keys";
 import { firstBecause, whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { clockInWords, timeLeft } from "@/lib/timers";
@@ -57,7 +58,9 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[17px] font-medium">Your day</h1>
-          <p className="mt-0.5 text-[13px] text-ink-soft">{colomboDate(now)} · Colombo</p>
+          <p className="mt-0.5 text-[13px] text-ink-soft">
+            {colomboDate(now)} · Colombo<span className="hidden md:inline"> · {KEYS_IN_WORDS}</span>
+          </p>
         </div>
         {/* Desk tools: a phone has no business running the clocks by hand. */}
         <div className="hidden flex-wrap gap-2 md:flex">
@@ -203,7 +206,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
           back here. "Open" is still there for anyone who wants to change it.
         */}
         {drafts.map((message) => (
-          <div key={message.id} className={row}>
+          <div key={message.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
             <details className="min-w-0 flex-1 group">
               <summary className="cursor-pointer list-none">
                 <p className="text-[13.5px] group-open:font-medium">{messageTitle(message)}</p>
@@ -216,6 +219,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 href={"/messages/" + message.id}
+                data-open
                 className="text-[12.5px] text-ink-soft hover:text-ink hover:underline"
               >
                 Open
@@ -223,7 +227,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
               <form action={approveAndSend}>
                 <input type="hidden" name="messageId" value={message.id} />
                 <input type="hidden" name="back" value="/" />
-                <button className="rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]">
+                <button data-approve className="rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]">
                   {message.channel === "group_post" ? "Approve" : "Approve and send"}
                 </button>
               </form>
@@ -238,12 +242,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
           <div className="min-h-0 flex-1 overflow-y-auto">
           {due.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing due today.</p>}
           {due.map((task) => (
-            <div key={task.id} className={row}>
+            <div key={task.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
               <div className="min-w-0 flex-1">
                 <p className="text-[13.5px]">{task.title}</p>
                 <p className="mt-0.5 text-[12.5px] text-ink-soft">{timeLeft(task.dueAt, now).text}</p>
               </div>
-              <Link href={"/tasks/" + task.id} className="text-[12.5px] text-brand hover:underline">
+              <Link href={"/tasks/" + task.id} data-open className="text-[12.5px] text-brand hover:underline">
                 Open
               </Link>
             </div>
@@ -258,14 +262,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <p className="mt-2 text-[13px] text-ink-soft">Nothing late, nothing running out.</p>
           )}
           {late.map((task) => (
-            <div key={task.id} className={row}>
+            <div key={task.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
               <span className="rounded-full bg-bg-danger px-2 py-0.5 text-[11.5px] text-danger">
                 {timeLeft(task.dueAt, now).text}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13.5px]">{task.title}</p>
               </div>
-              <Link href={"/tasks/" + task.id} className="text-[12.5px] text-brand hover:underline">
+              <Link href={"/tasks/" + task.id} data-open className="text-[12.5px] text-brand hover:underline">
                 Open
               </Link>
             </div>
