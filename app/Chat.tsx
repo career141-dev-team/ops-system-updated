@@ -7,6 +7,7 @@ import { useFormStatus } from "react-dom";
 
 import { chatDo, chatSay } from "@/app/actions";
 import type { OpsChatRow } from "@/data/types";
+import { PENDING, yesterdayInWords } from "@/lib/agent";
 
 /**
  * The desk assistant's thread (8 Nov, docs/31).
@@ -34,6 +35,8 @@ export default function Chat({
   who: string;
   pins: { label: string; value: string; late?: boolean }[];
 }) {
+  // Memory of yesterday (part 4): one line, counted from the thread, no model.
+  const yesterday = yesterdayInWords(rows, Date.now());
   const path = usePathname() ?? "/";
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -97,6 +100,7 @@ export default function Chat({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {yesterday && <p className="mb-3 rounded-lg bg-shell-sunk px-3 py-1.5 text-[11.5px] text-ink-soft">{yesterday}</p>}
         {all.length === 0 && (
           <Said>
             Say what you want done. For example: &ldquo;approve the last email&rdquo;, &ldquo;note: Nippon want the set by
@@ -177,9 +181,11 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: ()
     );
   }
 
+  const waiting = !!row.actionName && row.actionName.startsWith(PENDING);
   return (
     <Said tone={row.state === "refused" ? "text-danger" : ""}>
       <p className="whitespace-pre-wrap">{first}</p>
+      {waiting && <p className="mt-1 text-[11.5px] text-ink-faint">Type the answer below, or &ldquo;never mind&rdquo;.</p>}
 
       {button && (row.state === "proposed" || row.state === "running" || row.state === "done" || row.state === "refused") && (
         <div className="mt-2 rounded-xl border border-shell-rule bg-surface px-3 py-2">
