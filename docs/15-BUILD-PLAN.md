@@ -1297,6 +1297,10 @@ is refused, is [21](21-AI-OPPORTUNITIES.md).
 14. Then **doing**: the box may run only actions that already exist, one at a time, each
     through the same confirmation a person would have seen. It never writes to TA, never
     sends, never closes anything, and never touches money.
+    **Superseded 8 Nov by the owner ([09](09-DECISIONS-AND-QUESTIONS.md), [31](31-AGENT.md)):
+    the chat may run every action a person may do on the screens, money included, each
+    behind a button the person presses - the click is the approval. Only the first
+    sentence survives: only actions that already exist, through the same gate.**
 15. The weekly report (Phase 7 step 16): the numbers from the data, the prose from AI,
     and the TA lead approves it before the Director sees it.
 16. **Accuracy, not impressions.** A weekly sample of each task compares the proposal

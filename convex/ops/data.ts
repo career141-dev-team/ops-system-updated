@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, chat, calls, baseline, taCalls, outbox, events, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -84,6 +84,7 @@ export const snapshot = internalQuery({
       ctx.db.query("opsCloseChecklists").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsAds").withIndex("by_created").order("desc").take(200),
       ctx.db.query("opsAiRuns").withIndex("by_at").order("desc").take(300),
+      ctx.db.query("opsChat").withIndex("by_at").order("desc").take(400),
       ctx.db.query("opsCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsBaseline").collect(),
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
@@ -125,6 +126,7 @@ export const snapshot = internalQuery({
       closeChecklists: closeChecklists.map(row),
       ads: ads.map(row),
       aiRuns: aiRuns.map(row),
+      chat: chat.map(row),
       calls: calls.map(row),
       baseline: baseline.map(row),
       taCalls: taCalls.map(row),
@@ -640,6 +642,41 @@ export const addMember = internalMutation({
 });
 
 /** One run of the AI layer (15, Phase 9 step 1). */
+export const addChatRow = internalMutation({
+  args: {
+    memberId: v.string(),
+    who: v.string(),
+    text: v.string(),
+    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string() })) })),
+    state: v.string(),
+    actionName: v.union(v.string(), v.null()),
+    runId: v.union(v.string(), v.null()),
+    at: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("opsChat", args);
+    const written = await ctx.db.get(id);
+    return written ? row(written) : null;
+  },
+});
+
+export const updateChatRow = internalMutation({
+  args: {
+    rowId: v.string(),
+    state: v.optional(v.string()),
+    text: v.optional(v.string()),
+    actionName: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const { rowId, ...patch } = args;
+    const found = await ctx.db.get(rowId as Id<"opsChat">);
+    if (!found) return;
+    const clean: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(patch)) if (val !== undefined) clean[k] = val;
+    await ctx.db.patch(found._id, clean);
+  },
+});
+
 export const addAiRun = internalMutation({
   args: {
     task: v.string(),

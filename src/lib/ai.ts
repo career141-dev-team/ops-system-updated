@@ -29,6 +29,7 @@ export type AiTask =
   | "draft.reply"
   | "summarise"
   | "whatfirst"
+  | "agent"
   | "ask";
 
 export const AI_TASKS: Record<AiTask, { what: string; judgment: boolean; reads: string }> = {
@@ -61,6 +62,11 @@ export const AI_TASKS: Record<AiTask, { what: string; judgment: boolean; reads: 
     what: "Say in one line why today's first task is first",
     judgment: false,
     reads: "the task list the rules already ordered",
+  },
+  agent: {
+    what: "Turn what a person typed into one of the desk's own actions, for them to press",
+    judgment: false,
+    reads: "the words typed, the list of actions, and a few counts",
   },
   ask: { what: "Answer a question from our own data", judgment: true, reads: "what the person could read anyway" },
 };

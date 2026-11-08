@@ -213,6 +213,39 @@ export function whyFirstPrompt(task: string, others: string[], today?: string): 
   };
 }
 
+/* ── The desk assistant (docs/31) ──────────────────────────────── */
+
+export interface AgentSaid {
+  /** One of the catalogue's intent names, or "question". */
+  intent: string;
+  /** The fields the intent asks for, each as the person's own words. */
+  fields: Record<string, string>;
+  /** When the words do not say enough: the one question to ask back. */
+  question: string;
+  notSaid: string[];
+}
+
+/**
+ * Words into an intent and its fields - and nothing else. The model does
+ * not pick rows, check permissions or decide; the rules in
+ * src/lib/agent.ts do that from what it returns.
+ */
+export function agentPrompt(said: string, catalogue: string[], context: string[]): PromptFor {
+  return {
+    system:
+      HOUSE +
+      " You are the desk's assistant inside a recruitment agency's own system. A person has typed what they want" +
+      " done. Pick ONE intent from the list, or \"question\" when they are asking rather than telling, and copy the" +
+      " fields from their words - their words, not yours; a missing field is an empty string, and its name goes in notSaid." +
+      " For a field that names a thing (a draft, an email, a task, a client, an invoice) copy the words that name it," +
+      " such as \"the last one\" or \"Nippon\" - never invent an id or a number." +
+      " You never run anything and never decide anything; a person presses the button." +
+      ' Shape: {"intent":"","fields":{},"question":"","notSaid":[]}.' +
+      "\n\nIntents:\n- " + catalogue.join("\n- "),
+    prompt: (context.length ? context.join("\n") + "\n\n" : "") + "They typed: " + said,
+  };
+}
+
 /* ── The ask box (step 13) ─────────────────────────────────────── */
 
 export interface Answer {
@@ -241,6 +274,7 @@ export const TASK_BUTTONS: Record<AiTask, string> = {
   "draft.reply": "Draft a reply",
   summarise: "Summarise",
   whatfirst: "Why this first",
+  agent: "Do it",
   ask: "Ask",
 };
 

@@ -26,6 +26,7 @@ import type {
   OpsRequirement,
   OpsAd,
   OpsAiRun,
+  OpsChatRow,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -680,6 +681,24 @@ export const repo = {
 
   aiRunIn(runId: Id): OpsAiRun | null {
     return load().aiRuns.find((r) => r.id === runId) ?? null;
+  },
+
+  addChatRow(input: Omit<OpsChatRow, "id">): OpsChatRow {
+    const db = load();
+    const row: OpsChatRow = { ...input, id: id("ch") };
+    db.chat.push(row);
+    // Not audited: the thread is its own record, and the action a button
+    // runs writes its own trail as it always did.
+    save();
+    return row;
+  },
+
+  updateChatRow(rowId: Id, patch: Partial<Pick<OpsChatRow, "state" | "text" | "actionName">>): void {
+    const db = load();
+    const row = db.chat.find((r) => r.id === rowId);
+    if (!row) return;
+    Object.assign(row, patch);
+    save();
   },
 
   addAiRun(input: Omit<OpsAiRun, "id">): OpsAiRun {

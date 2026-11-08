@@ -936,6 +936,29 @@ export interface OpsAiRun {
   at: number;
 }
 
+/**
+ * One line of the desk assistant's thread (8 Nov, docs/31).
+ *
+ * `who` is the person, the desk (a proposal, a question, a result) or the
+ * feed (an email, a clock, a TA event that arrived by itself). A proposal
+ * carries its buttons; pressing one runs the action it names and the row
+ * moves to done or refused with the gate's own sentence.
+ */
+export interface OpsChatRow {
+  id: Id;
+  memberId: Id;
+  who: "person" | "desk" | "feed";
+  text: string;
+  /** `{ label, action, fields }` as the agent rules built them. */
+  buttons: { label: string; action: string; fields: Record<string, string>; shows: { label: string; value: string }[] }[];
+  state: "said" | "proposed" | "running" | "done" | "refused";
+  /** The runnable pressed, when one was. */
+  actionName: string | null;
+  /** The ledger row of the model call that produced it, when one did. */
+  runId: Id | null;
+  at: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -962,6 +985,7 @@ export interface OpsDatabase {
   closeChecklists: OpsCloseChecklist[];
   ads: OpsAd[];
   aiRuns: OpsAiRun[];
+  chat: OpsChatRow[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

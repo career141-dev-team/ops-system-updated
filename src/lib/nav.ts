@@ -124,4 +124,9 @@ export function isHere(path: string, href: string): boolean {
  * just came in and the reply that just landed. Everything else is behind
  * the menu, one tap away, not gone.
  */
-export const PHONE_PAGES = ["/", "/mail", "/work", "/clients"] as const;
+// The owner chose Chat over Clients for the phone (8 Nov); Clients is in the Everything menu.
+export const PHONE_PAGES = ["/", "/mail", "/chat", "/work"] as const;
+/** The one phone-bar page that is not a sidebar entry, with its words. */
+export const PHONE_ONLY: Record<string, { what: string; about: string }> = {
+  "/chat": { what: "Chat", about: "Ask, and get it done - every action behind a button you press" },
+};

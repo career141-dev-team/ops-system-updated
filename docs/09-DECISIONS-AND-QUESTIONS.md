@@ -7,6 +7,7 @@ over older documents.
 
 | Date | Decision | By |
 |---|---|---|
+| 8 Nov | **The desk assistant** ([31](31-AGENT.md)): a chat column that turns words into the desk's own actions, each behind a button the person presses. It may run **every action a person may do on the screens, money included**; nothing runs without the click, which is the person's approval, so "the system drafts, a person approves, the system sends" stands. Supersedes phase 9 step 14's "never sends, never writes to TA, never touches money". On a phone the chat replaces Clients in the bottom bar | Owner (chat) |
 | 2 Nov | **Every feature ships with its screen.** The UI is built and connected as each backend part is built, not after it; the owner must be able to click every feature. Replaces "backend first, UI later" (28 Oct) | Owner (chat) |
 | 2 Nov | The Ops screens use **the same look as the TA System**, and are **minimal with no overlays**: no modals or drawers, one page per thing, edit in place, plain wording (rules in [07](07-SCREENS.md)) | Owner (chat) |
 | 2 Nov | Build starts with a **thin end-to-end skeleton** (sign in, inbox, one clock, one drafted message, one TA read), then fills in Phase 1 | Owner (chat) |

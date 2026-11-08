@@ -12,7 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { COVERS, NAV, PHONE_PAGES, pageAndSectionFor } from "@/lib/nav";
+import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor } from "@/lib/nav";
 
 const APP = join(process.cwd(), "app");
 
@@ -62,6 +62,9 @@ test("a covered page belongs to the entry that covers it", () => {
 
 test("every page on the phone's bar is a real sidebar entry", () => {
   const hrefs = NAV.flatMap((s) => s.pages.map((p) => p.href));
-  for (const href of PHONE_PAGES) assert.ok(hrefs.includes(href), href + " is on the phone bar but not in the sidebar");
+  for (const href of PHONE_PAGES) {
+    // The chat is the column on the desk, not a ninth sidebar entry (docs/25: eight, never more).
+    assert.ok(hrefs.includes(href) || PHONE_ONLY[href], href + " is on the phone bar but not in the sidebar, and not named as phone-only");
+  }
   assert.equal(PHONE_PAGES.length, 4, "four fit a thumb; five do not");
 });

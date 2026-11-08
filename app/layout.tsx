@@ -5,7 +5,10 @@ import Toast from "@/app/Toast";
 import type { Metadata } from "next";
 
 import Sidebar from "@/app/Sidebar";
-import { desk, openTasksFor } from "@/data/desk";
+import { cookies } from "next/headers";
+
+import Chat from "@/app/Chat";
+import { chatFor, desk, openTasksFor, pinsOf } from "@/data/desk";
 import { bellOf } from "@/lib/bell";
 import { workByPage } from "@/lib/sectionWork";
 import { currentMember } from "@/lib/session";
@@ -50,6 +53,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const bell = member && db ? bellOf(db, member.id, now) : { waiting: 0, late: 0, inbox: 0 };
   // The clients' names, for the quick-add box to file a call or a note under.
   const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name })) : [];
+  // The desk assistant's column, open or shut (8 Nov, docs/31). A cookie, so
+  // the page is rendered with it already there rather than appearing after.
+  const chatOpen = (await cookies()).get("ops_chat_open")?.value === "1";
 
   return (
     <html lang="en">
@@ -78,9 +84,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Keys />
         {member ? (
           <div className="flex min-h-screen flex-col md:flex-row md:items-stretch">
-            <Sidebar may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+            <Sidebar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:px-6 md:py-6">{children}</main>
+            {/* The third column: the chat, when it is open. It pushes the page
+                over; it never floats over it (the owner's rule). On a phone it is
+                its own page from the bottom bar. */}
+            {chatOpen && db && (
+              <aside className="hidden h-screen w-[360px] shrink-0 flex-col border-l border-shell-rule bg-shell lg:flex">
+                <div className="flex items-center justify-between border-b border-shell-rule px-3 py-2">
+                  <p className="text-[13px] font-medium">Chat</p>
+                  <p className="text-[11.5px] text-ink-faint">every action waits for your button</p>
+                </div>
+                <Chat rows={chatFor(db, member.id)} who={member.name} pins={pinsOf(db, member.id, now)} />
+              </aside>
+            )}
           </div>
         ) : (
           <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>

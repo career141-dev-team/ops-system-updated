@@ -354,6 +354,20 @@ export default defineSchema({
     .index("by_at", ["at"])
     .index("by_task", ["task"]),
 
+  /** The desk assistant's thread, one row a line (8 Nov, docs/31). */
+  opsChat: defineTable({
+    memberId: v.string(),
+    who: v.string(),
+    text: v.string(),
+    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string() })) })),
+    state: v.string(),
+    actionName: v.union(v.string(), v.null()),
+    runId: v.union(v.string(), v.null()),
+    at: v.number(),
+  })
+    .index("by_member", ["memberId", "at"])
+    .index("by_at", ["at"]),
+
   /** One paid advert, TopJobs today (15, Phase 3 step 12). */
   opsAds: defineTable({
     channel: v.string(),

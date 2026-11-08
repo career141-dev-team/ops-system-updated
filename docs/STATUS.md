@@ -272,6 +272,15 @@ walks found something the tests had passed.
 | 7 The phone | `app/Sidebar.tsx`, `PHONE_PAGES` in `src/lib/nav.ts` | under 768px a top bar, an in-flow menu and a bottom bar with Your day · Inbox · The work · Clients; the desk unchanged |
 | 8 The keyboard | `src/lib/keys.ts`, `app/Keys.tsx` | J/K move, A approves, Enter opens, / finds; nothing while typing; pages mark their rows with `data-row`, `data-open`, `data-approve` |
 
+### The desk assistant (docs/31), begun 8 November
+
+| Piece | Where | Notes |
+|---|---|---|
+| The catalogue and the resolver | `src/lib/agent.ts`, `tests/agent.test.ts` | eleven intents that name real server actions (the type makes `actions.ts` provide every one); words resolved against the desk - "the last email" names the draft on the button, a client must be a whole or unambiguous name, money is on the button, a missing permission is refused in words |
+| The model's part | `agentPrompt` in `src/lib/aiTasks.ts`, task `agent` in `src/lib/ai.ts` | words into an intent and fields, as JSON, and nothing else; it never executes |
+| The thread | table `chat` on both stores (`OpsChatRow`), `chatSay` / `chatDo` / `toggleChat` in `app/actions.ts` | a button runs the same action the screen runs with the same FormData; its redirect is caught and the sentence on it is the result |
+| The column and the page | `app/Chat.tsx`, `app/layout.tsx`, `app/chat/page.tsx`, the sidebar's header toggle | the owner's reference shape: a label not a bubble for the assistant, a dark pill for the person, "Here is what I will do" rows, "Does this look right?", a result card; the desk's state pinned on top; on the phone it replaces Clients in the bottom bar |
+
 ## Not built
 
 **The server and pilot half of phase 8**, which is a person's work, not code's.
@@ -287,7 +296,7 @@ Small things still open, each with its reason:
 | The Teams meeting made from the Ops mailbox | a calendar permission nobody has granted |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
-| The AI's "what to do first today", and an ask box that *acts* | phase 9 steps 12 and 14. Everything else of phase 9 is built and switched off |
+| The desk assistant's feed, the rest of its catalogue, and its memory | [31](31-AGENT.md) pull requests 2 to 4. PR 1 - the column, eleven intents, the `chat` table - is built (8 Nov); "what first" (step 12) was built the same day under the UX order |
 | Reading the client's offered interview times; the ICS export | phase 9, and small |
 | Contract tests shared with the TA repo, and the load check | both need the real API answering rather than the stand-in |
 | TopJobs | built end to end; **paused by the owner on 3 November** |
