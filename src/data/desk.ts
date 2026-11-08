@@ -36,7 +36,7 @@ import type {
   OpsTemplate,
   OpsTimer,
 } from "./types";
-import { colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { DAY, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import {
   AI_TASKS,
   type AiSwitches,
@@ -51,6 +51,9 @@ import {
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
 import { type TickAction, tick } from "@/lib/tick";
+import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
+import { clockInWords } from "@/lib/timers";
+import type { DayItem } from "@/lib/whatFirst";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
@@ -1420,6 +1423,36 @@ export function aiSwitches(db: OpsDatabase, now = Date.now()): AiSwitches {
     dailyBudget: numberOf(db, "ai.dailyBudget", DAILY_BUDGET),
     spentToday: aiSpentToday(db, now),
   };
+}
+
+/**
+ * Everything waiting on this person today, as one list the rules can order
+ * (8 Nov, UX order 6). Built here and nowhere else, so the day page and the
+ * "why first" action read the same list and cannot disagree.
+ */
+export function dayItems(db: OpsDatabase, memberId: Id, now: number): DayItem[] {
+  const items: DayItem[] = [];
+  for (const m of draftsWaiting(db)) {
+    const routine = isRoutine(m, m.templateKey ? templateFor(db, m.templateKey) : null);
+    items.push({ said: messageTitle(m) + " - " + messageInWords(m), href: "/messages/" + m.id, kind: routine ? "routine" : "draft", at: m.createdAt });
+  }
+  for (const t of openTasksFor(db, memberId)) {
+    if (t.dueAt < now) items.push({ said: t.title, href: "/tasks/" + t.id, kind: "late", at: t.dueAt });
+    else if (t.dueAt < now + DAY) items.push({ said: t.title, href: "/tasks/" + t.id, kind: "due", at: t.dueAt });
+  }
+  for (const timer of liveTimersFor(db, memberId)) {
+    if (timer.dueAt < now + DAY) items.push({ said: timer.payload.label ?? clockInWords(timer.kind), href: "/", kind: "clock", at: timer.dueAt });
+  }
+  return items;
+}
+
+/** The line the model wrote for this person, day and first thing, if it has - one run, read back since. */
+export function whyFirstKept(db: OpsDatabase, key: string): string | null {
+  const run = db.aiRuns
+    .filter((r) => r.subjectType === "whatfirst" && r.subjectId === key && r.ok)
+    .sort((a, b) => b.at - a.at)[0];
+  const got = run?.proposed as { because?: string } | undefined;
+  return got?.because?.trim() || null;
 }
 
 /**

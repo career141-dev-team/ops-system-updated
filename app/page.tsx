@@ -3,13 +3,16 @@ import { redirect } from "next/navigation";
 
 import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
 import { approveAllRoutine, approveAndSend } from "@/app/actions";
-import { desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks, templateFor } from "@/data/desk";
+import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
+import AiOffer from "@/app/AiOffer";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
+import { firstBecause, whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { colomboDate, DAY } from "@/lib/calendar";
-import { timeLeft } from "@/lib/timers";
+import { clockInWords, timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
 import { NAV } from "@/lib/nav";
 import { workByPage, workInWords } from "@/lib/sectionWork";
-import { runClocksNow, startTestClock } from "./actions";
+import { explainFirst, runClocksNow, startTestClock } from "./actions";
 
 /**
  * Your day: the only screen an Ops person starts on (07, "inbox first").
@@ -18,48 +21,6 @@ import { runClocksNow, startTestClock } from "./actions";
  * today, what is late, and which clock is running out. Every row opens its own
  * page; nothing opens over the top of this one.
  */
-/**
- * What a clock is, in words.
- *
- * The screens showed the kind as it is written in the code - "esa.send" - and
- * a person reading their own day should not have to translate (2 Nov).
- */
-function clockInWords(kind: string): string {
-  const words: Record<string, string> = {
-    "esa.send": "the agreement has to go out",
-    "esa.chase": "chasing the agreement",
-    "esa.decline": "two weeks with no signed agreement",
-    "esa.countersign": "the Director has to countersign",
-    "meeting.reminder.day": "a client meeting tomorrow",
-    "meeting.reminder.hour": "a client meeting in an hour",
-    "meeting.rebook": "a meeting to book again",
-    "feedback.chase": "waiting on client feedback",
-    "feedback.call": "a client to ring about feedback",
-    "lead.inviteBack": "a client to invite back",
-    "talentpulse.compile": "Talent Pulse, on Tuesday",
-    "report.weekly": "the weekly report, on Monday",
-    "ad.close": "a TopJobs advert to close",
-    "interview.day": "the interview itself",
-    "interview.report": "a date the client owes us",
-    "silence.hold": "two weeks of client silence",
-    "hold.review": "a hold to look at again",
-    "hire.unreported": "a possible unreported hire",
-    "set.due": "a set due at the client",
-    "set.ownership": "the CV ownership window",
-    "invoice.chase": "an unpaid invoice",
-    "invoice.due": "an invoice due",
-    "doj.remind.week": "somebody joining in a week",
-    "doj.remind.day": "somebody joining tomorrow",
-    "doj.join": "a joining day",
-    "guarantee.warn": "the guarantee, fifteen days left",
-    "guarantee.end": "the guarantee ends",
-    "replacement.deadline": "the time to replace somebody",
-    "interview.reconfirm": "an interview to reconfirm",
-    "test.clock": "a test clock",
-  };
-  return words[kind] ?? kind;
-}
-
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -79,6 +40,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const late = tasks.filter((t) => t.dueAt < now);
   const clocks = liveTimersFor(db, member.id);
   const work = workByPage(tasks, now);
+
+  // What to do first (8 Nov, UX order 6). The rules choose; the model, when
+  // it is on and has been asked once today, says why in one line.
+  const first = whatFirst(dayItems(db, member.id, now));
+  const firstKey = first ? whatFirstKey(member.id, colomboDate(now), first.first) : null;
+  const aiOn = anyKeySet() && aiSwitches(db).on;
+  const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
+  const aiLine = firstKey ? whyFirstKept(db, firstKey) : null;
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
@@ -107,6 +76,33 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       {msg && (
         <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
       )}
+
+      {/*
+        First today. One thing, chosen by the rules in src/lib/whatFirst.ts,
+        so a broken model can never change what is urgent. The AI's part is
+        the one line under it, written once a day when a person asks.
+      */}
+      <section className="rounded-2xl border border-brand/30 bg-surface px-5 py-4">
+        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-faint">First today</p>
+        {first ? (
+          <>
+            <Link href={first.first.href} className="mt-1 block text-[16px] font-medium text-ink hover:text-brand">
+              {first.first.said}
+            </Link>
+            <p className="mt-1 text-[13px] text-ink-soft">{aiLine ?? firstBecause(first.first, first.others)}</p>
+            {aiOn && !aiLine && (
+              <form action={explainFirst} className="mt-2">
+                <button className="rounded-full border border-rule-strong px-3 py-1 text-[12.5px] hover:bg-paper active:scale-[0.98]">
+                  Ask the AI why this first
+                </button>
+              </form>
+            )}
+            {!aiOn && <AiOffer label="Ask the AI why this first" why={whyAiOff ?? ""} />}
+          </>
+        ) : (
+          <p className="mt-1 text-[15px]">Nothing is waiting on you. The day is clear.</p>
+        )}
+      </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
