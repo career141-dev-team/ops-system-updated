@@ -61,8 +61,8 @@ test@… instead", or a refusal - are what the thread shows.
 |---|---|---|
 | 1 | The column and the daily set: `chat` table on both stores, `agent.ts` with eleven intents (approve a draft, approve all routine, mark mail done, file mail, finish a task, log a call, keep a note, a new enquiry, write an email, record a payment, send an invoice), `chatSay` / `chatDo` / `toggleChat`, `app/Chat.tsx`, the column in the layout, `/chat` for the phone, the toggle in the sidebar | built 8 Nov |
 | 2 | The feed: `src/lib/feed.ts` (tested), `/api/chat` polled every 30 s like the bell and on the tab coming back; new mail with a *Mark it done* button, a clock of yours that ran out, a task made or passed to you, a TA event - each kept once as a feed row, marked by its source. Mail reading is in the clock pass now, so it runs every five minutes without the button | built 8 Nov |
-| 3 | The rest of the catalogue, and the "ask for the missing field" turn | after |
-| 4 | Memory of yesterday at the top of today; the agent's accuracy on `/ai` | after |
+| 3 | The rest of the catalogue: 57 intents over 56 actions - the enquiry and the agreement, the client and its owner, the position and the LinkedIn post, the set, the candidate's decision in the client's words, the hold, every interview step, the placement and the joining day, the invoice and the credit note, the leaver and the refund, the close list, the advert, the report, Talent Pulse. Every record kind found by its name (a lead by company, a set by client and number, an interview or a placement by candidate, a hold by client, an advert by role) or asked about, never guessed; days read strictly (today, tomorrow, a weekday, a date) and a time with them. **The missing-field turn**: when one field is missing the desk asks one question and says which, and the next thing typed is the answer - the same intent resolved again, no model between; "never mind" gets out | built 8 Nov |
+| 4 | Memory of yesterday: one line at the top of the thread, counted from its own rows (things done, refused, replies), no model. Accuracy: a proposal pressed is the ledger's "used", one left behind when the person types something else is "ignored", so the agent's row on `/ai` reads like every other task's | built 8 Nov |
 
 ## What the first walk found (8 Nov)
 
@@ -75,6 +75,18 @@ test@… instead", or a refusal - are what the thread shows.
 - The rows a person reads before pressing ("Here is what I will do") have to
   be kept on the button, not rebuilt later, or a thread read next week would
   not say what was pressed.
+
+## Not in the catalogue, and why
+
+A few screens stay screens: anything that takes a **file** (keeping a file,
+the agreement signed or countersigned with its PDF, the advert's flyer, the
+first-day import), because a chat box cannot carry one; **settings, wording
+and holidays**, which are the ops lead's set-up work and want the page that
+shows every value; a **reply in a thread**, which needs the thread open to
+read; **saving a requirement** and **the agreement's fields**, which are
+forms of ten fields each; **the team on a position**, which names a TA from
+the TA System's own list; and the **development-only** buttons. Everything
+else a person does in a day is in the catalogue.
 
 ## Not in this document, on purpose
 

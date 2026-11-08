@@ -276,9 +276,10 @@ walks found something the tests had passed.
 
 | Piece | Where | Notes |
 |---|---|---|
-| The catalogue and the resolver | `src/lib/agent.ts`, `tests/agent.test.ts` | eleven intents that name real server actions (the type makes `actions.ts` provide every one); words resolved against the desk - "the last email" names the draft on the button, a client must be a whole or unambiguous name, money is on the button, a missing permission is refused in words |
+| The catalogue and the resolver | `src/lib/agent.ts`, `tests/agent.test.ts`, `tests/agent-more.test.ts` | 57 intents over 56 real server actions (the type makes `actions.ts` provide every one); words resolved against the desk - "the last email" names the draft on the button, a client must be a whole or unambiguous name, money is on the button, a missing permission is refused in words |
 | The model's part | `agentPrompt` in `src/lib/aiTasks.ts`, task `agent` in `src/lib/ai.ts` | words into an intent and fields, as JSON, and nothing else; it never executes |
 | The thread | table `chat` on both stores (`OpsChatRow`), `chatSay` / `chatDo` / `toggleChat` in `app/actions.ts` | a button runs the same action the screen runs with the same FormData; its redirect is caught and the sentence on it is the result |
+| The missing-field turn, and yesterday | `pendingMark` / `answerPending` / `yesterdayInWords` in `src/lib/agent.ts`, `chatSay` | one question at a time, the next words are the answer, no model between; yesterday's line counted from the thread; a pressed proposal is the ledger's "used", one left behind is "ignored" |
 | The feed | `src/lib/feed.ts`, `app/api/chat/route.ts` | what arrived by itself - new mail (with *Mark it done*), your clock that ran out, a task made or passed to you, a TA event - as lines in the thread, kept once each; the column polls every 30 s like the bell. Mail reading runs in the clock pass (`app/api/clock/route.ts`) every five minutes; until 8 Nov it ran only from the button on /mail while the page said "every two minutes" |
 | The column and the page | `app/Chat.tsx`, `app/layout.tsx`, `app/chat/page.tsx`, the sidebar's header toggle | the owner's reference shape: a label not a bubble for the assistant, a dark pill for the person, "Here is what I will do" rows, "Does this look right?", a result card; the desk's state pinned on top; on the phone it replaces Clients in the bottom bar |
 
@@ -297,7 +298,7 @@ Small things still open, each with its reason:
 | The Teams meeting made from the Ops mailbox | a calendar permission nobody has granted |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
-| The desk assistant's full catalogue and its memory | [31](31-AGENT.md) pull requests 3 and 4. PR 1 (the column, eleven intents, the `chat` table) and PR 2 (the feed, and mail reading in the clock pass) are built, 8 Nov |
+| The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |
 | Reading the client's offered interview times; the ICS export | phase 9, and small |
 | Contract tests shared with the TA repo, and the load check | both need the real API answering rather than the stand-in |
 | TopJobs | built end to end; **paused by the owner on 3 November** |
