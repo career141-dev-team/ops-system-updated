@@ -144,9 +144,9 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
           <p className="mt-2 text-[13px] text-ink-soft">Nobody is waiting for an answer.</p>
         )}
         {answerUs.map((thread) => (
-          <div key={thread.key} className="border-t border-rule py-3 first:border-t-0">
+          <div key={thread.key} data-row tabIndex={-1} className="rounded-lg border-t border-rule py-3 outline-none first:border-t-0 focus:bg-sunk focus:ring-1 focus:ring-brand/40">
             <div className="flex flex-wrap items-baseline gap-x-3">
-              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} data-open className="text-[13.5px] text-brand hover:underline">
                 {thread.subject}
               </Link>
               <span className="text-[12px] text-ink-faint">{thread.withName}</span>
@@ -164,8 +164,8 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
       {quiet.length > 0 && (
         <Part title="The rest of the conversations" says={quiet.length + " with nothing waiting"} open={false}>
           {quiet.map((thread) => (
-            <div key={thread.key} className="border-t border-rule py-2.5 first:border-t-0">
-              <Link href={"/mail/" + encodeURIComponent(thread.key)} className="text-[13.5px] text-brand hover:underline">
+            <div key={thread.key} data-row tabIndex={-1} className="rounded-lg border-t border-rule py-2.5 outline-none first:border-t-0 focus:bg-sunk focus:ring-1 focus:ring-brand/40">
+              <Link href={"/mail/" + encodeURIComponent(thread.key)} data-open className="text-[13.5px] text-brand hover:underline">
                 {thread.subject}
               </Link>
               <p className="mt-0.5 text-[12.5px] text-ink-soft">

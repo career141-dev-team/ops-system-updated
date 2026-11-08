@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 
+import Keys from "@/app/Keys";
 import Toast from "@/app/Toast";
 import type { Metadata } from "next";
 
@@ -73,6 +74,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Suspense fallback={null}>
           <Toast />
         </Suspense>
+        {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
+        <Keys />
         {member ? (
           <div className="flex min-h-screen flex-col md:flex-row md:items-stretch">
             <Sidebar may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
