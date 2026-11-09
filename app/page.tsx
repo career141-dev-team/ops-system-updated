@@ -11,6 +11,7 @@ import { firstBecause, whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
+import { seesWholeDesk } from "@/lib/roles";
 import { NAV } from "@/lib/nav";
 import { workByPage, workInWords } from "@/lib/sectionWork";
 import { explainFirst, runClocksNow, startTestClock } from "./actions";
@@ -40,10 +41,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
   const late = tasks.filter((t) => t.dueAt < now);
   const clocks = liveTimersFor(db, member.id);
-  // Mail in this person's own box that nobody has dealt with, each email once.
+  // Mail nobody has dealt with, each email once: the whole desk for the ops
+  // lead and the Director, the person's own box for everybody else (9 Nov).
+  const wholeDesk = seesWholeDesk(member);
   const yourMail = new Set(
     db.inbound
-      .filter((i) => i.readState === "new" && i.mailbox.toLowerCase() === member.email.toLowerCase())
+      .filter((i) => i.readState === "new" && (wholeDesk || i.mailbox.toLowerCase() === member.email.toLowerCase()))
       .map((i) => i.from + "|" + i.subject + "|" + i.receivedAt),
   ).size;
   const work = workByPage(tasks, now);
@@ -121,8 +124,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         until the work starts here, so it is counted, and it links to itself.
       */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <a href="/mail?box=mine" className="rounded-xl bg-surface px-4 py-3 transition-colors hover:bg-paper">
-          <p className="text-[12.5px] text-ink-soft">Your mailbox</p>
+        <a href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} className="rounded-xl bg-surface px-4 py-3 transition-colors hover:bg-paper">
+          <p className="text-[12.5px] text-ink-soft">{wholeDesk ? "All mail, the whole desk" : "Your mailbox"}</p>
           <p className={"mt-1 text-[22px] font-medium " + (yourMail ? "text-brand" : "")}>{yourMail}</p>
         </a>
         {[

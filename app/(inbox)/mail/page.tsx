@@ -5,6 +5,7 @@ import { aiSwitches, desk, inboundRecent, inboundWaiting } from "@/data/desk";
 import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
+import { seesWholeDesk } from "@/lib/roles";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 import { fileThisMail, markMailDone, pretendMailArrives, readMailNow, readInbound, writeNewMessage } from "@/app/actions";
 import Part from "@/app/Part";
@@ -43,7 +44,8 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
   const mine = (i: { mailbox: string }) => i.mailbox.toLowerCase() === member.email.toLowerCase();
   const shared = (i: { mailbox: string }) => !people.has(i.mailbox.toLowerCase());
   const haveOwn = all.inbound.some(mine);
-  const box = boxAsked === "shared" || boxAsked === "all" || boxAsked === "mine" ? boxAsked : haveOwn ? "mine" : "all";
+  // The ops lead and the Director open on everything; an ops owner on their own box.
+  const box = boxAsked === "shared" || boxAsked === "all" || boxAsked === "mine" ? boxAsked : seesWholeDesk(member) || !haveOwn ? "all" : "mine";
   const keep = (i: { mailbox: string }) => (box === "mine" ? mine(i) : box === "shared" ? shared(i) : true);
   const db = { ...all, inbound: all.inbound.filter(keep) };
   const counts = { mine: all.inbound.filter(mine).length, shared: all.inbound.filter(shared).length, all: all.inbound.length };

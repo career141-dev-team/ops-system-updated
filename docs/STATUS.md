@@ -292,6 +292,9 @@ walks found something the tests had passed.
 | Your own mailbox | `/mail` (Your mailbox · Shared boxes · Everything), the bell, the chat's feed and its pins, "Mark email done" | each counts the person's own box; with a month of real mail in, every bell read the whole desk |
 | A client's mail files itself | `takeInbound` in `src/data/desk.ts` | the address kept on the client record is a contact until the TA link's contacts arrive; a domain two clients share is still asked about |
 | Mail on the day and on the client | `dayItems`, `whatFirst` (kind `mail`), `clientNextStep` (`unanswered`) | "N emails in your mailbox wait for an answer" ranks after a draft; a client with mail waiting says so, each email counted once across mailboxes |
+| The ops admin sees the desk | `seesWholeDesk` in `src/lib/roles.ts`, `/mail`, Your day | the ops lead and the Director open on everything; an ops owner on their own box (9 Nov) |
+| The TA events cursor is a time | `eventsAfter` in `src/lib/ta.ts`, `readTaEvents`, the stand-in in `src/data/fakeTa.ts` | the live route takes `after` in milliseconds and answers `cursor`; an id was refused with a 400 on the second read. The 5 Nov note that it took an id was wrong |
+| Depth waits for the client | `depthApplies` in `src/lib/depth.ts`, `evaluateDepth` | the two rules apply once a set has gone or a candidate is at a client stage; on the first real events run they queued "search again" for 23 live openings that had never sent a set |
 | The reader says why | `readOneMailbox` | the error behind "could not be read", 429 named, and a time limit the import may lengthen; the clock keeps 15 seconds |
 
 ## Not built

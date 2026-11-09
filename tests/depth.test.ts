@@ -218,3 +218,14 @@ test("below five again lifts the hold in TA, without anybody asking", async () =
     .outbox.find((o) => o.path.endsWith("/openings/ta_j1/status"));
   assert.equal((open?.body as { status?: string } | undefined)?.status, "open", "TA is asked to open it again");
 });
+
+test("the depth rules wait until something is in front of the client (9 Nov)", async () => {
+  const { depthApplies } = await import("@/lib/depth");
+  // No set sent and nobody at a client stage: no verdict, so TA is told nothing.
+  assert.equal(depthApplies(0, { shortlistedTotal: 0, pending: 0 }), false);
+  // A set has gone, even if every candidate was rejected: the rules apply (search again).
+  assert.equal(depthApplies(1, { shortlistedTotal: 0, pending: 0 }), true);
+  // TA already has candidates at the client's stages, sent outside Ops: the rules apply.
+  assert.equal(depthApplies(0, { shortlistedTotal: 2, pending: 0 }), true);
+  assert.equal(depthApplies(0, { shortlistedTotal: 0, pending: 1 }), true);
+});

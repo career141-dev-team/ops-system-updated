@@ -50,3 +50,11 @@ test("every role has a label, and refusals are sentences", () => {
   assert.match(refusal("refund.decide"), /Director of Operations/);
   assert.match(refusal("money.manage"), /accounts/);
 });
+
+test("the ops lead and the Director open on the whole desk; an ops owner on their own box (9 Nov)", async () => {
+  const { seesWholeDesk } = await import("@/lib/roles");
+  assert.equal(seesWholeDesk({ role: "ops_lead" }), true);
+  assert.equal(seesWholeDesk({ role: "director_ops" }), true);
+  assert.equal(seesWholeDesk({ role: "ops_owner" }), false);
+  assert.equal(seesWholeDesk({ role: "accounts" }), false);
+});
