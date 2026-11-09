@@ -464,7 +464,7 @@ starts or cancels the timers of that state, and (where the map says) calls TA.
 
 ## E2. The API contract, version 1 (`/integrations/v1/...` on TA)
 
-Transport: HTTPS to `api.career141.com` (TA's Convex HTTP router, where the partner API
+Transport: HTTPS to `ta-system-actions.career141.com` (corrected 9 Nov: that is where TA's Convex HTTP router answers; `api.career141.com` is the Convex API and 404s these paths) (TA's Convex HTTP router, where the partner API
 already lives), `Authorization: Bearer <OPS_API_TOKEN>`, JSON. Every response: `{ok:true,
 data}` or `{ok:false, code, message}`. Pagination: `limit` ≤ 100, `cursor`.
 

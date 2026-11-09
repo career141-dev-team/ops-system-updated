@@ -21,17 +21,25 @@
  */
 import { addClient, addPosition, desk, patchClient } from "@/data/desk";
 import { nameKey } from "@/lib/leads";
-import { clients as taClients, openings as taOpenings, people as taPeople, readsEnabled, fakeTa } from "@/lib/ta";
+import { type TaOpening, clients as taClients, openings as taOpenings, people as taPeople, readsEnabled, fakeTa } from "@/lib/ta";
 
 if (!readsEnabled() && !fakeTa()) throw new Error("Set OPS_TA_READS_ENABLED=on (and OPS_TA_TOKEN, OPS_TA_BASE_URL).");
 
-const [pp, cc, oo] = await Promise.all([taPeople(), taClients(""), taOpenings()]);
-for (const [what, r] of [["people", pp], ["clients", cc], ["openings", oo]] as const) {
+const [pp, cc] = await Promise.all([taPeople(), taClients("")]);
+for (const [what, r] of [["people", pp], ["clients", cc]] as const) {
   if (!r.ok) throw new Error("The TA System would not give us its " + what + ": " + r.reason);
 }
 const people = pp.ok ? pp.data : [];
 const tclients = cc.ok ? cc.data : [];
-const topenings = oo.ok ? oo.data : [];
+// Client by client (9 Nov): the unfiltered list is the newest 100 openings
+// only (OPS_READ_LIMIT on the TA side), so the first run missed the older ones.
+const topenings: TaOpening[] = [];
+for (const t of tclients) {
+  const r = await taOpenings(t.id);
+  if (!r.ok) throw new Error("The TA System would not give us " + t.name + "'s openings: " + r.reason);
+  topenings.push(...r.data);
+  if (r.data.length >= 100) console.log("  ! " + t.name + " has 100 openings or more; only the first 100 were read.");
+}
 
 let db = await desk();
 const lead = db.members.find((m) => m.role === "ops_lead" && m.active) ?? db.members[0];
@@ -70,14 +78,15 @@ for (const t of tclients) {
 }
 
 for (const o of topenings) {
-  const live = o.status === "active" || o.status === "open" || o.status === "on_hold" || o.status === "draft";
+  // The TA System's own words: active, hold, filled, lost (and draft/open on older rows).
+  const live = ["active", "open", "draft", "hold", "on_hold"].includes(o.status);
   if (!live) continue;
   if (db.positions.some((p) => p.openingTaId === o.id)) { said.skipped += 1; continue; }
   const clientId = clientFor.get(o.clientId) ?? null;
   const client = db.clients.find((c) => c.id === clientId);
   await addPosition({
     requirementId: null, clientId, clientTaId: o.clientId, openingTaId: o.id, title: o.title,
-    stage: o.status === "on_hold" ? "on_hold" : "searching",
+    stage: o.status === "hold" || o.status === "on_hold" ? "on_hold" : "searching",
     primaryTaId: o.primaryRecruiterId, hundredPercentDay: null, taStatus: o.status,
     jdApprovedAt: null, linkedInUrl: null, linkedInPostedAt: null,
     depthStage: null, shortlistedTotal: null, pendingCount: null, depthCheckedAt: null,
