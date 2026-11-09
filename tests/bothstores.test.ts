@@ -208,3 +208,24 @@ test("a chat line written through the desk comes back whole, buttons and all (do
   assert.equal(back?.actionName, "approveAndSend");
   assert.equal(back?.buttons[0].shows[0].value, "x", "the rows a person read before pressing are kept");
 });
+
+test("a named chat: made, written into, renamed, listed, deleted with its lines (9 Nov)", async () => {
+  const { addChatThread, renameChatThread, deleteChatThread, chatsOf, chatOpen, chatLines, chatName } = await import("@/data/chats");
+  const me = (await desk()).members[0].id;
+  const t = await addChatThread({ memberId: me, name: chatName("  approve   the last email  "), at: Date.now() });
+  hasEveryField(t as unknown as Record<string, unknown>, ["id", "memberId", "name", "at"], "A chat");
+  assert.equal(t.name, "approve the last email");
+  const line = await addChatRow({ thread: t.id, memberId: me, who: "person", text: "hello", buttons: [], state: "said", actionName: null, runId: null, at: Date.now() + 1 });
+  await renameChatThread(t.id, "Nippon set 2");
+  let db = await desk();
+  assert.equal(chatsOf(db, me).find((c) => c.id === t.id)?.name, "Nippon set 2");
+  assert.equal(chatOpen(db, me, t.id), t.id);
+  assert.equal(chatOpen(db, me, "new"), null, "New chat shows nothing until words are sent");
+  assert.equal(chatOpen(db, me, "somebody-else"), chatsOf(db, me)[0].id, "an unknown cookie falls back to the latest");
+  assert.deepEqual(chatLines(db, me, t.id).map((r) => r.id), [line.id]);
+  await deleteChatThread(me, t.id);
+  db = await desk();
+  assert.ok(!chatsOf(db, me).some((c) => c.id === t.id), "the chat is gone from the list");
+  assert.ok(!db.chat.some((r) => r.id === line.id), "and its lines with it");
+  assert.match(chatName("x".repeat(80)), /…$/);
+});

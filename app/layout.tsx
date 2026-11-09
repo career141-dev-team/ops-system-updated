@@ -9,7 +9,8 @@ import Sidebar from "@/app/Sidebar";
 import { cookies } from "next/headers";
 
 import Chat from "@/app/Chat";
-import { chatFor, desk, openTasksFor, pinsOf } from "@/data/desk";
+import { CHAT_COOKIE, chatLines, chatOpen as chatShown, chatsOf } from "@/data/chats";
+import { desk, openTasksFor, pinsOf } from "@/data/desk";
 import { nextSteps } from "@/lib/agent";
 import { bellOf } from "@/lib/bell";
 import { workByPage } from "@/lib/sectionWork";
@@ -62,7 +63,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name })) : [];
   // The desk assistant's column, open or shut (8 Nov, docs/31). A cookie, so
   // the page is rendered with it already there rather than appearing after.
-  const chatOpen = (await cookies()).get("ops_chat_open")?.value === "1";
+  const jar = await cookies();
+  const chatOpen = jar.get("ops_chat_open")?.value === "1";
+  const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
 
   return (
     <html lang="en" className={inter.variable}>
@@ -103,7 +106,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <p className="text-[14px] font-semibold tracking-[-0.01em]">Desk assistant</p>
                   <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
                 </div>
-                <Chat rows={chatFor(db, member.id)} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
+                <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
               </aside>
             )}
           </div>

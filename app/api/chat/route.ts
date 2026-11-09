@@ -1,3 +1,6 @@
+import { cookies } from "next/headers";
+
+import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatOpen } from "@/data/chats";
 import { addChatRow, chatFor, desk } from "@/data/desk";
 import { feedMark, feedSince } from "@/lib/feed";
 import { currentMember } from "@/lib/session";
@@ -29,10 +32,20 @@ export async function GET(request: Request): Promise<Response> {
   const newestFeed = mine.filter((r) => r.who === "feed").reduce((m, r) => Math.max(m, r.at), 0);
   const cursor = newestFeed || now - 24 * 60 * 60 * 1000;
 
+  // What arrived goes into the chat on screen; with none started, it starts
+  // one, "New chat", renamed by the first words typed into it (9 Nov).
+  const jar = await cookies();
+  let thread = chatOpen(db, member.id, jar.get(CHAT_COOKIE)?.value);
+  const lines = feedSince(db, member.id, cursor, now).filter((line) => !kept.has(feedMark(line.key)));
+  if (lines.length && thread === null) {
+    thread = (await addChatThread({ memberId: member.id, name: "New chat", at: now })).id;
+    jar.set(CHAT_COOKIE, thread, CHAT_COOKIE_LIFE);
+  }
+
   let wrote = 0;
-  for (const line of feedSince(db, member.id, cursor, now)) {
-    if (kept.has(feedMark(line.key))) continue;
+  for (const line of lines) {
     await addChatRow({
+      thread: thread ?? undefined,
       memberId: member.id,
       who: "feed",
       text: line.text + (line.open ? "\n" + line.open : ""),
@@ -47,6 +60,6 @@ export async function GET(request: Request): Promise<Response> {
   }
   if (wrote) db = await desk();
 
-  const rows = chatFor(db, member.id, 1000).filter((r) => r.at > after);
+  const rows = chatLines(db, member.id, thread, 1000).filter((r) => r.at > after);
   return Response.json({ ok: true, rows, now }, { headers: { "cache-control": "no-store" } });
 }

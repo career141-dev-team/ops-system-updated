@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { chatDo, chatSay } from "@/app/actions";
-import type { OpsChatRow } from "@/data/types";
+import { chatDo, chatSay, deleteChat, newChat, openChat, renameChat } from "@/app/actions";
+import type { OpsChatRow, OpsChatThread } from "@/data/types";
 import { PENDING, yesterdayInWords } from "@/lib/agent";
 
 /**
@@ -39,11 +39,15 @@ import { PENDING, yesterdayInWords } from "@/lib/agent";
  */
 export default function Chat({
   rows,
+  chats,
+  open,
   who,
   pins,
   next,
 }: {
   rows: OpsChatRow[];
+  chats: OpsChatThread[];
+  open: string | null;
   who: string;
   pins: { label: string; value: string; late?: boolean }[];
   next: { label: string; say: string }[];
@@ -117,6 +121,7 @@ export default function Chat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <Chats chats={chats} open={open} back={path} />
       {/* Pinned: where you stand, in four chips. */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-shell-rule px-4 py-2.5">
         <span className="mr-1 text-[10px] uppercase tracking-[0.08em] text-ink-faint">Your desk</span>
@@ -498,5 +503,81 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
         ↑
       </button>
     </div>
+  );
+}
+
+/**
+ * The history (9 Nov): which chat is on screen, a New chat button, and the
+ * list - open one, rename it in place, delete it after a second press. A
+ * `details` in the flow, never a menu over the thread (the owner's rule).
+ */
+function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | null; back: string }) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const current = chats.find((c) => c.id === open);
+  const hidden = (thread: string) => (
+    <>
+      <input type="hidden" name="back" value={back} />
+      <input type="hidden" name="thread" value={thread} />
+    </>
+  );
+  return (
+    <details className="group border-b border-shell-rule">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[12.5px] hover:bg-shell-sunk">
+        <span className="min-w-0 flex-1 truncate font-medium text-ink">{current?.name ?? "New chat"}</span>
+        <span className="shrink-0 text-[11px] text-ink-faint">
+          History · {chats.length} <span className="inline-block transition-transform group-open:rotate-180">▾</span>
+        </span>
+      </summary>
+      <div className="max-h-[240px] overflow-y-auto px-2 pb-2">
+        <form action={newChat} className="px-2 pb-1.5">
+          <input type="hidden" name="back" value={back} />
+          <button className="w-full rounded-lg border border-shell-rule bg-surface px-2.5 py-1.5 text-left text-[12.5px] text-ink hover:bg-paper">+ New chat</button>
+        </form>
+        {chats.length === 0 && <p className="px-2 py-1 text-[12px] text-ink-faint">No chats yet. The first words you send start one.</p>}
+        {chats.map((c) => (
+          <div key={c.id || "earlier"} className={"flex items-center gap-1 rounded-lg px-2 py-1 " + (c.id === open ? "bg-surface" : "hover:bg-shell-sunk")}>
+            {renaming === c.id ? (
+              <form action={renameChat} className="flex min-w-0 flex-1 items-center gap-1">
+                {hidden(c.id)}
+                <input
+                  name="name"
+                  defaultValue={c.name}
+                  autoFocus
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                  aria-label="Chat name"
+                  className="min-w-0 flex-1 rounded-md border border-brand bg-surface px-1.5 py-0.5 text-[12.5px] outline-none ring-2 ring-brand/20"
+                />
+                <button className="rounded-md bg-ink px-2 py-0.5 text-[11.5px] text-white hover:bg-black">Save</button>
+                <button type="button" onClick={() => setRenaming(null)} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-ink-soft hover:text-ink">Cancel</button>
+              </form>
+            ) : deleting === c.id ? (
+              <form action={deleteChat} className="flex min-w-0 flex-1 items-center gap-1">
+                {hidden(c.id)}
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-danger">Delete &ldquo;{c.name}&rdquo; and all of it?</span>
+                <button className="rounded-md bg-danger px-2 py-0.5 text-[11.5px] text-white">Delete</button>
+                <button type="button" onClick={() => setDeleting(null)} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-ink-soft hover:text-ink">Keep</button>
+              </form>
+            ) : (
+              <>
+                <form action={openChat} className="min-w-0 flex-1">
+                  {hidden(c.id)}
+                  <button className={"w-full truncate text-left text-[12.5px] " + (c.id === open ? "font-medium text-ink" : "text-ink-soft hover:text-ink")}>{c.name}</button>
+                </form>
+                {c.id && (
+                  <button type="button" onClick={() => setRenaming(c.id)} title="Rename" aria-label={"Rename " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-paper hover:text-ink">
+                    ✎
+                  </button>
+                )}
+                <button type="button" onClick={() => setDeleting(c.id)} title="Delete" aria-label={"Delete " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-paper hover:text-danger">
+                  ✕
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

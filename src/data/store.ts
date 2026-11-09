@@ -27,6 +27,7 @@ import type {
   OpsAd,
   OpsAiRun,
   OpsChatRow,
+  OpsChatThread,
   OpsCloseChecklist,
   OpsGuarantee,
   OpsInterview,
@@ -691,6 +692,30 @@ export const repo = {
     // runs writes its own trail as it always did.
     save();
     return row;
+  },
+
+  addChatThread(input: Omit<OpsChatThread, "id">): OpsChatThread {
+    const db = load();
+    const thread: OpsChatThread = { ...input, id: id("ct") };
+    db.chatThreads.push(thread);
+    save();
+    return thread;
+  },
+
+  renameChatThread(threadId: Id, name: string): void {
+    const db = load();
+    const thread = db.chatThreads.find((t) => t.id === threadId);
+    if (!thread) return;
+    thread.name = name;
+    save();
+  },
+
+  /** The chat and every line of it. "" is the person's rows from before chats had names. */
+  deleteChatThread(memberId: Id, threadId: Id): void {
+    const db = load();
+    db.chatThreads = db.chatThreads.filter((t) => !(t.id === threadId && t.memberId === memberId));
+    db.chat = db.chat.filter((r) => !(r.memberId === memberId && (r.thread ?? "") === threadId));
+    save();
   },
 
   updateChatRow(rowId: Id, patch: Partial<Pick<OpsChatRow, "state" | "text" | "actionName">>): void {

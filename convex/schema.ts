@@ -364,9 +364,16 @@ export default defineSchema({
     actionName: v.union(v.string(), v.null()),
     runId: v.union(v.string(), v.null()),
     at: v.number(),
+    thread: v.optional(v.string()),
   })
     .index("by_member", ["memberId", "at"])
     .index("by_at", ["at"]),
+
+  opsChatThreads: defineTable({
+    memberId: v.string(),
+    name: v.string(),
+    at: v.number(),
+  }).index("by_member", ["memberId"]),
 
   /** One paid advert, TopJobs today (15, Phase 3 step 12). */
   opsAds: defineTable({

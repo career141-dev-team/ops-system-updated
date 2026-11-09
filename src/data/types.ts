@@ -957,6 +957,16 @@ export interface OpsChatRow {
   /** The ledger row of the model call that produced it, when one did. */
   runId: Id | null;
   at: number;
+  /** The chat it belongs to (9 Nov). Rows from before chats had names have none: "Earlier chat". */
+  thread?: Id;
+}
+
+/** One named chat of a person's (9 Nov): the history list, renamed and deleted by its owner. */
+export interface OpsChatThread {
+  id: Id;
+  memberId: Id;
+  name: string;
+  at: number;
 }
 
 export interface OpsDatabase {
@@ -986,6 +996,7 @@ export interface OpsDatabase {
   ads: OpsAd[];
   aiRuns: OpsAiRun[];
   chat: OpsChatRow[];
+  chatThreads: OpsChatThread[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];
