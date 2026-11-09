@@ -155,17 +155,16 @@ export default function Chat({
         {/* What comes next, read off the desk: one tap each. Hidden while the
             desk is waiting for an answer, which comes first. */}
         {!waitingForAnswer && !sending && next.length > 0 && (
-          <div className="mb-2.5 flex flex-col gap-1" aria-label="Suggested next">
-            <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">Next</p>
+          <div className="mb-2.5 flex flex-wrap gap-1.5" aria-label="Suggested next">
             {next.map((n) => (
               <button
                 key={n.say}
                 type="button"
+                title={n.say}
                 onClick={() => sendNow(n.say)}
-                className="flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-[12.5px] text-ink-soft transition-colors hover:bg-shell-sunk hover:text-ink"
+                className="rounded-full border border-shell-rule px-2.5 py-1 text-[12px] text-ink-soft transition-colors hover:bg-shell-sunk hover:text-ink"
               >
-                <span>{n.label}</span>
-                <span aria-hidden="true" className="text-ink-faint">→</span>
+                {n.label}
               </button>
             ))}
           </div>

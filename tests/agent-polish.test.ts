@@ -69,7 +69,7 @@ test("what comes next is read off the desk, most pressing first, at most three, 
   const forOwner = nextSteps(desk(), owner, NOW);
   assert.equal(forOwner.length, 3);
   assert.deepEqual(forOwner.map((n) => n.say), ["finish my late task", "approve the last email", "mark the newest email done"]);
-  assert.match(forOwner[1].label, /2 waiting/);
+  assert.match(forOwner[1].label, /· 2$/);
   // Accounts has no task late and may approve, but may not review sets.
   const forAccounts = nextSteps(desk(), accounts, NOW);
   assert.ok(!forAccounts.some((n) => n.say.startsWith("review")), "a set is not accounts' work");

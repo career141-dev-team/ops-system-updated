@@ -1257,17 +1257,17 @@ export function withEdit(intent: AgentIntent, edit: { field: string; value: stri
 export function nextSteps(db: OpsDatabase, member: OpsMember, now: number): { label: string; say: string }[] {
   const out: { label: string; say: string }[] = [];
   const late = db.tasks.filter((t) => t.state === "open" && t.assigneeId === member.id && t.dueAt < now);
-  if (late.length && can(member, "task.do")) out.push({ label: "Finish my late task" + (late.length > 1 ? " (" + late.length + " late)" : ""), say: "finish my late task" });
+  if (late.length && can(member, "task.do")) out.push({ label: "Late task" + (late.length > 1 ? " · " + late.length : ""), say: "finish my late task" });
   const drafts = db.messages.filter((m) => m.state === "draft").length;
-  if (drafts && can(member, "message.approve")) out.push({ label: "Approve the last email (" + drafts + " waiting)", say: "approve the last email" });
+  if (drafts && can(member, "message.approve")) out.push({ label: "Approve email · " + drafts, say: "approve the last email" });
   const fresh = db.inbound.filter((i) => i.readState === "new").length;
-  if (fresh && can(member, "inbox.read")) out.push({ label: "Mark the newest email done (" + fresh + " new)", say: "mark the newest email done" });
+  if (fresh && can(member, "inbox.read")) out.push({ label: "Mark email done · " + fresh, say: "mark the newest email done" });
   const ready = db.clientSets.filter((s) => s.state === "ready");
   if (ready.length && can(member, "client.manage")) {
     const client = db.clients.find((c) => c.id === ready[0].clientId)?.name;
-    if (client) out.push({ label: "Review the " + client + " set", say: "review the latest " + client + " set" });
+    if (client) out.push({ label: client + " set", say: "review the latest " + client + " set" });
   }
   const report = (db.reports as unknown as { state: string }[]).some((r) => r.state !== "approved" && r.state !== "sent");
-  if (report && can(member, "report.read")) out.push({ label: "Approve the weekly report", say: "approve the weekly report" });
+  if (report && can(member, "report.read")) out.push({ label: "Weekly report", say: "approve the weekly report" });
   return out.slice(0, 3);
 }
