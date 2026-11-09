@@ -79,3 +79,15 @@ export const ROLE_LABEL: Record<OpsRole, string> = {
   director_ro: "Director (read only)",
   ta_lead_ro: "TA lead (read only)",
 };
+
+/**
+ * Who opens on the whole desk rather than their own box (9 Nov, the owner:
+ * "show all for the ops admin"). The ops lead and the Director of
+ * Operations run the desk, so their mail page and their day count
+ * everyone's mail; an ops owner opens on their own and is one click from
+ * the rest. Nothing is hidden from anybody either way: this is only where
+ * a page starts.
+ */
+export function seesWholeDesk(member: Pick<OpsMember, "role">): boolean {
+  return member.role === "ops_lead" || member.role === "director_ops";
+}

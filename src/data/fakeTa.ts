@@ -188,11 +188,15 @@ export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
   }
   if (where.endsWith("/pipeline")) return give(PIPELINE);
   if (where.endsWith("/events")) {
-    const after = new URLSearchParams(query ?? "").get("after") ?? "";
-    // The cursor is the last event's id, exactly as the real API works.
-    const from = after ? EVENTS.findIndex((e) => e.id === after) + 1 : 0;
-    const events = EVENTS.slice(from < 0 ? 0 : from);
-    return give({ events, nextCursor: events.length ? events[events.length - 1].id : after });
+    // As the live route works (checked against it, 9 Nov): \`after\` is the
+    // time of the last event handled, in milliseconds; a cursor that is not
+    // a number is refused with a 400; the answer carries \`cursor\`. The 5 Nov
+    // notes said the live route took an id - it never did.
+    const said = new URLSearchParams(query ?? "").get("after") ?? "";
+    if (said !== "" && !/^\d+$/.test(said)) return { ok: false, reason: "The TA System answered 400." };
+    const after = said === "" ? 0 : Number(said);
+    const events = EVENTS.filter((e) => e.at > after);
+    return give({ events, cursor: events.length ? events[events.length - 1].at : after, nextCursor: String(events.length ? events[events.length - 1].at : after) });
   }
   // A write is accepted and nothing is kept. The stand-in cannot pretend to
   // have created an opening, but it must accept the write, or the outbox could

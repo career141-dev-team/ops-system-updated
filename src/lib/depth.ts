@@ -93,6 +93,20 @@ export function depthVerdict(depth: Depth, holdAt = HOLD_AT, searchAgainAt = SEA
   };
 }
 
+/**
+ * Whether the two depth rules apply at all (9 Nov). They are about the
+ * client's side - five shortlisted holds the search, three or fewer waiting
+ * sends the TA back out - so they wait until something is in front of the
+ * client: a set has gone, or a candidate is already at a client stage. The
+ * first run on the real TA events counted 0 waiting on 23 openings that had
+ * never sent a set and queued "search again" for every one of them, which
+ * would have changed the TA's work mode on 23 live openings the moment
+ * writes were switched on.
+ */
+export function depthApplies(setsSent: number, depth: Depth): boolean {
+  return setsSent > 0 || depth.shortlistedTotal > 0 || depth.pending > 0;
+}
+
 /** Why a new set cannot go out: the hold at five, said in words. */
 export function problemWithAnotherSet(stage: string | null, holdAt = HOLD_AT): string | null {
   if (stage !== "hold_at_five") return null;

@@ -315,8 +315,13 @@ export function write(path: string, body: Record<string, unknown>, idempotencyKe
 /* ── Events (Part E3) ─────────────────────────────────────────────────── */
 
 export function eventsAfter(cursor: string, limit = 200): Promise<TaResult<{ events: TaEvent[]; nextCursor: string }>> {
+  // The live route takes the time of the last event handled, in
+  // milliseconds (9 Nov). A cursor saved before this was an event id; it
+  // reads from the start once, and nothing is kept twice (events are
+  // recorded by their TA id), after which the cursor is a time.
+  const after = /^\d+$/.test(cursor) ? cursor : "0";
   return call<{ events: TaEvent[]; nextCursor: string }>(
     "events",
-    "/integrations/v1/events?after=" + encodeURIComponent(cursor) + "&limit=" + limit,
+    "/integrations/v1/events?after=" + encodeURIComponent(after) + "&limit=" + limit,
   );
 }

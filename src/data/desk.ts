@@ -102,6 +102,7 @@ import {
   SEARCH_AGAIN_AT,
   countDepth,
   depthVerdict,
+  depthApplies,
 } from "@/lib/depth";
 import {
   HOLD_AFTER_DAYS,
@@ -1485,12 +1486,17 @@ export function dayItems(db: OpsDatabase, memberId: Id, now: number): DayItem[] 
   for (const timer of liveTimersFor(db, memberId)) {
     if (timer.dueAt < now + DAY) items.push({ said: timer.payload.label ?? clockInWords(timer.kind), href: "/", kind: "clock", at: timer.dueAt });
   }
-  // Your own mailbox, as one line rather than one per email (9 Nov).
-  const own = db.members.find((m) => m.id === memberId)?.email.toLowerCase();
-  const waiting = own ? db.inbound.filter((i) => i.readState === "new" && i.mailbox.toLowerCase() === own) : [];
+  // Mail as one line rather than one per email (9 Nov): your own box, or
+  // the whole desk for the ops lead and the Director - each email once.
+  const me = db.members.find((m) => m.id === memberId);
+  const own = me?.email.toLowerCase();
+  const whole = me ? me.role === "ops_lead" || me.role === "director_ops" : false;
+  const waitingRows = db.inbound.filter((i) => i.readState === "new" && (whole || (own && i.mailbox.toLowerCase() === own)));
+  const waiting = [...new Map(waitingRows.map((i) => [i.from + "|" + i.subject + "|" + i.receivedAt, i])).values()];
   if (waiting.length) {
     const oldest = waiting.reduce((n, i) => Math.min(n, i.receivedAt), now);
-    items.push({ said: waiting.length + (waiting.length === 1 ? " email in your mailbox waits" : " emails in your mailbox wait") + " for an answer", href: "/mail?box=mine", kind: "mail", at: oldest });
+    const where = whole ? "across the desk" : "in your mailbox";
+    items.push({ said: waiting.length + (waiting.length === 1 ? " email " + where + " waits" : " emails " + where + " wait") + " for an answer", href: whole ? "/mail?box=all" : "/mail?box=mine", kind: "mail", at: oldest });
   }
   return items;
 }
@@ -3024,6 +3030,10 @@ export async function evaluateDepth(
   if (!answer.ok) return { ok: false, what: "Could not read the pipeline: " + answer.reason, stage: position.depthStage };
 
   const depth = countDepth(answer.data.applications ?? []);
+  const setsSent = db.clientSets.filter((cs) => cs.openingTaId === position.openingTaId && cs.state === "sent").length;
+  if (!depthApplies(setsSent, depth)) {
+    return { ok: true, what: "Nothing is in front of the client yet, so the depth rules wait.", stage: position.depthStage };
+  }
   const verdict = depthVerdict(depth, numberOf(db, "depth.holdAt", HOLD_AT), numberOf(db, "depth.searchAgainAt", SEARCH_AGAIN_AT));
   // Read before the patch: the store hands back the row it keeps, so after a
   // patch this object already says the new stage (the aliasing trap, 3 Nov).
@@ -3598,7 +3608,10 @@ export async function readTaEvents(now = Date.now()): Promise<{ read: number; ke
     ) {
       await takeOpeningUpdate(event.type, event.data, now);
     }
-    handled.push({ taEventId: event.id, handledAt: now });
+    // The cursor is the event's time, not its id (9 Nov): the live TA route
+    // takes \`after\` in milliseconds and refuses anything else with a 400,
+    // so the second read after the first real run was refused.
+    handled.push({ taEventId: String(event.at), handledAt: now });
   }
 
   const moved = cursorAfter(handled, cursor);
