@@ -22,7 +22,7 @@ const schema = readFileSync(join(process.cwd(), "convex", "schema.ts"), "utf8");
 const types = readFileSync(join(process.cwd(), "src", "data", "types.ts"), "utf8");
 
 /** Each one is optional in the type too, so the app already expects nothing. */
-const MAY_BE_OPTIONAL = ["inReplyToProviderId"];
+const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

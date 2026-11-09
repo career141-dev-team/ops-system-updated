@@ -116,8 +116,11 @@ test("money and the guarantee reach the Director of Operations after three days"
 
 test("it never passes a task to the person already holding it", () => {
   assert.equal(escalationFor(task({ assigneeId: "m_lead" }), members, rules, NOW), null);
+  // The Director is the top: a money task there stays there. This line used
+  // to expect "m_lead" - it asserted the step down that, with the step up on
+  // the next pass, moved one task 49 times in half an hour (9 Nov).
   const withDirector = task({ assigneeId: "m_dirops", subjectType: "invoice", dueAt: NOW - 80 * HOUR });
-  assert.equal(escalationFor(withDirector, members, rules, NOW)?.toMemberId, "m_lead");
+  assert.equal(escalationFor(withDirector, members, rules, NOW), null);
 });
 
 test("with nobody above to tell, it stays put rather than looping", () => {
@@ -125,4 +128,30 @@ test("with nobody above to tell, it stays put rather than looping", () => {
   assert.equal(escalationFor(task(), onlyOwner, rules, NOW), null);
   const inactiveLead = [...onlyOwner, { id: "m_lead", role: "ops_lead" as const, active: false }];
   assert.equal(escalationFor(task(), inactiveLead, rules, NOW), null);
+});
+
+test("escalation only goes up: the Director keeps a money task, and a lead is never passed to another lead (9 Nov)", async () => {
+  const { escalationFor } = await import("@/lib/escalation");
+  const HOURS = 3_600_000;
+  const now = Date.UTC(2026, 10, 9, 4, 0);
+  const members = [
+    { id: "m_owner", role: "ops_owner", active: true },
+    { id: "m_lead", role: "ops_lead", active: true },
+    { id: "m_lead2", role: "ops_lead", active: true },
+    { id: "m_dir", role: "director_ops", active: true },
+  ] as never[];
+  const rules = { leadAfterHours: 24, directorAfterHours: 72 };
+  const late = (assigneeId: string, subjectType: string, hours: number) =>
+    ({ state: "open", dueAt: now - hours * HOURS, assigneeId, subjectType, title: "x" }) as never;
+
+  // Up once: an owner's money task, very late, goes to the Director.
+  assert.equal(escalationFor(late("m_owner", "invoice", 100), members, rules, now)?.toMemberId, "m_dir");
+  // And stays there: the lead rule must not send it back down (it did, every pass).
+  assert.equal(escalationFor(late("m_dir", "invoice", 100), members, rules, now), null);
+  assert.equal(escalationFor(late("m_dir", "lead", 100), members, rules, now), null);
+  // A lead holding a non-money task is the top for it; another lead is not "up".
+  assert.equal(escalationFor(late("m_lead2", "lead", 100), members, rules, now), null);
+  // A lead holding a money task goes up to the Director once it is late enough.
+  assert.equal(escalationFor(late("m_lead", "invoice", 100), members, rules, now)?.toMemberId, "m_dir");
+  assert.equal(escalationFor(late("m_lead", "invoice", 30), members, rules, now), null);
 });

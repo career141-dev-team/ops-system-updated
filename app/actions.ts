@@ -114,6 +114,7 @@ import {
   startTimer,
   switchedOn,
 } from "@/data/desk";
+import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { gate, isRoutine, needsApproval } from "@/lib/messages";
@@ -184,7 +185,7 @@ import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
 import { cookies } from "next/headers";
-import { type ChatButton, type Runnable, answerPending, catalogueInWords, pendingFrom, pendingMark, resolveIntent, wantsOut } from "@/lib/agent";
+import { type ChatButton, type Runnable, answerPending, catalogueInWords, editFrom, pendingFrom, pendingMark, planFrom, planMark, resolveIntent, wantsOut, withEdit } from "@/lib/agent";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import {
@@ -5373,11 +5374,34 @@ export async function chatSay(formData: FormData): Promise<void> {
   const said = String(formData.get("text") ?? "").trim();
   if (!said) redirect(back);
   const now = Date.now();
-  await addChatRow({ memberId: member.id, who: "person", text: said, buttons: [], state: "said", actionName: null, runId: null, at: now });
+  // The chat it goes into (9 Nov): the one open, or a new one named from these words.
+  const jar = await cookies();
+  const before = await desk();
+  let thread = chatOpen(before, member.id, jar.get(CHAT_COOKIE)?.value);
+  if (thread === null) {
+    thread = (await addChatThread({ memberId: member.id, name: chatName(said), at: now })).id;
+    jar.set(CHAT_COOKIE, thread, CHAT_COOKIE_LIFE);
+  } else if (before.chatThreads.find((t) => t.id === thread)?.name === "New chat") {
+    await renameChatThread(thread, chatName(said));
+  }
+  await addChatRow({ thread, memberId: member.id, who: "person", text: said, buttons: [], state: "said", actionName: null, runId: null, at: now });
 
   let db = await desk();
-  const mine = chatFor(db, member.id, 50);
+  const mine = chatLines(db, member.id, thread, 50);
   const lastDesk = [...mine].reverse().find((r) => r.who === "desk");
+
+  // The editable plan (9 Nov): "change reason to …" against the proposal
+  // still waiting is that one line changed, the same intent resolved again
+  // by the same rules - no model, and the old plan kept, marked replaced.
+  const plan = lastDesk?.state === "proposed" ? planFrom(lastDesk.actionName) : null;
+  const edit = plan && lastDesk ? editFrom(said, lastDesk.buttons[0]?.shows ?? []) : null;
+  if (plan && edit && lastDesk) {
+    await updateChatRow(lastDesk.id, { state: "said", actionName: null });
+    const resolved = resolveIntent(withEdit(plan, edit), db, member, now);
+    await sayResolved(member.id, thread, resolved.kind === "question" ? { kind: "refuse", said: "That edit reads as a question. Say the new value." } : resolved, lastDesk.runId);
+    revalidatePath(back);
+    redirect(back);
+  }
 
   // A proposal nobody pressed, now that they have typed something else, is
   // the ledger's "ignored" - the accuracy the /ai screen reads (part 4).
@@ -5394,14 +5418,14 @@ export async function chatSay(formData: FormData): Promise<void> {
   if (pending && lastDesk) {
     if (wantsOut(said)) {
       await updateChatRow(lastDesk.id, { actionName: null, state: "done" });
-      await addChatRow({ memberId: member.id, who: "desk", text: "Left it. Say what you want done.", buttons: [], state: "done", actionName: null, runId: null, at: Date.now() });
+      await addChatRow({ thread, memberId: member.id, who: "desk", text: "Left it. Say what you want done.", buttons: [], state: "done", actionName: null, runId: null, at: Date.now() });
       revalidatePath(back);
       redirect(back);
     }
     await updateChatRow(lastDesk.id, { actionName: null, state: "done" });
     const resolved = resolveIntent(answerPending(pending, said), db, member, now);
     // The run that started the questions is the one the answer belongs to, so a press counts as its "used".
-    await sayResolved(member.id, resolved.kind === "question" ? { kind: "refuse", said: "That reads as a question, not the answer. Say what you want done." } : resolved, lastDesk.runId);
+    await sayResolved(member.id, thread, resolved.kind === "question" ? { kind: "refuse", said: "That reads as a question, not the answer. Say what you want done." } : resolved, lastDesk.runId);
     revalidatePath(back);
     redirect(back);
   }
@@ -5414,14 +5438,16 @@ export async function chatSay(formData: FormData): Promise<void> {
   ];
   const answer = await runAi<AgentSaid>("agent", agentPrompt(said, catalogueInWords(), context), member.id, { type: "chat", id: member.id }, ["the words typed and the counts"], now);
   const line = (text: string, state: "proposed" | "refused" | "done", buttons: ChatButton[] = []) =>
-    addChatRow({ memberId: member.id, who: "desk", text, buttons, state, actionName: null, runId: answer.runId, at: Date.now() });
+    addChatRow({ thread, memberId: member.id, who: "desk", text, buttons, state, actionName: null, runId: answer.runId, at: Date.now() });
 
   // The model answered with nothing usable (no key, the cap, no JSON): the
   // person still gets the offers, and the ledger has why.
   if (!answer.proposal.ok || !answer.proposal.data) {
     const why = (answer.problem ?? "nothing came back").replace(/\.+$/, "");
     const offers = resolveIntent({ intent: "", fields: {}, question: "", notSaid: [] }, db, member, now);
-    await line("I could not work that out (" + why + "). " + (offers.kind === "refuse" ? offers.said : ""), "refused");
+    // "No JSON" is the model's fault, not news to the person: say it plainly.
+    const head = /json/i.test(why) ? "I did not understand that." : "I could not work that out (" + why + ").";
+    await line(head + " " + (offers.kind === "refuse" ? offers.said : ""), "refused");
     revalidatePath(back);
     redirect(back);
   }
@@ -5437,25 +5463,32 @@ export async function chatSay(formData: FormData): Promise<void> {
       "Your open tasks: " + db.tasks.filter((t) => t.state === "open" && t.assigneeId === member.id).map((t) => t.title).join("; "),
     ];
     const asked = await runAi<Answer>("ask", askPrompt(said, rows), member.id, { type: "chat", id: member.id }, ["the desk's own rows"], now);
-    const text = asked.proposal.ok && asked.proposal.data ? (asked.proposal.data as Answer).answer : "I could not answer: " + (asked.problem ?? "nothing came back") + ".";
+    const got = asked.proposal.ok && asked.proposal.data ? (asked.proposal.data as Answer) : null;
+    // Every claim cited (9 Nov): the rows the answer says it used, and what it
+    // did not find, so a person can tell an answer from a guess.
+    const text = got
+      ? got.answer +
+        (got.used?.length ? "\n↗ From: " + got.used.join(", ") + "|" : "\n↗ From: the desk's own counts|") +
+        (got.notSaid?.length ? "\n↗ Not found: " + got.notSaid.join(", ") + "|" : "")
+      : "I could not answer: " + (asked.problem ?? "nothing came back") + ".";
     await line(text, "done");
   } else {
-    await sayResolved(member.id, resolved, answer.runId);
+    await sayResolved(member.id, thread, resolved, answer.runId);
   }
   revalidatePath(back);
   redirect(back);
 }
 
 /** A resolved intent as the desk's row: a proposal with its buttons, a question that waits for its answer, or a refusal. */
-async function sayResolved(memberId: string, resolved: Exclude<ReturnType<typeof resolveIntent>, { kind: "question" }>, runId: string | null): Promise<void> {
+async function sayResolved(memberId: string, thread: string, resolved: Exclude<ReturnType<typeof resolveIntent>, { kind: "question" }>, runId: string | null): Promise<void> {
   const at = Date.now();
   if (resolved.kind === "proposal") {
-    await addChatRow({ memberId, who: "desk", text: resolved.said, buttons: resolved.buttons, state: "proposed", actionName: null, runId, at });
+    await addChatRow({ thread, memberId, who: "desk", text: resolved.said, buttons: resolved.buttons, state: "proposed", actionName: planMark(resolved.intent), runId, at });
   } else if (resolved.kind === "ask") {
     // The question carries what it is waiting for, so the next words answer it.
-    await addChatRow({ memberId, who: "desk", text: resolved.said, buttons: [], state: "done", actionName: pendingMark(resolved.pending, resolved.field), runId, at });
+    await addChatRow({ thread, memberId, who: "desk", text: resolved.said, buttons: [], state: "done", actionName: pendingMark(resolved.pending, resolved.field), runId, at });
   } else {
-    await addChatRow({ memberId, who: "desk", text: resolved.said, buttons: [], state: "refused", actionName: null, runId, at });
+    await addChatRow({ thread, memberId, who: "desk", text: resolved.said, buttons: [], state: "refused", actionName: null, runId, at });
   }
 }
 
@@ -5499,9 +5532,52 @@ export async function chatDo(formData: FormData): Promise<void> {
     if (msg) result = msg;
     refused = /^(not |refused|cannot|could not|no )/i.test(result) || /not allowed|refus|cannot/i.test(result);
   }
-  await updateChatRow(row.id, { state: refused ? "refused" : "done", text: row.text + "\n\n" + (refused ? "Not done: " : "") + result });
+  // The result cites the records it touched (9 Nov): the rows of the plan
+  // that have a page, so "Done" can be checked with one click.
+  const cites = button.shows.filter((x) => x.href).slice(0, 2).map((x) => "\n↗ " + x.label + ": " + x.value + "|" + x.href).join("");
+  await updateChatRow(row.id, { state: refused ? "refused" : "done", text: row.text + "\n\n" + (refused ? "Not done: " : "") + result + cites });
   revalidatePath(back);
   redirect(back + confirmed(result));
+}
+
+/** New chat: the next words start one, named from them. */
+export async function newChat(formData: FormData): Promise<void> {
+  (await cookies()).set(CHAT_COOKIE, "new", CHAT_COOKIE_LIFE);
+  redirect(backTo(formData, "/chat"));
+}
+
+/** Open one of your chats from the list. */
+export async function openChat(formData: FormData): Promise<void> {
+  (await cookies()).set(CHAT_COOKIE, String(formData.get("thread") ?? ""), CHAT_COOKIE_LIFE);
+  redirect(backTo(formData, "/chat"));
+}
+
+/** Rename one of your own chats. */
+export async function renameChat(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/chat");
+  const thread = String(formData.get("thread") ?? "");
+  const name = String(formData.get("name") ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!name) redirect(back + confirmed("Not renamed: the name is empty."));
+  if (!chatsOf(await desk(), member.id).some((c) => c.id === thread && c.id)) redirect(back + confirmed("Not renamed: that chat is not yours."));
+  await renameChatThread(thread, name);
+  revalidatePath(back);
+  redirect(back + confirmed("Renamed."));
+}
+
+/** Delete one of your own chats and every line of it. What a button did stays done; the AI ledger keeps its rows. */
+export async function deleteChat(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/chat");
+  const thread = String(formData.get("thread") ?? "");
+  if (!chatsOf(await desk(), member.id).some((c) => c.id === thread)) redirect(back + confirmed("Not deleted: that chat is not yours."));
+  await deleteChatThread(member.id, thread);
+  const jar = await cookies();
+  if (jar.get(CHAT_COOKIE)?.value === thread) jar.delete(CHAT_COOKIE);
+  revalidatePath(back);
+  redirect(back + confirmed("Chat deleted."));
 }
 
 /** The desk's column, open or shut, kept in a cookie so the page renders it without a flicker. */

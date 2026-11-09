@@ -207,7 +207,10 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         */}
         {drafts.map((message) => (
           <div key={message.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
-            <details className="min-w-0 flex-1 group">
+            {/* The title takes the whole line and the buttons sit under it (9 Nov):
+                side by side in a narrow column, the buttons won and the title
+                broke one word per line - the owner's screenshot. */}
+            <details className="min-w-0 basis-full group">
               <summary className="cursor-pointer list-none">
                 <p className="text-[13.5px] group-open:font-medium">{messageTitle(message)}</p>
                 <p className="mt-0.5 text-[12.5px] text-ink-soft">{messageInWords(message)}</p>
@@ -216,7 +219,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                 {message.body}
               </pre>
             </details>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <Link
                 href={"/messages/" + message.id}
                 data-open
@@ -243,7 +246,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
           {due.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing due today.</p>}
           {due.map((task) => (
             <div key={task.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 basis-[60%]">
                 <p className="text-[13.5px]">{task.title}</p>
                 <p className="mt-0.5 text-[12.5px] text-ink-soft">{timeLeft(task.dueAt, now).text}</p>
               </div>
@@ -266,7 +269,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
               <span className="rounded-full bg-bg-danger px-2 py-0.5 text-[11.5px] text-danger">
                 {timeLeft(task.dueAt, now).text}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 basis-[60%]">
                 <p className="text-[13.5px]">{task.title}</p>
               </div>
               <Link href={"/tasks/" + task.id} data-open className="text-[12.5px] text-brand hover:underline">

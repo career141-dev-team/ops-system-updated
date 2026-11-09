@@ -76,6 +76,19 @@ test@… instead", or a refusal - are what the thread shows.
   be kept on the button, not rebuilt later, or a thread read next week would
   not say what was pressed.
 
+## The polish (9 Nov)
+
+The owner asked for four things the same morning, and each is now true:
+
+| Asked | What it is |
+|---|---|
+| **Premium**: a shade behind it | the column sits on a soft shadow cast over the page and a two-tone ground; a plan is a raised card; the person's words a dark pill with its own small shadow |
+| **Trustworthy**: each step, and cite every claim | every plan shows its three steps - *Read what you asked · Found N records · Your button* (then Working, Done or Not done); every row it claims about a record links to that record's page (`Shown.href`); an answer ends with "↗ From: …" naming the rows it used and "↗ Not found: …" for what it did not; a result ends with links to the records it touched |
+| **No jumping**: lay out each paragraph before it arrives | the moment you send, your words and a reply-sized placeholder are laid out, so the reply fills a space already there; lines fade in, never slide or grow; the scrollbar's gutter is reserved; a working button keeps its label and width |
+| **Proactive**: an interactive plan, and the next action | each line of a plan has a pencil that puts "Change … to" in the box, and "change reason to …" re-resolves that one line by the same rules with no model (the old plan stays, marked replaced); the next actions, read off the desk and inside your permissions, sit above the box as one-tap suggestions - "Approve the last email (10 waiting)" |
+
+Rules in `src/lib/agent.ts` (`Shown`, `planMark`/`planFrom`, `editFrom`, `withEdit`, `nextSteps`), tested in `tests/agent-polish.test.ts`.
+
 ## Not in the catalogue, and why
 
 A few screens stay screens: anything that takes a **file** (keeping a file,

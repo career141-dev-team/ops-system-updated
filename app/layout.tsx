@@ -3,17 +3,25 @@ import { Suspense } from "react";
 import Keys from "@/app/Keys";
 import Toast from "@/app/Toast";
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 
 import Sidebar from "@/app/Sidebar";
 import { cookies } from "next/headers";
 
 import Chat from "@/app/Chat";
-import { chatFor, desk, openTasksFor, pinsOf } from "@/data/desk";
+import { CHAT_COOKIE, chatLines, chatOpen as chatShown, chatsOf } from "@/data/chats";
+import { desk, openTasksFor, pinsOf } from "@/data/desk";
+import { nextSteps } from "@/lib/agent";
 import { bellOf } from "@/lib/bell";
 import { workByPage } from "@/lib/sectionWork";
 import { currentMember } from "@/lib/session";
 import { ROLE_LABEL, can } from "@/lib/roles";
 import "./globals.css";
+
+// The face (9 Nov): the system font read as unfinished next to the TA System's.
+// Inter is what modern work tools are set in; Next serves it from this app, so
+// nothing is fetched from Google by the person's browser.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Career 141 Ops",
@@ -55,10 +63,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name })) : [];
   // The desk assistant's column, open or shut (8 Nov, docs/31). A cookie, so
   // the page is rendered with it already there rather than appearing after.
-  const chatOpen = (await cookies()).get("ops_chat_open")?.value === "1";
+  const jar = await cookies();
+  const chatOpen = jar.get("ops_chat_open")?.value === "1";
+  const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
 
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       {/*
         `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
         
@@ -91,12 +101,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="hidden h-screen w-[360px] shrink-0 flex-col border-l border-shell-rule bg-shell lg:flex">
-                <div className="flex items-center justify-between border-b border-shell-rule px-3 py-2">
-                  <p className="text-[13px] font-medium">Chat</p>
-                  <p className="text-[11.5px] text-ink-faint">every action waits for your button</p>
+              <aside className="sticky top-0 z-[1] hidden h-screen w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_rgba(22,24,26,0.38)] lg:flex">
+                <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
+                  <p className="text-[14px] font-semibold tracking-[-0.01em]">Desk assistant</p>
+                  <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
                 </div>
-                <Chat rows={chatFor(db, member.id)} who={member.name} pins={pinsOf(db, member.id, now)} />
+                <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
               </aside>
             )}
           </div>

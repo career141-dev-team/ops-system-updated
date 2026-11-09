@@ -359,14 +359,21 @@ export default defineSchema({
     memberId: v.string(),
     who: v.string(),
     text: v.string(),
-    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string() })) })),
+    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string(), href: v.string(), field: v.string() })) })),
     state: v.string(),
     actionName: v.union(v.string(), v.null()),
     runId: v.union(v.string(), v.null()),
     at: v.number(),
+    thread: v.optional(v.string()),
   })
     .index("by_member", ["memberId", "at"])
     .index("by_at", ["at"]),
+
+  opsChatThreads: defineTable({
+    memberId: v.string(),
+    name: v.string(),
+    at: v.number(),
+  }).index("by_member", ["memberId"]),
 
   /** One paid advert, TopJobs today (15, Phase 3 step 12). */
   opsAds: defineTable({

@@ -40,6 +40,13 @@ export function escalationFor(
   const pick = (role: OpsMember["role"]) => members.find((m) => m.active && m.role === role) ?? null;
   const moneyish = MONEY_SUBJECTS.includes((task.subjectType ?? "").toLowerCase());
 
+  // Only ever up (9 Nov). A late money task went to the Director, and the
+  // next pass's lead rule sent it back down to the lead, then up again -
+  // every five minutes, 49 times for one task on the laptop, each time
+  // writing "Passed on" into its body. Whoever holds it now is the floor.
+  const holder = members.find((m) => m.id === task.assigneeId);
+  if (holder?.role === "director_ops") return null;
+
   if (moneyish && lateHours >= rules.directorAfterHours) {
     const director = pick("director_ops");
     if (director && director.id !== task.assigneeId) {
@@ -51,7 +58,7 @@ export function escalationFor(
   }
 
   const lead = pick("ops_lead");
-  if (lead && lead.id !== task.assigneeId) {
+  if (lead && lead.id !== task.assigneeId && holder?.role !== "ops_lead") {
     return {
       toMemberId: lead.id,
       note: "Nobody has done this for " + Math.floor(lateHours) + " hours.",

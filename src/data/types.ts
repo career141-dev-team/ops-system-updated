@@ -950,12 +950,22 @@ export interface OpsChatRow {
   who: "person" | "desk" | "feed";
   text: string;
   /** `{ label, action, fields }` as the agent rules built them. */
-  buttons: { label: string; action: string; fields: Record<string, string>; shows: { label: string; value: string }[] }[];
+  buttons: { label: string; action: string; fields: Record<string, string>; shows: { label: string; value: string; href: string; field: string }[] }[];
   state: "said" | "proposed" | "running" | "done" | "refused";
   /** The runnable pressed, when one was. */
   actionName: string | null;
   /** The ledger row of the model call that produced it, when one did. */
   runId: Id | null;
+  at: number;
+  /** The chat it belongs to (9 Nov). Rows from before chats had names have none: "Earlier chat". */
+  thread?: Id;
+}
+
+/** One named chat of a person's (9 Nov): the history list, renamed and deleted by its owner. */
+export interface OpsChatThread {
+  id: Id;
+  memberId: Id;
+  name: string;
   at: number;
 }
 
@@ -986,6 +996,7 @@ export interface OpsDatabase {
   ads: OpsAd[];
   aiRuns: OpsAiRun[];
   chat: OpsChatRow[];
+  chatThreads: OpsChatThread[];
   meetings: OpsMeeting[];
   agreements: OpsEsa[];
   calls: OpsCallLog[];

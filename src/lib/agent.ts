@@ -713,11 +713,24 @@ export interface ChatButton {
   action: Runnable;
   fields: Record<string, string>;
   /** "Here is what I will do", as label and value rows, read before pressing. */
-  shows: { label: string; value: string }[];
+  shows: Shown[];
+}
+
+/**
+ * One row of "Here is what I will do" (polish, 9 Nov). Every claim the
+ * desk makes about a record carries the page that proves it (`href`, empty
+ * when there is no page), and the field it fills (`field`), so a person can
+ * open the source before pressing, and edit that one line by typing.
+ */
+export interface Shown {
+  label: string;
+  value: string;
+  href: string;
+  field: string;
 }
 
 export type Resolved =
-  | { kind: "proposal"; said: string; buttons: ChatButton[] }
+  | { kind: "proposal"; said: string; buttons: ChatButton[]; intent: AgentIntent }
   /** One question; `pending` is what to carry to the next turn so the answer fills `field`. */
   | { kind: "ask"; said: string; field: string; pending: AgentIntent }
   | { kind: "refuse"; said: string }
@@ -805,8 +818,9 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
 
   const out: Record<string, string> = { ...(action.fixed ?? {}) };
   const names: string[] = [];
-  const shows: { label: string; value: string }[] = [];
-  const show = (label: string, value: string) => shows.push({ label, value });
+  const shows: Shown[] = [];
+  let cur = "";
+  const show = (label: string, value: string, href = "") => shows.push({ label, value, href, field: cur });
   const ask = (field: AgentField, said: string): Resolved => ({ kind: "ask", said, field: field.name, pending: got });
   const clientFor = (id: string | null | undefined) => db.clients.find((c) => c.id === id)?.name ?? null;
 
@@ -814,6 +828,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
   let chosenSetId: string | null = null;
 
   for (const field of action.fields) {
+    cur = field.name;
     const raw = (got.fields[field.name] ?? "").trim();
     switch (field.from) {
       case "text": {
@@ -891,7 +906,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         } else if (action.action === "quickAdd") out.about = client.name;
         else out[field.name] = client.id;
         names.push(client.name);
-        show("Client", client.name);
+        show("Client", client.name, "/clients/" + client.id);
         break;
       }
       case "member": {
@@ -909,7 +924,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         if (!pick) return ask(field, `No waiting draft matches "${raw}". ` + field.asks);
         out[field.name] = pick.id;
         names.push(pick.subject + " to " + pick.to.join(", "));
-        show("Draft", pick.subject);
+        show("Draft", pick.subject, "/messages/" + pick.id);
         show("To", pick.to.join(", "));
         break;
       }
@@ -920,7 +935,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         if (!pick) return ask(field, `None of your tasks matches "${raw}". ` + field.asks);
         out[field.name] = pick.id;
         names.push(pick.title);
-        show("Task", pick.title);
+        show("Task", pick.title, "/tasks/" + pick.id);
         break;
       }
       case "inbound": {
@@ -930,7 +945,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         if (!pick) return ask(field, `No new email matches "${raw}". ` + field.asks);
         out[field.name] = pick.id;
         names.push((pick.fromName || pick.from) + ": " + pick.subject);
-        show("Email from", pick.fromName || pick.from);
+        show("Email from", pick.fromName || pick.from, "/mail");
         show("Subject", pick.subject);
         break;
       }
@@ -946,8 +961,8 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         if (!pick) return ask(field, field.asks + (open.length ? " Open: " + open.slice(0, 5).map((i) => i.number).join(", ") + "." : " None is open."));
         out[field.name] = pick.id;
         names.push(pick.number + " (" + (clientFor(pick.clientId) ?? "client unknown") + ", " + lkr(pick.amount) + ")");
-        show("Invoice", pick.number);
-        show("Client", clientFor(pick.clientId) ?? "unknown");
+        show("Invoice", pick.number, "/invoices/" + pick.id);
+        show("Client", clientFor(pick.clientId) ?? "unknown", pick.clientId ? "/clients/" + pick.clientId : "");
         show("Invoice total", lkr(pick.amount));
         break;
       }
@@ -956,7 +971,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(open.filter((l) => raw && hasAllWords(l.company + " " + l.contactName, raw)));
         if (!pick) return ask(field, field.asks + (open.length ? " Open enquiries: " + open.slice(0, 6).map((l) => l.company).join(", ") + "." : " None is open."));
         out[field.name] = pick.id;
-        show("Enquiry", pick.company);
+        show("Enquiry", pick.company, "/leads/" + pick.id);
         break;
       }
       case "agreement": {
@@ -969,7 +984,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
           return ask(field, field.asks + (who.length ? " Agreements in play: " + who.slice(0, 6).join(", ") + "." : " None is in play."));
         }
         out[field.name] = pick.id;
-        show("Agreement", (lead?.company ?? "") + ", " + pick.state);
+        show("Agreement", (lead?.company ?? "") + ", " + pick.state, lead ? "/leads/" + lead.id : "");
         break;
       }
       case "position": {
@@ -977,7 +992,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(open.filter((p) => raw && hasAllWords(p.title + " " + (clientFor(p.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (open.length ? " Open: " + open.slice(0, 6).map((p) => p.title + " at " + (clientFor(p.clientId) ?? "?")).join("; ") + "." : " None is open."));
         out[field.name] = pick.id;
-        show("Position", pick.title + " at " + (clientFor(pick.clientId) ?? "?"));
+        show("Position", pick.title + " at " + (clientFor(pick.clientId) ?? "?"), "/positions/" + pick.id);
         break;
       }
       case "set": {
@@ -995,7 +1010,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         }
         chosenSetId = pick.id;
         out[field.name] = pick.id;
-        show("Set", pick.name);
+        show("Set", pick.name, "/sets/" + pick.id);
         break;
       }
       case "candidate": {
@@ -1004,7 +1019,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(set.candidates.filter((c) => raw && hasAllWords(c.name, raw)));
         if (!pick) return ask(field, field.asks + " In this set: " + set.candidates.map((c) => c.name).join(", ") + ".");
         out[field.name] = pick.applicationTaId;
-        show("Candidate", pick.name);
+        show("Candidate", pick.name, "/sets/" + set.id);
         break;
       }
       case "interview": {
@@ -1013,7 +1028,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(pool.filter((i) => raw && hasAllWords(i.candidateName + " " + (clientFor(i.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (pool.length ? " Interviews: " + pool.slice(0, 6).map((i) => i.candidateName + " (" + i.state + ")").join("; ") + "." : " None is open."));
         out[field.name] = pick.id;
-        show("Interview", pick.candidateName + ", round " + pick.round + ", " + pick.state);
+        show("Interview", pick.candidateName + ", round " + pick.round + ", " + pick.state, "/interviews/" + pick.id);
         break;
       }
       case "placement": {
@@ -1022,7 +1037,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(pool.filter((p) => raw && hasAllWords(p.candidateName + " " + (clientFor(p.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (pool.length ? " Placements: " + pool.slice(0, 6).map((p) => p.candidateName + " (" + p.state + ")").join("; ") + "." : " None."));
         out[field.name] = pick.id;
-        show("Placement", pick.candidateName + " at " + (clientFor(pick.clientId) ?? "?") + ", " + pick.state);
+        show("Placement", pick.candidateName + " at " + (clientFor(pick.clientId) ?? "?") + ", " + pick.state, "/placements/" + pick.id);
         break;
       }
       case "guarantee": {
@@ -1030,7 +1045,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(pool.filter((g) => raw && hasAllWords(g.candidateName + " " + (clientFor(g.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (pool.length ? " Guarantees: " + pool.slice(0, 6).map((g) => g.candidateName + " (" + g.state + ")").join("; ") + "." : " None."));
         out[field.name] = pick.id;
-        show("Guarantee", pick.candidateName + ", " + pick.state);
+        show("Guarantee", pick.candidateName + ", " + pick.state, "/guarantees/" + pick.id);
         break;
       }
       case "hold": {
@@ -1039,7 +1054,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = client ? live.find((h) => h.clientId === client.id) : onlyOne(live);
         if (!pick) return ask(field, field.asks + (live.length ? " Holds: " + live.map((h) => clientFor(h.clientId) ?? "?").join(", ") + "." : " None is in play."));
         out[field.name] = pick.id;
-        show("Hold", (clientFor(pick.clientId) ?? "?") + ", " + pick.state);
+        show("Hold", (clientFor(pick.clientId) ?? "?") + ", " + pick.state, "/holds/" + pick.id);
         break;
       }
       case "ad": {
@@ -1047,7 +1062,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(live.filter((a) => raw && hasAllWords(a.title + " " + (clientFor(a.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (live.length ? " Adverts: " + live.map((a) => a.title + " (" + a.state + ")").join("; ") + "." : " None is running."));
         out[field.name] = pick.id;
-        show("Advert", pick.title + ", " + pick.state);
+        show("Advert", pick.title + ", " + pick.state, "/adverts/" + pick.id);
         break;
       }
       case "report": {
@@ -1055,7 +1070,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = rows.sort((a, b) => b.weekOf.localeCompare(a.weekOf))[0];
         if (!pick) return { kind: "refuse", said: "No report is waiting for approval." };
         out[field.name] = pick.id;
-        show("Report", "week of " + pick.weekOf);
+        show("Report", "week of " + pick.weekOf, "/reports/" + pick.id);
         break;
       }
       case "close": {
@@ -1065,7 +1080,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         const pick = onlyOne(open.filter((c) => raw && hasAllWords(titleOf(c), raw)));
         if (!pick) return ask(field, field.asks + (open.length ? " Open close lists: " + open.map(titleOf).join("; ") + "." : " None is open."));
         out[field.name] = pick.id;
-        show("Close list", titleOf(pick));
+        show("Close list", titleOf(pick), "/closes/" + pick.id);
         break;
       }
     }
@@ -1076,8 +1091,8 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
     ? "This is money. Check the line before you press it."
     : action.action === "writeNewMessage"
       ? "I will draft it. It waits for your approval on the mail screen; nothing sends from here."
-      : "Ready when you are.";
-  return { kind: "proposal", said, buttons: [{ label, action: action.action, fields: out, shows }] };
+      : "Check it, then press the button.";
+  return { kind: "proposal", said, buttons: [{ label, action: action.action, fields: out, shows }], intent: got };
 }
 
 function onlyOne<T>(rows: T[]): T | undefined {
@@ -1117,7 +1132,7 @@ function labelFor(name: string): string {
   return known[name] ?? name[0].toUpperCase() + name.slice(1);
 }
 
-function buttonLabel(action: AgentAction, out: Record<string, string>, names: string[], shows: { label: string; value: string }[]): string {
+function buttonLabel(action: AgentAction, out: Record<string, string>, names: string[], shows: Shown[]): string {
   const first = shows[0]?.value ?? "";
   switch (action.name) {
     case "approve_draft": return "Approve and send: " + names[0];
@@ -1192,4 +1207,67 @@ export function yesterdayInWords(rows: { who: string; state: string; actionName:
   if (refused) parts.push(refused + " refused");
   parts.push(asked + (asked === 1 ? " reply" : " replies"));
   return "Yesterday here: " + parts.join(", ") + ".";
+}
+
+/* ── The editable plan, and what comes next (polish, 9 Nov) ────── */
+
+/** A proposal row keeps the intent it was built from, so one line of it can be changed by typing. */
+export const PLAN = "plan:";
+
+export function planMark(intent: AgentIntent): string {
+  return PLAN + JSON.stringify(intent);
+}
+
+export function planFrom(actionName: string | null): AgentIntent | null {
+  if (!actionName || !actionName.startsWith(PLAN)) return null;
+  try {
+    return JSON.parse(actionName.slice(PLAN.length)) as AgentIntent;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * "Change reason to they hired elsewhere", "Client: Another Client",
+ * "actually the amount is 400000": one line of the plan, by its label or
+ * its field, and the new words. Nothing else is read as an edit, so an
+ * ordinary sentence typed after a proposal is still a new request.
+ */
+export function editFrom(typed: string, shows: Shown[]): { field: string; value: string } | null {
+  const t = typed.trim();
+  const m =
+    t.match(/^(?:change|edit|set|make|update|actually,?)\s+(?:the\s+)?(.+?)\s+(?:to|is|should be|=)\s+(.+)$/i) ??
+    t.match(/^([A-Za-z][A-Za-z ]{1,24}):\s*(.+)$/);
+  if (!m) return null;
+  const said = m[1].trim().toLowerCase();
+  const row = shows.find((s) => s.field && (s.label.toLowerCase() === said || s.field.toLowerCase() === said));
+  return row ? { field: row.field, value: m[2].trim() } : null;
+}
+
+/** The plan with one field changed: the same intent, resolved again by the same rules. */
+export function withEdit(intent: AgentIntent, edit: { field: string; value: string }): AgentIntent {
+  return { ...intent, fields: { ...intent.fields, [edit.field]: edit.value } };
+}
+
+/**
+ * What to do next, read off the desk as it is: up to three, most pressing
+ * first, each a sentence the chat already understands. Shown above the box
+ * so the next action is one tap, never a blank page.
+ */
+export function nextSteps(db: OpsDatabase, member: OpsMember, now: number): { label: string; say: string }[] {
+  const out: { label: string; say: string }[] = [];
+  const late = db.tasks.filter((t) => t.state === "open" && t.assigneeId === member.id && t.dueAt < now);
+  if (late.length && can(member, "task.do")) out.push({ label: "Late task" + (late.length > 1 ? " · " + late.length : ""), say: "finish my late task" });
+  const drafts = db.messages.filter((m) => m.state === "draft").length;
+  if (drafts && can(member, "message.approve")) out.push({ label: "Approve email · " + drafts, say: "approve the last email" });
+  const fresh = db.inbound.filter((i) => i.readState === "new").length;
+  if (fresh && can(member, "inbox.read")) out.push({ label: "Mark email done · " + fresh, say: "mark the newest email done" });
+  const ready = db.clientSets.filter((s) => s.state === "ready");
+  if (ready.length && can(member, "client.manage")) {
+    const client = db.clients.find((c) => c.id === ready[0].clientId)?.name;
+    if (client) out.push({ label: client + " set", say: "review the latest " + client + " set" });
+  }
+  const report = (db.reports as unknown as { state: string }[]).some((r) => r.state !== "approved" && r.state !== "sent");
+  if (report && can(member, "report.read")) out.push({ label: "Weekly report", say: "approve the weekly report" });
+  return out.slice(0, 3);
 }
