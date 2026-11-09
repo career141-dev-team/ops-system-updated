@@ -28,8 +28,10 @@ import { PENDING, yesterdayInWords } from "@/lib/agent";
  *     placeholder are laid out at once, so when the reply lands it fills a
  *     space that was already there; lines fade in, never slide or grow; the
  *     scrollbar's gutter is reserved; a button keeps its width while working.
- *   - **Proactive**: each line of a plan has a pencil that puts "Change …
- *     to" in the box, so editing is typing one line; and the next actions,
+ *   - **Proactive**: each line of a plan has a pencil that turns the line
+ *     itself into a box holding its value - edited where you are looking,
+ *     then sent as "Change … to …" (the box at the bottom was too far away:
+ *     the owner pressed it and saw nothing happen); and the next actions,
  *     read off the desk, sit above the box as one-tap suggestions.
  *
  * Every line is still a row the server wrote, and every button a form that
@@ -140,7 +142,7 @@ export default function Chat({
           </Said>
         )}
         {all.map((row) => (
-          <Line key={row.id} row={row} back={path} onEdit={prefill} />
+          <Line key={row.id} row={row} back={path} onSend={setSending} />
         ))}
         {sending && (
           <>
@@ -277,7 +279,10 @@ function Steps({ state, found }: { state: string; found: number }) {
   );
 }
 
-function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (text: string) => void }) {
+function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (text: string) => void }) {
+  // The one line being changed, and its words as typed so far.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [value, setValue] = useState("");
   if (row.who === "person") return <Mine text={row.text} />;
 
   const { body, cites } = splitCites(row.text);
@@ -319,6 +324,12 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
 
   const waiting = !!row.actionName && row.actionName.startsWith(PENDING);
   const found = button ? button.shows.filter((s) => s.href).length : 0;
+  // One pencil per field: "To" on a draft is part of the draft, not a line of its own.
+  const editable = button ? button.shows.filter((s, i) => s.field && button.shows.findIndex((x) => x.field === s.field) === i) : [];
+  const open = (s: { field: string; value: string }) => {
+    setEditing(s.field);
+    setValue(s.value);
+  };
   return (
     <Said tone={row.state === "refused" && !button ? "text-danger" : ""}>
       <p className="whitespace-pre-wrap">{first}</p>
@@ -342,7 +353,40 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
               <div key={i} className="contents">
                 <dt className="truncate text-[12px] text-ink-faint">{s.label}</dt>
                 <dd className="min-w-0 break-words text-ink">
-                  {s.href ? (
+                  {editing && editing === s.field && editable.includes(s) ? (
+                    <form
+                      action={chatSay}
+                      onSubmit={() => onSend("Change " + s.label.toLowerCase() + " to " + value.trim())}
+                      className="flex flex-col gap-1.5"
+                    >
+                      <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="text" value={"Change " + s.label.toLowerCase() + " to " + value.trim()} />
+                      <input
+                        autoFocus
+                        onFocus={(e) => e.currentTarget.select()}
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
+                        aria-label={"New " + s.label.toLowerCase()}
+                        className="w-full rounded-lg border border-brand bg-surface px-2 py-1 text-[13px] outline-none ring-2 ring-brand/20"
+                      />
+                      <span className="flex gap-1.5">
+                        <button
+                          disabled={!value.trim() || value.trim() === s.value}
+                          className="rounded-lg bg-ink px-2.5 py-1 text-[12px] font-medium text-white hover:bg-black disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditing(null)}
+                          className="rounded-lg px-2.5 py-1 text-[12px] text-ink-soft hover:bg-shell-sunk hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    </form>
+                  ) : s.href ? (
                     <Link href={s.href} title="Open the record this comes from" className="decoration-shell-rule underline-offset-2 hover:text-brand hover:underline">
                       {s.value}
                     </Link>
@@ -351,11 +395,10 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
                   )}
                 </dd>
                 <dd>
-                  {/* One pencil per field: "To" on a draft is part of the draft, not a line of its own. */}
-                  {row.state === "proposed" && s.field && button.shows.findIndex((x) => x.field === s.field) === i && (
+                  {row.state === "proposed" && !editing && editable.includes(s) && (
                     <button
                       type="button"
-                      onClick={() => onEdit("Change " + s.label.toLowerCase() + " to ")}
+                      onClick={() => open(s)}
                       title={"Change " + s.label.toLowerCase()}
                       aria-label={"Change " + s.label.toLowerCase()}
                       className="rounded px-1 text-[11px] text-ink-faint hover:bg-shell-sunk hover:text-ink"
@@ -367,7 +410,7 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
               </div>
             ))}
           </dl>
-          {row.state === "proposed" && (
+          {row.state === "proposed" && !editing && (
             <>
               <p className="mt-3 text-[13px] font-medium">Does this look right?</p>
               <div className="mt-2 flex flex-col gap-1.5">
@@ -379,13 +422,15 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
                     <Press label={b.label} />
                   </form>
                 ))}
+                {editable.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => onEdit("Change ")}
+                  onClick={() => open(editable[0])}
                   className="w-full rounded-xl border border-shell-rule bg-surface px-3 py-2 text-[12.5px] text-ink-soft transition-colors hover:bg-paper hover:text-ink"
                 >
                   Make an edit
                 </button>
+                )}
               </div>
             </>
           )}

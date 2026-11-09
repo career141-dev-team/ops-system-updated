@@ -1091,7 +1091,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
     ? "This is money. Check the line before you press it."
     : action.action === "writeNewMessage"
       ? "I will draft it. It waits for your approval on the mail screen; nothing sends from here."
-      : "Ready when you are.";
+      : "Check it, then press the button.";
   return { kind: "proposal", said, buttons: [{ label, action: action.action, fields: out, shows }], intent: got };
 }
 

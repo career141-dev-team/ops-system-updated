@@ -5434,7 +5434,9 @@ export async function chatSay(formData: FormData): Promise<void> {
   if (!answer.proposal.ok || !answer.proposal.data) {
     const why = (answer.problem ?? "nothing came back").replace(/\.+$/, "");
     const offers = resolveIntent({ intent: "", fields: {}, question: "", notSaid: [] }, db, member, now);
-    await line("I could not work that out (" + why + "). " + (offers.kind === "refuse" ? offers.said : ""), "refused");
+    // "No JSON" is the model's fault, not news to the person: say it plainly.
+    const head = /json/i.test(why) ? "I did not understand that." : "I could not work that out (" + why + ").";
+    await line(head + " " + (offers.kind === "refuse" ? offers.said : ""), "refused");
     revalidatePath(back);
     redirect(back);
   }
