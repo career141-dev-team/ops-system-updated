@@ -210,6 +210,25 @@ positions, sets and placements as records in their stages. The mail says
 which roles each client has open; the TA System knows where each candidate
 is.
 
+### 3.2 The TA System's clients and openings (9 Nov)
+
+The owner set `OPS_API_TOKEN` on the TA deployment (its dashboard, Settings,
+Environment Variables) the same day; `OPS_API_WRITES_ENABLED` stays unset, so
+the link reads only. The address is **`https://ta-system-actions.career141.com`**
+- the TA backend's HTTP actions; `api.career141.com` is its Convex API and
+answers 404 on these paths. Ops has it as `OPS_TA_BASE_URL` with the same token
+as `OPS_TA_TOKEN`; without the token the door answers 401.
+
+`deploy/local/import-ta-openings.ts` then read 34 clients and 113 openings,
+read-only, client by client (the unfiltered list stops at the newest 100), and
+added the 107 live ones (the TA System says active, hold, filled, lost; the last
+two are not live) as positions carrying their TA opening ids. Nine clients the
+mail had found under other spellings ("DELMO" and "DELMO - HOLDING") were the
+same companies; on the laptop they were merged into the TA record, keeping the
+mail, the address and the ops person. How far each opening has got - sets,
+interviews, offers - comes through the TA events feed, which is in TA's
+`main` and not yet released.
+
 ---
 
 ## 4. Real email, both directions
