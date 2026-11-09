@@ -939,7 +939,10 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         break;
       }
       case "inbound": {
-        const fresh = db.inbound.filter((i) => i.readState === "new").sort((a, b) => b.receivedAt - a.receivedAt);
+        // Your own box first (9 Nov); the whole desk only when yours is empty.
+        const allNew = db.inbound.filter((i) => i.readState === "new").sort((a, b) => b.receivedAt - a.receivedAt);
+        const ownNew = allNew.filter((i) => (i.mailbox ?? "").toLowerCase() === (member.email ?? "").toLowerCase());
+        const fresh = ownNew.length ? ownNew : allNew;
         if (!fresh.length) return { kind: "refuse", said: "No new email is waiting." };
         const pick = !raw || LAST.test(raw) ? fresh[0] : fresh.find((i) => hasAllWords(i.from + " " + i.fromName + " " + i.subject, raw));
         if (!pick) return ask(field, `No new email matches "${raw}". ` + field.asks);
@@ -1260,7 +1263,9 @@ export function nextSteps(db: OpsDatabase, member: OpsMember, now: number): { la
   if (late.length && can(member, "task.do")) out.push({ label: "Late task" + (late.length > 1 ? " · " + late.length : ""), say: "finish my late task" });
   const drafts = db.messages.filter((m) => m.state === "draft").length;
   if (drafts && can(member, "message.approve")) out.push({ label: "Approve email · " + drafts, say: "approve the last email" });
-  const fresh = db.inbound.filter((i) => i.readState === "new").length;
+  // Your own box (9 Nov): the shared boxes are everybody's and nobody's next step.
+  const ownBox = (member.email ?? "").toLowerCase();
+  const fresh = db.inbound.filter((i) => i.readState === "new" && (i.mailbox ?? "").toLowerCase() === ownBox).length;
   if (fresh && can(member, "inbox.read")) out.push({ label: "Mark email done · " + fresh, say: "mark the newest email done" });
   const ready = db.clientSets.filter((s) => s.state === "ready");
   if (ready.length && can(member, "client.manage")) {

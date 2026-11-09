@@ -175,6 +175,41 @@ the system on the day you start it, let the old work finish the old way, and
 only carry across **placements still inside their 90 days**, because those
 carry money and a promise.
 
+### 3.1 A month of real mail, and the clients it names (9 Nov)
+
+The owner asked for every ops person to open the system on their own real
+data, from the month before. Done on this laptop, in a store of its own:
+
+- **The people** came from the mailboxes, because the company directory is
+  closed to our keys: the career141.com addresses that write in the shared
+  boxes, matched to roles from the planning cards.
+- **The clients** came from the team's own sent mail: the house subject
+  "CLIENT > ROLE > SET n" names them, and the company domain each was written
+  to gives the address that files their mail. The owner is the ops person who
+  wrote to them most. Their notes say where every value came from and what to
+  check, because the address is the one written to most, not necessarily the
+  billing one.
+- **The mail** is a month of every person's box and the shared boxes, read by
+  `deploy/local/import-mail-history.ts` - the five-minute reader's own path, so
+  the same filters hold (our own people's mail is not a client writing, machine
+  mail is counted and left out, nothing twice, a client's company files itself).
+  No model reads any of it; nothing is sent or drafted.
+
+```
+OPS_DATA_DIR=.local/real-data OPS_MAIL_READ=on DAYS=30 OPS_MAILBOXES=a@career141.com,b@career141.com   node --experimental-strip-types --import ./tests/alias.mjs deploy/local/import-mail-history.ts
+```
+
+The store lives in `.local/real-data`, which git ignores; the sample store in
+`.data` is untouched, so a walk on test data and a look at real data are two
+start commands, not one database. On `/mail` each person opens on **Your
+mailbox**, with the shared boxes and everything one click away, and the chat's
+feed shows only their own new mail.
+
+What a month of mail cannot give, and still needs the TA link or a sheet:
+positions, sets and placements as records in their stages. The mail says
+which roles each client has open; the TA System knows where each candidate
+is.
+
 ---
 
 ## 4. Real email, both directions

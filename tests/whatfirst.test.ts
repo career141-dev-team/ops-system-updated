@@ -49,3 +49,13 @@ test("a day's answer is kept per person, per day, per first thing - a new first 
   assert.notEqual(whatFirstKey("m_1", "2026-11-03", first), whatFirstKey("m_1", "2026-11-03", day[4]));
   assert.notEqual(whatFirstKey("m_1", "2026-11-03", first), whatFirstKey("m_2", "2026-11-03", first));
 });
+
+test("mail waiting in your own box comes after a draft and before what is due (9 Nov)", () => {
+  const order = orderTheDay([
+    { said: "due", href: "/tasks/k", kind: "due", at: NOW },
+    { said: "12 emails", href: "/mail?box=mine", kind: "mail", at: NOW },
+    { said: "draft", href: "/messages/m", kind: "draft", at: NOW },
+  ]);
+  assert.deepEqual(order.map((i) => i.kind), ["draft", "mail", "due"]);
+  assert.match(firstBecause(order[1], []), /waiting for an answer/);
+});

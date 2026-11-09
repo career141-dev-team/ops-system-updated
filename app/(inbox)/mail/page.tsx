@@ -29,12 +29,24 @@ const MATCH_SAID: Record<string, string> = {
   none: "not placed",
 };
 
-export default async function MailPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export default async function MailPage({ searchParams }: { searchParams: Promise<{ msg?: string; box?: string }> }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const { msg, box: boxAsked } = await searchParams;
 
-  const db = await desk();
+  const all = await desk();
+  // Whose mail (9 Nov; the owner's decision 1: every ops person has an own
+  // inbox and sees every client). "Yours" is the mail that arrived in your
+  // own box; "Shared" is the desk's boxes nobody owns (opsteam@, joborders@
+  // ...); "Everything" is both. Yours is where a day starts.
+  const people = new Set(all.members.map((m) => m.email.toLowerCase()));
+  const mine = (i: { mailbox: string }) => i.mailbox.toLowerCase() === member.email.toLowerCase();
+  const shared = (i: { mailbox: string }) => !people.has(i.mailbox.toLowerCase());
+  const haveOwn = all.inbound.some(mine);
+  const box = boxAsked === "shared" || boxAsked === "all" || boxAsked === "mine" ? boxAsked : haveOwn ? "mine" : "all";
+  const keep = (i: { mailbox: string }) => (box === "mine" ? mine(i) : box === "shared" ? shared(i) : true);
+  const db = { ...all, inbound: all.inbound.filter(keep) };
+  const counts = { mine: all.inbound.filter(mine).length, shared: all.inbound.filter(shared).length, all: all.inbound.length };
   const waiting = inboundWaiting(db);
   const recent = inboundRecent(db);
   const aiOn = anyKeySet() && aiSwitches(db).on;
@@ -68,6 +80,25 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="flex max-w-[900px] flex-col gap-3">
+      <nav aria-label="Whose mail" className="flex flex-wrap gap-1.5">
+        {([
+          ["mine", "Your mailbox", counts.mine],
+          ["shared", "Shared boxes", counts.shared],
+          ["all", "Everything", counts.all],
+        ] as const).map(([key, label, n]) => (
+          <a
+            key={key}
+            href={"/mail?box=" + key}
+            aria-current={box === key ? "page" : undefined}
+            className={
+              "rounded-full border px-3 py-1 text-[12.5px] transition-colors " +
+              (box === key ? "border-ink bg-ink text-white" : "border-rule-strong bg-surface text-ink-soft hover:text-ink")
+            }
+          >
+            {label} <span className={box === key ? "text-white/70" : "text-ink-faint"}>{n}</span>
+          </a>
+        ))}
+      </nav>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[14.5px] font-medium">What came in</h2>

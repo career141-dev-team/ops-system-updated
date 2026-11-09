@@ -63,3 +63,18 @@ test("a task due this second is not late, and one a second ago is", () => {
   };
   assert.equal(bellOf(edge, "me", NOW).late, 1);
 });
+
+test("with the team known, the inbox is your own box only (9 Nov)", () => {
+  const withBoxes = {
+    messages: [],
+    tasks: [],
+    inbound: [
+      { readState: "new", mailbox: "me@career141.com" },
+      { readState: "new", mailbox: "other@career141.com" },
+      { readState: "new", mailbox: "opsteam@career141.com" },
+    ],
+    members: [{ id: "me", email: "Me@career141.com" }, { id: "other", email: "other@career141.com" }],
+  };
+  assert.equal(bellOf(withBoxes, "me", NOW).inbox, 1, "somebody else's box and the shared boxes are not my bell");
+  assert.equal(bellOf(withBoxes, "other", NOW).inbox, 1);
+});

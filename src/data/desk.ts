@@ -520,9 +520,13 @@ export async function takeInbound(
         subjectType: m.subjectType as string,
         subjectId: m.subjectId as string,
       })),
-    // Client contacts come from the TA System once that window opens; until
-    // then nothing is matched by domain, which is the safe way round.
-    contacts: [] as { email: string; clientId: string }[],
+    // Client contacts: until the TA System's window opens, the address we
+    // keep on our own client record (9 Nov). A client with a real address is
+    // a company we write to, so mail from that company's domain is theirs; a
+    // domain two clients share is still asked about, never guessed (mailMatch).
+    contacts: db.clients
+      .filter((c) => c.stage !== "closed" && c.billingEmail.includes("@"))
+      .map((c) => ({ email: c.billingEmail, clientId: c.id })),
     // One entry per thing we have written about, keeping the subject line we
     // used, so a reply carrying the house form "CLIENT > ROLE > SET n" can be
     // read against it. The newest message for a thing wins, since that is the
@@ -1403,12 +1407,13 @@ export async function updateChatRow(rowId: Id, patch: Partial<Pick<OpsChatRow, "
 /** What is pinned at the top of the chat: the desk's state in four chips, the same counts Your day shows. */
 export function pinsOf(db: OpsDatabase, memberId: Id, now: number): { label: string; value: string; late?: boolean }[] {
   const drafts = db.messages.filter((m) => m.state === "draft").length;
-  const fresh = db.inbound.filter((i) => i.readState === "new").length;
+  const own = db.members.find((m) => m.id === memberId)?.email.toLowerCase();
+  const fresh = db.inbound.filter((i) => i.readState === "new" && (!own || i.mailbox.toLowerCase() === own)).length;
   const mine = db.tasks.filter((t) => t.state === "open" && t.assigneeId === memberId);
   const late = mine.filter((t) => t.dueAt < now).length;
   return [
     { label: "To approve", value: String(drafts) },
-    { label: "New email", value: String(fresh) },
+    { label: "Your new email", value: String(fresh) },
     { label: "Your tasks", value: String(mine.length) },
     { label: "Late", value: String(late), late: late > 0 },
   ];
@@ -1479,6 +1484,13 @@ export function dayItems(db: OpsDatabase, memberId: Id, now: number): DayItem[] 
   }
   for (const timer of liveTimersFor(db, memberId)) {
     if (timer.dueAt < now + DAY) items.push({ said: timer.payload.label ?? clockInWords(timer.kind), href: "/", kind: "clock", at: timer.dueAt });
+  }
+  // Your own mailbox, as one line rather than one per email (9 Nov).
+  const own = db.members.find((m) => m.id === memberId)?.email.toLowerCase();
+  const waiting = own ? db.inbound.filter((i) => i.readState === "new" && i.mailbox.toLowerCase() === own) : [];
+  if (waiting.length) {
+    const oldest = waiting.reduce((n, i) => Math.min(n, i.receivedAt), now);
+    items.push({ said: waiting.length + (waiting.length === 1 ? " email in your mailbox waits" : " emails in your mailbox wait") + " for an answer", href: "/mail?box=mine", kind: "mail", at: oldest });
   }
   return items;
 }

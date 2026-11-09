@@ -291,9 +291,12 @@ export function clientNextStep(
     sets: { state: string }[];
     owing: { number: string }[];
     holds: { state: string }[];
+    /** Their emails nobody has dealt with yet (9 Nov, real mail). Optional for old callers. */
+    unanswered?: number;
   },
 ): Step {
   const { positions, sets, owing, holds } = parts;
+  const unanswered = parts.unanswered ?? 0;
   const open = positions.filter((p) => p.stage !== "closed");
   // "on_hold" is what the rows actually say (HoldState). This looked for
   // "held" and so never saw a held client at all - found walking the search
@@ -336,6 +339,20 @@ export function clientNextStep(
           : owing.length + " invoices are still owed.",
       where: "Active · " + open.length + " open " + (open.length === 1 ? "position" : "positions"),
       clock: "The chase is drafted by its own clock, a month at a time.",
+    };
+  }
+  // Their mail first when nothing of ours is open (9 Nov): with a month of
+  // real mail in, every client read "Nothing is open for them" while their
+  // emails sat unanswered - the one sentence that must not be wrong.
+  if (!open.length && unanswered) {
+    return {
+      at: "record",
+      waiting:
+        unanswered === 1
+          ? "One email from them is waiting for an answer."
+          : unanswered + " emails from them are waiting for an answer.",
+      where: "Active · no position of ours open yet",
+      clock: null,
     };
   }
   if (!open.length) {

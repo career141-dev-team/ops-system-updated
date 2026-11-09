@@ -30,7 +30,9 @@ export function bellOf(
   db: {
     messages: { state: string }[];
     tasks: { state: string; assigneeId: string; dueAt: number }[];
-    inbound: { readState: string }[];
+    inbound: { readState: string; mailbox?: string }[];
+    /** When known, the bell counts only mail in this person's own box (9 Nov). */
+    members?: { id: string; email: string }[];
   },
   memberId: string,
   now: number,
@@ -38,7 +40,10 @@ export function bellOf(
   const drafts = db.messages.filter((m) => m.state === "draft").length;
   const mine = db.tasks.filter((t) => t.state === "open" && t.assigneeId === memberId);
   const late = mine.filter((t) => t.dueAt < now).length;
-  const inbox = db.inbound.filter((i) => i.readState === "new").length;
+  // Your own mailbox (9 Nov). With a month of real mail in, every person's
+  // bell read 1,100: it counted the whole desk. The shared boxes are on /mail.
+  const own = db.members?.find((m) => m.id === memberId)?.email.toLowerCase();
+  const inbox = db.inbound.filter((i) => i.readState === "new" && (!own || (i.mailbox ?? "").toLowerCase() === own)).length;
   return { waiting: drafts + mine.length + inbox, late, inbox };
 }
 

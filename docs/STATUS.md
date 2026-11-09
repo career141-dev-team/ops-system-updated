@@ -1,6 +1,6 @@
 # Where the build actually is
 
-Updated 8 November 2026. This is the one page that says what exists.
+Updated 9 November 2026. This is the one page that says what exists.
 
 **Every phase of [15](15-BUILD-PLAN.md) is built, and so are the screens.** The
 nine phases are below, each with where its pieces live and what proves them.
@@ -283,6 +283,16 @@ walks found something the tests had passed.
 | The missing-field turn, and yesterday | `pendingMark` / `answerPending` / `yesterdayInWords` in `src/lib/agent.ts`, `chatSay` | one question at a time, the next words are the answer, no model between; yesterday's line counted from the thread; a pressed proposal is the ledger's "used", one left behind is "ignored" |
 | The feed | `src/lib/feed.ts`, `app/api/chat/route.ts` | what arrived by itself - new mail (with *Mark it done*), your clock that ran out, a task made or passed to you, a TA event - as lines in the thread, kept once each; the column polls every 30 s like the bell. Mail reading runs in the clock pass (`app/api/clock/route.ts`) every five minutes; until 8 Nov it ran only from the button on /mail while the page said "every two minutes" |
 | The column and the page | `app/Chat.tsx`, `app/layout.tsx`, `app/chat/page.tsx`, the sidebar's header toggle | the owner's reference shape: a label not a bubble for the assistant, a dark pill for the person, "Here is what I will do" rows, "Does this look right?", a result card; the desk's state pinned on top; on the phone it replaces Clients in the bottom bar |
+
+## Real data, from a month of mail (9 Nov)
+
+| Piece | Where | Notes |
+|---|---|---|
+| A month's mail import | `deploy/local/import-mail-history.ts` | the five-minute reader's own path, paged by how far each raw page reached, a minute a page and three tries; same filters, nothing twice, no model. How to run it and what it cannot give: [26](26-RUN-IT-FOR-REAL.md) section 3.1 |
+| Your own mailbox | `/mail` (Your mailbox · Shared boxes · Everything), the bell, the chat's feed and its pins, "Mark email done" | each counts the person's own box; with a month of real mail in, every bell read the whole desk |
+| A client's mail files itself | `takeInbound` in `src/data/desk.ts` | the address kept on the client record is a contact until the TA link's contacts arrive; a domain two clients share is still asked about |
+| Mail on the day and on the client | `dayItems`, `whatFirst` (kind `mail`), `clientNextStep` (`unanswered`) | "N emails in your mailbox wait for an answer" ranks after a draft; a client with mail waiting says so, each email counted once across mailboxes |
+| The reader says why | `readOneMailbox` | the error behind "could not be read", 429 named, and a time limit the import may lengthen; the clock keeps 15 seconds |
 
 ## Not built
 
