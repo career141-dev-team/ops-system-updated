@@ -116,7 +116,7 @@ export default function Chat({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Pinned: where you stand, in four chips. */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-shell-rule px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-shell-rule px-4 py-2.5">
         <span className="mr-1 text-[10px] uppercase tracking-[0.08em] text-ink-faint">Your desk</span>
         {pins.map((pin) => (
           <span
@@ -131,7 +131,7 @@ export default function Chat({
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 [overflow-anchor:none] [scrollbar-gutter:stable]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [overflow-anchor:none] [scrollbar-gutter:stable]">
         {yesterday && <p className="mb-3 rounded-lg bg-shell-sunk px-3 py-1.5 text-[11.5px] text-ink-soft">{yesterday}</p>}
         {all.length === 0 && !sending && (
           <Said>
@@ -151,19 +151,21 @@ export default function Chat({
         <div ref={end} />
       </div>
 
-      <div className="border-t border-shell-rule bg-surface px-3 pb-2 pt-2">
+      <div className="border-t border-shell-rule bg-surface px-4 pb-3 pt-2.5">
         {/* What comes next, read off the desk: one tap each. Hidden while the
             desk is waiting for an answer, which comes first. */}
         {!waitingForAnswer && !sending && next.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Suggested next">
+          <div className="mb-2.5 flex flex-col gap-1" aria-label="Suggested next">
+            <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">Next</p>
             {next.map((n) => (
               <button
                 key={n.say}
                 type="button"
                 onClick={() => sendNow(n.say)}
-                className="rounded-full border border-shell-rule bg-paper px-2.5 py-1 text-[11.5px] text-ink-soft transition-colors hover:border-brand hover:text-ink"
+                className="flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-[12.5px] text-ink-soft transition-colors hover:bg-shell-sunk hover:text-ink"
               >
-                {n.label} →
+                <span>{n.label}</span>
+                <span aria-hidden="true" className="text-ink-faint">→</span>
               </button>
             ))}
           </div>
@@ -187,17 +189,17 @@ export default function Chat({
 /** The assistant's voice: a small label, then plain words. No bubble. */
 function Said({ children, tone = "", label = "Desk assistant" }: { children: React.ReactNode; tone?: string; label?: string }) {
   return (
-    <div className="chat-in mb-3 pr-6">
-      <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint">{label}</p>
-      <div className={"mt-0.5 text-[13px] leading-relaxed " + tone}>{children}</div>
+    <div className="chat-in mb-4 pr-4">
+      <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">{label}</p>
+      <div className={"mt-1 text-[13.5px] leading-relaxed " + tone}>{children}</div>
     </div>
   );
 }
 
 function Mine({ text, sent = true }: { text: string; sent?: boolean }) {
   return (
-    <div className="chat-in mb-3 flex flex-col items-end">
-      <div className="max-w-[88%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-[13px] leading-relaxed text-white shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
+    <div className="chat-in mb-4 flex flex-col items-end">
+      <div className="max-w-[86%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed text-white shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
         <p className="whitespace-pre-wrap">{text}</p>
       </div>
       <p className="mt-0.5 text-[10.5px] text-ink-faint">{sent ? "Sent ✓" : "Sending…"}</p>
@@ -257,26 +259,22 @@ function Cites({ cites }: { cites: { label: string; href: string }[] }) {
   );
 }
 
-/** Read · Found · Your button: where a plan stands, so nothing happens out of sight. */
+/** Read · Found · Your turn: where a plan stands, on one quiet line, so nothing happens out of sight. */
 function Steps({ state, found }: { state: string; found: number }) {
-  const third =
-    state === "proposed" ? { mark: "3", text: "Your button", tone: "text-ink" } :
-    state === "running" ? { mark: "…", text: "Working", tone: "text-ink" } :
-    state === "refused" ? { mark: "✕", text: "Not done", tone: "text-danger" } :
-    state === "said" ? { mark: "–", text: "Replaced by your edit", tone: "text-ink-faint" } :
-    { mark: "✓", text: "Done", tone: "text-brand" };
-  const dot = "flex h-4 w-4 items-center justify-center rounded-full text-[9.5px] font-medium";
+  const last =
+    state === "proposed" ? { text: "Your turn", tone: "text-ink font-medium" } :
+    state === "running" ? { text: "Working", tone: "text-ink" } :
+    state === "refused" ? { text: "Not done", tone: "text-danger" } :
+    state === "said" ? { text: "Replaced", tone: "text-ink-faint" } :
+    { text: "Done", tone: "text-brand font-medium" };
   return (
-    <ol className="flex items-center gap-1.5 text-[10.5px] text-ink-faint">
-      <li className="flex items-center gap-1"><span className={dot + " bg-bg-brand text-brand"}>✓</span>Read what you asked</li>
-      <li aria-hidden="true">·</li>
-      <li className="flex items-center gap-1"><span className={dot + " bg-bg-brand text-brand"}>✓</span>Found {found} {found === 1 ? "record" : "records"}</li>
-      <li aria-hidden="true">·</li>
-      <li className={"flex items-center gap-1 " + third.tone}>
-        <span className={dot + " " + (state === "proposed" ? "bg-ink text-white" : state === "refused" ? "bg-bg-danger" : state === "said" ? "bg-shell-sunk" : "bg-bg-brand")}>{third.mark}</span>
-        {third.text}
-      </li>
-    </ol>
+    <p className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-ink-faint">
+      <span className="text-brand">✓</span> Read
+      <span className="text-shell-rule">—</span>
+      <span className="text-brand">✓</span> {found ? "Found " + found : "Nothing to look up"}
+      <span className="text-shell-rule">—</span>
+      <span className={last.tone}>{last.text}</span>
+    </p>
   );
 }
 
@@ -302,7 +300,7 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
           )}
         </p>
         {row.state === "proposed" && row.buttons.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex max-w-[240px] flex-col gap-1.5">
             {row.buttons.map((b, i) => (
               <form key={i} action={chatDo}>
                 <input type="hidden" name="rowId" value={row.id} />
@@ -331,18 +329,19 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
       {button && (
         <div
           className={
-            "mt-2 rounded-xl border border-shell-rule bg-surface px-3 py-2.5 " +
+            "mt-2.5 rounded-2xl border border-shell-rule bg-surface px-4 py-3 " +
             (row.state === "said"
               ? "opacity-60"
               : "shadow-[0_1px_2px_rgba(22,24,26,0.05),0_10px_24px_-14px_rgba(22,24,26,0.22)]")
           }
         >
           <Steps state={row.state} found={found} />
-          <p className="mt-2 text-[11px] text-ink-faint">Here is what I will do</p>
-          <dl className="mt-1 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-1 text-[12.5px]">
+          <div className="my-2.5 h-px bg-shell-rule/70" />
+          <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">Here is what I will do</p>
+          <dl className="mt-1.5 grid grid-cols-[88px_1fr_20px] items-baseline gap-x-2 gap-y-1.5 text-[13px]">
             {button.shows.map((s, i) => (
               <div key={i} className="contents">
-                <dt className="text-ink-faint">{s.label}</dt>
+                <dt className="truncate text-[12px] text-ink-faint">{s.label}</dt>
                 <dd className="min-w-0 break-words text-ink">
                   {s.href ? (
                     <Link href={s.href} title="Open the record this comes from" className="decoration-shell-rule underline-offset-2 hover:text-brand hover:underline">
@@ -371,8 +370,8 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
           </dl>
           {row.state === "proposed" && (
             <>
-              <p className="mt-2 text-[12.5px]">Does this look right?</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <p className="mt-3 text-[13px] font-medium">Does this look right?</p>
+              <div className="mt-2 flex flex-col gap-1.5">
                 {row.buttons.map((b, i) => (
                   <form key={i} action={chatDo}>
                     <input type="hidden" name="rowId" value={row.id} />
@@ -384,7 +383,7 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
                 <button
                   type="button"
                   onClick={() => onEdit("Change ")}
-                  className="rounded-full border border-rule-strong bg-surface px-3 py-1.5 text-[12.5px] text-ink-soft hover:bg-paper"
+                  className="w-full rounded-xl border border-shell-rule bg-surface px-3 py-2 text-[12.5px] text-ink-soft transition-colors hover:bg-paper hover:text-ink"
                 >
                   Make an edit
                 </button>
@@ -397,7 +396,7 @@ function Line({ row, back, onEdit }: { row: OpsChatRow; back: string; onEdit: (t
       {result && (
         <div
           className={
-            "chat-in mt-2 rounded-xl border px-3 py-2 text-[12.5px] " +
+            "chat-in mt-2.5 rounded-2xl border px-4 py-2.5 text-[13px] " +
             (row.state === "refused" ? "border-danger/30 bg-bg-danger text-danger" : "border-brand/30 bg-bg-brand text-ink")
           }
         >
@@ -417,10 +416,11 @@ function Press({ label }: { label: string }) {
     <button
       disabled={pending}
       aria-busy={pending}
-      className="relative rounded-full bg-ink px-3.5 py-1.5 text-left text-[12.5px] font-medium text-white shadow-[0_1px_2px_rgba(22,24,26,0.2)] hover:bg-black active:scale-[0.98] disabled:opacity-70"
+      className="relative flex w-full items-center justify-between gap-3 rounded-xl bg-ink px-3.5 py-2 text-left text-[12.5px] font-medium leading-snug text-white shadow-[0_1px_2px_rgba(22,24,26,0.2)] transition-colors hover:bg-black active:scale-[0.99] disabled:opacity-70"
     >
-      <span className={pending ? "opacity-40" : ""}>{label} ✓</span>
-      {pending && <span className="absolute inset-0 flex items-center justify-center text-[11.5px]">Working…</span>}
+      <span className={"min-w-0 " + (pending ? "opacity-40" : "")}>{label}</span>
+      <span aria-hidden="true" className={"shrink-0 " + (pending ? "opacity-0" : "")}>↵</span>
+      {pending && <span className="absolute inset-0 flex items-center justify-center text-[12px]">Working…</span>}
     </button>
   );
 }
@@ -437,7 +437,7 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
         readOnly={pending}
         placeholder={waiting ? "Type the answer…" : "Message the desk, " + who.split(" ")[0] + "…"}
         aria-label="Say what you want done"
-        className="min-h-[38px] w-full resize-none rounded-xl border border-shell-rule bg-paper px-3 py-2 text-[13px] outline-none placeholder:text-ink-faint focus:border-brand"
+        className="min-h-[42px] w-full resize-none rounded-xl border border-shell-rule bg-paper px-3.5 py-2.5 text-[13.5px] outline-none transition-colors placeholder:text-ink-faint focus:border-brand focus:bg-surface"
         onKeyDown={(e) => {
           // Enter sends; Shift+Enter is a new line, as every chat does it.
           if (e.key === "Enter" && !e.shiftKey) {
@@ -449,7 +449,7 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
       <button
         disabled={pending}
         aria-label="Send"
-        className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-ink text-white hover:bg-black active:scale-[0.96] disabled:opacity-60"
+        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-ink text-white hover:bg-black active:scale-[0.96] disabled:opacity-60"
       >
         ↑
       </button>

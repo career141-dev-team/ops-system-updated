@@ -112,7 +112,7 @@ export default function Sidebar({
   return (
     <>
       {/* The desk: the column. */}
-      <nav className="hidden h-screen w-[232px] shrink-0 flex-col gap-3 border-r border-shell-rule bg-shell px-3 py-4 md:flex">
+      <nav className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-3 self-start border-r border-shell-rule bg-shell px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-2">
           <span className="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-[14px] font-medium">Career 141 Ops</span>

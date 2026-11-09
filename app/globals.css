@@ -69,7 +69,12 @@ html,
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Inter's open forms and tabular figures: counts line up, 1 and l differ. */
+  font-feature-settings: "cv11", "ss01", "tnum";
+  letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /*
