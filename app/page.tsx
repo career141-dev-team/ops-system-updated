@@ -40,6 +40,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
   const late = tasks.filter((t) => t.dueAt < now);
   const clocks = liveTimersFor(db, member.id);
+  // Mail in this person's own box that nobody has dealt with, each email once.
+  const yourMail = new Set(
+    db.inbound
+      .filter((i) => i.readState === "new" && i.mailbox.toLowerCase() === member.email.toLowerCase())
+      .map((i) => i.from + "|" + i.subject + "|" + i.receivedAt),
+  ).size;
   const work = workByPage(tasks, now);
 
   // What to do first (8 Nov, UX order 6). The rules choose; the model, when
@@ -108,7 +114,17 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         )}
       </section>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/*
+        Your mailbox first (9 Nov). On real data the day read 0 · 0 · 0 · 0
+        under "102 emails in your mailbox wait for an answer": the counters
+        knew only what the system itself had made. The mail is the work
+        until the work starts here, so it is counted, and it links to itself.
+      */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <a href="/mail?box=mine" className="rounded-xl bg-surface px-4 py-3 transition-colors hover:bg-paper">
+          <p className="text-[12.5px] text-ink-soft">Your mailbox</p>
+          <p className={"mt-1 text-[22px] font-medium " + (yourMail ? "text-brand" : "")}>{yourMail}</p>
+        </a>
         {[
           ["To approve", drafts.length, ""],
           ["Due today", due.length, ""],
