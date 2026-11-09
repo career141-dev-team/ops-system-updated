@@ -950,7 +950,7 @@ export interface OpsChatRow {
   who: "person" | "desk" | "feed";
   text: string;
   /** `{ label, action, fields }` as the agent rules built them. */
-  buttons: { label: string; action: string; fields: Record<string, string>; shows: { label: string; value: string }[] }[];
+  buttons: { label: string; action: string; fields: Record<string, string>; shows: { label: string; value: string; href: string; field: string }[] }[];
   state: "said" | "proposed" | "running" | "done" | "refused";
   /** The runnable pressed, when one was. */
   actionName: string | null;

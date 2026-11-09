@@ -193,7 +193,7 @@ test("a chat line written through the desk comes back whole, buttons and all (do
     memberId: me,
     who: "desk",
     text: "Ready when you are.",
-    buttons: [{ label: "Approve and send: x", action: "approveAndSend", fields: { messageId: "msg_x", back: "/" }, shows: [{ label: "Draft", value: "x" }] }],
+    buttons: [{ label: "Approve and send: x", action: "approveAndSend", fields: { messageId: "msg_x", back: "/" }, shows: [{ label: "Draft", value: "x", href: "/messages/msg_x", field: "messageId" }] }],
     state: "proposed",
     actionName: null,
     runId: null,

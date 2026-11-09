@@ -45,8 +45,8 @@ export function feedSince(db: OpsDatabase, memberId: string, after: number, now:
           action: "markMailDone",
           fields: { inboundId: mail.id },
           shows: [
-            { label: "Email from", value: from },
-            { label: "Subject", value: mail.subject },
+            { label: "Email from", value: from, href: "/mail", field: "inboundId" },
+            { label: "Subject", value: mail.subject, href: "", field: "inboundId" },
           ],
         },
       ],

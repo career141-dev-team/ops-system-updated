@@ -359,7 +359,7 @@ export default defineSchema({
     memberId: v.string(),
     who: v.string(),
     text: v.string(),
-    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string() })) })),
+    buttons: v.array(v.object({ label: v.string(), action: v.string(), fields: v.record(v.string(), v.string()), shows: v.array(v.object({ label: v.string(), value: v.string(), href: v.string(), field: v.string() })) })),
     state: v.string(),
     actionName: v.union(v.string(), v.null()),
     runId: v.union(v.string(), v.null()),
