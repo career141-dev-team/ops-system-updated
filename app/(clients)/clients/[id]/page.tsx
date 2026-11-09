@@ -78,6 +78,8 @@ export default async function ClientPage({
       (i) => i.clientId === client.id && (i.state === "sent" || i.state === "partly_paid"),
     ),
     holds: db.holds.filter((h) => h.clientId === client.id),
+    // Each email once: a message copied to three of us is in three mailboxes (9 Nov).
+    unanswered: new Set(db.inbound.filter((row) => row.clientId === client.id && row.readState === "new").map((row) => row.from + "|" + row.subject + "|" + row.receivedAt)).size,
   });
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";

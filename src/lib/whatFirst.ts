@@ -20,12 +20,14 @@ export interface DayItem {
   /** One line, in the desk's own words. */
   said: string;
   href: string;
-  kind: "late" | "draft" | "due" | "clock" | "routine";
+  kind: "late" | "draft" | "mail" | "due" | "clock" | "routine";
   /** When it is or was due; what the kind is sorted by. */
   at: number;
 }
 
-const RANK: Record<DayItem["kind"], number> = { late: 0, draft: 1, due: 2, clock: 3, routine: 4 };
+// Mail waiting in your own box sits after a draft and before what is due:
+// a client or candidate who wrote is waiting now (9 Nov, real mail).
+const RANK: Record<DayItem["kind"], number> = { late: 0, draft: 1, mail: 2, due: 3, clock: 4, routine: 5 };
 
 export function orderTheDay(items: DayItem[]): DayItem[] {
   return [...items].sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.at - b.at);
@@ -45,6 +47,7 @@ export function firstBecause(first: DayItem, others: DayItem[]): string {
     case "draft": return "A client is waiting on this and only a person can send it." + more;
     case "due": return "It is the soonest thing due today." + more;
     case "clock": return "This clock runs out first." + more;
+    case "mail": return "People who wrote to you are waiting for an answer." + more;
     case "routine": return "Only routine notices are left; one button sends them all." + more;
   }
 }

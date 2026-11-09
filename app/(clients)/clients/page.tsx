@@ -36,6 +36,8 @@ export default async function ClientsPage({
         (row) => row.clientId === client.id && (row.state === "sent" || row.state === "partly_paid"),
       ),
       holds: db.holds.filter((row) => row.clientId === client.id),
+      // Each email once: a message copied to three of us is in three mailboxes (9 Nov).
+      unanswered: new Set(db.inbound.filter((row) => row.clientId === client.id && row.readState === "new").map((row) => row.from + "|" + row.subject + "|" + row.receivedAt)).size,
     });
     const open = db.positions.filter((row) => row.clientId === client.id && row.stage !== "closed").length;
     const owing = db.invoices.filter(

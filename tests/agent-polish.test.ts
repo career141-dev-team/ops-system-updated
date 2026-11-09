@@ -10,8 +10,8 @@ import { editFrom, nextSteps, planFrom, planMark, resolveIntent, withEdit } from
 
 const NOW = Date.UTC(2026, 10, 9, 4, 0);
 const HOUR = 3_600_000;
-const owner = { id: "m_owner", role: "ops_owner", name: "Rushda", active: true } as unknown as OpsMember;
-const accounts = { id: "m_acc", role: "accounts", name: "Accounts", active: true } as unknown as OpsMember;
+const owner = { id: "m_owner", role: "ops_owner", name: "Rushda", email: "owner@career141.com", active: true } as unknown as OpsMember;
+const accounts = { id: "m_acc", role: "accounts", name: "Accounts", email: "accounts@career141.com", active: true } as unknown as OpsMember;
 
 function desk(): OpsDatabase {
   return {
@@ -23,7 +23,7 @@ function desk(): OpsDatabase {
       { id: "msg_2", state: "draft", subject: "Set 2", to: ["hr@nippon.test"], createdAt: NOW - 2 * HOUR },
     ],
     tasks: [{ id: "k_1", state: "open", assigneeId: "m_owner", title: "Ring Nippon", body: "", dueAt: NOW - HOUR }],
-    inbound: [{ id: "in_1", readState: "new", from: "a@b.test", fromName: "A", subject: "Hi", receivedAt: NOW }],
+    inbound: [{ id: "in_1", mailbox: "owner@career141.com", readState: "new", from: "a@b.test", fromName: "A", subject: "Hi", receivedAt: NOW }],
     invoices: [{ id: "inv_1", number: "C141-2026-0001", state: "sent", clientId: "cl_1", amount: 450000 }],
     clientSets: [{ id: "cs_1", clientId: "cl_1", setNumber: 2, name: "NIPPON > SET 2", state: "ready", candidates: [] }],
     reports: [{ id: "rep_1", weekOf: "2026-11-09", state: "built" }],

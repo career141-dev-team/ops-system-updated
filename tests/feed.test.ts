@@ -12,11 +12,13 @@ const NOW = Date.UTC(2026, 10, 8, 6, 0);
 const HOUR = 3_600_000;
 
 const db = {
+  members: [{ id: "m_me", email: "me@career141.com" }, { id: "m_other", email: "other@career141.com" }],
   clients: [{ id: "cl_1", name: "Nippon Paint Lanka" }],
   inbound: [
-    { id: "in_new", readState: "new", from: "hr@nippon.test", fromName: "Nippon HR", subject: "Re: Set 1", receivedAt: NOW - HOUR, clientId: "cl_1" },
-    { id: "in_old", readState: "new", from: "x@y.test", fromName: "", subject: "Old", receivedAt: NOW - 5 * HOUR, clientId: null },
-    { id: "in_filed", readState: "filed", from: "z@y.test", fromName: "Z", subject: "Filed", receivedAt: NOW - HOUR, clientId: null },
+    { id: "in_new", mailbox: "me@career141.com", readState: "new", from: "hr@nippon.test", fromName: "Nippon HR", subject: "Re: Set 1", receivedAt: NOW - HOUR, clientId: "cl_1" },
+    { id: "in_old", mailbox: "me@career141.com", readState: "new", from: "x@y.test", fromName: "", subject: "Old", receivedAt: NOW - 5 * HOUR, clientId: null },
+    { id: "in_filed", mailbox: "me@career141.com", readState: "filed", from: "z@y.test", fromName: "Z", subject: "Filed", receivedAt: NOW - HOUR, clientId: null },
+    { id: "in_theirs", mailbox: "other@career141.com", readState: "new", from: "q@y.test", fromName: "Q", subject: "Not mine", receivedAt: NOW - HOUR, clientId: null },
   ],
   timers: [
     { id: "t_mine", ownerId: "m_me", kind: "set.due", payload: { label: "Set 2 is due at Nippon" } },
@@ -56,5 +58,6 @@ test("before the cursor is not news, filed mail is not news, and the mark is one
   const all = feedSince(db, "m_me", 0, NOW);
   assert.ok(all.some((l) => l.key === "inbound:in_old"), "an old unread email still counts when the cursor is at zero");
   assert.ok(!all.some((l) => l.key === "inbound:in_filed"));
+  assert.ok(!all.some((l) => l.key === "inbound:in_theirs"), "somebody else's mailbox is not my feed");
   assert.equal(feedMark("inbound:in_new"), "feed:inbound:in_new");
 });

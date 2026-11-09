@@ -52,7 +52,22 @@ export interface InboundMail {
 }
 
 export type ReadResult =
-  | { ok: true; mail: InboundMail[]; mailbox: string; /** Newsletters and the like, left out on purpose. */ ignored: number; ms: number }
+  | {
+      ok: true;
+      mail: InboundMail[];
+      mailbox: string;
+      /** Newsletters and the like, left out on purpose. */
+      ignored: number;
+      ms: number;
+      /**
+       * How far the page reached before anything was left out, and whether it
+       * was a full page (9 Nov). The reader drops our own and machine mail
+       * after fetching, so a page of internal mail looks empty; whoever pages
+       * through a box must step by this, not by what was kept.
+       */
+      reachedAt: number;
+      pageFull: boolean;
+    }
   | { ok: false; mailbox: string; reason: string };
 
 /** How many to take in one pass, and how long the whole pass may take. */
@@ -165,12 +180,14 @@ type GraphMessage = {
  * which is the newest thing we already recorded for that box. So a pass always
  * moves forward and nothing is read twice or skipped, however busy the box is.
  */
-export async function readOneMailbox(address: string, since: number): Promise<ReadResult> {
+export async function readOneMailbox(address: string, since: number, timeLimitMs = TIME_LIMIT_MS): Promise<ReadResult> {
   if (!readerEnabled()) return { ok: false, mailbox: address, reason: "Reading the mailboxes is switched off." };
   if (!graphReady()) return { ok: false, mailbox: address, reason: "The mailbox credentials are not set yet." };
 
   const started = Date.now();
-  const stop = AbortSignal.timeout(TIME_LIMIT_MS);
+  // The clock keeps its 15 seconds (the backend's six-action rule); a month's
+  // import asks for longer, because a page of full emails is heavy (9 Nov).
+  const stop = AbortSignal.timeout(timeLimitMs);
   try {
     const access = await token();
     if (!access) return { ok: false, mailbox: address, reason: "Microsoft would not give us a token." };
@@ -188,10 +205,17 @@ export async function readOneMailbox(address: string, since: number): Promise<Re
     if (!response.ok) {
       // 404 here usually means the app has not been allowed to read this one
       // mailbox, which is worth saying plainly rather than "failed".
-      const why = response.status === 404 ? "we are not allowed to read it, or it does not exist" : "Microsoft answered " + response.status;
+      const why =
+        response.status === 404
+          ? "we are not allowed to read it, or it does not exist"
+          : response.status === 429
+            ? "Microsoft asked us to slow down (429)"
+            : "Microsoft answered " + response.status;
       return { ok: false, mailbox: address, reason: address + ": " + why + "." };
     }
     const json = (await response.json()) as { value?: GraphMessage[] };
+    const page = json.value ?? [];
+    const reachedAt = page.reduce((n, m) => Math.max(n, m.receivedDateTime ? Date.parse(m.receivedDateTime) : 0), since);
 
     // Our own people first, then anything no person sent (6 Nov). The second
     // one is counted rather than silently dropped: the screen says how many
@@ -220,13 +244,14 @@ export async function readOneMailbox(address: string, since: number): Promise<Re
         m.internetMessageHeaders?.find((h) => h.name.toLowerCase() === "in-reply-to")?.value ?? null,
       }));
 
-    return { ok: true, mail, mailbox: address, ignored, ms: Date.now() - started };
+    return { ok: true, mail, mailbox: address, ignored, ms: Date.now() - started, reachedAt, pageFull: page.length >= BATCH };
   } catch (e) {
     const timedOut = (e as Error)?.name === "TimeoutError";
     return {
       ok: false,
       mailbox: address,
-      reason: address + (timedOut ? " did not answer in time." : " could not be read."),
+      // Say why (9 Nov): "could not be read" hid seven different failures.
+      reason: address + (timedOut ? " did not answer in time." : " could not be read: " + String((e as Error)?.message ?? e).slice(0, 160)),
     };
   }
 }

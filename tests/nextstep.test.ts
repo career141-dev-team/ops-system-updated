@@ -729,3 +729,11 @@ test("a position card answers the only question a client asks", () => {
 
   assert.match(positionNextStep(position({ stage: "closed" }), parts, NOW).waiting, /the close list has it/);
 });
+
+test("a client with nothing of ours open but their mail waiting says so, not 'nothing is open' (9 Nov)", () => {
+  const client = { stage: "active", billingEmail: "hr@client.test", groupName: "" } as never;
+  const parts = { positions: [], sets: [], owing: [], holds: [] };
+  assert.equal(clientNextStep(client, { ...parts, unanswered: 3 }).waiting, "3 emails from them are waiting for an answer.");
+  assert.equal(clientNextStep(client, { ...parts, unanswered: 1 }).waiting, "One email from them is waiting for an answer.");
+  assert.match(clientNextStep(client, parts).waiting, /Nothing is open for them/);
+});

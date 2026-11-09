@@ -30,9 +30,13 @@ export interface FeedLine {
 /** Everything that arrived for this person after `after`, oldest first. */
 export function feedSince(db: OpsDatabase, memberId: string, after: number, now: number): FeedLine[] {
   const lines: FeedLine[] = [];
+  // Your own box only (9 Nov): with a month of real mail in, the desk's
+  // shared boxes would bury a person's thread. The shared boxes are on /mail.
+  const own = (db.members.find((m) => m.id === memberId)?.email ?? "").toLowerCase();
 
   for (const mail of db.inbound) {
     if (mail.receivedAt <= after || mail.readState !== "new") continue;
+    if (own && mail.mailbox.toLowerCase() !== own) continue;
     const from = mail.fromName || mail.from;
     const client = mail.clientId ? db.clients.find((c) => c.id === mail.clientId)?.name : null;
     lines.push({
@@ -91,7 +95,8 @@ export function feedSince(db: OpsDatabase, memberId: string, after: number, now:
     });
   }
 
-  return lines.filter((l) => l.at <= now).sort((a, b) => a.at - b.at);
+  // The newest twenty at most: a feed is what just happened, not a backlog.
+  return lines.filter((l) => l.at <= now).sort((a, b) => a.at - b.at).slice(-20);
 }
 
 /** The chat row's mark for a feed line, so the same line is never kept twice. */
