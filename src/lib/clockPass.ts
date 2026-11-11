@@ -39,6 +39,31 @@ export function clockSchedulerReady(): boolean {
   return (process.env.OPS_CLOCK_KEY ?? "").trim().length > 0;
 }
 
+/**
+ * Whether this app should run its own pass every few minutes (11 Nov).
+ *
+ * On the Convex store the backend's cron asks /api/clock every five minutes.
+ * On the JSON store - the laptop and the Railway preview - nothing asked, so
+ * the clocks ran only when somebody opened Positions or Money or pressed
+ * "Run the clocks now", and the owner rightly asked whether we had a clock
+ * feature at all. Now the app times itself there. OPS_SELF_CLOCK=off stops it.
+ */
+export function selfClockWanted(env: Record<string, string | undefined> = process.env): boolean {
+  if ((env.OPS_SELF_CLOCK ?? "").toLowerCase() === "off") return false;
+  return (env.OPS_STORE ?? "json").toLowerCase() !== "convex";
+}
+
+export const SELF_CLOCK_EVERY_MS = 5 * 60_000;
+
+/**
+ * The two clock buttons on Your day are for testing, not for the desk
+ * (owner, 11 Nov: "run the clock is not a button in the UI"). Shown only
+ * where somebody switched the test tools on.
+ */
+export function testToolsShown(env: Record<string, string | undefined> = process.env): boolean {
+  return (env.OPS_TEST_TOOLS ?? "").toLowerCase() === "on";
+}
+
 let running = false;
 
 export interface PassAnswer {

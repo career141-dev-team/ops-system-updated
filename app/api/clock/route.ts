@@ -1,5 +1,5 @@
-import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks } from "@/data/desk";
-import { readerEnabled } from "@/lib/graphMail";
+import { noteClockPass } from "@/data/desk";
+import { clockPassOnce } from "@/data/selfClock";
 import { keyAccepted, onePass } from "@/lib/clockPass";
 
 /**
@@ -19,22 +19,10 @@ export async function POST(request: Request): Promise<Response> {
       { status: 401 },
     );
   }
-  // One pass does all three things that must happen without anybody asking:
-  // the clocks, the writes waiting to reach the TA System, and the events it
-  // has for us. They are one pass because they share the "only one at a time"
-  // guard, and because a client reply read by one of them should stop a chase
-  // before the next clock pass sees it.
-  const answer = await onePass(async () => {
-    const clocks = await runClocks();
-    const out = await pushOutbox();
-    const events = await readTaEvents();
-    // The mailboxes too (8 Nov, docs/31 part 2). Until today the reader ran
-    // only from the button on /mail, while the page said "every two
-    // minutes": nothing scheduled it. A chase stopped by a reply read here is
-    // stopped before the next pass, which is the point of one pass.
-    const mail = readerEnabled() ? await readTheMailboxes(CLOCK_ACTOR) : { read: 0, filed: 0, ok: true };
-    return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok };
-  });
+  // One pass does everything that must happen without anybody asking - the
+  // clocks, the TA writes and events, the mailboxes - sharing the "only one
+  // at a time" guard. The same pass the app's own timer runs (selfClock.ts).
+  const answer = await onePass(clockPassOnce);
   if (answer.pass) await noteClockPass(JSON.stringify(answer.pass));
   // 409 for "a pass is already going": the scheduler should come back, not
   // treat it as a fault and start alerting.

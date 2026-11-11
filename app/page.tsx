@@ -7,6 +7,7 @@ import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, openTasksFor,
 import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { KEYS_IN_WORDS } from "@/lib/keys";
+import { testToolsShown } from "@/lib/clockPass";
 import { firstBecause, whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { colomboDate, DAY } from "@/lib/calendar";
 import { clockInWords, timeLeft } from "@/lib/timers";
@@ -71,7 +72,10 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             {colomboDate(now)} · Colombo<span className="hidden md:inline"> · {KEYS_IN_WORDS}</span>
           </p>
         </div>
-        {/* Desk tools: a phone has no business running the clocks by hand. */}
+        {/* Test tools only (11 Nov): the clocks run by themselves every five
+            minutes, so the desk never presses these. Hidden unless
+            OPS_TEST_TOOLS=on, and never on a phone. */}
+        {testToolsShown() && (
         <div className="hidden flex-wrap gap-2 md:flex">
           <form action={runClocksNow}>
             <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
@@ -84,6 +88,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             </button>
           </form>
         </div>
+        )}
       </div>
 
       {msg && (
