@@ -185,7 +185,7 @@ import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
 import { cookies } from "next/headers";
-import { type ChatButton, type Runnable, answerPending, catalogueInWords, editFrom, pendingFrom, pendingMark, planFrom, planMark, resolveIntent, wantsOut, withEdit } from "@/lib/agent";
+import { type ChatButton, type Runnable, answerPending, asQuestion, catalogueInWords, editFrom, pendingFrom, pendingMark, planFrom, planMark, resolveIntent, wantsOut, withEdit } from "@/lib/agent";
 import { HOLD_AT, problemWithAnotherSet } from "@/lib/depth";
 import { problemWithReport, recipientsFrom, reportText } from "@/lib/reports";
 import {
@@ -5453,7 +5453,7 @@ export async function chatSay(formData: FormData): Promise<void> {
   }
   const got = answer.proposal.data as AgentSaid;
   db = await desk();
-  const resolved = resolveIntent({ intent: got.intent, fields: got.fields ?? {}, question: got.question ?? "", notSaid: got.notSaid ?? [] }, db, member, now);
+  const resolved = resolveIntent(asQuestion({ intent: got.intent ?? "", fields: got.fields ?? {}, question: got.question ?? "", notSaid: got.notSaid ?? [] }, said), db, member, now);
   if (resolved.kind === "question") {
     const rows = [
       "Today is " + colomboDate(now) + " in Colombo.",

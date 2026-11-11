@@ -1187,6 +1187,20 @@ export function answerPending(pending: { intent: AgentIntent; field: string }, t
   return { ...pending.intent, fields: { ...pending.intent.fields, [pending.field]: typed.trim() } };
 }
 
+/**
+ * A question the model left blank (11 Nov). Asked "how many drafts are waiting
+ * for approval?", the model answered `{}` - no intent, no question - and the
+ * desk replied with its list of offers instead of "10". When the model names
+ * nothing and the person's words read as a question, they are one: the
+ * question path answers from the desk's own rows, so nothing is guessed.
+ */
+export function asQuestion(got: AgentIntent, typed: string): AgentIntent {
+  if (got.intent) return got;
+  const words = typed.trim();
+  const reads = /\?$/.test(words) || /^(how|what|when|where|who|whose|which|why|is|are|was|were|do|does|did|can|could|has|have|any|tell me|show me|list)\b/i.test(words);
+  return reads ? { ...got, intent: "question", question: words } : got;
+}
+
 /** "never mind", "cancel", "stop": the person wants out of the question. */
 export function wantsOut(typed: string): boolean {
   return /^(never ?mind|cancel|stop|forget it|no)\.?$/i.test(typed.trim());
