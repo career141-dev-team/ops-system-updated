@@ -31,6 +31,8 @@ const HOUSE =
 export interface PromptFor {
   system: string;
   prompt: string;
+  /** How long the reply may be, when the default 1,200 is not enough. */
+  maxTokens?: number;
 }
 
 /* ── Dictation into our own fields (steps 5 to 7) ───────────────── */
@@ -261,8 +263,13 @@ export function askPrompt(question: string, rows: string[]): PromptFor {
       HOUSE +
       " You answer questions about an agency's own desk from the rows you are given, and from nothing else." +
       " If the rows do not answer it, say so plainly and put what is missing into notSaid - never guess a number." +
-      ' Shape: {"answer":"","used":[],"notSaid":[]}. Keep the answer under sixty words.',
+      ' Shape: {"answer":"","used":[],"notSaid":[]}. Keep the answer under sixty words.' +
+      // 11 Nov: "what is late for me today?" on a desk of twenty late tasks ran
+      // past the reply limit and came back cut off - "no JSON in it". used
+      // names its sources; it does not repeat them.
+      ' used holds at most five short labels such as "Your open tasks", never the rows themselves.',
     prompt: "The question: " + question + "\n\nWhat you may use:\n\n" + rows.join("\n"),
+    maxTokens: 2_500,
   };
 }
 

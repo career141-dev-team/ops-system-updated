@@ -1524,7 +1524,7 @@ export function whyFirstKept(db: OpsDatabase, key: string): string | null {
  */
 export async function runAi<T>(
   task: AiTask,
-  built: { system: string; prompt: string },
+  built: { system: string; prompt: string; maxTokens?: number },
   by: Id,
   about: { type: string; id: Id } | null = null,
   read: string[] = [],
@@ -1535,7 +1535,7 @@ export async function runAi<T>(
   const problem = problemWithRunning(task, provider, aiSwitches(db, now));
   if (problem) return { proposal: nothing<T>(task, problem, provider), runId: null, problem };
 
-  const proposal = await ask<T>({ task, system: built.system, prompt: built.prompt, read });
+  const proposal = await ask<T>({ task, system: built.system, prompt: built.prompt, read, maxTokens: built.maxTokens });
   const run = await addAiRun({
     task,
     provider: proposal.provider,
