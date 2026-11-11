@@ -68,7 +68,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
 
   return (
-    <html lang="en" className={inter.variable}>
+    // suppressHydrationWarning: a browser extension writes its own style onto
+    // <html> before React loads, and React then reports a mismatch that is not
+    // ours (10 Nov, seen on the lead's review link). One level only.
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       {/*
         `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
         

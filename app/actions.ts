@@ -5460,7 +5460,12 @@ export async function chatSay(formData: FormData): Promise<void> {
       "Clients: " + db.clients.map((c) => c.name + " (" + c.stage + ")").join("; "),
       "Positions: " + db.positions.map((p) => p.title + " (" + p.stage + ")").join("; "),
       "Drafts waiting: " + db.messages.filter((m) => m.state === "draft").length,
-      "Your open tasks: " + db.tasks.filter((t) => t.state === "open" && t.assigneeId === member.id).map((t) => t.title).join("; "),
+      // With the due day (11 Nov): titles alone could not say what is late.
+      "Your open tasks: " +
+        db.tasks
+          .filter((t) => t.state === "open" && t.assigneeId === member.id)
+          .map((t) => t.title + " (due " + colomboDate(t.dueAt) + (t.dueAt < now ? ", late" : "") + ")")
+          .join("; "),
     ];
     const asked = await runAi<Answer>("ask", askPrompt(said, rows), member.id, { type: "chat", id: member.id }, ["the desk's own rows"], now);
     const got = asked.proposal.ok && asked.proposal.data ? (asked.proposal.data as Answer) : null;
