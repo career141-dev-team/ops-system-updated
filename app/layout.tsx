@@ -5,7 +5,7 @@ import Toast from "@/app/Toast";
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 
-import Sidebar from "@/app/Sidebar";
+import PhoneNav from "@/app/PhoneNav";
 import TopBar from "@/app/TopBar";
 import { cookies } from "next/headers";
 
@@ -47,11 +47,6 @@ export const metadata: Metadata = {
  * workspaces across and the rest behind the profile, every page still under
  * one entry (src/lib/nav.ts). The bar hides once the page is scrolled and
  * comes back for the pointer at the top - the one overlay the owner allowed.
- *
- * Later the same day the owner brought the sidebar back on every page but
- * My Work: there the top bar is the page's own header, as Figma draws it;
- * everywhere else the sidebar is the navigation and the top bar stays out of
- * sight until the pointer reaches the top edge.
  *
  * What a person may see is worked out here, where the session is, and handed
  * to the bars - which know which page you are on and nothing else.
@@ -111,9 +106,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {member ? (
           <>
           <TopBar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+          <PhoneNav may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
           <div className="flex min-h-screen flex-col md:flex-row md:items-stretch">
-            {/* The sidebar on every page but My Work, and the phone's bars. */}
-            <Sidebar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:px-6 md:py-6">{children}</main>
             {/* The third column: the chat, when it is open. It pushes the page
