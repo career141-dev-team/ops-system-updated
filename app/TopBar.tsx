@@ -210,7 +210,7 @@ export default function TopBar({
                   aria-pressed={chatOpen}
                   className="flex w-full items-center rounded-lg px-3 py-2 text-left text-[14px] text-ink-soft hover:bg-sunk hover:text-ink"
                 >
-                  {chatOpen ? "Close the chat" : "Open the chat"}
+                  {chatOpen ? "Close AURA" : "Open AURA"}
                 </button>
               </form>
               <p className="mx-3 mt-1 border-t border-rule pt-2 text-[12px] text-ink-faint">Test data only</p>

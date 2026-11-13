@@ -116,7 +116,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {chatOpen && db && (
               <aside className="sticky top-0 z-[1] hidden h-screen w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_rgba(22,24,26,0.38)] lg:flex">
                 <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
-                  <p className="text-[14px] font-semibold tracking-[-0.01em]">Desk assistant</p>
+                  <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
                   <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
                 </div>
                 <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />

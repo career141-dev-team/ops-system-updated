@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import Icon from "@/app/Icon";
+
 /**
  * The microphone beside a field (15, Phase 9 steps 5 and 6).
  *
@@ -14,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
  * It writes into the field beside it, and the person edits what it heard.
  * Nothing saves itself.
  */
-export default function Dictate({ into, label = "Dictate" }: { into: string; label?: string }) {
+export default function Dictate({ into, label = "Dictate", round = false }: { into: string; label?: string; round?: boolean }) {
   const [listening, setListening] = useState(false);
   const [can, setCan] = useState(false);
   const [said, setSaid] = useState("");
@@ -45,7 +47,11 @@ export default function Dictate({ into, label = "Dictate" }: { into: string; lab
     engine.onresult = (event) => {
       let heard = "";
       for (const result of Array.from(event.results)) heard += (result[0]?.transcript ?? "") + " ";
-      const field = document.querySelector<HTMLTextAreaElement | HTMLInputElement>('[name="' + into + '"]');
+      // By id first (13 Nov): AURA's composer shares the name "text" with the
+      // quick-add note in the top bar, which comes earlier on the page.
+      const field =
+        (document.getElementById(into) as HTMLTextAreaElement | HTMLInputElement | null) ??
+        document.querySelector<HTMLTextAreaElement | HTMLInputElement>('[name="' + into + '"]');
       if (field) {
         field.value = (field.value ? field.value.trim() + " " : "") + heard.trim();
         field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -57,6 +63,35 @@ export default function Dictate({ into, label = "Dictate" }: { into: string; lab
     recognition.current = engine;
     return () => engine.stop();
   }, [into]);
+
+  // AURA's composer (13 Nov): the design's round microphone, and nothing at
+  // all where the browser cannot listen - the box is still there to type in.
+  if (round) {
+    if (!can) return null;
+    return (
+      <button
+        type="button"
+        aria-pressed={listening}
+        aria-label={listening ? "Listening - press to stop" : label}
+        title={listening ? "Listening - press to stop" : label}
+        onClick={() => {
+          if (listening) {
+            recognition.current?.stop();
+            setListening(false);
+            return;
+          }
+          setListening(true);
+          recognition.current?.start();
+        }}
+        className={
+          "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors " +
+          (listening ? "bg-bg-warning text-warning" : "text-ink-soft hover:bg-sunk hover:text-ink")
+        }
+      >
+        <Icon name="mic" size={18} />
+      </button>
+    );
+  }
 
   if (!can) {
     return (

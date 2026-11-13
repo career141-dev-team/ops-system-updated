@@ -126,5 +126,5 @@ export function isHere(path: string, href: string): boolean {
 export const PHONE_PAGES = ["/", "/mail", "/chat", "/work"] as const;
 /** The one phone-bar page that is not a sidebar entry, with its words. */
 export const PHONE_ONLY: Record<string, { what: string; about: string }> = {
-  "/chat": { what: "Chat", about: "Ask, and get it done - every action behind a button you press" },
+  "/chat": { what: "AURA", about: "Ask, and get it done - every action behind a button you press" },
 };

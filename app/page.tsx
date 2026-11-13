@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import AuraComposer from "@/app/AuraComposer";
 import Icon from "@/app/Icon";
 import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
 import { approveAllRoutine, approveAndSend } from "@/app/actions";
@@ -233,7 +234,7 @@ export default async function MyWorkPage({
                     {aiOn && !aiLine && (
                       <form action={explainFirst}>
                         <button className="rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk">
-                          Ask AURA why
+                          Ask AURA why this first
                         </button>
                       </form>
                     )}
@@ -372,6 +373,11 @@ export default async function MyWorkPage({
             ))}
           </section>
         )}
+
+        {/* AURA, at the foot of the day: tell it what happened, or ask. */}
+        <div className="mt-10">
+          <AuraComposer />
+        </div>
 
         {/* Test tools only (11 Nov): the clocks run by themselves every five
             minutes. Hidden unless OPS_TEST_TOOLS=on, and never on a phone. */}
