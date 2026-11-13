@@ -84,6 +84,9 @@ over older documents.
 
 | 3 Nov | **TopJobs is paused**, at the owner's word, and built on its own pass: it is the advert with money in it (about Rs 5,400 an ad) and four hand-offs between the TA, marketing, ops and TopJobs | Owner (chat) |
 | 3 Nov | **Only a real LinkedIn post address is accepted**, and the share button's tracking tail is cut off. A wrong link is worse than none: the TA System unlocks Live on the link's presence, so a wrong one looks done | Build decision |
+| 13 Nov | **The screens follow the approved Figma design ("Ops System", frame 68:2791, "MW · My Work").** Its colours, Poppins and the career141 · 20 years logo replace the 5 Nov look; the assistant is named **AURA** | Owner (chat) |
+| 13 Nov | **A top bar replaces the sidebar on every page**, reversing 5 Nov. Seven workspaces across it (My Work, Clients, Openings, Interviews, Placements, Finance, Reports - Candidates stays in TA); the board, the inbox, the chat and Settings behind the profile. Every page is still under exactly one entry (`tests/nav.test.ts`, `tests/nextstep.test.ts`) | Owner (chat), the Figma "Top nav" description |
+| 13 Nov | **The top bar hides once the page is scrolled and comes back for the pointer at the top edge**, for keyboard focus inside it, and always on a touch screen (`src/lib/topBar.ts`). Called back, it slides over the page: the one overlay the owner allowed, with the panels that open from its + and its profile | Owner (chat) |
 | 3 Nov | **Talent Pulse compiles itself on Tuesday at nine and sets the next Tuesday's clock.** One issue a week, whoever asks for it, so the clock and the button cannot make two. A role whose TA has written no line keeps the issue in: a newsletter entry with nothing under it tells a reader nothing | Owner's rhythm, built |
 
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct

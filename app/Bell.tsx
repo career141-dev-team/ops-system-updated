@@ -21,7 +21,7 @@ const EVERY_MS = 30_000;
  * the app has no overlays, and the list it would show is the page it goes
  * to. The number going red means something of yours is late.
  */
-export default function Bell({ initial }: { initial: BellCount }) {
+export default function Bell({ initial, round = false }: { initial: BellCount; round?: boolean }) {
   const [bell, setBell] = useState<BellCount>(initial);
   const [rose, setRose] = useState(false);
 
@@ -62,6 +62,27 @@ export default function Bell({ initial }: { initial: BellCount }) {
 
   const words = bellInWords(bell);
   const tone = bell.late ? "bg-bg-danger text-danger" : bell.waiting ? "bg-bg-brand text-brand" : "bg-shell-sunk text-ink-faint";
+
+  // The top bar's bell (13 Nov, Figma): a round button with a dot, the
+  // number in its label. Red when something is late, green when only waiting.
+  if (round) {
+    return (
+      <Link
+        href="/"
+        title={words}
+        aria-label={words}
+        className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell"
+      >
+        <Icon name="bell" size={20} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
+        {bell.waiting > 0 && (
+          <span
+            aria-hidden="true"
+            className={"absolute right-[9px] top-[10px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")}
+          />
+        )}
+      </Link>
+    );
+  }
 
   return (
     <Link

@@ -38,6 +38,15 @@ That is still three levels, because you are now on a different thing.
 
 ## 3. The sidebar: eight entries
 
+> **Replaced 13 Nov** by the approved Figma top bar (`app/TopBar.tsx`,
+> `src/lib/nav.ts`; [09](09-DECISIONS-AND-QUESTIONS.md), 13 Nov). Across the
+> bar: My Work · Clients · Openings · Interviews · Placements · Finance ·
+> Reports. Behind the profile: The work · Inbox · Settings, and the chat. The
+> rule below still holds in its new form: every page sits under exactly one
+> entry, and the list does not grow without a decision. The bar hides once
+> the page is scrolled and comes back for the pointer at the top edge. The
+> table below is the 5 Nov sidebar, kept for its reasons.
+
 | Entry | What it holds |
 |---|---|
 | **Your day** | to approve, due today, late, the clocks |

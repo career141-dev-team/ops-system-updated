@@ -158,6 +158,9 @@ export const ICON_FOR: Record<string, IconName> = {
   "/clients": "clients",
   "/positions": "positions",
   "/money": "money",
+  "/interviews": "positions",
+  "/placements": "money",
+  "/invoices": "money",
   "/reports": "reports",
   "/settings": "settings",
 };

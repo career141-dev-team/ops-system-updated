@@ -5,7 +5,8 @@ import Toast from "@/app/Toast";
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 
-import Sidebar from "@/app/Sidebar";
+import PhoneNav from "@/app/PhoneNav";
+import TopBar from "@/app/TopBar";
 import { cookies } from "next/headers";
 
 import Chat from "@/app/Chat";
@@ -37,16 +38,18 @@ export const metadata: Metadata = {
 /**
  * The shell (24, sections 3, 12 and 13).
  *
- * A sidebar on the left, the page on the right, and nothing over the top of
- * anything: no overlays, no modals, no drawers (the owner's rule, 2 Nov).
+ * A top bar over the page, and nothing else over the top of anything: no
+ * modals, no drawers (the owner's rule, 2 Nov).
  *
- * It was a top bar until 5 November. Twenty-six pages do not fit across a
- * screen, and the ones that fitted were the ones there was room for rather
- * than the ones somebody needed. The owner showed two screens of an ATS and
- * asked for this shape instead.
+ * The shell has gone top bar → sidebar (5 Nov, the owner's ATS screens) →
+ * top bar again (13 Nov, the approved Figma design). The 5 Nov worry was
+ * twenty-six pages across a screen; the design answers it with seven
+ * workspaces across and the rest behind the profile, every page still under
+ * one entry (src/lib/nav.ts). The bar hides once the page is scrolled and
+ * comes back for the pointer at the top - the one overlay the owner allowed.
  *
  * What a person may see is worked out here, where the session is, and handed
- * to the sidebar - which knows which page you are on and nothing else.
+ * to the bars - which know which page you are on and nothing else.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const member = await currentMember();
@@ -101,8 +104,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
         <Keys />
         {member ? (
+          <>
+          <TopBar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+          <PhoneNav may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
           <div className="flex min-h-screen flex-col md:flex-row md:items-stretch">
-            <Sidebar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:px-6 md:py-6">{children}</main>
             {/* The third column: the chat, when it is open. It pushes the page
@@ -118,6 +123,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </aside>
             )}
           </div>
+          </>
         ) : (
           <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>
         )}

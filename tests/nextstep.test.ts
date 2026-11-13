@@ -234,16 +234,21 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ stage: "dormant" }), theirs()).waiting, /this client is dormant/);
 });
 
-test("the sidebar is eight entries, and every page is under one of them", () => {
-  // Eight, from twenty-seven (25, section 3). A hold, a set, an advert and an
-  // interview are faces of a position, not places of their own, so they are
-  // reached through it and marked against it.
-  const entries = NAV.flatMap((section) => section.pages);
-  assert.equal(entries.length, 8, "eight entries, and the list never grows");
+test("the top bar's seven workspaces and three behind the profile, and every page under one", () => {
+  // From twenty-seven (25, section 3), then eight in the sidebar, then the
+  // approved Figma top bar (13 Nov). A hold, a set and an advert are faces of
+  // a position, so they are reached through it and marked against it.
+  const [workspaces, more] = NAV;
   assert.deepEqual(
-    entries.map((page) => page.href),
-    ["/", "/work", "/mail", "/clients", "/positions", "/money", "/reports", "/settings"],
+    workspaces.pages.map((page) => page.href),
+    ["/", "/clients", "/positions", "/interviews", "/placements", "/invoices", "/reports"],
   );
+  assert.deepEqual(
+    more.pages.map((page) => page.href),
+    ["/work", "/mail", "/settings"],
+  );
+  assert.equal(NAV.length, 2, "the bar and the profile, nothing else");
+  const entries = NAV.flatMap((section) => section.pages);
 
   // Every page in the app is under exactly one entry.
   const seen = new Map<string, string[]>();
@@ -311,13 +316,12 @@ test("work counts on the entry a person would look under", () => {
   // where somebody goes looking for it.
   assert.deepEqual(counts["/positions"], { waiting: 2, late: 1 });
   assert.deepEqual(counts["/sets"], { waiting: 2, late: 1 }, "and against its own page, for its tab");
-  assert.deepEqual(counts["/money"], { waiting: 1, late: 1 });
+  // An invoice is Finance's (13 Nov top bar), and Finance's entry is /invoices.
   assert.deepEqual(counts["/invoices"], { waiting: 1, late: 1 });
-  // Nothing is ever lost: a task with nowhere to go lands on the day.
+  // Nothing is ever lost: a task with nowhere to go lands on My Work.
   assert.deepEqual(counts["/"], { waiting: 2, late: 0 });
-  assert.deepEqual(counts["today"], { waiting: 2, late: 0 });
 
-  assert.equal(workInWords(counts["/money"]), "1 thing waiting, 1 late");
+  assert.equal(workInWords(counts["/invoices"]), "1 thing waiting, 1 late");
   assert.equal(workInWords(counts["/positions"]), "2 things waiting, 1 late");
   assert.equal(workInWords(undefined), "Nothing waiting");
 });
@@ -326,7 +330,9 @@ test("a path finds the entry it belongs under", () => {
   assert.equal(pageAndSectionFor("/sets/set_1")?.page.href, "/positions");
   assert.equal(pageAndSectionFor("/holds/h1")?.page.href, "/positions");
   assert.equal(pageAndSectionFor("/leads/l1")?.page.href, "/clients");
-  assert.equal(pageAndSectionFor("/invoices/i1")?.page.href, "/money");
+  assert.equal(pageAndSectionFor("/invoices/i1")?.page.href, "/invoices");
+  assert.equal(pageAndSectionFor("/guarantees/g1")?.page.href, "/placements");
+  assert.equal(pageAndSectionFor("/interviews/i1")?.page.href, "/interviews");
   assert.equal(pageAndSectionFor("/templates/x")?.page.href, "/settings");
   assert.equal(pageAndSectionFor("/work")?.page.href, "/work");
   assert.equal(pageAndSectionFor("/")?.page.href, "/");
@@ -334,7 +340,7 @@ test("a path finds the entry it belongs under", () => {
 
   // And the sidebar marks that entry, not some other one.
   assert.equal(isHere("/sets/set_1", "/positions"), true);
-  assert.equal(isHere("/sets/set_1", "/money"), false);
+  assert.equal(isHere("/sets/set_1", "/placements"), false);
   assert.equal(isHere("/", "/"), true);
   assert.equal(isHere("/leads", "/"), false, "the day is only the day");
 });
