@@ -11,12 +11,18 @@
  * from another: what is a surface, what is a rule, what is late, what is
  * done. No overlays anywhere in this app, so there are no dialog or backdrop
  * styles to define.
+ *
+ * 13 Nov: the values now come from the approved Figma design's variables
+ * (file "Ops System", 01 · Foundations). The names stayed, so every page took
+ * the new look without being edited; the Figma name is beside each value.
  */
 @theme {
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
   /* Surfaces: the page, the cards on it, and the quiet fill inside a card. */
-  --color-paper: #f7f8f7;
-  --color-surface: #ffffff;
-  --color-sunk: #f4f6f4;
+  --color-paper: #f6f7f9; /* color/canvas */
+  --color-surface: #ffffff; /* color/surface */
+  --color-sunk: #f3f4f6; /* color/surface-2 */
 
   /*
    * The shell: the sidebar, in ash (6 Nov).
@@ -31,30 +37,39 @@
    * chose; this one looks like part of the same palette, which is the whole
    * difference between quiet and cheap.
    */
-  --color-shell: #eceeec;
-  --color-shell-sunk: #e3e6e3;
-  --color-shell-rule: #d9ddda;
+  --color-shell: #eceef1; /* color/surface-3 */
+  --color-shell-sunk: #e4e7eb;
+  --color-shell-rule: #dcdfe4;
 
   /* Ink, in three weights and no more (24, section 6). */
-  --color-ink: #16181a;
-  --color-ink-soft: #5b6360;
-  --color-ink-faint: #8d9693;
+  --color-ink: #16191d; /* color/ink */
+  --color-ink-soft: #4e5862; /* color/ink-2 */
+  --color-ink-faint: #646d78; /* color/ink-3 */
+  --color-ink-inverse: #ffffff; /* color/ink-inverse */
 
   /* Hairlines. The whole layout is made of these. */
-  --color-rule: #e6e9e7;
-  --color-rule-strong: #d2d8d5;
+  --color-rule: #e7e9ed;
+  --color-rule-strong: #d3d7dd; /* color/border-strong */
 
   /* The one accent. */
-  --color-brand: #0f7a4d;
-  --color-brand-strong: #0b5f3c;
-  --color-bg-brand: #e8f5ee;
+  --color-brand: #165b42; /* color/brand */
+  --color-brand-strong: #0f4430;
+  --color-bg-brand: #e6f2ec; /* color/brand-soft */
 
   /* Meaning, not decoration: late, careful, settled. */
-  --color-danger: #b03030;
+  --color-danger: #d93a31; /* color/danger */
   --color-warning: #8a5a12;
   --color-bg-warning: #fdf3e3;
-  --color-bg-danger: #fdecec;
-  --color-bg-ok: #eaf5ec;
+  --color-bg-danger: #fdeceb; /* color/danger-soft */
+  --color-bg-ok: #e6f2ec; /* color/brand-soft */
+
+  /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).
+     New names, so Tailwind's own rounded-md and shadow-md keep their sizes
+     on the pages that already use them. */
+  --shadow-card: 0 1px 2px rgb(15 23 31 / 0.04), 0 6px 18px -4px rgb(15 23 31 / 0.05);
+  --shadow-float: 0 2px 6px rgb(15 23 31 / 0.06), 0 18px 40px -8px rgb(15 23 31 / 0.1);
+  --radius-panel: 16px; /* radius/md */
+  --radius-sheet: 32px; /* radius/xl */
 
   /* The soft chips on a row, as the reference screens use them. */
   --color-chip-a: #eef2ff;
@@ -69,10 +84,9 @@ html,
 body {
   background: var(--color-paper);
   color: var(--color-ink);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* Inter's open forms and tabular figures: counts line up, 1 and l differ. */
-  font-feature-settings: "cv11", "ss01", "tnum";
-  letter-spacing: -0.003em;
+  font-family: var(--font-sans);
+  /* Tabular figures, so counts line up in a column. */
+  font-feature-settings: "tnum";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Keys from "@/app/Keys";
 import Toast from "@/app/Toast";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 
 import Sidebar from "@/app/Sidebar";
 import { cookies } from "next/headers";
@@ -18,10 +18,15 @@ import { currentMember } from "@/lib/session";
 import { ROLE_LABEL, can } from "@/lib/roles";
 import "./globals.css";
 
-// The face (9 Nov): the system font read as unfinished next to the TA System's.
-// Inter is what modern work tools are set in; Next serves it from this app, so
-// nothing is fetched from Google by the person's browser.
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
+// Light for the greeting, Regular and Medium for everything else. Next serves
+// it from this app, so nothing is fetched from Google by the person's browser.
+const sans = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Career 141 Ops",
@@ -71,7 +76,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // suppressHydrationWarning: a browser extension writes its own style onto
     // <html> before React loads, and React then reports a mismatch that is not
     // ours (10 Nov, seen on the lead's review link). One level only.
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={sans.variable} suppressHydrationWarning>
       {/*
         `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
         
