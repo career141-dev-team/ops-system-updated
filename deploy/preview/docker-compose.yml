@@ -21,7 +21,7 @@ name: ops-preview
 
 services:
   convex:
-    image: ghcr.io/get-convex/convex-backend:latest
+    image: ghcr.io/convex/convex-backend:latest
     container_name: ops-preview-convex
     restart: unless-stopped
     stop_grace_period: 20s
@@ -66,7 +66,7 @@ services:
     mem_limit: 1g
 
   dashboard:
-    image: ghcr.io/get-convex/convex-dashboard:latest
+    image: ghcr.io/convex/convex-dashboard:latest
     container_name: ops-preview-dashboard
     restart: unless-stopped
     ports:
