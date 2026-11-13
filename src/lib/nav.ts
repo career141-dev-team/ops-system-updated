@@ -2,10 +2,11 @@
  * The shell's own map.
  *
  * 13 Nov: a top bar again, from the approved Figma design ("Ops System",
- * component "Top nav"). Its own description is the rule: the workspaces
- * across the bar - My Work, Clients, Openings, Interviews, Placements,
- * Finance, Reports (Candidates stays in the TA System) - and the rest behind
- * the profile. The sidebar this replaces (5 Nov) had the same promise, and it
+ * component "Top nav"). Across the bar, what the design shows: My Work,
+ * Clients, Openings, Interviews, Placements. Its description also names
+ * Candidates (which stays in the TA System), Finance and Reports, but the
+ * design hides those three, so Finance and Reports sit behind the profile
+ * with the rest. The sidebar this replaces (5 Nov) had the same promise, and it
  * holds: every page in the app is under exactly one entry. A page that is in
  * none is a page nobody can find; a test fails if one goes missing.
  */
@@ -39,8 +40,6 @@ export const NAV: NavSection[] = [
       { href: "/positions", what: "Openings", about: "What each client asked for, and everything the search does for it" },
       { href: "/interviews", what: "Interviews", about: "Agreeing a time, booked, held, and waiting on the client's decision" },
       { href: "/placements", what: "Placements", about: "Who joins when, who joined, and the ninety days of guarantee after" },
-      { href: "/invoices", what: "Finance", about: "The fee invoiced, the money in, the late ones, and closing a position" },
-      { href: "/reports", what: "Reports", about: "Monday's report for the Director, and the numbers behind the desk" },
     ],
   },
   {
@@ -51,6 +50,10 @@ export const NAV: NavSection[] = [
     pages: [
       { href: "/work", what: "The work", about: "Every enquiry and position in the stage it is really in" },
       { href: "/mail", what: "Inbox", about: "Every conversation, email and WhatsApp, and the calls we were asked to make" },
+      // Finance and Reports are in the Figma "Top nav" but hidden there, so
+      // they live here until the design shows them (13 Nov).
+      { href: "/invoices", what: "Finance", about: "The fee invoiced, the money in, the late ones, and closing a position" },
+      { href: "/reports", what: "Reports", about: "Monday's report for the Director, and the numbers behind the desk" },
       { href: "/settings", what: "Settings", about: "The switches, the wording, the people, the files and the links" },
     ],
   },
