@@ -159,7 +159,10 @@ test("the clocks a set starts all count from receipt, and a reply stops the chas
   // Every one of them counts from receipt, not from sending.
   const ownership = repo.liveTimers().find((t) => t.kind === "set.ownership" && t.subjectId === set.id);
   assert.equal(ownership?.startsAt, now);
-  assert.equal(ownership?.dueAt, ownershipWindow(now, []).closesAt);
+  // The desk's own holidays, not none: the sample has 24 Nov 2026, and with []
+  // this failed whenever that day fell inside the window (13 Nov).
+  const holidays = (await desk.desk()).holidays.map((h) => h.date);
+  assert.equal(ownership?.dueAt, ownershipWindow(now, holidays).closesAt);
 
   // The client answers: the chasing stops, the ownership window does not -
   // it is a promise in the agreement, not a chase.
