@@ -46,6 +46,10 @@ That is still three levels, because you are now on a different thing.
 > entry, and the list does not grow without a decision. The bar hides once
 > the page is scrolled and comes back for the pointer at the top edge. The
 > table below is the 5 Nov sidebar, kept for its reasons.
+>
+> **Your day is now My Work** (13 Nov, `app/page.tsx`): one thing at a time -
+> Up next, then four, with Today · To approve · Messages as pills on the page
+> itself, and AURA's composer at the foot. The desk assistant is **AURA**.
 
 | Entry | What it holds |
 |---|---|
