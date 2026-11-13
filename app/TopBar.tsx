@@ -21,14 +21,14 @@ import { barShown } from "@/lib/topBar";
  * the bell and the profile. Behind the profile: the board, the inbox, the
  * chat and Settings ("Settings, Help, Sign out live in the profile page").
  *
- * It hides once the page is scrolled and comes back for the pointer at the
- * top edge (the owner, 13 Nov); `src/lib/topBar.ts` decides, and its test
- * says who must never lose it. It sits in its own space at the top of the
- * page, so at the top nothing is under it; scrolled, it slides over the page
- * when called back. That is an overlay, which this app otherwise forbids:
+ * On My Work it sits in its own space at the top and hides once the page is
+ * scrolled; on every other page the sidebar is the way around and the bar
+ * starts out of sight. Anywhere, it comes back for the pointer at the top
+ * edge (the owner, 13 Nov); `src/lib/topBar.ts` decides, and its test says
+ * who must never lose it. Called back, it slides over the page. That is an overlay, which this app otherwise forbids:
  * the owner chose it for the bar, and nothing else (docs/09).
  *
- * The desk only. A phone keeps its own bar and bottom bar (PhoneNav).
+ * The desk only. A phone keeps its own bar and bottom bar (Sidebar).
  */
 export default function TopBar({
   may,
@@ -46,13 +46,16 @@ export default function TopBar({
   chatOpen: boolean;
 }) {
   const path = usePathname() ?? "/";
+  // My Work is the one page where the bar is the header (the owner, 13 Nov);
+  // everywhere else the sidebar is the navigation and the bar waits.
+  const pinnedAtTop = path === "/";
   const bar = useRef<HTMLDivElement>(null);
-  const [shown, setShown] = useState(true);
+  const [shown, setShown] = useState(pinnedAtTop);
 
   useEffect(() => {
     const state = { scrollY: window.scrollY, pointerY: null as number | null, overBar: false, focusWithin: false };
     const touch = window.matchMedia("(hover: none)").matches;
-    const decide = () => setShown(barShown({ ...state, touch }));
+    const decide = () => setShown(barShown({ ...state, pinnedAtTop, touch }));
     const onScroll = () => {
       state.scrollY = window.scrollY;
       decide();
@@ -86,7 +89,7 @@ export default function TopBar({
       document.removeEventListener("focusin", onFocus);
       document.removeEventListener("focusout", onBlur);
     };
-  }, []);
+  }, [pinnedAtTop]);
 
   const [workspaces, more] = NAV;
   const mayShow = (needs?: string) => !needs || may[needs];
@@ -98,8 +101,9 @@ export default function TopBar({
     .join("");
 
   return (
-    // The space the bar takes at the top of the page, so nothing starts under it.
-    <div className="hidden h-[116px] md:block">
+    // On My Work, the space the bar takes at the top, so nothing starts under
+    // it. Elsewhere it takes none: it is out of sight until called.
+    <div className={pinnedAtTop ? "hidden h-[116px] md:block" : "hidden md:block"}>
       <div
         ref={bar}
         className={

@@ -47,6 +47,11 @@ That is still three levels, because you are now on a different thing.
 > the page is scrolled and comes back for the pointer at the top edge. The
 > table below is the 5 Nov sidebar, kept for its reasons.
 >
+> **Later on 13 Nov the sidebar came back on every page but My Work**
+> (`app/Sidebar.tsx`), with the same entries as the bar. On those pages the
+> top bar starts out of sight and appears only for the pointer at the top
+> edge; on My Work the bar is the header and there is no sidebar.
+>
 > **Your day is now My Work** (13 Nov, `app/page.tsx`): one thing at a time -
 > Up next, then four, with Today · To approve · Messages as pills on the page
 > itself, and AURA's composer at the foot. The desk assistant is **AURA**.
