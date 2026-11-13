@@ -6,7 +6,7 @@ New to this project? Read [`docs/STATUS.md`](docs/STATUS.md) first - what is bui
 where it lives - then [`docs/00-CONTEXT-FOR-A-NEW-CHAT.md`](docs/00-CONTEXT-FOR-A-NEW-CHAT.md)
 and the plan in [`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md). Do not ask the owner to
 explain the project: it is all written down. The plan was approved on 2 November and
-phases 1 and 2 are built.
+all nine phases are built; what is left is in `docs/STATUS.md` under *Not built*.
 
 ## Claude Code specifics
 

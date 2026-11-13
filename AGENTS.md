@@ -10,11 +10,11 @@ separate system from the **TA System** (`career141-dev/ta-system`), which is
 **live production** at https://ta-system.career141.com with 78,000+ real
 candidates. Ops talks to TA **only through TA's API**.
 
-**Status: phases 1 and 2 are built, tested and merged (3 Nov 2026).** Read
-[`docs/STATUS.md`](docs/STATUS.md) first - it is the one page that says what exists,
-where each piece lives and what is still only a plan. The eight phases are planned in
-[`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md); phase 3 is next and nothing of it is
-written yet.
+**Status: all nine phases of [`docs/15-BUILD-PLAN.md`](docs/15-BUILD-PLAN.md) are
+built, and so are the screens (9 Nov 2026).** Read [`docs/STATUS.md`](docs/STATUS.md)
+first - it is the one page that says what exists, where each piece lives and what is
+still not built. What is left of size is the server and pilot half of phase 8, which is
+a person's work ([`docs/22-GO-LIVE.md`](docs/22-GO-LIVE.md) is the order).
 
 Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's look, and
 **no overlays, modals or drawers** — one page per thing, edit in place. The rules are in
@@ -50,7 +50,7 @@ Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's loo
 ```bash
 sh deploy/local/start-ui.sh     # the screens on http://127.0.0.1:3300, invented data,
                                 # a JSON file for a store, nothing can be sent
-node tests/run.mjs              # all 24 suites, each in its own process
+node tests/run.mjs              # all 57 suites, each in its own process
 node tests/run.mjs esa          # one suite
 npx tsc --noEmit                # types
 ```
