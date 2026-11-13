@@ -19,7 +19,7 @@ import { LEAD_SOURCES, SOURCE_MEANINGS } from "@/lib/leads";
  * the only round trip is a save. The server's own rules stand behind it,
  * and a refusal from there comes back as the same three-second line.
  */
-export default function QuickAdd({ clients }: { clients: { id: string; name: string }[] }) {
+export default function QuickAdd({ clients, inBar = false }: { clients: { id: string; name: string }[]; inBar?: boolean }) {
   const path = usePathname() ?? "/";
   const field =
     "w-full rounded-md border border-shell-rule bg-surface px-2 py-1.5 text-[12.5px] text-ink outline-none placeholder:text-ink-faint focus:border-brand";
@@ -27,13 +27,29 @@ export default function QuickAdd({ clients }: { clients: { id: string; name: str
   const row = "flex flex-col gap-1.5 px-2 pb-2 pt-1";
   const sub = "cursor-pointer select-none px-2 py-1 text-[12.5px] text-ink-soft hover:text-ink";
 
+  // In the top bar (13 Nov, Figma "Create"): the round black + and the three
+  // forms in a panel under it. The bar itself already floats over the page by
+  // the owner's decision, and there is no column for them to push down.
+  const summary = inBar ? (
+    <summary
+      aria-label="Add a call, a note or an enquiry"
+      title="Add a call, a note or an enquiry"
+      className="flex size-11 cursor-pointer list-none items-center justify-center rounded-full bg-ink text-ink-inverse transition-transform active:scale-[0.96] [&::-webkit-details-marker]:hidden"
+    >
+      <Icon name="plus" size={20} />
+    </summary>
+  ) : (
+    <summary className="flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-soft hover:bg-shell-sunk hover:text-ink">
+      <Icon name="plus" size={16} />
+      <span className="flex-1">Add</span>
+      <span className="text-[11px] text-ink-faint group-open:hidden">a call, a note, an enquiry</span>
+    </summary>
+  );
+
   return (
-    <details className="group rounded-lg">
-      <summary className="flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-soft hover:bg-shell-sunk hover:text-ink">
-        <Icon name="plus" size={16} />
-        <span className="flex-1">Add</span>
-        <span className="text-[11px] text-ink-faint group-open:hidden">a call, a note, an enquiry</span>
-      </summary>
+    <details className={inBar ? "group relative" : "group rounded-lg"}>
+      {summary}
+      <div className={inBar ? "absolute right-0 top-[52px] z-30 w-[300px] rounded-panel bg-surface p-2 shadow-float" : ""}>
 
       <datalist id="quick-clients">
         {clients.map((c) => (
@@ -87,6 +103,7 @@ export default function QuickAdd({ clients }: { clients: { id: string; name: str
           <button type="submit" className={save}>Save the enquiry</button>
         </form>
       </details>
+      </div>
     </details>
   );
 }

@@ -1,15 +1,13 @@
 /**
- * The shell's own map (24, sections 3, 12 and 13).
+ * The shell's own map.
  *
- * A sidebar, in groups that do not change as you work: the day, the
- * workspace, the records, the tools. The owner showed two screens of an ATS
- * on 5 November and asked for this shape - everything reachable from
- * anywhere, categorised by what kind of thing it is, with the *work* itself
- * on the board rather than in the menu.
- *
- * Every page in the app is in exactly one group. A page that is in none is a
- * page nobody can find, which is how we ended up with twenty-four links in a
- * row; a test fails if one goes missing.
+ * 13 Nov: a top bar again, from the approved Figma design ("Ops System",
+ * component "Top nav"). Its own description is the rule: the workspaces
+ * across the bar - My Work, Clients, Openings, Interviews, Placements,
+ * Finance, Reports (Candidates stays in the TA System) - and the rest behind
+ * the profile. The sidebar this replaces (5 Nov) had the same promise, and it
+ * holds: every page in the app is under exactly one entry. A page that is in
+ * none is a page nobody can find; a test fails if one goes missing.
  */
 
 export interface NavPage {
@@ -31,31 +29,28 @@ export interface NavSection {
 
 export const NAV: NavSection[] = [
   {
-    key: "today",
+    // Across the top bar, in the design's order.
+    key: "workspaces",
     what: "",
-    about: "What is waiting on you now, and where all the work is",
+    about: "What is waiting on you now, and the records the desk keeps",
     pages: [
-      { href: "/", what: "Your day", about: "To approve, due today, late, and every clock that is running" },
+      { href: "/", what: "My Work", about: "One thing at a time: what is next, what is waiting, and what to approve" },
+      { href: "/clients", what: "Clients", about: "The companies we work for, and the enquiries that are not one yet" },
+      { href: "/positions", what: "Openings", about: "What each client asked for, and everything the search does for it" },
+      { href: "/interviews", what: "Interviews", about: "Agreeing a time, booked, held, and waiting on the client's decision" },
+      { href: "/placements", what: "Placements", about: "Who joins when, who joined, and the ninety days of guarantee after" },
+      { href: "/invoices", what: "Finance", about: "The fee invoiced, the money in, the late ones, and closing a position" },
+      { href: "/reports", what: "Reports", about: "Monday's report for the Director, and the numbers behind the desk" },
+    ],
+  },
+  {
+    // Behind the profile ("Settings, Help, Sign out live in the profile page").
+    key: "more",
+    what: "More",
+    about: "The board, the inbox, and setting the desk up",
+    pages: [
       { href: "/work", what: "The work", about: "Every enquiry and position in the stage it is really in" },
       { href: "/mail", what: "Inbox", about: "Every conversation, email and WhatsApp, and the calls we were asked to make" },
-    ],
-  },
-  {
-    key: "records",
-    what: "Records",
-    about: "The three things this desk keeps, and the money that comes of them",
-    pages: [
-      { href: "/clients", what: "Clients", about: "The companies we work for, and the enquiries that are not one yet" },
-      { href: "/positions", what: "Positions", about: "What each client asked for, and everything the search does for it" },
-      { href: "/money", what: "Money", about: "Placements, invoices, the guarantee, and closing a position properly" },
-    ],
-  },
-  {
-    key: "tools",
-    what: "",
-    about: "Read once a week, and set up once",
-    pages: [
-      { href: "/reports", what: "Reports", about: "Monday's report for the Director, and the numbers behind the desk" },
       { href: "/settings", what: "Settings", about: "The switches, the wording, the people, the files and the links" },
     ],
   },
@@ -70,8 +65,11 @@ export const NAV: NavSection[] = [
  */
 export const COVERS: Record<string, string[]> = {
   "/clients": ["/clients", "/leads"],
-  "/positions": ["/positions", "/sets", "/interviews", "/holds", "/adverts", "/talent-pulse"],
-  "/money": ["/money", "/placements", "/invoices", "/guarantees", "/closes"],
+  "/positions": ["/positions", "/sets", "/holds", "/adverts", "/talent-pulse"],
+  "/interviews": ["/interviews"],
+  // The money area keeps its one tab bar; the design names two of its faces.
+  "/placements": ["/money", "/placements", "/guarantees"],
+  "/invoices": ["/invoices", "/closes"],
   "/reports": ["/reports", "/numbers"],
   "/settings": ["/settings", "/templates", "/files", "/ta", "/import", "/health", "/ai", "/holidays", "/baseline"],
   "/mail": ["/mail", "/calls", "/messages", "/tasks"],

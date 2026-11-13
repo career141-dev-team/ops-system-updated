@@ -7,21 +7,12 @@ import Bell from "@/app/Bell";
 import Icon, { ICON_FOR } from "@/app/Icon";
 import QuickAdd from "@/app/QuickAdd";
 import type { Bell as BellCount } from "@/lib/bell";
-import { toggleChat } from "@/app/actions";
 import { NAV, PHONE_ONLY, PHONE_PAGES, isHere } from "@/lib/nav";
 import type { WorkCount } from "@/lib/sectionWork";
 
 /**
- * The sidebar (24, section 13), and the phone's version of it (UX order 7).
- *
- * The owner showed two screens of an ATS on 5 November and asked for this
- * shape: everything reachable from anywhere, in groups that do not change as
- * you work - the day, the workspace, the records, the tools. The *work*
- * itself is not in the menu; it is on the board, which is the second item.
- *
- * A top bar was wrong for this system. Twenty-six pages do not fit across a
- * screen, and the ones that did fit were the ones somebody had room for
- * rather than the ones somebody needed.
+ * The phone's navigation (UX order 7). The desk's is the top bar (TopBar,
+ * 13 Nov), which replaced the sidebar this file used to hold as well.
  *
  * On a phone (under 768px, 8 Nov) the 232px column took the screen and left
  * the page 140px, so: a top bar with the name, the bell and Add, a menu that
@@ -34,13 +25,12 @@ import type { WorkCount } from "@/lib/sectionWork";
  * on. It holds no state, fetches nothing, and nothing in it hides behind a
  * hover.
  */
-export default function Sidebar({
+export default function PhoneNav({
   may,
   counts,
   who,
   bell,
   clients,
-  chatOpen,
 }: {
   may: Record<string, boolean>;
   counts: Record<string, WorkCount>;
@@ -49,8 +39,6 @@ export default function Sidebar({
   bell: BellCount;
   /** Names for the quick-add box to file a call or a note under. */
   clients: { id: string; name: string }[];
-  /** Whether the chat column is open on the desk. */
-  chatOpen: boolean;
 }) {
   const path = usePathname() ?? "/";
 
@@ -111,44 +99,6 @@ export default function Sidebar({
 
   return (
     <>
-      {/* The desk: the column. */}
-      <nav className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-3 self-start border-r border-shell-rule bg-shell px-3 py-4 md:flex">
-        <div className="flex items-center gap-2 px-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">Career 141 Ops</span>
-          {/* The one number that follows you around (UX order 3). */}
-          <Bell initial={bell} />
-          {/* The chat column, open or shut (docs/31). A form, so it works before hydration. */}
-          <form action={toggleChat}>
-            <input type="hidden" name="back" value={path} />
-            <button
-              title={chatOpen ? "Close the chat column" : "Open the chat column"}
-              aria-pressed={chatOpen}
-              className={"rounded-md p-1 transition-colors hover:bg-shell-sunk " + (chatOpen ? "text-brand" : "text-ink-faint")}
-            >
-              <Icon name="chat" size={16} />
-            </button>
-          </form>
-        </div>
-
-        {/* One box over everything the desk keeps. A person knows the client's
-            name, not which of eight places a thing is filed under. */}
-        {find}
-
-        {/* A call, a note, an enquiry - from any page, without leaving it (UX order 5). */}
-        <QuickAdd clients={clients} />
-
-        <div className="flex flex-1 flex-col overflow-y-auto">{pages}</div>
-
-        <div className="border-t border-shell-rule px-2.5 pt-3">
-          <p className="text-[12.5px]">{who.name}</p>
-          <p className="text-[11.5px] text-ink-faint">{who.role}</p>
-          <p className="mt-2 inline-block rounded-md bg-bg-warning px-2 py-0.5 text-[11px] text-warning">
-            Test data only
-          </p>
-        </div>
-      </nav>
-
       {/* The phone: a bar on top, with the menu and Add opening in the flow. */}
       <header className="border-b border-shell-rule bg-shell px-3 py-2 md:hidden">
         <div className="flex items-center gap-2 px-1">
