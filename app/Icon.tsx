@@ -34,12 +34,20 @@ export type IconName =
   | "user"
   | "mail"
   | "mic"
-  | "send";
+  | "send"
+  | "chevron-left"
+  | "chevron-right"
+  | "link";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
   // Add: the plainest plus there is, because it sits beside eight pictures already.
   plus: <path d="M12 5v14M5 12h14" />,
+  // To approve's previous / next draft (13 Nov, the Figma icon/chevron-left and -right).
+  "chevron-left": <path d="M15 5l-7 7 7 7" />,
+  "chevron-right": <path d="M9 5l7 7-7 7" />,
+  // Messages: what a conversation is filed to (Figma icon/link).
+  link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   // The menu: three lines, the one picture everybody already reads.
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   // The chat: one speech shape, the way every phone draws it.

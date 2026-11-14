@@ -9,7 +9,7 @@
  * one mistake that makes people switch shortcuts off.
  */
 
-export type KeyAct = "next" | "prev" | "approve" | "open" | "search";
+export type KeyAct = "next" | "prev" | "approve" | "open" | "edit" | "skip" | "search";
 
 export interface KeyPress {
   key: string;
@@ -30,6 +30,8 @@ export function keyActFor(press: KeyPress): KeyAct | null {
     case "j": case "J": case "ArrowDown": return "next";
     case "k": case "K": case "ArrowUp": return "prev";
     case "a": case "A": return "approve";
+    case "e": case "E": return "edit";
+    case "s": case "S": return "skip";
     case "Enter": case "o": case "O": return "open";
     case "/": return "search";
   }

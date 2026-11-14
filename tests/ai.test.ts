@@ -139,7 +139,7 @@ test("every prompt forbids inventing, and asks for the client's own words", () =
   const improve = improveDraftPrompt("Subject", "Dear {{contact}}, five CVs are attached.", "shorter");
   assert.match(improve.system, /Change no fact/);
   assert.match(improve.system, /\{\{placeholder\}\}/);
-  assert.deepEqual(Object.keys(IMPROVE_WORDS).sort(), ["formal", "rewrite", "shorter", "warmer"]);
+  assert.deepEqual(Object.keys(IMPROVE_WORDS).sort(), ["formal", "rewrite", "shorter", "sinhala", "warmer"]);
 
   // The ask box may not guess a number.
   assert.match(askPrompt("how many sets are out?", ["Sets: two"]).system, /never guess a number/);

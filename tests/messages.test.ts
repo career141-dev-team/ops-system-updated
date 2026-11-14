@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fillTemplate, gate, isRoutine, needsApproval, type SendContext, unfilledHoles } from "@/lib/messages";
+import { draftKind, fillTemplate, gate, isRoutine, needsApproval, type SendContext, unfilledHoles } from "@/lib/messages";
 
 const ctx = (over: Partial<SendContext> = {}): SendContext => ({
   outreachLive: false,
@@ -159,4 +159,11 @@ test("a routine notice is one from a template somebody approved once, and nothin
   // Only a draft. An approved or sent one is already settled.
   assert.equal(isRoutine({ templateKey: "task.notice", state: "approved" }, approved), false);
   assert.equal(isRoutine({ templateKey: "task.notice", state: "sent" }, approved), false);
+});
+
+test("a draft's kind comes from what it is about", () => {
+  assert.equal(draftKind({ subjectType: "esa" }), "agreements");
+  assert.equal(draftKind({ subjectType: "clientSet" }), "sets");
+  assert.equal(draftKind({ subjectType: "invoice" }), "invoices");
+  assert.equal(draftKind({ subjectType: null }), "emails");
 });

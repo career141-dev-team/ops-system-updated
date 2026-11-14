@@ -2,12 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import AuraComposer from "@/app/AuraComposer";
+import AuraMark from "@/app/AuraMark";
+import MessagesView, { aboutWhom } from "@/app/MessagesView";
 import Icon from "@/app/Icon";
-import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
-import { approveAllRoutine, approveAndSend } from "@/app/actions";
-import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
-import type { OpsDatabase } from "@/data/types";
-import { anyKeySet } from "@/lib/ai";
+import { DRAFT_KINDS, draftKind, isRoutine, messageInWords, messageTitle } from "@/lib/messages";
+import { IMPROVE_WORDS } from "@/lib/aiTasks";
+import { approveAllRoutine, approveAndSend, improveDraft } from "@/app/actions";
+import { aiSwitches, dayItems, desk, draftsWaiting, fileIn, liveTimersFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { testToolsShown } from "@/lib/clockPass";
 import { firstBecause, orderTheDay, whatFirstKey, type DayItem } from "@/lib/whatFirst";
 import { colomboDate } from "@/lib/calendar";
@@ -39,19 +41,10 @@ import { explainFirst, runClocksNow, startTestClock } from "./actions";
 
 type View = "today" | "approve" | "messages";
 
-/** Who a task or a draft is about, by name: the client line on the card. */
-function aboutWhom(db: OpsDatabase, type: string | null, id: string | null): string | null {
-  if (!type || !id) return null;
-  if (type === "lead") return db.leads.find((l) => l.id === id)?.company ?? null;
-  if (type === "client") return db.clients.find((c) => c.id === id)?.name ?? null;
-  if (type === "clientSet") return db.clientSets.find((s) => s.id === id)?.name.split(">")[0]?.trim() || null;
-  return null;
-}
-
 export default async function MyWorkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; view?: string; later?: string; all?: string }>;
+  searchParams: Promise<{ msg?: string; view?: string; later?: string; all?: string; kind?: string; n?: string; t?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -138,38 +131,61 @@ export default async function MyWorkPage({
     );
   };
 
+  // The three views: one row of pills with counts, never a second menu (Figma "View pill").
+  const viewNav = (align: string) => (
+    <nav aria-label="Views" className={"flex flex-wrap items-center gap-0.5 " + align}>
+      {tabs.map((tab) => (
+        <Link
+          key={tab.key}
+          href={href(tab.key)}
+          aria-current={view === tab.key ? "page" : undefined}
+          className={
+            "flex items-center gap-2 rounded-full px-4 py-[9px] text-[14px] leading-[21px] transition-colors duration-200 " +
+            (view === tab.key ? "bg-sunk text-ink" : "text-ink-soft hover:text-ink")
+          }
+        >
+          {tab.what}
+          <span className="text-ink-faint">{tab.count}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+
+  // Messages is two panes edge to edge (Figma "MW · Messages"), so it has a frame of its own.
+  if (view === "messages") {
+    return (
+      <MessagesView
+        db={db}
+        member={member}
+        wholeDesk={wholeDesk}
+        now={now}
+        nav={viewNav("justify-start")}
+        selected={params.t}
+        msg={params.msg}
+        aiOn={aiOn}
+        aiOff={aiOffReason(anyKeySet(), aiSwitches(db).on)}
+      />
+    );
+  }
+
   return (
-    <div className="relative overflow-hidden rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card md:px-10">
-      {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. */}
-      <div
+    // A column on a desktop, so on Today the greeting, Up next and AURA stay put and only the list scrolls (14 Nov).
+    <div className="relative rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card max-md:overflow-hidden md:flex md:flex-col md:px-10">
+      {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. Today only. */}
+      {view === "today" && <div
         aria-hidden="true"
         className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px]"
         style={{
           background:
             "radial-gradient(closest-side at 35% 45%, rgba(196,181,253,0.55), transparent 70%), radial-gradient(closest-side at 65% 55%, rgba(153,246,228,0.55), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(187,247,208,0.5), transparent 70%)",
         }}
-      />
+      />}
 
-      <div className="relative mx-auto flex max-w-[820px] flex-col">
-        {/* The three views: one row of pills with counts, never a second menu (Figma "View pill"). */}
-        <nav aria-label="Views" className="flex items-center justify-center gap-0.5">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.key}
-              href={href(tab.key)}
-              aria-current={view === tab.key ? "page" : undefined}
-              className={
-                "flex items-center gap-2 rounded-full px-4 py-[9px] text-[14px] leading-[21px] transition-colors " +
-                (view === tab.key ? "bg-sunk text-ink" : "text-ink-soft hover:text-ink")
-              }
-            >
-              {tab.what}
-              <span className="text-ink-faint">{tab.count}</span>
-            </Link>
-          ))}
-        </nav>
+      <div className={"relative mx-auto flex w-full flex-col md:min-h-0 md:flex-1 " + (view === "approve" ? "max-w-[920px]" : "max-w-[820px]")}>
+        {viewNav("justify-center")}
 
-        <header className="mt-1 flex flex-col items-center gap-1 text-center">
+        {view !== "approve" && (
+        <header className="rise mt-1 flex flex-col items-center gap-1 text-center">
           <p className="text-[14px] leading-[21px] text-ink-faint">{dayInWords(now)}</p>
           <h1 className="text-[40px] font-light leading-[50px] text-ink md:text-[56px] md:leading-[66px]">
             {greetingFor(now)}, {firstName(member.name)}
@@ -186,13 +202,14 @@ export default async function MyWorkPage({
             </div>
           )}
         </header>
+        )}
 
         {params.msg && (
           <p className="mt-6 rounded-panel border border-rule bg-surface px-4 py-2.5 text-[14px]">{params.msg}</p>
         )}
 
         {view === "today" && (
-          <>
+          <div className="rise flex flex-col md:min-h-0 md:flex-1">
             {/* Up next: one thing, and the one move that settles it. */}
             <section className="mt-6 flex flex-col gap-4 rounded-[28px] bg-surface px-7 pb-5 pt-7 shadow-float">
               {first ? (
@@ -257,8 +274,10 @@ export default async function MyWorkPage({
 
             {/* Then: the next four, and the rest one click away. */}
             {others.length > 0 && (
-              <section className="mt-6 flex flex-col gap-1">
-                <div className="flex items-center px-2">
+              // The one part of Today that scrolls, and only when the rows outgrow the space left.
+              // It takes the space left between Up next and AURA; AURA stays at the foot of the box.
+              <section className="mt-6 flex flex-col gap-1 md:min-h-0 md:overflow-y-auto">
+                <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 py-1">
                   <p className={caption + " flex-1"}>{params.all ? "Everything today" : "Then"}</p>
                   {params.all ? (
                     <Link href={href("today")} className={caption + " hover:text-ink"}>Show fewer</Link>
@@ -272,7 +291,7 @@ export default async function MyWorkPage({
 
             {/* Every clock running for you, beyond today too: the old day page's list. */}
             {params.all && clocks.length > 0 && (
-              <section className="mt-6 flex flex-col gap-1">
+              <section className="mt-6 flex flex-col gap-1 md:min-h-0 md:overflow-y-auto">
                 <p className={caption + " px-2"}>Clocks running</p>
                 {clocks.map((timer) => {
                   const left = timeLeft(timer.dueAt, now);
@@ -291,93 +310,148 @@ export default async function MyWorkPage({
                 })}
               </section>
             )}
-          </>
+          </div>
         )}
 
-        {view === "approve" && (
-          <section className="mt-6 flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-3 px-2">
-              <p className={caption + " flex-1"}>Waiting for your approval</p>
+        {view === "approve" && (() => {
+          // One draft at a time (13 Nov, the Figma "MW · Approvals"): the pills filter, the arrows and Skip walk, A / E / S are the keys.
+          const kinds = DRAFT_KINDS.map((k) => ({ ...k, count: drafts.filter((m) => draftKind(m) === k.key).length }));
+          const kind = kinds.find((k) => k.key === params.kind)?.key;
+          const list = kind ? drafts.filter((m) => draftKind(m) === kind) : drafts;
+          const at = Math.min(Math.max((Number(params.n) || 1) - 1, 0), Math.max(list.length - 1, 0));
+          const draft = list[at];
+          const go = (n: number, k = kind) =>
+            "/?" + new URLSearchParams({ view: "approve", ...(k ? { kind: k } : {}), ...(n > 1 ? { n: String(n) } : {}) }).toString();
+          const here = go(at + 1);
+          const next = go(at + 2 > list.length ? 1 : at + 2);
+          const carries = draft ? (draft.attachmentFileIds ?? []).map((id) => fileIn(db, id)).filter((f) => f !== null) : [];
+          const whoFor = draft ? aboutWhom(db, draft.subjectType, draft.subjectId) : null;
+          const chip = draft ? (draft.templateKey ? templateFor(db, draft.templateKey)?.name : null) ?? DRAFT_KINDS.find((k) => k.key === draftKind(draft))?.what : null;
+          const pill = "flex items-center gap-2 rounded-full px-4 py-[9px] text-[14px] leading-[21px] transition-colors ";
+          const ghost = "rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk";
+          const round = "flex size-10 items-center justify-center rounded-full border border-rule-strong text-ink hover:bg-sunk";
+          const small = "rounded-full bg-sunk px-3.5 py-[7px] text-[14px] font-medium leading-[21px] text-ink hover:bg-shell disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:bg-sunk";
+          return (
+            <section className="rise mt-[18px] flex flex-col">
+              <div className="flex items-center gap-3">
+                <div className="flex flex-1 flex-col gap-0.5">
+                  <h2 className="text-[40px] font-light leading-[50px] text-ink">To approve</h2>
+                  <p className="text-[14px] leading-[21px] text-ink-faint">Nothing reaches a client until you say so.</p>
+                </div>
+                {list.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Link href={go(at === 0 ? list.length : at)} aria-label="Previous draft" className={round}>
+                      <Icon name="chevron-left" size={18} />
+                    </Link>
+                    <span className="text-[14px] font-medium leading-[21px] text-ink">{at + 1} of {list.length}</span>
+                    <Link href={next} aria-label="Next draft" className={round}>
+                      <Icon name="chevron-right" size={18} />
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <nav aria-label="Kinds of draft" className="mt-[18px] flex flex-wrap items-center gap-0.5">
+                <Link href={go(1, undefined)} aria-current={!kind ? "page" : undefined} className={pill + (!kind ? "bg-sunk text-ink" : "text-ink-soft hover:text-ink")}>
+                  All <span className="text-ink-faint">{drafts.length}</span>
+                </Link>
+                {kinds.map((k) => (
+                  <Link key={k.key} href={go(1, k.key)} aria-current={kind === k.key ? "page" : undefined} className={pill + (kind === k.key ? "bg-sunk text-ink" : "text-ink-soft hover:text-ink")}>
+                    {k.what} <span className="text-ink-faint">{k.count}</span>
+                  </Link>
+                ))}
+              </nav>
+
+              {!draft ? (
+                <p className="mt-8 text-center text-[16px] leading-[26px] text-ink-soft">Nothing is waiting for your approval.</p>
+              ) : (
+                <>
+                  {/* The drafts behind this one, as the Figma stack. */}
+                  <div className="relative mt-[22px] pb-4" data-row data-solo>
+                    {list.length > 2 && <div aria-hidden="true" className="rise absolute inset-x-11 bottom-0 top-[26px] rounded-[28px] bg-surface opacity-55 shadow-card" />}
+                    {list.length > 1 && <div aria-hidden="true" className="rise absolute inset-x-[22px] bottom-0 top-[13px] rounded-[28px] bg-surface opacity-80 shadow-card" />}
+                    <article key={draft.id} className="lift relative flex flex-col gap-3 rounded-[28px] bg-surface px-[34px] pb-[26px] pt-7 shadow-float">
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex items-center gap-1.5 rounded-full bg-bg-brand px-2.5 py-1 text-[14px] font-medium leading-[21px] text-brand">
+                          <span aria-hidden="true" className="size-1.5 rounded-full bg-brand" />
+                          {chip}
+                        </span>
+                        {whoFor && <span className="text-[14px] leading-[21px] text-ink-faint">{whoFor}</span>}
+                      </div>
+                      <h3 className="text-[26px] leading-[34px] text-ink">{messageTitle(draft)}</h3>
+                      <p className="text-[14px] leading-[21px] text-ink-faint">{messageInWords(draft)}</p>
+                      <div className="flex max-h-[260px] flex-col gap-2.5 overflow-y-auto pb-1 pt-2 text-[16px] leading-[26px] text-ink-soft">
+                        {draft.body.trim().split(/\n\s*\n/).map((para, i) => (
+                          <p key={i} className="whitespace-pre-wrap">{para}</p>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1.5">
+                        {carries.map((file) => (
+                          <Link key={file.id} href={"/api/files/" + file.id} className="flex items-center gap-2 rounded-full bg-sunk px-3.5 py-2 text-[14px] leading-[21px] text-ink-soft hover:text-ink">
+                            <Icon name="file" size={16} />
+                            {file.name}
+                          </Link>
+                        ))}
+                        <span className="flex-1" />
+                        <AuraMark size={32} />
+                        {/* AURA rewrites; the new words are shown at the draft's own page and nothing is saved until a person presses use it. */}
+                        {(["shorter", "warmer", "sinhala"] as const).map((how) => (
+                          <form key={how} action={improveDraft}>
+                            <input type="hidden" name="messageId" value={draft.id} />
+                            <input type="hidden" name="how" value={how} />
+                            <button disabled={!aiOn} title={aiOn ? undefined : (aiOffReason(anyKeySet(), aiSwitches(db).on) ?? "")} className={small}>
+                              {IMPROVE_WORDS[how]}
+                            </button>
+                          </form>
+                        ))}
+                      </div>
+                      {draft.channel === "group_post" && (
+                        <p className="text-[13px] text-ink-faint">Nothing can send this: approve it, then post it yourself.</p>
+                      )}
+                    </article>
+                  </div>
+
+                  <div className="mt-[26px] flex items-center justify-center gap-3">
+                    <Link href={next} data-skip className="rounded-full px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-soft hover:text-ink">
+                      Skip
+                    </Link>
+                    <Link href={"/messages/" + draft.id} data-edit data-open className={ghost}>
+                      Edit
+                    </Link>
+                    <form action={approveAndSend}>
+                      <input type="hidden" name="messageId" value={draft.id} />
+                      <input type="hidden" name="back" value={here} />
+                      <button data-approve className="rounded-full bg-ink px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-inverse active:scale-[0.98]">
+                        {draft.channel === "group_post" ? "Approve" : "Approve and send"}
+                      </button>
+                    </form>
+                  </div>
+                  <p className="mt-3 text-center text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">A approve  ·  E edit  ·  S skip</p>
+                </>
+              )}
+
               {/* Every routine notice at once (7 Nov, UX order 2): only drafts from a template a person approved once. */}
-              {drafts.length > 0 && (
-                <form action={approveAllRoutine}>
-                  <input type="hidden" name="back" value="/?view=approve" />
-                  <button
-                    disabled={!routine.length}
-                    title={
-                      routine.length
-                        ? "Sends every draft made from a template somebody approved once. Nothing hand-written."
-                        : "None of these is a routine notice: each needs a person to read it."
-                    }
-                    className={
-                      routine.length
-                        ? "rounded-full bg-ink px-4 py-2 text-[14px] font-medium text-ink-inverse active:scale-[0.98]"
-                        : "rounded-full border border-rule px-4 py-2 text-[14px] text-ink-faint"
-                    }
-                  >
-                    {routine.length ? "Approve all " + routine.length + " routine" : "No routine notices"}
+              {routine.length > 0 && (
+                <form action={approveAllRoutine} className="mx-auto mt-8 flex items-center gap-3 rounded-full bg-sunk py-2 pl-[18px] pr-2">
+                  <input type="hidden" name="back" value={here} />
+                  <span className="text-[14px] leading-[21px] text-ink-soft">
+                    {routine.length} routine {routine.length === 1 ? "notice" : "notices"} from approved templates
+                  </span>
+                  <button title="Sends every draft made from a template somebody approved once. Nothing hand-written." className="rounded-full bg-ink px-3.5 py-[7px] text-[14px] font-medium leading-[21px] text-ink-inverse active:scale-[0.98]">
+                    Approve all {routine.length}
                   </button>
                 </form>
               )}
-            </div>
-            {drafts.length === 0 && <p className="px-2 text-[16px] text-ink-soft">Nothing is waiting for your approval.</p>}
-            {/* Read it here, approve it here (7 Nov, UX order 2): the body under the title, shut until asked. */}
-            {drafts.map((message) => (
-              <div key={message.id} data-row tabIndex={-1} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border-t border-rule px-2 py-3 outline-none first-of-type:border-t-0 focus:bg-sunk">
-                <details className="group min-w-0 basis-full">
-                  <summary className="cursor-pointer list-none">
-                    <p className="text-[16px] leading-[26px] group-open:font-medium">{messageTitle(message)}</p>
-                    <p className="text-[14px] text-ink-soft">{messageInWords(message)}</p>
-                  </summary>
-                  <pre className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-sunk px-3 py-2 font-[inherit] text-[13px] leading-relaxed text-ink">
-                    {message.body}
-                  </pre>
-                </details>
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  <Link href={"/messages/" + message.id} data-open className="text-[14px] text-ink-soft hover:text-ink hover:underline">
-                    Open
-                  </Link>
-                  <form action={approveAndSend}>
-                    <input type="hidden" name="messageId" value={message.id} />
-                    <input type="hidden" name="back" value="/?view=approve" />
-                    <button data-approve className="rounded-full bg-ink px-4 py-1.5 text-[14px] font-medium text-ink-inverse active:scale-[0.98]">
-                      {message.channel === "group_post" ? "Approve" : "Approve and send"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {view === "messages" && (
-          <section className="mt-6 flex flex-col gap-1">
-            <div className="flex items-center px-2">
-              <p className={caption + " flex-1"}>{wholeDesk ? "Waiting for an answer, the whole desk" : "Waiting for an answer, your mailbox"}</p>
-              <Link href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} className={caption + " hover:text-ink"}>
-                Open the inbox
-              </Link>
-            </div>
-            {mail.length === 0 && <p className="px-2 text-[16px] text-ink-soft">Nobody is waiting for an answer.</p>}
-            {mail.slice(0, 20).map((m) => (
-              <Link key={m.id} href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} data-row data-open tabIndex={-1} className={row}>
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft group-hover:bg-surface">
-                  <Icon name="mail" size={17} />
-                </span>
-                <span className="min-w-0 flex-1 py-[9px]">
-                  <span className="block truncate text-[16px] leading-[26px] text-ink">{m.subject || "(no subject)"}</span>
-                  <span className="block truncate text-[13px] text-ink-faint">{m.fromName || m.from}</span>
-                </span>
-                <span className="shrink-0 text-[14px] text-ink-faint">{timeLeft(m.receivedAt, now).text.replace(" late", " ago")}</span>
-              </Link>
-            ))}
-          </section>
-        )}
+            </section>
+          );
+        })()}
 
         {/* AURA, at the foot of the day: tell it what happened, or ask. */}
-        <div className="mt-10">
-          <AuraComposer />
-        </div>
+        {view === "today" && (
+          <div className="mt-6 shrink-0">
+            <AuraComposer />
+          </div>
+        )}
 
         {/* Test tools only (11 Nov): the clocks run by themselves every five
             minutes. Hidden unless OPS_TEST_TOOLS=on, and never on a phone. */}
