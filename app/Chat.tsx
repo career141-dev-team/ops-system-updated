@@ -192,8 +192,8 @@ export default function Chat({
   );
 }
 
-/** The assistant's voice: a small label, then plain words. No bubble. */
-function Said({ children, tone = "", label = "Desk assistant" }: { children: React.ReactNode; tone?: string; label?: string }) {
+/** The assistant's voice: a small label, then plain words. No bubble. AURA since 13 Nov (the Figma design). */
+function Said({ children, tone = "", label = "AURA" }: { children: React.ReactNode; tone?: string; label?: string }) {
   return (
     <div className="chat-in mb-4 pr-4">
       <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">{label}</p>
@@ -217,7 +217,7 @@ function Mine({ text, sent = true }: { text: string; sent?: boolean }) {
 function Reserved() {
   return (
     <div className="mb-3 pr-6" aria-live="polite" aria-busy="true">
-      <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint">Desk assistant · reading what you asked</p>
+      <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint">AURA · reading what you asked</p>
       <div className="mt-1.5 flex min-h-[84px] flex-col gap-2 rounded-xl border border-shell-rule bg-surface px-3 py-2.5">
         <span className="chat-skeleton h-2.5 w-[72%] rounded-full" />
         <span className="chat-skeleton h-2.5 w-[54%] rounded-full" />
@@ -484,7 +484,7 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
         required
         rows={1}
         readOnly={pending}
-        placeholder={waiting ? "Type the answer…" : "Message the desk, " + who.split(" ")[0] + "…"}
+        placeholder={waiting ? "Type the answer…" : "Tell AURA what happened, or ask anything…"}
         aria-label="Say what you want done"
         className="min-h-[42px] w-full resize-none rounded-xl border border-shell-rule bg-paper px-3.5 py-2.5 text-[13.5px] outline-none transition-colors placeholder:text-ink-faint focus:border-brand focus:bg-surface"
         onKeyDown={(e) => {

@@ -1,331 +1,396 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import AuraComposer from "@/app/AuraComposer";
+import Icon from "@/app/Icon";
 import { isRoutine, messageInWords, messageTitle } from "@/lib/messages";
 import { approveAllRoutine, approveAndSend } from "@/app/actions";
-import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, openTasksFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
-import AiOffer from "@/app/AiOffer";
-import { aiOffReason, anyKeySet } from "@/lib/ai";
-import { KEYS_IN_WORDS } from "@/lib/keys";
+import { aiSwitches, dayItems, desk, draftsWaiting, liveTimersFor, runClocks, templateFor, whyFirstKept } from "@/data/desk";
+import type { OpsDatabase } from "@/data/types";
+import { anyKeySet } from "@/lib/ai";
 import { testToolsShown } from "@/lib/clockPass";
-import { firstBecause, whatFirst, whatFirstKey } from "@/lib/whatFirst";
-import { colomboDate, DAY } from "@/lib/calendar";
+import { firstBecause, orderTheDay, whatFirstKey, type DayItem } from "@/lib/whatFirst";
+import { colomboDate } from "@/lib/calendar";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
 import { seesWholeDesk } from "@/lib/roles";
-import { NAV } from "@/lib/nav";
-import { workByPage, workInWords } from "@/lib/sectionWork";
+import {
+  dayInWords,
+  doneToday,
+  firstName,
+  greetingFor,
+  laterLast,
+  rowIcon,
+  rowLabel,
+  summaryLine,
+} from "@/lib/myWork";
 import { explainFirst, runClocksNow, startTestClock } from "./actions";
 
 /**
- * Your day: the only screen an Ops person starts on (07, "inbox first").
+ * My Work: the only screen an Ops person starts on (13 Nov, the approved
+ * Figma "MW · My Work — one thing at a time"; "Your day" before it).
  *
- * Four parts, in the order the work matters: what needs approving, what is due
- * today, what is late, and which clock is running out. Every row opens its own
- * page; nothing opens over the top of this one.
+ * One thing at a time. The rules in src/lib/whatFirst.ts choose what is up
+ * next, so a broken model can never change what is urgent; the next four
+ * follow, and everything else is one click away. Three views in pills, as
+ * links, so the page holds no state of its own: Today, To approve, Messages.
+ * Every row opens its own page; nothing opens over the top of this one.
  */
-export default async function InboxPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+
+type View = "today" | "approve" | "messages";
+
+/** Who a task or a draft is about, by name: the client line on the card. */
+function aboutWhom(db: OpsDatabase, type: string | null, id: string | null): string | null {
+  if (!type || !id) return null;
+  if (type === "lead") return db.leads.find((l) => l.id === id)?.company ?? null;
+  if (type === "client") return db.clients.find((c) => c.id === id)?.name ?? null;
+  if (type === "clientSet") return db.clientSets.find((s) => s.id === id)?.name.split(">")[0]?.trim() || null;
+  return null;
+}
+
+export default async function MyWorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string; view?: string; later?: string; all?: string }>;
+}) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const { msg } = await searchParams;
+  const params = await searchParams;
+  const view: View = params.view === "approve" || params.view === "messages" ? params.view : "today";
+  const later = (params.later ?? "").split(",").filter(Boolean);
 
   // The clocks run on every visit, so a deadline never waits for someone to
-  // press something. A real schedule replaces this when the crons land.
+  // press something. The scheduler runs them every five minutes as well.
   await runClocks();
 
   const now = Date.now();
   const db = await desk();
   const drafts = draftsWaiting(db);
-  // The ones the "approve all" button may take: the owner's rule, in one place.
   const routine = drafts.filter((m) => isRoutine(m, m.templateKey ? templateFor(db, m.templateKey) : null));
-  const tasks = openTasksFor(db, member.id);
-  const due = tasks.filter((t) => t.dueAt >= now && t.dueAt < now + DAY);
-  const late = tasks.filter((t) => t.dueAt < now);
   const clocks = liveTimersFor(db, member.id);
+
   // Mail nobody has dealt with, each email once: the whole desk for the ops
   // lead and the Director, the person's own box for everybody else (9 Nov).
   const wholeDesk = seesWholeDesk(member);
-  const yourMail = new Set(
-    db.inbound
-      .filter((i) => i.readState === "new" && (wholeDesk || i.mailbox.toLowerCase() === member.email.toLowerCase()))
-      .map((i) => i.from + "|" + i.subject + "|" + i.receivedAt),
-  ).size;
-  const work = workByPage(tasks, now);
+  const mail = [
+    ...new Map(
+      db.inbound
+        .filter((i) => i.readState === "new" && (wholeDesk || i.mailbox.toLowerCase() === member.email.toLowerCase()))
+        .map((i) => [i.from + "|" + i.subject + "|" + i.receivedAt, i]),
+    ).values(),
+  ].sort((a, b) => b.receivedAt - a.receivedAt);
 
-  // What to do first (8 Nov, UX order 6). The rules choose; the model, when
-  // it is on and has been asked once today, says why in one line.
-  const first = whatFirst(dayItems(db, member.id, now));
-  const firstKey = first ? whatFirstKey(member.id, colomboDate(now), first.first) : null;
+  // The day, in the rules' order, with what was put off for later at the end.
+  const items = laterLast(orderTheDay(dayItems(db, member.id, now)), later);
+  const [first, ...others] = items;
+  const late = items.filter((i) => i.kind === "late").length;
+  const done = doneToday(db.tasks, member.id, now);
+  const total = done + items.length;
+
+  const firstKey = first ? whatFirstKey(member.id, colomboDate(now), first) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
-  const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
   const aiLine = firstKey ? whyFirstKept(db, firstKey) : null;
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
+  // What the first thing is, behind its one line.
+  const firstTask = first?.href.startsWith("/tasks/") ? db.tasks.find((t) => t.id === first.href.slice(7)) : undefined;
+  const firstDraft = first?.href.startsWith("/messages/") ? db.messages.find((m) => m.id === first.href.slice(10)) : undefined;
+  const who = firstTask
+    ? aboutWhom(db, firstTask.subjectType, firstTask.subjectId)
+    : firstDraft
+      ? aboutWhom(db, firstDraft.subjectType, firstDraft.subjectId)
+      : null;
+  const [title, detail] = firstDraft ? [messageTitle(firstDraft), messageInWords(firstDraft)] : [first?.said ?? "", null];
+  // The verb on the one button (Figma: "Labels are verbs").
+  const verb = firstTask
+    ? ({ call: "Make the call", record: "Write it down", decide: "Decide", approve: "Approve", check: "Check it" } as Record<string, string>)[firstTask.kind] ?? "Open"
+    : first?.kind === "mail"
+      ? "Read the mail"
+      : "Open";
+
+  const href = (v: View, extra: Record<string, string> = {}) => {
+    const q = new URLSearchParams({ ...(v === "today" ? {} : { view: v }), ...(later.length ? { later: later.join(",") } : {}), ...extra });
+    const s = q.toString();
+    return "/" + (s ? "?" + s : "");
+  };
+  const laterHref = first
+    ? "/?" + new URLSearchParams({ later: [...later.filter((h) => h !== first.href), first.href].join(",") }).toString()
+    : "/";
+
+  const tabs: { key: View; what: string; count: number }[] = [
+    { key: "today", what: "Today", count: items.length },
+    { key: "approve", what: "To approve", count: drafts.length },
+    { key: "messages", what: "Messages", count: mail.length },
+  ];
+
+  const row = "group flex items-center gap-3.5 rounded-xl px-2 py-1 outline-none transition-colors hover:bg-sunk focus:bg-sunk";
+  const caption = "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
+
+  const dayRow = (item: DayItem) => {
+    const label = rowLabel(item, now);
+    return (
+      <Link key={item.href + item.at} href={item.href} data-row data-open tabIndex={-1} className={row}>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft group-hover:bg-surface">
+          <Icon name={rowIcon(item)} size={17} />
+        </span>
+        <span className="min-w-0 flex-1 truncate py-[9px] text-[16px] leading-[26px] text-ink">{item.said}</span>
+        <span className={"shrink-0 text-[14px] leading-[21px] " + (label.late ? "text-danger" : "text-ink-faint")}>{label.text}</span>
+      </Link>
+    );
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[17px] font-medium">Your day</h1>
-          <p className="mt-0.5 text-[13px] text-ink-soft">
-            {colomboDate(now)} · Colombo<span className="hidden md:inline"> · {KEYS_IN_WORDS}</span>
-          </p>
-        </div>
-        {/* Test tools only (11 Nov): the clocks run by themselves every five
-            minutes, so the desk never presses these. Hidden unless
-            OPS_TEST_TOOLS=on, and never on a phone. */}
-        {testToolsShown() && (
-        <div className="hidden flex-wrap gap-2 md:flex">
-          <form action={runClocksNow}>
-            <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-              Run the clocks now
-            </button>
-          </form>
-          <form action={startTestClock}>
-            <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-              Start a two-hour test clock
-            </button>
-          </form>
-        </div>
-        )}
-      </div>
+    <div className="relative overflow-hidden rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card md:px-10">
+      {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px]"
+        style={{
+          background:
+            "radial-gradient(closest-side at 35% 45%, rgba(196,181,253,0.55), transparent 70%), radial-gradient(closest-side at 65% 55%, rgba(153,246,228,0.55), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(187,247,208,0.5), transparent 70%)",
+        }}
+      />
 
-      {msg && (
-        <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
-      )}
-
-      {/*
-        First today. One thing, chosen by the rules in src/lib/whatFirst.ts,
-        so a broken model can never change what is urgent. The AI's part is
-        the one line under it, written once a day when a person asks.
-      */}
-      <section className="rounded-2xl border border-brand/30 bg-surface px-5 py-4">
-        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-faint">First today</p>
-        {first ? (
-          <>
-            <Link href={first.first.href} className="mt-1 block text-[16px] font-medium text-ink hover:text-brand">
-              {first.first.said}
+      <div className="relative mx-auto flex max-w-[820px] flex-col">
+        {/* The three views: one row of pills with counts, never a second menu (Figma "View pill"). */}
+        <nav aria-label="Views" className="flex items-center justify-center gap-0.5">
+          {tabs.map((tab) => (
+            <Link
+              key={tab.key}
+              href={href(tab.key)}
+              aria-current={view === tab.key ? "page" : undefined}
+              className={
+                "flex items-center gap-2 rounded-full px-4 py-[9px] text-[14px] leading-[21px] transition-colors " +
+                (view === tab.key ? "bg-sunk text-ink" : "text-ink-soft hover:text-ink")
+              }
+            >
+              {tab.what}
+              <span className="text-ink-faint">{tab.count}</span>
             </Link>
-            <p className="mt-1 text-[13px] text-ink-soft">{aiLine ?? firstBecause(first.first, first.others)}</p>
-            {aiOn && !aiLine && (
-              <form action={explainFirst} className="mt-2">
-                <button className="rounded-full border border-rule-strong px-3 py-1 text-[12.5px] hover:bg-paper active:scale-[0.98]">
-                  Ask the AI why this first
-                </button>
-              </form>
-            )}
-            {!aiOn && <AiOffer label="Ask the AI why this first" why={whyAiOff ?? ""} />}
-          </>
-        ) : (
-          <p className="mt-1 text-[15px]">Nothing is waiting on you. The day is clear.</p>
-        )}
-      </section>
-
-      {/*
-        Your mailbox first (9 Nov). On real data the day read 0 · 0 · 0 · 0
-        under "102 emails in your mailbox wait for an answer": the counters
-        knew only what the system itself had made. The mail is the work
-        until the work starts here, so it is counted, and it links to itself.
-      */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <a href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} className="rounded-xl bg-surface px-4 py-3 transition-colors hover:bg-paper">
-          <p className="text-[12.5px] text-ink-soft">{wholeDesk ? "All mail, the whole desk" : "Your mailbox"}</p>
-          <p className={"mt-1 text-[22px] font-medium " + (yourMail ? "text-brand" : "")}>{yourMail}</p>
-        </a>
-        {[
-          ["To approve", drafts.length, ""],
-          ["Due today", due.length, ""],
-          ["Late", late.length, late.length ? "text-danger" : ""],
-          ["Clocks", clocks.length, clocks.length ? "text-warning" : ""],
-        ].map(([label, count, tone]) => (
-          <div key={String(label)} className="rounded-xl bg-surface px-4 py-3">
-            <p className="text-[12.5px] text-ink-soft">{label}</p>
-            <p className={"mt-1 text-[22px] font-medium " + String(tone)}>{count}</p>
-          </div>
-        ))}
-      </div>
-
-      {/*
-        Where the work is, section by section (24, section 4). The same count
-        the header shows, from the same rule, so the two can never disagree.
-        It is here because a person who opens the app should be able to read
-        one screen and know where to go, without opening anything.
-      */}
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Where your work is</h2>
-        <div className="mt-1 grid gap-x-6 sm:grid-cols-2">
-          {NAV.map((section) => {
-            const count = work[section.key];
-            return (
-              <Link
-                key={section.key}
-                href={(section.pages.find((page) => (work[page.href]?.waiting ?? 0) > 0) ?? section.pages[0]).href}
-                className="flex items-baseline gap-3 border-t border-rule py-2.5 hover:bg-paper"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="text-[13.5px]">{section.what}</span>
-                  <span className="mt-0.5 block text-[12.5px] text-ink-soft">{section.about}</span>
-                </span>
-                <span
-                  className={
-                    "whitespace-nowrap text-[12.5px] " +
-                    (count?.late ? "text-danger" : count?.waiting ? "text-ink" : "text-ink-faint")
-                  }
-                >
-                  {workInWords(count)}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/*
-        The three lists side by side (6 Nov).
-        
-        They were stacked, so "waiting for your approval" filled the screen
-        and "due today" and "late" were below the fold - an ops person opening
-        the app saw one of the three things they came to see. A desk screen is
-        wide, so they go across it, and each one scrolls inside itself rather
-        than pushing the other two down.
-      */}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 xl:[&>section]:max-h-[46vh]">
-      <section className={card + " flex min-w-0 flex-col"}>
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <h2 className="text-[14.5px] font-medium">Waiting for your approval</h2>
-          {/*
-            Every routine notice at once (7 Nov, UX order 2). Only the drafts
-            whose template a person approved once; it says so when there are
-            none, rather than showing a button that does nothing.
-          */}
-          {drafts.length > 0 && (
-            <form action={approveAllRoutine}>
-              <input type="hidden" name="back" value="/" />
-              <button
-                className={
-                  routine.length
-                    ? "rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]"
-                    : "rounded-full border border-rule px-3 py-1 text-[12.5px] text-ink-faint"
-                }
-                title={
-                  routine.length
-                    ? "Sends every draft made from a template somebody approved once. Nothing hand-written."
-                    : "None of these is a routine notice: each needs a person to read it."
-                }
-              >
-                {routine.length ? "Approve all " + routine.length + " routine" : "No routine notices"}
-              </button>
-            </form>
-          )}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        {drafts.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing is waiting.</p>}
-        {/*
-          Read it here, approve it here (7 Nov, UX order 2). Nineteen drafts
-          was thirty-eight clicks: open, read, approve, back. The body is a
-          `details` under the title - shut, so the list stays a list, and open
-          with one click when the title is not enough. Approve posts the same
-          action as the message's own page, through the same gate, and comes
-          back here. "Open" is still there for anyone who wants to change it.
-        */}
-        {drafts.map((message) => (
-          <div key={message.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
-            {/* The title takes the whole line and the buttons sit under it (9 Nov):
-                side by side in a narrow column, the buttons won and the title
-                broke one word per line - the owner's screenshot. */}
-            <details className="min-w-0 basis-full group">
-              <summary className="cursor-pointer list-none">
-                <p className="text-[13.5px] group-open:font-medium">{messageTitle(message)}</p>
-                <p className="mt-0.5 text-[12.5px] text-ink-soft">{messageInWords(message)}</p>
-              </summary>
-              <pre className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-sunk px-3 py-2 font-[inherit] text-[12.5px] leading-relaxed text-ink">
-                {message.body}
-              </pre>
-            </details>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <Link
-                href={"/messages/" + message.id}
-                data-open
-                className="text-[12.5px] text-ink-soft hover:text-ink hover:underline"
-              >
-                Open
-              </Link>
-              <form action={approveAndSend}>
-                <input type="hidden" name="messageId" value={message.id} />
-                <input type="hidden" name="back" value="/" />
-                <button data-approve className="rounded-full bg-brand px-3 py-1 text-[12.5px] font-medium text-white hover:bg-brand-strong active:scale-[0.98]">
-                  {message.channel === "group_post" ? "Approve" : "Approve and send"}
-                </button>
-              </form>
-            </div>
-          </div>
-        ))}
-        </div>
-      </section>
-
-        <section className={card + " flex min-w-0 flex-col"}>
-          <h2 className="text-[14.5px] font-medium">Due today</h2>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-          {due.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing due today.</p>}
-          {due.map((task) => (
-            <div key={task.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
-              <div className="min-w-0 flex-1 basis-[60%]">
-                <p className="text-[13.5px]">{task.title}</p>
-                <p className="mt-0.5 text-[12.5px] text-ink-soft">{timeLeft(task.dueAt, now).text}</p>
-              </div>
-              <Link href={"/tasks/" + task.id} data-open className="text-[12.5px] text-brand hover:underline">
-                Open
-              </Link>
-            </div>
           ))}
-          </div>
-        </section>
+        </nav>
 
-        <section className={card + " flex min-w-0 flex-col"}>
-          <h2 className="text-[14.5px] font-medium">Late, and clocks</h2>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-          {late.length === 0 && clocks.length === 0 && (
-            <p className="mt-2 text-[13px] text-ink-soft">Nothing late, nothing running out.</p>
-          )}
-          {late.map((task) => (
-            <div key={task.id} data-row tabIndex={-1} className={row + " rounded-lg outline-none focus:bg-sunk focus:ring-1 focus:ring-brand/40"}>
-              <span className="rounded-full bg-bg-danger px-2 py-0.5 text-[11.5px] text-danger">
-                {timeLeft(task.dueAt, now).text}
+        <header className="mt-1 flex flex-col items-center gap-1 text-center">
+          <p className="text-[14px] leading-[21px] text-ink-faint">{dayInWords(now)}</p>
+          <h1 className="text-[40px] font-light leading-[50px] text-ink md:text-[56px] md:leading-[66px]">
+            {greetingFor(now)}, {firstName(member.name)}
+          </h1>
+          <p className="text-[16px] leading-[26px] text-ink-soft">{summaryLine(items.length, late)}</p>
+          {total > 0 && (
+            <div className="flex items-center gap-1.5 pt-3" aria-label={done + " of " + total + " done"}>
+              {Array.from({ length: Math.min(total, 12) }, (_, i) => (
+                <span key={i} className={"h-1 w-9 rounded-[2px] " + (i < Math.round((done / total) * Math.min(total, 12)) ? "bg-brand" : "bg-shell")} />
+              ))}
+              <span className="ml-0.5 text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                {done} of {total} done
               </span>
-              <div className="min-w-0 flex-1 basis-[60%]">
-                <p className="text-[13.5px]">{task.title}</p>
-              </div>
-              <Link href={"/tasks/" + task.id} data-open className="text-[12.5px] text-brand hover:underline">
-                Open
-              </Link>
             </div>
-          ))}
-          {clocks.map((timer) => {
-            const left = timeLeft(timer.dueAt, now);
-            return (
-              <div key={timer.id} className={row}>
-                <span
-                  className={
-                    "rounded-full px-2 py-0.5 text-[11.5px] " +
-                    (left.tone === "late"
-                      ? "bg-bg-danger text-danger"
-                      : left.tone === "soon"
-                        ? "bg-bg-warning text-warning"
-                        : "bg-bg-ok text-ink-soft")
-                  }
-                >
-                  {left.text}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px]">{timer.payload.label ?? timer.kind}</p>
-                  <p className="mt-0.5 text-[12.5px] text-ink-soft">{clockInWords(timer.kind)}</p>
+          )}
+        </header>
+
+        {params.msg && (
+          <p className="mt-6 rounded-panel border border-rule bg-surface px-4 py-2.5 text-[14px]">{params.msg}</p>
+        )}
+
+        {view === "today" && (
+          <>
+            {/* Up next: one thing, and the one move that settles it. */}
+            <section className="mt-6 flex flex-col gap-4 rounded-[28px] bg-surface px-7 pb-5 pt-7 shadow-float">
+              {first ? (
+                <>
+                  <div className="flex items-center">
+                    <p className={caption + " flex-1"}>Up next</p>
+                    {(first.kind === "late" || (first.kind === "clock" && first.at < now)) && (
+                      <span className="flex items-center gap-1.5 rounded-full bg-bg-danger px-2.5 py-1 text-[14px] font-medium leading-[21px] text-danger">
+                        <span aria-hidden="true" className="size-1.5 rounded-full bg-danger" />
+                        {rowLabel(first, now).text}
+                      </span>
+                    )}
+                  </div>
+                  {who && <p className="text-[14px] leading-[21px] text-ink-faint">{who}</p>}
+                  <h2 className="text-[22px] leading-[30px] text-ink md:text-[26px] md:leading-[34px]">{title}</h2>
+                  <p className="text-[16px] leading-[26px] text-ink-soft">
+                    {detail ? detail + " " : ""}
+                    {aiLine ?? firstBecause(first, others)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2.5 pt-2.5">
+                    {firstDraft ? (
+                      <form action={approveAndSend}>
+                        <input type="hidden" name="messageId" value={firstDraft.id} />
+                        <input type="hidden" name="back" value="/" />
+                        <button className="rounded-full bg-ink px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-inverse active:scale-[0.98]">
+                          {firstDraft.channel === "group_post" ? "Approve" : "Approve and send"}
+                        </button>
+                      </form>
+                    ) : (
+                      <Link href={first.href} className="rounded-full bg-ink px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-inverse active:scale-[0.98]">
+                        {verb}
+                      </Link>
+                    )}
+                    {firstDraft && (
+                      <Link href={first.href} className="rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk">
+                        Read it first
+                      </Link>
+                    )}
+                    {aiOn && !aiLine && (
+                      <form action={explainFirst}>
+                        <button className="rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk">
+                          Ask AURA why this first
+                        </button>
+                      </form>
+                    )}
+                    <span className="flex-1" />
+                    {others.length > 0 && (
+                      <Link href={laterHref} className="rounded-full px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-soft hover:text-ink">
+                        Later
+                      </Link>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={caption}>Up next</p>
+                  <h2 className="text-[26px] leading-[34px] text-ink">Nothing is waiting on you.</h2>
+                  <p className="text-[16px] leading-[26px] text-ink-soft">A new task, a draft or an email will appear here first.</p>
+                </>
+              )}
+            </section>
+
+            {/* Then: the next four, and the rest one click away. */}
+            {others.length > 0 && (
+              <section className="mt-6 flex flex-col gap-1">
+                <div className="flex items-center px-2">
+                  <p className={caption + " flex-1"}>{params.all ? "Everything today" : "Then"}</p>
+                  {params.all ? (
+                    <Link href={href("today")} className={caption + " hover:text-ink"}>Show fewer</Link>
+                  ) : (
+                    others.length > 4 && <Link href={href("today", { all: "1" })} className={caption + " hover:text-ink"}>See all {items.length}</Link>
+                  )}
+                </div>
+                {(params.all ? others : others.slice(0, 4)).map(dayRow)}
+              </section>
+            )}
+
+            {/* Every clock running for you, beyond today too: the old day page's list. */}
+            {params.all && clocks.length > 0 && (
+              <section className="mt-6 flex flex-col gap-1">
+                <p className={caption + " px-2"}>Clocks running</p>
+                {clocks.map((timer) => {
+                  const left = timeLeft(timer.dueAt, now);
+                  return (
+                    <div key={timer.id} className="flex items-center gap-3.5 px-2 py-1">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                        <Icon name="calendar" size={17} />
+                      </span>
+                      <span className="min-w-0 flex-1 py-[9px]">
+                        <span className="block truncate text-[16px] leading-[26px]">{timer.payload.label ?? timer.kind}</span>
+                        <span className="block text-[13px] text-ink-faint">{clockInWords(timer.kind)}</span>
+                      </span>
+                      <span className={"shrink-0 text-[14px] " + (left.tone === "late" ? "text-danger" : "text-ink-faint")}>{left.text}</span>
+                    </div>
+                  );
+                })}
+              </section>
+            )}
+          </>
+        )}
+
+        {view === "approve" && (
+          <section className="mt-6 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3 px-2">
+              <p className={caption + " flex-1"}>Waiting for your approval</p>
+              {/* Every routine notice at once (7 Nov, UX order 2): only drafts from a template a person approved once. */}
+              {drafts.length > 0 && (
+                <form action={approveAllRoutine}>
+                  <input type="hidden" name="back" value="/?view=approve" />
+                  <button
+                    disabled={!routine.length}
+                    title={
+                      routine.length
+                        ? "Sends every draft made from a template somebody approved once. Nothing hand-written."
+                        : "None of these is a routine notice: each needs a person to read it."
+                    }
+                    className={
+                      routine.length
+                        ? "rounded-full bg-ink px-4 py-2 text-[14px] font-medium text-ink-inverse active:scale-[0.98]"
+                        : "rounded-full border border-rule px-4 py-2 text-[14px] text-ink-faint"
+                    }
+                  >
+                    {routine.length ? "Approve all " + routine.length + " routine" : "No routine notices"}
+                  </button>
+                </form>
+              )}
+            </div>
+            {drafts.length === 0 && <p className="px-2 text-[16px] text-ink-soft">Nothing is waiting for your approval.</p>}
+            {/* Read it here, approve it here (7 Nov, UX order 2): the body under the title, shut until asked. */}
+            {drafts.map((message) => (
+              <div key={message.id} data-row tabIndex={-1} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border-t border-rule px-2 py-3 outline-none first-of-type:border-t-0 focus:bg-sunk">
+                <details className="group min-w-0 basis-full">
+                  <summary className="cursor-pointer list-none">
+                    <p className="text-[16px] leading-[26px] group-open:font-medium">{messageTitle(message)}</p>
+                    <p className="text-[14px] text-ink-soft">{messageInWords(message)}</p>
+                  </summary>
+                  <pre className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-sunk px-3 py-2 font-[inherit] text-[13px] leading-relaxed text-ink">
+                    {message.body}
+                  </pre>
+                </details>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <Link href={"/messages/" + message.id} data-open className="text-[14px] text-ink-soft hover:text-ink hover:underline">
+                    Open
+                  </Link>
+                  <form action={approveAndSend}>
+                    <input type="hidden" name="messageId" value={message.id} />
+                    <input type="hidden" name="back" value="/?view=approve" />
+                    <button data-approve className="rounded-full bg-ink px-4 py-1.5 text-[14px] font-medium text-ink-inverse active:scale-[0.98]">
+                      {message.channel === "group_post" ? "Approve" : "Approve and send"}
+                    </button>
+                  </form>
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </section>
+        )}
+
+        {view === "messages" && (
+          <section className="mt-6 flex flex-col gap-1">
+            <div className="flex items-center px-2">
+              <p className={caption + " flex-1"}>{wholeDesk ? "Waiting for an answer, the whole desk" : "Waiting for an answer, your mailbox"}</p>
+              <Link href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} className={caption + " hover:text-ink"}>
+                Open the inbox
+              </Link>
+            </div>
+            {mail.length === 0 && <p className="px-2 text-[16px] text-ink-soft">Nobody is waiting for an answer.</p>}
+            {mail.slice(0, 20).map((m) => (
+              <Link key={m.id} href={wholeDesk ? "/mail?box=all" : "/mail?box=mine"} data-row data-open tabIndex={-1} className={row}>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft group-hover:bg-surface">
+                  <Icon name="mail" size={17} />
+                </span>
+                <span className="min-w-0 flex-1 py-[9px]">
+                  <span className="block truncate text-[16px] leading-[26px] text-ink">{m.subject || "(no subject)"}</span>
+                  <span className="block truncate text-[13px] text-ink-faint">{m.fromName || m.from}</span>
+                </span>
+                <span className="shrink-0 text-[14px] text-ink-faint">{timeLeft(m.receivedAt, now).text.replace(" late", " ago")}</span>
+              </Link>
+            ))}
+          </section>
+        )}
+
+        {/* AURA, at the foot of the day: tell it what happened, or ask. */}
+        <div className="mt-10">
+          <AuraComposer />
+        </div>
+
+        {/* Test tools only (11 Nov): the clocks run by themselves every five
+            minutes. Hidden unless OPS_TEST_TOOLS=on, and never on a phone. */}
+        {testToolsShown() && (
+          <div className="mt-10 hidden justify-center gap-2 md:flex">
+            <form action={runClocksNow}>
+              <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-sunk">Run the clocks now</button>
+            </form>
+            <form action={startTestClock}>
+              <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-sunk">Start a two-hour test clock</button>
+            </form>
           </div>
-        </section>
+        )}
       </div>
     </div>
   );

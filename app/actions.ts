@@ -5376,6 +5376,11 @@ export async function chatSay(formData: FormData): Promise<void> {
   const now = Date.now();
   // The chat it goes into (9 Nov): the one open, or a new one named from these words.
   const jar = await cookies();
+  // From AURA's composer on My Work (13 Nov): open the column, so the answer
+  // is beside the page rather than somewhere the person has to go and find.
+  if (formData.get("openColumn") === "1") {
+    jar.set("ops_chat_open", "1", { path: "/", sameSite: "lax", maxAge: 365 * 24 * 60 * 60 });
+  }
   const before = await desk();
   let thread = chatOpen(before, member.id, jar.get(CHAT_COOKIE)?.value);
   if (thread === null) {

@@ -108,8 +108,8 @@ export default function TopBar({
         }
       >
         {/* The design is drawn at 1920px. Below 1536px (a laptop) the gaps, the
-            logo and the search narrow and the name goes, so all seven
-            workspaces still fit; under 1280px the workspaces scroll sideways. */}
+            logo and the search narrow and the name goes, so the
+            workspaces fit beside the search; under 1280px the workspaces scroll sideways. */}
         <header className="flex h-20 items-center gap-3 rounded-[40px] bg-surface px-6 py-2.5 shadow-card 2xl:gap-5">
           <Link href="/" aria-label="My Work" className="shrink-0">
             <Image
@@ -210,7 +210,7 @@ export default function TopBar({
                   aria-pressed={chatOpen}
                   className="flex w-full items-center rounded-lg px-3 py-2 text-left text-[14px] text-ink-soft hover:bg-sunk hover:text-ink"
                 >
-                  {chatOpen ? "Close the chat" : "Open the chat"}
+                  {chatOpen ? "Close AURA" : "Open AURA"}
                 </button>
               </form>
               <p className="mx-3 mt-1 border-t border-rule pt-2 text-[12px] text-ink-faint">Test data only</p>
