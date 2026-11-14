@@ -40,7 +40,10 @@ export default function Keys() {
       }
 
       const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-row]"));
-      const active = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>("[data-row]") : null;
+      // `data-solo` is the one draft the To approve view shows: its keys work without a row being focused.
+      const active =
+        (document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>("[data-row]") : null) ??
+        document.querySelector<HTMLElement>("[data-solo]");
       const current = active ? rows.indexOf(active) : -1;
 
       if (act === "next" || act === "prev") {
@@ -53,7 +56,7 @@ export default function Keys() {
       }
 
       if (!active) return;
-      const target = active.querySelector<HTMLElement>(act === "approve" ? "[data-approve]" : "[data-open]");
+      const target = active.querySelector<HTMLElement>({ approve: "[data-approve]", edit: "[data-edit]", skip: "[data-skip]", open: "[data-open]" }[act]);
       if (!target) return;
       event.preventDefault();
       target.click();

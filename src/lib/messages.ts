@@ -153,6 +153,21 @@ export function messageTitle(message: { subject: string; body: string }): string
   return first.trim() || "No subject";
 }
 
+/** The filter pills on To approve: what a draft is about, from what it is attached to. */
+export type DraftKind = "emails" | "agreements" | "sets" | "invoices";
+export const DRAFT_KINDS: { key: DraftKind; what: string }[] = [
+  { key: "emails", what: "Client emails" },
+  { key: "agreements", what: "Agreements" },
+  { key: "sets", what: "CV sets" },
+  { key: "invoices", what: "Invoices" },
+];
+export function draftKind(message: { subjectType: string | null }): DraftKind {
+  if (message.subjectType === "esa") return "agreements";
+  if (message.subjectType === "clientSet") return "sets";
+  if (message.subjectType === "invoice") return "invoices";
+  return "emails";
+}
+
 /**
  * Is this draft a routine notice (7 Nov, UX order 2)?
  *

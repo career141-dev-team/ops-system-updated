@@ -436,8 +436,9 @@ export async function replyInThread(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const threadKey = String(formData.get("threadKey") ?? "");
-  const here = "/mail/" + encodeURIComponent(threadKey);
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  // My Work's Messages view answers in place (14 Nov), so it says where to come back to.
+  const here = backTo(formData, "/mail/" + encodeURIComponent(threadKey));
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "message.approve")) back(refusal("message.approve"));
 
   const to = addressesFrom(String(formData.get("to") ?? ""));
@@ -567,7 +568,7 @@ export async function finishTask(formData: FormData): Promise<void> {
   }
   await finishTaskWrite(taskId, member.id, outcome);
   revalidatePath("/");
-  redirect("/");
+  redirect(backTo(formData, "/"));
 }
 
 export async function saveDraft(formData: FormData): Promise<void> {
@@ -666,8 +667,9 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
  * unchanged dependency, and the second one never showed. The walk found it.
  * A timestamp beside it changes every time, so every confirmation is new.
  */
-function confirmed(said: string): string {
-  return "?did=" + encodeURIComponent(said) + "&at=" + Date.now();
+function confirmed(said: string, after = ""): string {
+  // `after` is the path it lands on: one that already has a query needs & not ?.
+  return (after.includes("?") ? "&" : "?") + "did=" + encodeURIComponent(said) + "&at=" + Date.now();
 }
 
 /** Where a form came from, so the person lands back where they were standing. */
@@ -684,20 +686,20 @@ export async function approveAndSend(formData: FormData): Promise<void> {
   const here = backTo(formData, "/messages/" + messageId);
 
   if (!can(member, "message.approve")) {
-    redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
+    redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(refusal("message.approve")));
   }
   const db = await desk();
   const message = db.messages.find((m) => m.id === messageId);
   if (!message) redirect("/?msg=" + encodeURIComponent("That message no longer exists."));
   if (!needsApproval(message)) {
-    redirect(here + "?msg=" + encodeURIComponent("That message has already been settled."));
+    redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent("That message has already been settled."));
   }
 
   const said = await approveOne(member, db, message);
   revalidatePath("/");
   // `did` is the three-second confirmation; `msg` stays the banner that
   // waits to be read. Approving sends, so there is no Undo on this one.
-  redirect(here + confirmed(said));
+  redirect(here + confirmed(said, here));
 }
 
 /**
@@ -714,13 +716,13 @@ export async function approveAllRoutine(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const here = backTo(formData, "/");
   if (!can(member, "message.approve")) {
-    redirect(here + "?msg=" + encodeURIComponent(refusal("message.approve")));
+    redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(refusal("message.approve")));
   }
 
   const db = await desk();
   const routine = draftsWaiting(db).filter((m) => isRoutine(m, m.templateKey ? templateFor(db, m.templateKey) : null));
   if (routine.length === 0) {
-    redirect(here + confirmed("Nothing routine is waiting: every draft here needs a person to read it."));
+    redirect(here + confirmed("Nothing routine is waiting: every draft here needs a person to read it.", here));
   }
 
   let went = 0;
@@ -737,7 +739,7 @@ export async function approveAllRoutine(formData: FormData): Promise<void> {
   const sentence =
     went + (went === 1 ? " routine notice" : " routine notices") + " approved and sent" +
     (held ? ", " + held + " held back by the gate - open them to see why" : "") + ".";
-  redirect(here + confirmed(sentence));
+  redirect(here + confirmed(sentence, here));
 }
 
 /**
@@ -5010,8 +5012,8 @@ export async function readInbound(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const inboundId = String(formData.get("inboundId") ?? "");
-  const here = "/mail";
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/mail");
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const mail = db.inbound.find((m) => m.id === inboundId);

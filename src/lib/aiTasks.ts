@@ -113,13 +113,14 @@ export function inboundReadPrompt(email: string, about: string, candidates: stri
 
 /* ── Improving a draft we already wrote (step 9) ────────────────── */
 
-export type ImproveHow = "rewrite" | "shorter" | "warmer" | "formal";
+export type ImproveHow = "rewrite" | "shorter" | "warmer" | "formal" | "sinhala";
 
 export const IMPROVE_WORDS: Record<ImproveHow, string> = {
   rewrite: "Say the same thing better",
   shorter: "Shorter",
   warmer: "Warmer",
   formal: "More formal",
+  sinhala: "In Sinhala",
 };
 
 export interface ImprovedDraft {
@@ -136,6 +137,7 @@ export function improveDraftPrompt(subject: string, body: string, how: ImproveHo
     shorter: "Cut it to the shortest version that still says everything.",
     warmer: "Make it warmer and more human, without being familiar.",
     formal: "Make it more formal, as a contract covering letter would read.",
+    sinhala: "Write it in Sinhala, saying the same things. Keep names, numbers and dates as they are.",
   };
   return {
     system:

@@ -62,6 +62,15 @@
   --color-bg-warning: #fdf3e3;
   --color-bg-danger: #fdeceb; /* color/danger-soft */
   --color-bg-ok: #e6f2ec; /* color/brand-soft */
+  --color-brand-tint: #f2f8f5; /* color/brand-tint: our side of a conversation */
+
+  /* The avatar tones (Figma "Avatar · AURA tones"), and late-ish amber. */
+  --color-warn: #a8791b; /* color/warn */
+  --color-warn-soft: #fcf5e3; /* color/warn-soft */
+  --color-violet: #6e4fe8; /* color/violet */
+  --color-violet-soft: #f0ecfe; /* color/violet-soft */
+  --color-info: #167ca9; /* color/info */
+  --color-info-soft: #eaf7fe; /* color/info-soft */
 
   /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).
      New names, so Tailwind's own rounded-md and shadow-md keep their sizes
@@ -101,10 +110,47 @@ body {
   border-radius: 6px;
 }
 
-/* A quiet scrollbar for the board, which scrolls sideways on purpose. */
-.board-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-rule-strong) transparent;
+/*
+ * Every scrollbar in the app (14 Nov, the owner): a thin pill on no track,
+ * the hairline grey, darker under the pointer - so it says "there is more"
+ * without drawing a grey stripe down the page box. Chrome, Edge and Safari
+ * take the ::-webkit-scrollbar rules; Firefox, which has no such selector,
+ * takes the standard two properties instead (Chrome would let those win
+ * over the pill, so they are kept away from it).
+ */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Inside the box, not on its edge: the pill stops short of the ends, so it
+   never runs into a rounded corner. */
+::-webkit-scrollbar-track {
+  margin: 12px;
+}
+.rounded-sheet::-webkit-scrollbar-track {
+  margin: 32px; /* radius/xl: clear of the page box's corners */
+}
+::-webkit-scrollbar-thumb {
+  /* The transparent border is the gap round the pill: 4px of grey in a 14px lane, 5px in from the edge. */
+  border: 5px solid transparent;
+  border-radius: 999px;
+  background: var(--color-rule-strong) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint) padding-box;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-rule-strong) transparent;
+  }
 }
 
 /* The confirmation line arriving: up a little, and in. Under 300ms, ease-out,
@@ -158,9 +204,56 @@ body {
   background-size: 400px 100%;
   animation: chat-shimmer 1.2s linear infinite;
 }
+/* My Work's views (14 Nov). A view arrives by fading up a few pixels; the
+   draft on top of the To approve stack lifts in; the bubbles of a thread
+   come in one after another (the delay is set on each one). Server pages
+   remount what changed, so each runs once per new draft or conversation. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes lift {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.rise {
+  animation: rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.lift {
+  animation: lift 340ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.slide-in {
+  animation: slide-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-in,
-  .chat-skeleton {
+  .chat-skeleton,
+  .rise,
+  .lift,
+  .slide-in {
     animation: none;
   }
 }

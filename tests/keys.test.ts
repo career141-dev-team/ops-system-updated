@@ -42,3 +42,9 @@ test("moving stops at the ends and starts at the top", () => {
   assert.equal(rowAfter(2, 5, "prev"), 1);
   assert.equal(rowAfter(0, 0, "next"), null);
 });
+
+test("E edits and S skips, but only when nobody is typing", () => {
+  assert.equal(keyActFor({ key: "e" }), "edit");
+  assert.equal(keyActFor({ key: "S" }), "skip");
+  assert.equal(keyActFor({ key: "s", target: { tagName: "TEXTAREA" } }), null);
+});

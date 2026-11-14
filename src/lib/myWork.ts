@@ -112,3 +112,32 @@ export function laterLast(items: DayItem[], skipped: string[]): DayItem[] {
   const later = new Set(skipped);
   return [...items.filter((i) => !later.has(i.href)), ...items.filter((i) => later.has(i.href))];
 }
+
+/** "SP" from "Shanika Perera", "MA" from "Mr Azeem", "HR" from "hr@meridian.lk": the avatar on a conversation. */
+export function initialsOf(name: string): string {
+  const words = name.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** When, as a conversation list says it (Figma "MW · Messages"): "10:14" today, "Yesterday", "Mon" this week, "3 Nov" before. Colombo time. */
+export function shortWhen(at: number, now: number): string {
+  const local = (t: number) => new Date(t + 5.5 * 3_600_000);
+  const d = local(at);
+  const days = Math.round((Date.parse(colomboDate(now)) - Date.parse(colomboDate(at))) / 86_400_000);
+  if (days <= 0) return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+  if (days === 1) return "Yesterday";
+  if (days < 7) return SHORT_DAYS[d.getUTCDay()];
+  return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()].slice(0, 3);
+}
+
+/** Under a bubble: "Today 10:14", "Mon 13:20" - the day as well, since a thread runs over days. */
+export function bubbleWhen(at: number, now: number): string {
+  const short = shortWhen(at, now);
+  const d = new Date(at + 5.5 * 3_600_000);
+  const time = String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+  return short === time ? "Today " + time : short + " " + time;
+}

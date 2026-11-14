@@ -5,7 +5,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  bubbleWhen,
   countInWords,
+  initialsOf,
+  shortWhen,
   dayInWords,
   doneToday,
   firstName,
@@ -78,4 +81,17 @@ test("later moves a thing to the end, and loses nothing", () => {
   const c = item("due", NOW, "/c");
   assert.deepEqual(laterLast([a, b, c], ["/a"]).map((i) => i.href), ["/b", "/c", "/a"]);
   assert.deepEqual(laterLast([a, b, c], []).map((i) => i.href), ["/a", "/b", "/c"]);
+});
+
+test("a conversation's initials and its time, as the list says them", () => {
+  assert.equal(initialsOf("Shanika Perera"), "SP");
+  assert.equal(initialsOf("Mr Azeem"), "MA");
+  assert.equal(initialsOf("hr@meridian.lk"), "HR");
+  assert.equal(initialsOf(""), "?");
+  assert.equal(shortWhen(NOW - H, NOW), "08:30");
+  assert.equal(shortWhen(NOW - 24 * H, NOW), "Yesterday");
+  assert.equal(shortWhen(NOW - 3 * 24 * H, NOW), "Mon");
+  assert.equal(shortWhen(NOW - 10 * 24 * H, NOW), "2 Nov");
+  assert.equal(bubbleWhen(NOW - H, NOW), "Today 08:30");
+  assert.equal(bubbleWhen(NOW - 3 * 24 * H, NOW), "Mon 09:30");
 });
