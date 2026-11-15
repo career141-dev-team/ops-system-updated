@@ -2,15 +2,29 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { approveTheHold, liftTheHold } from "@/app/actions";
+import {
+  Avatar,
+  BackBar,
+  FoldRow,
+  NextStepCard,
+  PageBox,
+  StatusChip,
+  figmaField,
+  figmaLabel,
+  pillPrimary,
+  pillSecondary,
+} from "@/app/ui/figma";
 import { clientIn, clientSetIn, desk, holdIn, member as memberIn } from "@/data/desk";
-import NextStep from "@/app/NextStep";
-import Part from "@/app/Part";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
 import { holdNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/** One hold: why it was proposed, the notice, and how it ends. */
+/**
+ * CL · Client on hold (Figma frame 1:3510).
+ *
+ * One hold: why it was proposed, the notice, and how it ends.
+ */
 export default async function HoldPage({
   params,
   searchParams,
@@ -30,125 +44,217 @@ export default async function HoldPage({
   const mayManage = can(me, "client.manage");
   const client = hold.clientId ? clientIn(db, hold.clientId) : null;
   const set = hold.setId ? clientSetIn(db, hold.setId) : null;
-  const theirAudit = db.audit.filter((a) => a.subjectType === "hold" && a.subjectId === hold.id);
-  const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  const ownerName = memberIn(db, hold.ownerId)?.name ?? "Unassigned";
+  const theirAudit = db.audit.filter(
+    (a) => a.subjectType === "hold" && a.subjectId === hold.id,
+  );
+  const whenLocal = (at: number) =>
+    new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
-  // What to do now (24, step 4): the owner's decision 6 in one card - a hold
-  // is never put on, reviewed or taken off without a person.
   const step = holdNextStep(hold, Date.now());
-
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
-  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  const position = db.positions.find((p) => p.openingTaId === hold.openingTaId) ?? null;
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-4">
-      <div>
-        <Link href="/holds" className="text-[12.5px] text-brand hover:underline">
-          Back to held positions
-        </Link>
-        <h1 className="mt-2 text-[17px] font-medium">{client?.name ?? hold.openingTaId}</h1>
-        <p className="mt-0.5 text-[13px] text-ink-soft">
-          {HOLD_MEANINGS[hold.state as HoldState] ?? hold.state} · {memberIn(db, hold.ownerId)?.name ?? "nobody"} owns
-          it
-          {set && (
-            <>
-              {" · "}
-              <Link href={"/sets/" + set.id} className="text-brand hover:underline">
-                {set.name}
-              </Link>
-            </>
-          )}
+    <PageBox width="1080" className="gap-7">
+      <BackBar
+        href="/clients?filter=hold"
+        label="Clients"
+        right={
+          <div className="flex items-center gap-2.5">
+            <StatusChip
+              label={
+                hold.state === "lifted"
+                  ? "Hold lifted"
+                  : hold.state === "proposed"
+                    ? "Hold proposed"
+                    : "On hold"
+              }
+              tone={hold.state === "lifted" ? "ok" : "warn"}
+            />
+            <Avatar name={ownerName} size="32" />
+          </div>
+        }
+      />
+
+      <div className="flex flex-col gap-1">
+        <span className={figmaLabel}>Client · {ownerName}</span>
+        <h1 className="text-[40px] font-light leading-[50px] text-ink">
+          {client?.name ?? hold.openingTaId}
+        </h1>
+        <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
+          {HOLD_MEANINGS[hold.state as HoldState] ?? hold.state}
+          {position ? ` · 1 opening (${position.title})` : ` · Opening ${hold.openingTaId}`}
+          {set ? ` · ${set.name}` : ""}
         </p>
-        <p className="mt-1 text-[13px]">{hold.reason}</p>
-        {hold.liftedReason && <p className="mt-1 text-[13px]">Lifted: {hold.liftedReason}</p>}
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && (
+        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+      )}
 
-      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
-
-      <Part
-        title="What happens when it goes on"
-        says={"The position, the TA System, and what the client is told"}
-        open={step.at === "approve"}
+      {/* Hero NextStepCard (Figma 1:3529) */}
+      <NextStepCard
+        title={
+          hold.state === "proposed"
+            ? `No feedback for 30 days — put ${client?.name ?? hold.openingTaId} on hold?`
+            : step.where
+        }
+        clock={
+          step.clock
+            ? {
+                label: step.clock,
+                tone: step.clock.includes("ago") ? "danger" : "warn",
+                icon: "clock",
+              }
+            : { label: "30 days", tone: "warn", icon: "clock" }
+        }
+        body={`${hold.reason}. Putting a client on hold pauses TA work and sends them a polite notice — it never closes the role on its own. We check back in 30 days.`}
+        byItself="Hold never closes a client automatically — a person decides after the 30-day review."
       >
-        <p className="mt-1 text-[13px] text-ink-soft">
-          The client is told, in a notice you approve like any other message. The TA System is told to stop working the
-          opening. Nothing is lost and nothing closes: somebody is asked about it again in thirty days, and it ends only
-          when a person ends it.
-        </p>
-        {hold.state === "on_hold" && (
-          <p className="mt-2 text-[12.5px] text-ink-soft">
-            On hold since {hold.heldAt ? whenLocal(hold.heldAt) : "—"}
-            {hold.reviewAt ? " · next looked at " + whenLocal(hold.reviewAt) : ""}
-            {hold.noticeMessageId && (
+        {mayManage && (
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {hold.state === "proposed" && (
               <>
-                {" · "}
-                <Link href={"/messages/" + hold.noticeMessageId} className="text-brand hover:underline">
-                  the notice
-                </Link>
+                <form action={approveTheHold} className="flex flex-wrap items-center gap-2.5">
+                  <input type="hidden" name="holdId" value={hold.id} />
+                  <input
+                    name="reason"
+                    defaultValue=""
+                    placeholder={hold.reason}
+                    className="rounded-full bg-sunk px-4 py-2.5 text-[14px] text-ink outline-none sm:w-72"
+                  />
+                  <button type="submit" className={pillPrimary}>
+                    Approve &amp; send hold notice
+                  </button>
+                </form>
+                <form action={liftTheHold}>
+                  <input type="hidden" name="holdId" value={hold.id} />
+                  <input
+                    type="hidden"
+                    name="reason"
+                    value="Keeping open — calling the client first."
+                  />
+                  <button type="submit" className={pillSecondary}>
+                    Keep open — call them first
+                  </button>
+                </form>
               </>
             )}
-          </p>
-        )}
-      </Part>
 
-      {hold.state === "proposed" && mayManage && (
-        <Part
-          title="Put it on hold"
-          says={"Needs a reason, and the notice the client gets"}
-          open={step.at === "approve"}
-        >
-          <form action={approveTheHold} className="mt-3 flex flex-col gap-2">
-            <input type="hidden" name="holdId" value={hold.id} />
-            <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-              Why, in your words (the clock&apos;s own wording is kept if you leave this)
-              <input name="reason" defaultValue="" placeholder={hold.reason} className={field} />
-            </label>
-            <button className={button}>Draft the notice and hold it</button>
-          </form>
-        </Part>
-      )}
+            {hold.state === "on_hold" && (
+              <form action={liftTheHold} className="flex flex-wrap items-center gap-2.5">
+                <input type="hidden" name="holdId" value={hold.id} />
+                <input
+                  name="reason"
+                  required
+                  placeholder="What changed? (e.g. client replied)"
+                  className="rounded-full bg-sunk px-4 py-2.5 text-[14px] text-ink outline-none sm:w-72"
+                />
+                <button type="submit" className={pillPrimary}>
+                  Lift the hold
+                </button>
+              </form>
+            )}
 
-      {hold.state !== "lifted" && mayManage && (
-        <Part
-          title="Lift it"
-          says={"When they come back - with a reason"}
-          open={step.at === "review"}
-        >
-          <p className="mt-1 text-[13px] text-ink-soft">
-            Any word from the client is enough. The TA System is told the opening is open again, and the feedback chase
-            starts again from today.
-          </p>
-          <form action={liftTheHold} className="mt-3 flex flex-col gap-2">
-            <input type="hidden" name="holdId" value={hold.id} />
-            <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-              What changed?
-              <input name="reason" className={field} />
-            </label>
-            <button className={plain}>Lift the hold</button>
-          </form>
-        </Part>
-      )}
-
-      <Part
-        title="What happened to it"
-        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
-        open={false}
-      >
-        {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
-        {theirAudit.map((entry, i) => (
-          <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
-            <p className="text-[13px]">{entry.action}</p>
-            <p className="mt-0.5 text-[12px] text-ink-soft">
-              {whenLocal(entry.at)}
-              {entry.reason ? " · " + entry.reason : ""}
-            </p>
+            {hold.noticeMessageId && (
+              <Link
+                href={`/messages/${hold.noticeMessageId}`}
+                className="px-3 py-2 text-[14px] font-medium text-brand hover:underline"
+              >
+                Edit notice
+              </Link>
+            )}
           </div>
-        ))}
-      </Part>
-    </div>
+        )}
+      </NextStepCard>
+
+      {/* Collapsible Folds (Figma 1:3542, 1:3543) */}
+      <div className="flex flex-col gap-2.5">
+        <FoldRow
+          title={`Opening · ${position?.title ?? hold.openingTaId}`}
+          summary={
+            set
+              ? `${set.name} (${set.candidates.length} CVs) · no feedback`
+              : `Opening ${hold.openingTaId} · paused while on hold`
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[14px]">
+            <span className="text-ink-soft">
+              {hold.state === "on_hold" && hold.heldAt
+                ? `On hold since ${whenLocal(hold.heldAt)}`
+                : `Proposed ${whenLocal(hold.proposedAt)}`}
+              {hold.reviewAt ? ` · Next review ${whenLocal(hold.reviewAt)}` : ""}
+            </span>
+            <div className="flex items-center gap-3">
+              {position && (
+                <Link
+                  href={`/positions/${position.id}`}
+                  className="font-medium text-brand hover:underline"
+                >
+                  Open position →
+                </Link>
+              )}
+              {set && (
+                <Link
+                  href={`/sets/${set.id}`}
+                  className="font-medium text-brand hover:underline"
+                >
+                  Open CV set →
+                </Link>
+              )}
+            </div>
+          </div>
+        </FoldRow>
+
+        <FoldRow
+          title="If they come back"
+          summary="Any reply reopens the client and restarts the feedback clock from that day"
+          defaultOpen={step.at === "review"}
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-[14px] text-ink-soft">
+              Any word from the client is enough. The TA System is told the opening is open again, and the feedback chase starts again from today.
+            </p>
+            {hold.state !== "lifted" && mayManage && (
+              <form action={liftTheHold} className="flex flex-wrap items-center gap-2.5">
+                <input type="hidden" name="holdId" value={hold.id} />
+                <input
+                  name="reason"
+                  required
+                  placeholder="What changed?"
+                  className={figmaField + " max-w-md"}
+                />
+                <button type="submit" className={pillSecondary}>
+                  Lift the hold
+                </button>
+              </form>
+            )}
+          </div>
+        </FoldRow>
+
+        <FoldRow
+          title="What happened to it"
+          summary={`${theirAudit.length} ${theirAudit.length === 1 ? "entry" : "entries"}`}
+        >
+          <div className="flex flex-col gap-2">
+            {theirAudit.length === 0 && (
+              <p className="text-[14px] text-ink-soft">Nothing recorded yet.</p>
+            )}
+            {theirAudit.map((entry, i) => (
+              <div
+                key={entry.at + ":" + i}
+                className="flex flex-wrap items-baseline justify-between gap-2 border-t border-rule py-1.5 text-[13px] first:border-t-0"
+              >
+                <span className="font-medium text-ink">{entry.action}</span>
+                <span className="text-ink-soft">
+                  {whenLocal(entry.at)}
+                  {entry.reason ? ` · ${entry.reason}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </FoldRow>
+      </div>
+    </PageBox>
   );
 }

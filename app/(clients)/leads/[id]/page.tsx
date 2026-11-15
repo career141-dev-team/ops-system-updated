@@ -3,45 +3,53 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   bookIntroCall,
-  dictateRequirement,
   bookRequirementMeeting,
-  handOverToTa,
-  markRoleImpractical,
-  saveRequirement,
-  declineAgreement,
-  draftNextChase,
-  recordAgreementCountersigned,
-  recordChangesWanted,
-  recordAgreementSigned,
-  saveAgreementFields,
-  sendAgreement,
-  startAgreement,
   checkLeadDuplicate,
   closeLead,
   decideLeadIndustry,
+  declineAgreement,
+  dictateRequirement,
+  draftNextChase,
   markMeetingHeld,
   markMeetingNotHeld,
+  recordAgreementCountersigned,
+  recordAgreementSigned,
+  recordChangesWanted,
+  saveAgreementFields,
+  saveRequirement,
+  sendAgreement,
+  startAgreement,
 } from "@/app/actions";
-import { agreementForLead, aiSwitches, desk, leadIn, meetingsForLead, requirementForLead } from "@/data/desk";
 import AiOffer from "@/app/AiOffer";
-import { aiOffReason, anyKeySet } from "@/lib/ai";
-import { notSaidInWords, type DictatedRequirement } from "@/lib/aiTasks";
 import Dictate from "@/app/Dictate";
-import NextStep from "@/app/NextStep";
-import { leadNextStep } from "@/lib/nextStep";
-import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
+import Icon from "@/app/Icon";
+import RequirementDecisionClient from "@/app/(clients)/leads/[id]/RequirementDecisionClient";
 import {
-  KIND_MEANINGS,
-  MAX_REBOOKS,
-  STATE_MEANINGS as MEETING_STATES,
-  type MeetingKind,
-  type MeetingState,
-} from "@/lib/meetings";
-import { people as taPeople } from "@/lib/ta";
+  Avatar,
+  BackBar,
+  FoldRow,
+  JourneyBar,
+   type JourneyStep,
+  NextStepCard,
+  PageBox,
+  StatusChip,
+  figmaField,
+  figmaLabel,
+  pillDanger,
+  pillPrimary,
+  pillSecondary,
+} from "@/app/ui/figma";
 import {
-  REQUIREMENT_FIELDS,
-  missingFields as requirementBlanksOf,
-} from "@/lib/requirements";
+  agreementForLead,
+  aiSwitches,
+  desk,
+  leadIn,
+  meetingsForLead,
+  member as memberIn,
+  requirementForLead,
+} from "@/data/desk";
+import { aiOffReason, anyKeySet } from "@/lib/ai";
+import { type DictatedRequirement } from "@/lib/aiTasks";
 import {
   ESA_FIELDS,
   type EsaState,
@@ -50,74 +58,88 @@ import {
   missingFields,
   whereItStands,
 } from "@/lib/esa";
+import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
+import {
+  KIND_MEANINGS,
+  MAX_REBOOKS,
+  STATE_MEANINGS as MEETING_STATES,
+  type MeetingKind,
+  type MeetingState,
+} from "@/lib/meetings";
+import { leadNextStep } from "@/lib/nextStep";
+import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { fakeTa } from "@/lib/ta";
+import { fakeTa, people as taPeople } from "@/lib/ta";
 
 /**
- * One lead, and the decisions it is waiting on (15, Phase 2 steps 3 and 4).
- *
- * Edited in place, no overlays: what we know, then the two questions that have
- * to be answered before any work starts — are they already our client, and are
- * they banking or finance. Each answer says plainly what it will do before it
- * is given, because declining for the industry is permanent.
+ * Unified Lead Record & Sub-views:
+ *   - Frame 1:484  — CL · Lead — Lankaweave Textiles (agreement in progress / default lead)
+ *   - Frame 1:3443 — CL · Lead — Sapphire Finance (decline / industry check)
+ *   - Frame 1:666  — CL · Agreement — Orion Pharmaceuticals (countersign / agreement view, ?view=agreement)
+ *   - Frame 1:2050 — CL · Requirement meeting — Delmege Interiors (open the position, ?view=requirement)
  */
 export default async function LeadPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string }>;
+  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string; view?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg, proposed: proposedJson } = await searchParams;
+  const { msg, proposed: proposedJson, view } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
   if (!lead) notFound();
 
   const mayManage = can(member, "client.manage");
-  const card = "mt-4 rounded-2xl border border-rule bg-surface px-5 py-4";
-  const field_cls = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
-  const field_wide = field_cls + " sm:col-span-2";
-  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
-  // What dictation proposed, which fills the fields in for correction and is
-  // saved by nothing until a person presses save (Phase 9 step 7).
   const dictated: DictatedRequirement | null = proposedJson
     ? (JSON.parse(proposedJson) as DictatedRequirement)
     : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
-  const button = "rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
-  const nameOf = (who: string | null) => (who ? db.members.find((m) => m.id === who)?.name ?? "somebody" : "nobody");
+
+  const nameOf = (who: string | null) =>
+    who ? (memberIn(db, who)?.name ?? "somebody") : "nobody";
+  const ownerName = nameOf(lead.ownerId);
   const closed = lead.state.startsWith("closed") || lead.state === "declined_industry";
+
   const meetings = meetingsForLead(db, lead.id);
-  const next = meetings.find((m) => m.state === "booked") ?? null;
+  const nextBooked = meetings.find((m) => m.state === "booked") ?? null;
+  const introMeetings = meetings.filter((m) => m.kind === "intro");
+  const requirementMeeting = meetings.find((m) => m.kind === "requirement") ?? null;
+
   const taSide = await taPeople();
-  const taLeads = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+  const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+
+  const now = Date.now();
   const whenLocal = (at: number) =>
     new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  const whenDate = (at: number) =>
+    new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
+
   const esa = agreementForLead(db, lead.id);
   const esaMissing = esa ? missingFields(esa.fields) : [];
-  const esaTemplate = db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null) ?? null;
+  const esaTemplate =
+    db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null) ?? null;
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
-  // Phase 3: the requirement, and whether it has gone to TA yet.
   const agreementDone = esa?.state === "signed" || esa?.state === "countersigned";
-  const requirementMeeting = meetingsForLead(db, lead.id).find((m) => m.kind === "requirement") ?? null;
+
   const requirement = requirementForLead(db, lead.id);
   const requirementBlanks = requirement ? requirementBlanksOf(requirement.fields) : [];
   const position = requirement
-    ? db.positions.find((p) => p.requirementId === requirement.id) ?? null
+    ? (db.positions.find((p) => p.requirementId === requirement.id) ?? null)
     : null;
-  const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
+
   const signedFiles = db.files.filter((f) => f.kind === "esa_signed");
   const countersignedFiles = db.files.filter((f) => f.kind === "esa_countersigned");
-  const when = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ");
+  const draftFiles = esa
+    ? db.files.filter((f) => f.subjectType === "esa" && f.subjectId === esa.id)
+    : [];
 
-  // What to do now, worked out from these same rows (23, section 4). The card
-  // below says it, and the section it belongs to is the one outlined.
   const step = leadNextStep(lead, {
     meetings,
     esa,
@@ -126,617 +148,1287 @@ export default async function LeadPage({
     requiredFields: REQUIREMENT_FIELDS.filter((f) => f.required).map((f) => f.key),
   });
 
+  // Determine which view is shown
+  const activeView: "lead" | "decline" | "agreement" | "requirement" =
+    view === "agreement"
+      ? "agreement"
+      : view === "requirement"
+        ? "requirement"
+        : view === "decline" || (lead.industryFlagged && !lead.industryConfirmedBy && !closed)
+          ? "decline"
+          : "lead";
+
+  // Build 8-step JourneyBar
+  const journeySteps: JourneyStep[] = [
+    {
+      label: "Enquiry",
+      state:
+        activeView === "decline" || (lead.state === "new" && activeView === "lead")
+          ? "current"
+          : "done",
+      href: `/leads/${lead.id}`,
+    },
+    {
+      label: "Agreement",
+      state:
+        activeView === "agreement"
+          ? "current"
+          : agreementDone
+            ? "done"
+            : lead.state === "waiting_agreement" || lead.state === "intro_call"
+              ? "current"
+              : "upcoming",
+      href: `/leads/${lead.id}?view=agreement`,
+    },
+    {
+      label: "Requirement",
+      state:
+        activeView === "requirement"
+          ? "current"
+          : position
+            ? "done"
+            : lead.state === "requirement"
+              ? "current"
+              : "upcoming",
+      href: `/leads/${lead.id}?view=requirement`,
+    },
+    {
+      label: "Opening",
+      state: position ? "done" : "upcoming",
+      href: position ? `/positions/${position.id}` : undefined,
+    },
+    { label: "CVs", state: "upcoming" },
+    { label: "Interviews", state: "upcoming" },
+    { label: "Placement", state: "upcoming" },
+    { label: "Guarantee", state: "upcoming" },
+  ];
+
+  const sourceText =
+    SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source;
+  const defaultTargetDate = new Date(now + 21 * 86_400_000).toISOString().slice(0, 10);
+
   return (
-    <div className="max-w-[760px]">
-      <Link href="/leads" className="text-[12.5px] text-brand hover:underline">
-        Back to leads
-      </Link>
-      <h1 className="mt-2 text-[17px] font-medium">{lead.company}</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
-        {STATE_MEANINGS[lead.state as LeadState] ?? lead.state} · {SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source} ·{" "}
-        {nameOf(lead.ownerId)} owns it · came in {when(lead.createdAt)}
-      </p>
+    <PageBox width="1080" className="gap-7">
+      {/* Top BackBar */}
+      <BackBar
+        href={activeView === "agreement" || activeView === "requirement" ? `/leads/${lead.id}` : "/clients"}
+        label={
+          activeView === "agreement" || activeView === "requirement"
+            ? lead.company
+            : "Clients"
+        }
+        right={
+          <div className="flex items-center gap-2.5">
+            {activeView === "agreement" && esa && (
+              <StatusChip
+                label={
+                  esa.state === "signed"
+                    ? "Signed by client"
+                    : esa.state === "countersigned"
+                      ? "Countersigned"
+                      : ESA_STATES[esa.state as EsaState] ?? esa.state
+                }
+                tone={
+                  esa.state === "signed" || esa.state === "countersigned"
+                    ? "ok"
+                    : esa.state === "negotiating"
+                      ? "warn"
+                      : "brand"
+                }
+              />
+            )}
+            {activeView === "requirement" && (
+              <StatusChip
+                label={
+                  requirementMeeting?.state === "held"
+                    ? "Held today · 28 min"
+                    : requirementMeeting
+                      ? "Booked · " + whenDate(requirementMeeting.at)
+                      : "Ready for brief"
+                }
+                tone="ok"
+              />
+            )}
+            <Avatar name={ownerName} size="32" />
+            <details className="relative">
+              <summary
+                aria-label="More lead actions"
+                className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-sunk text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden"
+              >
+                <Icon name="more" size={16} />
+              </summary>
+              <div className="absolute right-0 top-10 z-20 flex w-56 flex-col gap-1 rounded-[18px] bg-surface p-2 shadow-float">
+                <Link
+                  href={`/leads/${lead.id}`}
+                  className="rounded-lg px-3 py-1.5 text-[13px] text-ink-soft hover:bg-sunk hover:text-ink"
+                >
+                  Lead overview
+                </Link>
+                <Link
+                  href={`/leads/${lead.id}?view=agreement`}
+                  className="rounded-lg px-3 py-1.5 text-[13px] text-ink-soft hover:bg-sunk hover:text-ink"
+                >
+                  Agreement view
+                </Link>
+                <Link
+                  href={`/leads/${lead.id}?view=requirement`}
+                  className="rounded-lg px-3 py-1.5 text-[13px] text-ink-soft hover:bg-sunk hover:text-ink"
+                >
+                  Requirement meeting view
+                </Link>
+                <Link
+                  href={`/leads/${lead.id}?view=decline`}
+                  className="rounded-lg px-3 py-1.5 text-[13px] text-danger hover:bg-danger-soft"
+                >
+                  Industry decline check
+                </Link>
+              </div>
+            </details>
+          </div>
+        }
+      />
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {/* Header + 8-step Journey Bar */}
+      <div className="flex flex-col gap-3.5">
+        {activeView === "agreement" ? (
+          <div className="flex flex-col gap-1">
+            <span className={figmaLabel}>
+              Employment Services Agreement · version {esa?.version ?? 1}
+            </span>
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">Agreement</h1>
+            <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
+              {lead.company}
+              {esa?.sentAt ? " · Sent " + whenDate(esa.sentAt) : ""}
+              {esa?.fields.signatoryName ? " · Signed by " + esa.fields.signatoryName : ""}
+            </p>
+          </div>
+        ) : activeView === "requirement" ? (
+          <div className="flex flex-col gap-1">
+            <span className={figmaLabel}>
+              {lead.company} · with {ownerName}
+              {taPeopleList[0] ? ` + ${taPeopleList[0].fullName} (TA lead)` : ""}
+            </span>
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
+              Requirement meeting
+            </h1>
+            <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
+              {requirement?.fields.roleTitle || lead.notes || "Role brief"} ·{" "}
+              {requirement?.fields.workLocation || "Colombo"} ·{" "}
+              {requirement?.fields.headcount
+                ? `${requirement.fields.headcount} opening`
+                : "1 opening"}{" "}
+              · {requirement?.fields.salaryPackage || "Package to confirm"}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <span className={figmaLabel}>Lead · {sourceText}</span>
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
+              {lead.company}
+            </h1>
+            <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
+              {lead.industry || "Industry not specified"}
+              {lead.contactName ? ` · ${lead.contactName}` : ""}
+              {lead.contactEmail ? ` · ${lead.contactEmail}` : ""}
+              {lead.contactPhone ? ` · ${lead.contactPhone}` : ""}
+            </p>
+          </div>
+        )}
 
-      <div className="mt-4">
-        <NextStep where={step.where} waiting={step.waiting} clock={step.clock}>
-          {step.at !== "closed" && (
-            <a href={"#" + step.at} className="rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90">
-              {step.at === "duplicate"
-                ? "Check them"
-                : step.at === "industry"
-                  ? "Answer it"
-                  : step.at === "intro"
-                    ? "The intro call"
-                    : step.at === "agreement"
-                      ? "The agreement"
-                      : "The requirement"}
-            </a>
-          )}
-        </NextStep>
+        <JourneyBar steps={journeySteps} />
       </div>
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What we know</h2>
-        <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
-          <p>{lead.contactName || "No name given"}</p>
-          <p className="text-ink-soft">
-            {lead.contactEmail || "no email"} · {lead.contactPhone || "no number"}
-          </p>
-          <p className="text-ink-soft">
-            {lead.industry || "industry not said"}
-            {lead.website ? " · " + lead.website : ""}
-          </p>
-          {lead.notes && <p className="mt-1 whitespace-pre-wrap">{lead.notes}</p>}
-          {lead.clientTaId && (
-            <p className="mt-1 text-ink-soft">Already our client in the TA System ({lead.clientTaId}).</p>
-          )}
-          {lead.reason && <p className="mt-1">Reason recorded: {lead.reason}</p>}
-        </div>
-      </section>
+      {msg && (
+        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+      )}
 
-      {!closed && (
+      {/* =====================================================================
+          VIEW 1: AGREEMENT (Figma Frame 1:666 — CL · Agreement — countersign)
+         ===================================================================== */}
+      {activeView === "agreement" && (
         <>
-          <section id="duplicate" className={card + (step.at === "duplicate" ? " border-brand" : "")}>
-            <h2 className="text-[14.5px] font-medium">Are they already our client?</h2>
-            <p className="mt-1 text-[13px] text-ink-soft">
-              Asks the TA System for a company with this name. An exact match is linked and the lead skips straight to
-              where it belongs; anything that only looks similar is listed for you to decide, because two client records
-              for one company means two owners and two agreements.
-            </p>
-            {fakeTa() && (
-              <p className="mt-1 text-[12px] text-ink-faint">
-                The TA System is still a stand-in, so it answers with sample clients.
-              </p>
-            )}
-            {mayManage ? (
-              <form action={checkLeadDuplicate} className="mt-3">
-                <input type="hidden" name="leadId" value={lead.id} />
-                <button className={button}>Check the TA System</button>
-              </form>
-            ) : (
-              <p className="mt-2 text-[13px] text-ink-faint">{refusal("client.manage")}</p>
-            )}
-          </section>
-
-          <section id="industry" className={card + (step.at === "industry" ? " border-brand" : "")}>
-            <h2 className="text-[14.5px] font-medium">Banking or finance?</h2>
-            {lead.industryFlagged ? (
-              <p className="mt-1 text-[13px]">
-                This looks like banking or finance, because of the word <strong>{lead.industryBecause}</strong>. We do
-                not work in that industry, whatever the role.
-              </p>
-            ) : (
-              <p className="mt-1 text-[13px] text-ink-soft">
-                Nothing about this one looks like banking or finance.
-                {lead.industryConfirmedBy ? " " + nameOf(lead.industryConfirmedBy) + " looked and cleared it." : ""}
-              </p>
-            )}
-            {mayManage && lead.industryFlagged && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <form action={decideLeadIndustry}>
+          {!esa ? (
+            <NextStepCard
+              title="Start the Employment Services Agreement"
+              clock={{ label: "Within 2h of intro call", tone: "warn", icon: "clock" }}
+              body="The agreement is filled from the standard terms in Settings and the company details on this lead. Once started, review the fields and send the PDF to the client."
+              byItself="Starts the 5-step chase and the 14-day close timer when sent."
+            >
+              {mayManage && (
+                <form action={startAgreement} className="pt-1">
                   <input type="hidden" name="leadId" value={lead.id} />
-                  <input type="hidden" name="decision" value="confirm" />
-                  <button className={button}>Yes — decline them</button>
+                  <button type="submit" className={pillPrimary}>
+                    Start the agreement
+                  </button>
                 </form>
-                <form action={decideLeadIndustry}>
-                  <input type="hidden" name="leadId" value={lead.id} />
-                  <input type="hidden" name="decision" value="clear" />
-                  <button className={button}>No — they are not</button>
+              )}
+            </NextStepCard>
+          ) : esa.state === "signed" ? (
+            <NextStepCard
+              title="Upload the countersigned copy"
+              clock={{ label: "Due today", tone: "warn", icon: "clock" }}
+              body={`${esa.fields.signatoryName || lead.contactName || "The client"} signed and returned the agreement${esa.signedAt ? " on " + whenDate(esa.signedAt) : ""}, with the company seal. Once the Director countersigns, upload it here — the client gets their copy and the requirement meeting opens.`}
+              byItself="Stopped automatically when their signed copy arrived: the 5-step chase and the 14-day close timer."
+            >
+              {mayManage && (
+                <form
+                  action={recordAgreementCountersigned}
+                  className="flex flex-wrap items-center gap-3 pt-1"
+                >
+                  <input type="hidden" name="esaId" value={esa.id} />
+                  <select
+                    name="fileId"
+                    defaultValue={countersignedFiles[0]?.id ?? ""}
+                    className="rounded-full bg-sunk px-4 py-2.5 text-[14px] text-ink outline-none"
+                  >
+                    <option value="">— pick countersigned PDF —</option>
+                    {countersignedFiles.map((file) => (
+                      <option key={file.id} value={file.id}>
+                        {file.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" className={pillPrimary}>
+                    Upload countersigned PDF
+                  </button>
+                  <Link href="/files" className={pillSecondary}>
+                    Ask Director to sign
+                  </Link>
+                  <a href="#versions-card" className="px-3 py-2 text-[14px] font-medium text-brand hover:underline">
+                    Return for seal / date
+                  </a>
                 </form>
+              )}
+            </NextStepCard>
+          ) : esa.state === "countersigned" ? (
+            <NextStepCard
+              title="Agreement countersigned — open the requirement meeting"
+              clock={{ label: "Countersigned", tone: "ok", icon: "check" }}
+              body="Both sides have signed the Employment Services Agreement and the client record is active. Proceed to the requirement meeting to capture the brief and hand over the position to TA."
+            >
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <Link
+                  href={`/leads/${lead.id}?view=requirement`}
+                  className={pillPrimary}
+                >
+                  Open requirement meeting
+                </Link>
               </div>
-            )}
-            {lead.industryFlagged && (
-              <p className="mt-2 text-[12px] text-ink-faint">
-                Declining is permanent: the reason is saved and they are never invited back.
-              </p>
-            )}
-          </section>
+            </NextStepCard>
+          ) : esa.state === "sent" || esa.state === "chasing" ? (
+            <NextStepCard
+              title={`Follow up on the agreement — ${nextChase ? nextChase.what : "chase due"}`}
+              clock={{
+                label: esa.sentAt
+                  ? `Day ${Math.max(1, Math.round((now - esa.sentAt) / 86_400_000))} of 14`
+                  : "Waiting on client",
+                tone: "warn",
+                icon: "clock",
+              }}
+              body={whereItStands({ ...esa, state: esa.state as EsaState }, now)}
+              byItself="Stopped automatically if they reply. Closes after 14 days if unsigned."
+            >
+              {mayManage && (
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <form action={draftNextChase}>
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <button type="submit" className={pillPrimary}>
+                      Approve &amp; send
+                    </button>
+                  </form>
+                  <a href="#versions-card" className={pillSecondary}>
+                    Record signed copy
+                  </a>
+                  <a href="#versions-card" className="px-3 py-2 text-[14px] font-medium text-brand hover:underline">
+                    They want changes
+                  </a>
+                </div>
+              )}
+            </NextStepCard>
+          ) : (
+            <NextStepCard
+              title={
+                esa.state === "negotiating"
+                  ? `Agree the changes and send version ${esa.version + 1}`
+                  : "Check the terms and send the agreement"
+              }
+              clock={{ label: "Within 2h of intro call", tone: "warn", icon: "clock" }}
+              body={
+                esaMissing.length > 0
+                  ? `Still blank: ${esaMissing.map((f) => f.label.toLowerCase()).join(", ")}. Fill the terms below before sending — a draft never goes out with placeholders.`
+                  : "All required agreement fields are filled in. Generate the PDF and draft the cover email for approval."
+              }
+              byItself="Sending starts the 5-step chase and the 14-day close timer."
+            >
+              {mayManage && (
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <form action={sendAgreement}>
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <button type="submit" className={pillPrimary}>
+                      {esa.state === "negotiating"
+                        ? `Draft cover email & send v${esa.version + 1}`
+                        : "Draft the cover email and send"}
+                    </button>
+                  </form>
+                  <a href="#terms-card" className={pillSecondary}>
+                    Edit terms
+                  </a>
+                </div>
+              )}
+            </NextStepCard>
+          )}
 
-          <section id="intro" className={card + (step.at === "intro" ? " border-brand" : "")}>
-            <h2 className="text-[14.5px] font-medium">The intro call</h2>
-            <p className="mt-1 text-[13px] text-ink-soft">
-              A TA lead is on every intro call. Booking it starts two reminders: the day before at nine, and an hour
-              before.
-            </p>
-
-            {meetings.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Not booked yet.</p>}
-
-            {meetings.map((meeting) => (
-              <div key={meeting.id} className="mt-3 border-t border-rule pt-3 first:border-t-0">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="text-[13.5px]">{KIND_MEANINGS[meeting.kind as MeetingKind] ?? meeting.kind}</span>
-                  <span className="text-[13.5px]">{whenLocal(meeting.at)}</span>
-                  <span className="text-[12px] text-ink-faint">
-                    {MEETING_STATES[meeting.state as MeetingState] ?? meeting.state}
-                    {meeting.rebookCount > 0 ? " · attempt " + meeting.rebookCount + " of " + MAX_REBOOKS : ""}
+          {/* Two-column TERMS + VERSIONS cards (Figma 1:699) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Left card: TERMS (Figma 1:700) */}
+            <div
+              id="terms-card"
+              className="flex flex-col gap-3.5 rounded-[24px] bg-sunk px-6 py-[22px]"
+            >
+              <span className={figmaLabel}>TERMS</span>
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between py-2.5 text-[14px]">
+                  <span className="text-ink-soft">Fee</span>
+                  <span className="font-medium text-ink">
+                    {esa?.fields.feeClause || "8.33% (one month’s gross) · min LKR 50,000"}
                   </span>
                 </div>
-                {meeting.reason && <p className="mt-1 text-[12.5px] text-ink-soft">{meeting.reason}</p>}
-                {meeting.brief && (
-                  <p className="mt-1 whitespace-pre-wrap text-[13px]">
-                    <span className="text-ink-soft">What they said: </span>
-                    {meeting.brief}
-                  </p>
-                )}
-                {(meeting.role || meeting.packageSaid) && (
-                  <p className="mt-1 text-[12.5px] text-ink-soft">
-                    {meeting.role || "position not said"} · {meeting.packageSaid || "package not said"}
-                  </p>
-                )}
+                <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
+                  <span className="text-ink-soft">Guarantee</span>
+                  <span className="font-medium text-ink">
+                    {esa?.fields.guaranteeDays || "90"} days (standard)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
+                  <span className="text-ink-soft">Replacement</span>
+                  <span className="font-medium text-ink">
+                    {esa?.fields.replacementWorkingDays || "60"} working days ·{" "}
+                    {esa?.fields.refundPct || "25"}% refund if unfilled
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
+                  <span className="text-ink-soft">Inactive after</span>
+                  <span className="font-medium text-ink">12 months without an opening</span>
+                </div>
+              </div>
 
-                {mayManage && meeting.state === "booked" && (
-                  <div className="mt-3 flex flex-col gap-4">
-                    <form action={markMeetingHeld} className="flex flex-col gap-2">
-                      <input type="hidden" name="meetingId" value={meeting.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        It happened — what did they say?
-                        <textarea name="brief" rows={3} className={field_cls} />
-                      </label>
-                      <div className="flex flex-wrap gap-3">
-                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                          The position
-                          <input name="role" className={field_cls} />
-                        </label>
-                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                          The package they mentioned
-                          <input name="packageSaid" className={field_cls} />
-                        </label>
-                      </div>
-                      <button className={button}>It was held</button>
-                      <p className="text-[12px] text-ink-faint">
-                        This is the only record of the brief until the opening exists, so it cannot be left empty. The
-                        agreement clock starts when you save.
-                      </p>
-                    </form>
-
-                    <form action={markMeetingNotHeld} className="flex flex-col gap-2 border-t border-rule pt-3">
-                      <input type="hidden" name="meetingId" value={meeting.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        It did not happen — why?
-                        <input name="reason" className={field_cls} />
-                      </label>
-                      <label className="flex items-start gap-2 text-[13px]">
-                        <input type="checkbox" name="clientReplied" className="mt-0.5" />
-                        <span>
-                          The client is still answering us
-                          <span className="block text-[12px] text-ink-faint">
-                            Leave this unticked if they have gone quiet. {MAX_REBOOKS} attempts with no reply closes the
-                            lead.
+              {esa && mayManage && (
+                <details
+                  open={esa.state === "draft" || esa.state === "negotiating"}
+                  className="border-t border-rule pt-3"
+                >
+                  <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                    Edit agreement fields
+                  </summary>
+                  <form action={saveAgreementFields} className="mt-3 flex flex-col gap-3">
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {ESA_FIELDS.map((field) => (
+                        <label
+                          key={field.key}
+                          className={
+                            "flex flex-col gap-1 " +
+                            (field.key === "notes" ? "sm:col-span-2" : "")
+                          }
+                        >
+                          <span className={figmaLabel}>
+                            {field.label}
+                            {field.required ? "" : " (optional)"}
                           </span>
-                        </span>
-                      </label>
-                      <button className={button}>It was not held</button>
-                    </form>
+                          <input
+                            name={"field." + field.key}
+                            defaultValue={esa.fields[field.key] ?? ""}
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    {!esaTemplate && (
+                      <p className="text-[12.5px] text-ink-soft">
+                        Note: Upload the master Word template on{" "}
+                        <Link href="/files" className="text-brand underline">
+                          Files
+                        </Link>{" "}
+                        as &ldquo;Agreement, drafted&rdquo; before generating the PDF.
+                      </p>
+                    )}
+                    <button type="submit" className={pillSecondary + " self-start"}>
+                      Save the fields
+                    </button>
+                  </form>
+                </details>
+              )}
+            </div>
+
+            {/* Right card: VERSIONS (Figma 1:719) */}
+            <div
+              id="versions-card"
+              className="flex flex-col gap-3.5 rounded-[24px] bg-sunk px-6 py-[22px]"
+            >
+              <span className={figmaLabel}>VERSIONS</span>
+              <div className="flex flex-col">
+                <div className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
+                  <span className="font-medium text-ink">
+                    v{esa?.version ?? 1}
+                    {esa?.state === "signed" || esa?.state === "countersigned"
+                      ? " · signed"
+                      : ""}
+                  </span>
+                  <span className="text-ink-soft">
+                    {esa?.sentAt ? `Sent ${whenDate(esa.sentAt)}` : "Draft"}
+                    {esa?.signedAt ? ` · signed ${whenDate(esa.signedAt)} · sealed` : ""}
+                  </span>
+                  {esa?.signedFileId || esa?.draftFileId || draftFiles[0] ? (
+                    <Link
+                      href={`/api/files/${esa?.signedFileId ?? esa?.draftFileId ?? draftFiles[0]?.id}`}
+                      className="font-medium text-brand hover:underline"
+                    >
+                      Open PDF
+                    </Link>
+                  ) : (
+                    <Link href="/files" className="font-medium text-brand hover:underline">
+                      Files
+                    </Link>
+                  )}
+                </div>
+
+                {esa && esa.version > 1 && (
+                  <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
+                    <span className="font-medium text-ink">v1</span>
+                    <span className="text-ink-soft">
+                      {esa.reason || "Client asked to revise payment window"}
+                    </span>
+                  </div>
+                )}
+
+                {esa?.reason && (
+                  <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
+                    <span className="font-medium text-ink">Negotiation meeting</span>
+                    <span className="text-ink-soft">{esa.reason}</span>
                   </div>
                 )}
               </div>
-            ))}
 
-            {mayManage && !next && (
-              <form action={bookIntroCall} className="mt-3 flex flex-col gap-3 border-t border-rule pt-3">
-                <input type="hidden" name="leadId" value={lead.id} />
-                <div className="flex flex-wrap gap-3">
-                  <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                    When (Colombo time)
-                    <input type="datetime-local" name="at" required className={field_cls} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                    Which TA lead is joining
-                    {taLeads.length > 0 ? (
-                      <select name="taLeadId" className={field_cls}>
-                        {taLeads.map((person) => (
-                          <option key={person.id} value={person.id}>
-                            {person.fullName}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input name="taLeadId" placeholder="their name" className={field_cls} />
-                    )}
-                  </label>
-                </div>
-                <button className={button}>{meetings.length ? "Book it again" : "Book the intro call"}</button>
-                {!taSide.ok && (
-                  <p className="text-[12px] text-ink-faint">
-                    The TA System could not be asked for its people ({taSide.reason}), so type the name.
-                  </p>
-                )}
-              </form>
-            )}
-          </section>
-
-          <section id="agreement" className={card + (step.at === "agreement" ? " border-brand" : "")}>
-            <h2 className="text-[14.5px] font-medium">The agreement</h2>
-
-            {!esa && (
-              <>
-                <p className="mt-1 text-[13px] text-ink-soft">
-                  Not started. It goes out within {db.settings.find((x) => x.key === "esa.sendHours")?.value ?? 2} hours
-                  of the intro call, and the numbers come from the settings.
-                </p>
-                {mayManage && (
-                  <form action={startAgreement} className="mt-3">
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <button className={button}>Start the agreement</button>
-                  </form>
-                )}
-              </>
-            )}
-
-            {esa && (
-              <>
-                <p className="mt-1 text-[13.5px]">
-                  {ESA_STATES[esa.state as EsaState] ?? esa.state} · version {esa.version}
-                </p>
-                <p className="mt-1 text-[13px] text-ink-soft">{whereItStands({ ...esa, state: esa.state as EsaState }, Date.now())}</p>
-                {esa.reason && <p className="mt-1 text-[13px]">{esa.reason}</p>}
-
-                {(esa.state === "draft" || esa.state === "negotiating") && (
-                  <>
-                    {!esaTemplate && (
-                      <p className="mt-3 rounded-lg border border-rule bg-paper px-3 py-2 text-[13px]">
-                        <span className="font-medium">Waiting on one thing:</span> the agreement itself, as a Word file
-                        with its variable fields. Upload it on the Files screen as “Agreement, drafted” and leave it
-                        unattached to anything, and it becomes the template every client&apos;s agreement is filled
-                        from.
-                      </p>
-                    )}
-                    {mayManage && (
-                      <form action={saveAgreementFields} className="mt-3 flex flex-col gap-3">
+              {esa &&
+                (esa.state === "sent" || esa.state === "chasing") &&
+                mayManage && (
+                  <div className="flex flex-col gap-3 border-t border-rule pt-3">
+                    <details open>
+                      <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                        Record signed copy from client
+                      </summary>
+                      <form
+                        action={recordAgreementSigned}
+                        className="mt-2.5 flex flex-col gap-2.5"
+                      >
                         <input type="hidden" name="esaId" value={esa.id} />
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {ESA_FIELDS.map((field) => (
-                            <label key={field.key} className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                              {field.label}
-                              {field.required ? "" : " (optional)"}
-                              <input
-                                name={"field." + field.key}
-                                defaultValue={esa.fields[field.key] ?? ""}
-                                className={field.key === "notes" ? field_wide : field_cls}
-                              />
-                              <span className="text-[11.5px] text-ink-faint">{field.why}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <button className={button}>Save the fields</button>
-                      </form>
-                    )}
-                    {esaMissing.length > 0 && (
-                      <p className="mt-2 text-[12.5px] text-ink-faint">
-                        Still blank: {esaMissing.map((f) => f.label.toLowerCase()).join(", ")}. It cannot be sent until
-                        these are in — a draft went to a client with placeholders in it once.
-                      </p>
-                    )}
-                    {mayManage && (
-                      <form action={sendAgreement} className="mt-3">
-                        <input type="hidden" name="esaId" value={esa.id} />
-                        <button className={button}>
-                          {esa.state === "negotiating"
-                            ? "Draft the cover email and send version " + (esa.version + 1)
-                            : "Draft the cover email and send"}
-                        </button>
-                        {esa.state === "negotiating" && (
-                          <p className="mt-2 text-[12px] text-ink-faint">
-                            The version number moves on, the chase starts from the beginning, and the two weeks start
-                            again from this send.
-                          </p>
-                        )}
-                      </form>
-                    )}
-                  </>
-                )}
-
-                {(esa.state === "sent" || esa.state === "chasing") && mayManage && (
-                  <div className="mt-3 flex flex-col gap-4">
-                    <form action={draftNextChase}>
-                      <input type="hidden" name="esaId" value={esa.id} />
-                      <button className={button}>
-                        {nextChase ? "Draft: " + nextChase.what.toLowerCase() : "The chase has run out"}
-                      </button>
-                    </form>
-
-                    <form action={recordAgreementSigned} className="flex flex-col gap-2 border-t border-rule pt-3">
-                      <input type="hidden" name="esaId" value={esa.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        The signed copy came back — which file is it?
-                        <select name="fileId" className={field_cls} defaultValue="">
-                          <option value="">— pick the uploaded file —</option>
+                        <select
+                          name="fileId"
+                          defaultValue={signedFiles[0]?.id ?? ""}
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        >
+                          <option value="">— pick the uploaded signed file —</option>
                           {signedFiles.map((file) => (
                             <option key={file.id} value={file.id}>
                               {file.name}
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label className="flex items-start gap-2 text-[13px]">
-                        <input type="checkbox" name="checked" className="mt-0.5" />
-                        <span>
-                          I have looked at it: signed, dated and sealed
-                          <span className="block text-[12px] text-ink-faint">
-                            A copy came back unsealed once and had to be resent.
-                          </span>
-                        </span>
-                      </label>
-                      <button className={button}>It is signed</button>
-                    </form>
+                        <label className="flex items-start gap-2 text-[13px] text-ink">
+                          <input type="checkbox" name="checked" className="mt-1" />
+                          <span>I have looked at it: signed, dated and sealed</span>
+                        </label>
+                        <button type="submit" className={pillPrimary + " self-start"}>
+                          It is signed
+                        </button>
+                      </form>
+                    </details>
 
-                    <form action={recordChangesWanted} className="flex flex-col gap-2 border-t border-rule pt-3">
-                      <input type="hidden" name="esaId" value={esa.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        They want changes before signing — what, exactly?
-                        <textarea name="what" rows={2} className={field_wide} />
-                      </label>
-                      <button className={button}>They want changes</button>
-                      <p className="text-[12px] text-ink-faint">
-                        The chasing stops, a meeting goes on your list, and the two weeks keep running.
-                      </p>
-                    </form>
+                    <details>
+                      <summary className="cursor-pointer text-[13px] font-medium text-ink-soft hover:text-ink">
+                        They want changes before signing
+                      </summary>
+                      <form
+                        action={recordChangesWanted}
+                        className="mt-2.5 flex flex-col gap-2.5"
+                      >
+                        <input type="hidden" name="esaId" value={esa.id} />
+                        <textarea
+                          name="what"
+                          rows={2}
+                          placeholder="What changes did they ask for?"
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                        <button type="submit" className={pillSecondary + " self-start"}>
+                          They want changes
+                        </button>
+                      </form>
+                    </details>
 
-                    <form action={declineAgreement} className="flex flex-col gap-2 border-t border-rule pt-3">
-                      <input type="hidden" name="esaId" value={esa.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        They will not sign — why?
-                        <input name="reason" className={field_cls} />
-                      </label>
-                      <button className={button}>No agreement</button>
-                      <p className="text-[12px] text-ink-faint">
-                        The team is told the search is blocked, and the lead closes.
-                      </p>
-                    </form>
+                    <details>
+                      <summary className="cursor-pointer text-[13px] font-medium text-danger hover:underline">
+                        Decline agreement
+                      </summary>
+                      <form
+                        action={declineAgreement}
+                        className="mt-2.5 flex flex-col gap-2.5"
+                      >
+                        <input type="hidden" name="esaId" value={esa.id} />
+                        <input
+                          name="reason"
+                          placeholder="Why will they not sign?"
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                        <button type="submit" className={pillDanger + " self-start"}>
+                          No agreement
+                        </button>
+                      </form>
+                    </details>
                   </div>
                 )}
+            </div>
+          </div>
+        </>
+      )}
 
-                {esa.state === "signed" && mayManage && (
-                  <form action={recordAgreementCountersigned} className="mt-3 flex flex-col gap-2">
-                    <input type="hidden" name="esaId" value={esa.id} />
-                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                      The Director has countersigned — which file is it?
-                      <select name="fileId" className={field_cls} defaultValue="">
-                        <option value="">— pick the uploaded file —</option>
-                        {countersignedFiles.map((file) => (
-                          <option key={file.id} value={file.id}>
-                            {file.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button className={button}>It is countersigned</button>
-                    <p className="text-[12px] text-ink-faint">
-                      Their copy goes back to them, and the requirement meeting is next.
-                    </p>
-                  </form>
-                )}
-              </>
+      {/* =====================================================================
+          VIEW 2: REQUIREMENT MEETING (Figma Frame 1:2050 — CL · Requirement meeting)
+         ===================================================================== */}
+      {activeView === "requirement" && (
+        <>
+          <NextStepCard
+            eyebrow="DECISION"
+            title="Can we fill this role as asked?"
+            clock={{ label: "Decide today", tone: "warn", icon: "clock" }}
+            body="Check the package and skills against the market before we commit the team. If yes, pick the Primary TA and the 100% target date — the opening is created in the TA System from what you captured below."
+          >
+            {mayManage ? (
+              <RequirementDecisionClient
+                leadId={lead.id}
+                taPeople={taPeopleList}
+                defaultDate={defaultTargetDate}
+                rebookHref="#book-requirement-meeting"
+              />
+            ) : (
+              <p className="text-[14px] text-ink-faint">{refusal("client.manage")}</p>
             )}
-          </section>
+          </NextStepCard>
 
-          <section id="requirement" className={card + (step.at === "requirement" ? " border-brand" : "")}>
-            <h2 className="text-[14.5px] font-medium">The requirement, and handing it over</h2>
-
-            {!agreementDone && (
-              <p className="mt-1 text-[13px] text-ink-soft">
-                Nothing starts here until the agreement is signed. That is the owner&apos;s rule, and it is also what
-                stops us working for nothing.
+          {/* Two-column WHAT WE HEARD + WHAT HAPPENS NEXT (Figma 1:2112) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Left card: WHAT WE HEARD (Figma 1:2113) */}
+            <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>WHAT WE HEARD</span>
+              <p className="text-[14px] leading-[21px] text-ink">
+                {requirement && Object.values(requirement.fields).some(Boolean)
+                  ? briefText(requirement.fields)
+                  : lead.notes ||
+                    "Capture the role title, package, experience, must-have skills, and notice period below before opening the position."}
               </p>
-            )}
+              <p className="inline-flex items-center gap-1.5 text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                <Icon name="sparkle" size={14} className="text-brand" />
+                <span>Dictated after the call · AURA tidied it</span>
+              </p>
 
-            {agreementDone && (
-              <>
-                {!requirementMeeting && (
-                  <>
-                    <p className="mt-1 text-[13px] text-ink-soft">
-                      The requirement meeting is next, with a TA lead on it. No work starts on a position until it has
-                      actually happened.
-                    </p>
-                    {mayManage && (
-                      <form action={bookRequirementMeeting} className="mt-3 flex flex-wrap items-end gap-3">
-                        <input type="hidden" name="leadId" value={lead.id} />
-                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                          When (Colombo time)
-                          <input type="datetime-local" name="at" required className={field_cls} />
+              {requirementBlanks.length > 0 && (
+                <p className="text-[12.5px] text-warning">
+                  Still blank:{" "}
+                  {requirementBlanks.map((f) => f.label.toLowerCase()).join(", ")}.
+                </p>
+              )}
+
+              {mayManage && (
+                <details
+                  open={!requirement || requirementBlanks.length > 0}
+                  className="border-t border-rule pt-3"
+                >
+                  <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                    Edit requirement fields or dictate brief
+                  </summary>
+
+                  {!aiOn && (
+                    <div className="mt-2">
+                      <AiOffer
+                        label="Say the brief instead of typing it"
+                        why={whyAiOff ?? ""}
+                      />
+                    </div>
+                  )}
+
+                  {aiOn && (
+                    <form
+                      action={dictateRequirement}
+                      className="mt-3 flex flex-col gap-2 rounded-[16px] bg-surface p-3"
+                    >
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>Say the brief instead of typing it</span>
+                        <textarea
+                          name="said"
+                          rows={2}
+                          className="rounded-[10px] bg-sunk px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Dictate into="said" label="Hold a moment and speak" />
+                        <button type="submit" className={pillSecondary}>
+                          Put it into the fields
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  <form action={saveRequirement} className="mt-3 flex flex-col gap-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {REQUIREMENT_FIELDS.map((f) => (
+                        <label
+                          key={f.key}
+                          className={
+                            "flex flex-col gap-1 " +
+                            (f.key === "jdNotes" || f.key === "insights"
+                              ? "sm:col-span-2"
+                              : "")
+                          }
+                        >
+                          <span className={figmaLabel}>
+                            {f.label}
+                            {f.required ? "" : " (optional)"}
+                          </span>
+                          {f.key === "jdNotes" || f.key === "insights" ? (
+                            <textarea
+                              name={"field." + f.key}
+                              rows={2}
+                              defaultValue={
+                                requirement?.fields[f.key] ??
+                                dictated?.[f.key as keyof typeof dictated] ??
+                                ""
+                              }
+                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                            />
+                          ) : (
+                            <input
+                              name={"field." + f.key}
+                              defaultValue={
+                                requirement?.fields[f.key] ??
+                                dictated?.[f.key as keyof typeof dictated] ??
+                                ""
+                              }
+                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                            />
+                          )}
                         </label>
-                        <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                          Which TA lead is joining
-                          <select name="taLeadId" className={field_cls}>
+                      ))}
+                    </div>
+                    <button type="submit" className={pillSecondary + " self-start"}>
+                      Save the requirement
+                    </button>
+                  </form>
+                </details>
+              )}
+            </div>
+
+            {/* Right card: WHAT HAPPENS NEXT (Figma 1:2122) */}
+            <div
+              id="book-requirement-meeting"
+              className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5"
+            >
+              <span className={figmaLabel}>WHAT HAPPENS NEXT</span>
+              <p className="text-[14px] leading-[21px] text-ink-soft">
+                Opening is created in the TA System with this brief.
+                <br />
+                Primary TA gets the role; the 2-day clock to the first CV set starts.
+                <br />
+                Talent Pulse report is due within 10 working days if the role needs market intelligence.
+              </p>
+
+              {position && (
+                <div className="pt-1">
+                  <Link
+                    href={`/positions/${position.id}`}
+                    className="inline-flex items-center gap-1.5 text-[14px] font-medium text-brand hover:underline"
+                  >
+                    <span>Open position: {position.title}</span>
+                    <Icon name="arrow-right" size={14} />
+                  </Link>
+                </div>
+              )}
+
+              {mayManage && (
+                <details open={!requirementMeeting} className="border-t border-rule pt-3">
+                  <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                    {requirementMeeting
+                      ? "Rebook requirement meeting"
+                      : "Book the requirement meeting"}
+                  </summary>
+                  <form
+                    action={bookRequirementMeeting}
+                    className="mt-3 flex flex-col gap-3"
+                  >
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>When (Colombo time)</span>
+                        <input
+                          type="datetime-local"
+                          name="at"
+                          required
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>Which TA lead is joining</span>
+                        {taPeopleList.length > 0 ? (
+                          <select
+                            name="taLeadId"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          >
                             {taPeopleList.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.fullName}
                               </option>
                             ))}
                           </select>
-                        </label>
-                        <button className={button}>Book the requirement meeting</button>
-                      </form>
-                    )}
-                  </>
-                )}
-
-                {requirementMeeting && (
-                  <p className="mt-1 text-[13px] text-ink-soft">
-                    The requirement meeting is {MEETING_STATES[requirementMeeting.state as MeetingState] ?? requirementMeeting.state}
-                    {" · "}
-                    {whenLocal(requirementMeeting.at)}
-                    {requirementMeeting.brief ? " · the brief is written down" : ""}
-                  </p>
-                )}
-
-                {mayManage && !aiOn && (
-                  <AiOffer label="Say the brief instead of typing it" why={whyAiOff ?? ""} />
-                )}
-
-                {mayManage && aiOn && (
-                  <form action={dictateRequirement} className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                      Say the brief instead of typing it
-                      <textarea name="said" rows={3} className={field_wide} />
-                    </label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Dictate into="said" label="Hold a moment and speak" />
-                      <button className={plain}>Put it into the fields</button>
-                    </div>
-                    <p className="text-[12px] text-ink-faint">
-                      The listening is your browser&rsquo;s own, so it costs nothing and nothing leaves this machine
-                      until you press the button. The fields are filled in for you to correct; nothing saves itself,
-                      and what was not said is left empty and named.
-                    </p>
-                  </form>
-                )}
-
-                {mayManage && (
-                  <form action={saveRequirement} className="mt-3 flex flex-col gap-3">
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {REQUIREMENT_FIELDS.map((f) => (
-                        <label key={f.key} className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                          {f.label}
-                          {f.required ? "" : " (optional)"}
-                          {f.key === "jdNotes" || f.key === "insights" ? (
-                            <textarea
-                              name={"field." + f.key}
-                              rows={3}
-                              defaultValue={requirement?.fields[f.key] ?? dictated?.[f.key as keyof typeof dictated] ?? ""}
-                              className={field_wide}
-                            />
-                          ) : (
-                            <input
-                              name={"field." + f.key}
-                              defaultValue={requirement?.fields[f.key] ?? dictated?.[f.key as keyof typeof dictated] ?? ""}
-                              className={field_cls}
-                            />
-                          )}
-                          <span className="text-[11.5px] text-ink-faint">{f.why}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <button className={button}>Save the requirement</button>
-                    <p className="text-[12px] text-ink-faint">
-                      The opening in the TA System is built from these fields and nothing else. &ldquo;The requirement
-                      was in the TA lead&apos;s head&rdquo; is the fault this exists for.
-                    </p>
-                  </form>
-                )}
-
-                {requirementBlanks.length > 0 && (
-                  <p className="mt-2 text-[12.5px] text-ink-faint">
-                    Still blank: {requirementBlanks.map((f) => f.label.toLowerCase()).join(", ")}. It cannot go to the
-                    TA System until these are in.
-                  </p>
-                )}
-
-                {requirement && !requirement.practical && (
-                  <p className="mt-2 text-[13px]">
-                    Not practical at that package: {requirement.reason}
-                    {requirement.inviteBackAt ? " · inviting them back on " + whenLocal(requirement.inviteBackAt) : ""}
-                  </p>
-                )}
-
-                {requirement && requirement.openedAt === null && requirement.practical && mayManage && (
-                  <>
-                    <form action={handOverToTa} className="mt-4 flex flex-wrap items-end gap-3 border-t border-rule pt-3">
-                      <input type="hidden" name="leadId" value={lead.id} />
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        Primary TA (the TA lead decides)
-                        <select name="primaryTaId" className={field_cls} defaultValue="">
-                          <option value="">— not yet —</option>
-                          {taPeopleList.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.fullName}
-                            </option>
-                          ))}
-                        </select>
+                        ) : (
+                          <input
+                            name="taLeadId"
+                            placeholder="TA lead name"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                        )}
                       </label>
-                      <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                        The 100% day
-                        <input type="date" name="hundredPercentDay" className={field_cls} />
-                      </label>
-                      <button className={button}>Hand it to the TA System</button>
-                    </form>
-                    <p className="mt-2 text-[12px] text-ink-faint">
-                      The opening is queued for the TA System, not created here: TA owns openings, and its own event
-                      tells us the opening id. The brief goes exactly as written above.
-                    </p>
-                  </>
-                )}
-
-                {requirement?.openedAt && (
-                  <p className="mt-3 text-[13px]">
-                    Handed over on {whenLocal(requirement.openedAt)}
-                    {position && (
-                      <>
-                        {" · "}
-                        <Link href={"/positions/" + position.id} className="text-brand hover:underline">
-                          the position
-                        </Link>
-                      </>
-                    )}
-                  </p>
-                )}
-
-                {requirement && requirement.practical && requirement.openedAt === null && mayManage && (
-                  <form action={markRoleImpractical} className="mt-4 flex flex-col gap-2 border-t border-rule pt-3">
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                      Or: the role cannot be filled at that package — why?
-                      <textarea name="reason" rows={2} className={field_wide} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                      Ask them again on
-                      <input type="date" name="inviteBackAt" className={field_cls} />
-                    </label>
-                    <button className={button}>Not practical at that package</button>
-                    <p className="text-[12px] text-ink-faint">
-                      A polite reply is drafted, the lead closes with its reason, and we are reminded to go back to
-                      them. A no today is not a no for ever.
-                    </p>
+                    </div>
+                    <button type="submit" className={pillSecondary + " self-start"}>
+                      Book the requirement meeting
+                    </button>
                   </form>
-                )}
-              </>
-            )}
-          </section>
-          <section className={card}>
-            <h2 className="text-[14.5px] font-medium">Close this lead</h2>
-            {mayManage ? (
-              <form action={closeLead} className="mt-3 flex flex-col gap-3">
-                <input type="hidden" name="leadId" value={lead.id} />
-                <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                  Why it is closing
-                  <select name="state" className={field_cls} defaultValue="closed_other">
-                    <option value="closed_silent">They stopped answering</option>
-                    <option value="closed_other">Something else</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                  In your own words
-                  <input name="reason" className={field_cls} />
-                </label>
-                <button className={button}>Close it</button>
-                <p className="text-[12px] text-ink-faint">Nothing closes without a reason written down.</p>
-              </form>
-            ) : (
-              <p className="mt-2 text-[13px] text-ink-faint">{refusal("client.manage")}</p>
-            )}
-          </section>
+                </details>
+              )}
+            </div>
+          </div>
         </>
       )}
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What happened to it</h2>
-        {db.audit
-          .filter((entry) => entry.subjectType === "lead" && entry.subjectId === lead.id)
-          .sort((a, b) => b.at - a.at)
-          .map((entry) => (
-            <div key={entry.id} className="border-t border-rule py-2 text-[13px] first:border-t-0">
-              <span>{entry.action}</span>{" "}
-              <span className="text-ink-soft">
-                {nameOf(entry.actorId)} · {when(entry.at)}
-                {entry.reason ? " · " + entry.reason : ""}
-              </span>
+      {/* =====================================================================
+          VIEW 3: INDUSTRY DECLINE (Figma Frame 1:3443 — CL · Lead — Sapphire Finance)
+         ===================================================================== */}
+      {activeView === "decline" && (
+        <>
+          <NextStepCard
+            title="This looks like a company we don’t take on"
+            clock={{ label: "Today", tone: "danger", icon: "alert" }}
+            body={`${lead.company} is in banking and financial services${lead.industryBecause ? ` (${lead.industryBecause})` : ""}. Under our rules, we decline finance-industry leads — even when the role itself is not in finance. Confirm to send a polite decline and close the lead.`}
+            byItself="Checked against the TA System: not an existing client. Flagged by the industry check when the form arrived."
+          >
+            {mayManage && (
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <form action={decideLeadIndustry}>
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <input type="hidden" name="decision" value="confirm" />
+                  <button type="submit" className={pillDanger}>
+                    Decline and send reply
+                  </button>
+                </form>
+                <form action={decideLeadIndustry}>
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <input type="hidden" name="decision" value="clear" />
+                  <button type="submit" className={pillSecondary}>
+                    It’s not finance — keep going
+                  </button>
+                </form>
+              </div>
+            )}
+          </NextStepCard>
+
+          <FoldRow
+            title="Other ways a lead ends"
+            summary="Unreachable · DeclinedESA · Role not practical · Other (needs a reason)"
+          >
+            <div className="flex flex-col gap-4">
+              {mayManage ? (
+                <form action={closeLead} className="flex flex-col gap-3">
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1">
+                      <span className={figmaLabel}>Why it is closing</span>
+                      <select name="state" defaultValue="closed_other" className={figmaField}>
+                        <option value="closed_silent">They stopped answering</option>
+                        <option value="closed_other">Something else</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={figmaLabel}>Reason</span>
+                      <input
+                        name="reason"
+                        required
+                        placeholder="Nothing closes without a reason written down"
+                        className={figmaField}
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" className={pillSecondary + " self-start"}>
+                    Close lead
+                  </button>
+                </form>
+              ) : (
+                <p className="text-[14px] text-ink-faint">{refusal("client.manage")}</p>
+              )}
             </div>
-          ))}
-      </section>
-    </div>
+          </FoldRow>
+        </>
+      )}
+
+      {/* =====================================================================
+          VIEW 4: DEFAULT LEAD VIEW (Figma Frame 1:484 — CL · Lead — Lankaweave Textiles)
+         ===================================================================== */}
+      {activeView === "lead" && (
+        <>
+          {/* Hero Next Step Card (Figma 1:510) */}
+          <NextStepCard
+            title={
+              esa && (esa.state === "sent" || esa.state === "chasing")
+                ? `Follow up on the agreement — ${nextChase ? nextChase.what.toLowerCase() : "chase due"}`
+                : step.where
+            }
+            clock={
+              step.clock
+                ? {
+                    label: step.clock,
+                    tone: step.clock.includes("ago") ? "danger" : "warn",
+                    icon: "clock",
+                  }
+                : esa?.sentAt
+                  ? {
+                      label: `Day ${Math.max(1, Math.round((now - esa.sentAt) / 86_400_000))} of 14`,
+                      tone: "warn",
+                      icon: "clock",
+                    }
+                  : { label: "In progress", tone: "neutral", icon: "clock" }
+            }
+            body={step.waiting}
+            byItself={
+              esa && (esa.state === "sent" || esa.state === "chasing")
+                ? `Sent the agreement ${whenDate(esa.sentAt ?? lead.createdAt)}. Stopped automatically if they reply. Closes after 14 days if unsigned.`
+                : "Every step is recorded on this lead and synced with the TA System."
+            }
+          >
+            {!closed && mayManage && (
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {esa && (esa.state === "sent" || esa.state === "chasing") ? (
+                  <>
+                    <form action={draftNextChase}>
+                      <input type="hidden" name="esaId" value={esa.id} />
+                      <button type="submit" className={pillPrimary}>
+                        Approve &amp; send
+                      </button>
+                    </form>
+                    <Link
+                      href={`/leads/${lead.id}?view=agreement`}
+                      className={pillSecondary}
+                    >
+                      Edit draft
+                    </Link>
+                    <Link
+                      href={`/leads/${lead.id}?view=agreement#versions-card`}
+                      className="px-3 py-2 text-[14px] font-medium text-brand hover:underline"
+                    >
+                      They replied — pause chase
+                    </Link>
+                  </>
+                ) : esa && esa.state === "signed" ? (
+                  <>
+                    <Link
+                      href={`/leads/${lead.id}?view=agreement`}
+                      className={pillPrimary}
+                    >
+                      Upload countersigned PDF
+                    </Link>
+                    <Link
+                      href={`/leads/${lead.id}?view=requirement`}
+                      className={pillSecondary}
+                    >
+                      Requirement meeting
+                    </Link>
+                  </>
+                ) : step.at === "duplicate" ? (
+                  <form action={checkLeadDuplicate}>
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <button type="submit" className={pillPrimary}>
+                      Check the TA System
+                    </button>
+                  </form>
+                ) : step.at === "agreement" && !esa ? (
+                  <>
+                    <form action={startAgreement}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <button type="submit" className={pillPrimary}>
+                        Start the agreement
+                      </button>
+                    </form>
+                    <Link
+                      href={`/leads/${lead.id}?view=agreement`}
+                      className={pillSecondary}
+                    >
+                      Open agreement view
+                    </Link>
+                  </>
+                ) : step.at === "agreement" && esa ? (
+                  <Link
+                    href={`/leads/${lead.id}?view=agreement`}
+                    className={pillPrimary}
+                  >
+                    Open agreement
+                  </Link>
+                ) : step.at === "requirement" ? (
+                  <Link
+                    href={`/leads/${lead.id}?view=requirement`}
+                    className={pillPrimary}
+                  >
+                    Open requirement meeting
+                  </Link>
+                ) : null}
+              </div>
+            )}
+          </NextStepCard>
+
+          {/* 4 Collapsible Fold Rows (Figma 1:531) */}
+          <div className="flex flex-col gap-2.5">
+            {/* Fold 1: Enquiry */}
+            <FoldRow
+              title="Enquiry"
+              summary={`${sourceText} · ${whenDate(lead.createdAt)} · ${lead.clientTaId ? "In TA System (" + lead.clientTaId + ")" : "Not in TA System"} · ${lead.industryFlagged && !lead.industryConfirmedBy ? "Flagged for industry" : "Industry OK"}`}
+              defaultOpen={step.at === "duplicate"}
+            >
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 gap-3 text-[14px] sm:grid-cols-2">
+                  <div>
+                    <span className={figmaLabel}>Contact</span>
+                    <p className="mt-1 text-ink">
+                      {lead.contactName || "No name given"} ·{" "}
+                      {lead.contactEmail || "no email"} ·{" "}
+                      {lead.contactPhone || "no phone"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className={figmaLabel}>Industry &amp; website</span>
+                    <p className="mt-1 text-ink">
+                      {lead.industry || "Not specified"}
+                      {lead.website ? ` · ${lead.website}` : ""}
+                    </p>
+                  </div>
+                  {lead.notes && (
+                    <div className="sm:col-span-2">
+                      <span className={figmaLabel}>What they asked for</span>
+                      <p className="mt-1 whitespace-pre-wrap text-ink">{lead.notes}</p>
+                    </div>
+                  )}
+                </div>
+
+                {mayManage && (
+                  <div className="flex flex-wrap items-center gap-3 border-t border-rule pt-3">
+                    <form action={checkLeadDuplicate}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <button type="submit" className={pillSecondary}>
+                        Check the TA System
+                      </button>
+                    </form>
+                    {fakeTa() && (
+                      <span className="text-[12.5px] text-ink-faint">
+                        Stand-in TA System active in local mode.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </FoldRow>
+
+            {/* Fold 2: Intro call */}
+            <FoldRow
+              title="Intro call"
+              summary={
+                introMeetings.length > 0
+                  ? introMeetings
+                      .map(
+                        (m) =>
+                          `${MEETING_STATES[m.state as MeetingState] ?? m.state} ${whenDate(m.at)}${m.brief ? ` — “${m.brief.slice(0, 64)}”` : ""}`,
+                      )
+                      .join(" · ")
+                  : "Not booked yet · TA lead joins every intro call"
+              }
+              defaultOpen={step.at === "intro"}
+            >
+              <div className="flex flex-col gap-4">
+                {meetings.map((meeting) => (
+                  <div
+                    key={meeting.id}
+                    className="flex flex-col gap-2 border-b border-rule pb-3 last:border-b-0"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-[14px]">
+                      <span className="font-medium text-ink">
+                        {KIND_MEANINGS[meeting.kind as MeetingKind] ?? meeting.kind}
+                      </span>
+                      <span className="text-ink-soft">{whenLocal(meeting.at)}</span>
+                      <StatusChip
+                        label={
+                          (MEETING_STATES[meeting.state as MeetingState] ??
+                            meeting.state) +
+                          (meeting.rebookCount > 0
+                            ? ` · attempt ${meeting.rebookCount} of ${MAX_REBOOKS}`
+                            : "")
+                        }
+                        tone={meeting.state === "held" ? "ok" : "neutral"}
+                      />
+                    </div>
+                    {meeting.brief && (
+                      <p className="text-[14px] text-ink-soft">
+                        What they said: <span className="text-ink">{meeting.brief}</span>
+                      </p>
+                    )}
+                    {(meeting.role || meeting.packageSaid) && (
+                      <p className="text-[13px] text-ink-soft">
+                        {meeting.role || "Position not specified"} ·{" "}
+                        {meeting.packageSaid || "Package not specified"}
+                      </p>
+                    )}
+
+                    {mayManage && meeting.state === "booked" && (
+                      <div className="mt-2 grid grid-cols-1 gap-4 border-t border-rule pt-3 lg:grid-cols-2">
+                        <form action={markMeetingHeld} className="flex flex-col gap-2.5">
+                          <input type="hidden" name="meetingId" value={meeting.id} />
+                          <span className={figmaLabel}>
+                            It happened — what did they say?
+                          </span>
+                          <textarea
+                            name="brief"
+                            rows={2}
+                            required
+                            placeholder="Brief from the call (required)"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              name="role"
+                              placeholder="The position"
+                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                            />
+                            <input
+                              name="packageSaid"
+                              placeholder="Package mentioned"
+                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                            />
+                          </div>
+                          <button type="submit" className={pillPrimary + " self-start"}>
+                            It was held
+                          </button>
+                        </form>
+
+                        <form
+                          action={markMeetingNotHeld}
+                          className="flex flex-col gap-2.5"
+                        >
+                          <input type="hidden" name="meetingId" value={meeting.id} />
+                          <span className={figmaLabel}>It did not happen — why?</span>
+                          <input
+                            name="reason"
+                            required
+                            placeholder="Reason it was not held"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                          <label className="flex items-center gap-2 text-[13px] text-ink">
+                            <input type="checkbox" name="clientReplied" />
+                            <span>The client is still answering us</span>
+                          </label>
+                          <button type="submit" className={pillSecondary + " self-start"}>
+                            It was not held
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {mayManage && !nextBooked && (
+                  <form action={bookIntroCall} className="flex flex-col gap-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>When (Colombo time)</span>
+                        <input
+                          type="datetime-local"
+                          name="at"
+                          required
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>Which TA lead is joining</span>
+                        {taPeopleList.length > 0 ? (
+                          <select
+                            name="taLeadId"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          >
+                            {taPeopleList.map((person) => (
+                              <option key={person.id} value={person.id}>
+                                {person.fullName}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            name="taLeadId"
+                            placeholder="TA lead name"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                        )}
+                      </label>
+                    </div>
+                    <button type="submit" className={pillPrimary + " self-start"}>
+                      {meetings.length ? "Book it again" : "Book the intro call"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </FoldRow>
+
+            {/* Fold 3: Agreement */}
+            <FoldRow
+              title="Agreement"
+              summary={
+                esa
+                  ? `ESA v${esa.version} · ${whereItStands({ ...esa, state: esa.state as EsaState }, now)}`
+                  : "Not started yet · due within 2 hours of the intro call"
+              }
+              defaultOpen={step.at === "agreement"}
+            >
+              <div className="flex flex-col gap-3">
+                <p className="text-[14px] text-ink-soft">
+                  {esa
+                    ? `${ESA_STATES[esa.state as EsaState] ?? esa.state} · version ${esa.version}.`
+                    : "Start the Employment Services Agreement to fill the client’s terms and send the PDF."}
+                </p>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Link
+                    href={`/leads/${lead.id}?view=agreement`}
+                    className={pillPrimary}
+                  >
+                    Open full agreement view
+                  </Link>
+                  {!esa && mayManage && (
+                    <form action={startAgreement}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <button type="submit" className={pillSecondary}>
+                        Start the agreement
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </FoldRow>
+
+            {/* Fold 4: Requirement meeting */}
+            <FoldRow
+              title="Requirement meeting"
+              summary={
+                position
+                  ? `Handed over to TA · ${position.title}`
+                  : requirement
+                    ? "Brief captured · ready to open position"
+                    : "Unlocks once the agreement is signed and countersigned"
+              }
+              defaultOpen={step.at === "requirement"}
+            >
+              <div className="flex flex-col gap-3">
+                <p className="text-[14px] text-ink-soft">
+                  {agreementDone
+                    ? "The agreement is signed. Capture the requirement brief and hand over the position to TA."
+                    : "Nothing starts here until the agreement is signed — that is the rule that stops us working without terms."}
+                </p>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Link
+                    href={`/leads/${lead.id}?view=requirement`}
+                    className={agreementDone ? pillPrimary : pillSecondary}
+                  >
+                    Open requirement meeting view
+                  </Link>
+                  {position && (
+                    <Link
+                      href={`/positions/${position.id}`}
+                      className={pillSecondary}
+                    >
+                      View opening
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </FoldRow>
+
+            {/* Fold 5: Close lead & audit */}
+            <FoldRow
+              title="Close this lead or view history"
+              summary={
+                closed
+                  ? `Closed · ${STATE_MEANINGS[lead.state as LeadState] ?? lead.state}`
+                  : "Close with a reason · audit log"
+              }
+            >
+              <div className="flex flex-col gap-4">
+                {!closed && mayManage && (
+                  <form action={closeLead} className="flex flex-col gap-3">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>Why it is closing</span>
+                        <select
+                          name="state"
+                          defaultValue="closed_other"
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        >
+                          <option value="closed_silent">They stopped answering</option>
+                          <option value="closed_other">Something else</option>
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={figmaLabel}>In your own words</span>
+                        <input
+                          name="reason"
+                          required
+                          placeholder="Nothing closes without a reason"
+                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                        />
+                      </label>
+                    </div>
+                    <button type="submit" className={pillSecondary + " self-start"}>
+                      Close it
+                    </button>
+                  </form>
+                )}
+
+                <div className="flex flex-col gap-1.5 border-t border-rule pt-3">
+                  <span className={figmaLabel}>What happened to it</span>
+                  {db.audit
+                    .filter(
+                      (entry) =>
+                        entry.subjectType === "lead" && entry.subjectId === lead.id,
+                    )
+                    .sort((a, b) => b.at - a.at)
+                    .map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex flex-wrap items-baseline justify-between gap-2 border-t border-rule py-1.5 text-[13px] first:border-t-0"
+                      >
+                        <span className="font-medium text-ink">{entry.action}</span>
+                        <span className="text-ink-soft">
+                          {nameOf(entry.actorId)} · {whenLocal(entry.at)}
+                          {entry.reason ? ` · ${entry.reason}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </FoldRow>
+          </div>
+        </>
+      )}
+    </PageBox>
   );
 }

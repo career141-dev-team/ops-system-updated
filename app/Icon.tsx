@@ -21,10 +21,12 @@ export type IconName =
   | "inbox"
   | "clients"
   | "positions"
+  | "briefcase"
   | "money"
   | "reports"
   | "settings"
   | "search"
+  | "find"
   | "bell"
   | "plus"
   | "menu"
@@ -37,6 +39,19 @@ export type IconName =
   | "send"
   | "chevron-left"
   | "chevron-right"
+  | "chevron-down"
+  | "arrow-right"
+  | "check"
+  | "clock"
+  | "refresh"
+  | "alert"
+  | "more"
+  | "pen"
+  | "sparkle"
+  | "lock"
+  | "shield"
+  | "wallet"
+  | "flag"
   | "link";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
@@ -46,6 +61,79 @@ const PATHS: Record<IconName, React.ReactNode> = {
   // To approve's previous / next draft (13 Nov, the Figma icon/chevron-left and -right).
   "chevron-left": <path d="M15 5l-7 7 7 7" />,
   "chevron-right": <path d="M9 5l7 7-7 7" />,
+  "chevron-down": <path d="M6 9l6 6 6-6" />,
+  "arrow-right": <path d="M5 12h14M13 6l6 6-6 6" />,
+  check: <path d="M5 12.5l4.5 4.5 9.5-9.5" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 11a8 8 0 0 0-14.5-4.5L4 8" />
+      <path d="M4 4v4h4" />
+      <path d="M4 13a8 8 0 0 0 14.5 4.5L20 16" />
+      <path d="M20 20v-4h-4" />
+    </>
+  ),
+  alert: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4.5M12 16h.01" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="6" cy="12" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="18" cy="12" r="1.2" />
+    </>
+  ),
+  pen: (
+    <>
+      <path d="M15.5 5.5l3 3L8 19H5v-3z" />
+      <path d="M13.5 7.5l3 3" />
+    </>
+  ),
+  sparkle: (
+    <>
+      <path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2.5" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3l8 3.5v5.5c0 5-3.4 8.2-8 9.5-4.6-1.3-8-4.5-8-9.5V6.5z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  wallet: (
+    <>
+      <rect x="3" y="6" width="18" height="13" rx="2.5" />
+      <path d="M16 12.5h5" />
+      <circle cx="16.5" cy="12.5" r="1" />
+    </>
+  ),
+  flag: (
+    <>
+      <path d="M5 21V4" />
+      <path d="M5 4h13l-2.5 4.5L18 13H5" />
+    </>
+  ),
+  briefcase: (
+    <>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
+      <path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" />
+      <path d="M3 13h18" />
+    </>
+  ),
   // Messages: what a conversation is filed to (Figma icon/link).
   link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   // The menu: three lines, the one picture everybody already reads.
@@ -159,6 +247,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   // Find anything.
   search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </>
+  ),
+  find: (
     <>
       <circle cx="11" cy="11" r="6.5" />
       <path d="M16 16l4.5 4.5" />

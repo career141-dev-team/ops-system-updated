@@ -1,22 +1,9 @@
-import AreaHead from "@/app/AreaHead";
-import { CLIENT_TABS } from "@/lib/tabs";
-
 /**
- * The clients area: one tab bar, and never a second (25, section 2).
+ * The clients workspace (Figma CL · Clients).
  *
- * The bar lives here rather than on each page, so the pages underneath cannot
- * drift apart and a person moving between them never loses where they are. On
- * a record it steps out of the way: that page has its own bar.
+ * Each screen renders inside its own PageBox sheet so the outer viewport
+ * stays fixed and the rounded white sheet scrolls internally.
  */
 export default function AreaLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <AreaHead
-        title="Clients"
-        about="A client is a company with a signed agreement behind them. An enquiry is one that is not there yet."
-        tabs={CLIENT_TABS}
-      />
-      <div className="flex flex-col gap-4">{children}</div>
-    </div>
-  );
+  return <>{children}</>;
 }

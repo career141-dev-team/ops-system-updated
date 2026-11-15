@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PageBox } from "@/app/ui/figma";
 import {
   agreementForLead,
   clientIn,
@@ -178,10 +179,11 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
   const done = rowsInStage(rows, "closed");
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageBox width="full" className="gap-6">
       <div>
-        <h1 className="text-[17px] font-medium">The work</h1>
-        <p className="mt-0.5 max-w-[80ch] text-[13px] text-ink-soft">
+        <p className="text-[12px] font-medium uppercase tracking-[0.84px] text-ink-faint">EVERY STAGE</p>
+        <h1 className="mt-1 text-[32px] font-light leading-[40px] text-ink">The work</h1>
+        <p className="mt-1 max-w-[80ch] text-[14px] text-ink-soft">
           Every enquiry and every position, in the stage it is really in. {rows.length}{" "}
           {rows.length === 1 ? "thing" : "things"} in all, {mine} of them yours. A stage is where the work has got
           to, not something you drag: it moves when the thing itself moves.
@@ -282,6 +284,6 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
           </div>
         </section>
       )}
-    </div>
+    </PageBox>
   );
 }

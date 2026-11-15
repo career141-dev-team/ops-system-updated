@@ -1009,7 +1009,9 @@ export async function queueTestWrite(): Promise<void> {
 export async function createLead(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const back = (msg: string) => redirect("/leads?msg=" + encodeURIComponent(msg));
+  const backPath = String(formData.get("back") ?? "").trim();
+  const here = backPath.startsWith("/") ? backPath : "/leads";
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const input = {
@@ -1047,6 +1049,7 @@ export async function createLead(formData: FormData): Promise<void> {
   });
 
   revalidatePath("/leads");
+  revalidatePath("/clients");
   redirect("/leads/" + lead.id + "?msg=" + encodeURIComponent("Saved. Now check the two things below."));
 }
 
@@ -1983,8 +1986,9 @@ export async function moveClientOwner(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const clientId = String(formData.get("clientId") ?? "");
-  const here = "/clients/" + clientId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const backUrl = String(formData.get("back") ?? "").trim();
+  const here = backUrl.startsWith("/") ? backUrl : "/clients/" + clientId;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "task.reassign")) back("Only the ops lead moves a client to another owner.");
   const db = await desk();
   const client = clientIn(db, clientId);
@@ -2007,7 +2011,7 @@ export async function moveClientOwner(formData: FormData): Promise<void> {
     dueAt: Date.now(),
     subjectType: "client",
     subjectId: clientId,
-    link: here,
+    link: "/clients/" + clientId,
   });
   if (row.taClientId) {
     await queueTaWrite(
@@ -2018,7 +2022,49 @@ export async function moveClientOwner(formData: FormData): Promise<void> {
   }
   revalidatePath(here);
   revalidatePath("/clients");
+  revalidatePath("/clients/owners");
   back("Moved to " + (to?.name ?? "them") + ", and the TA System will be told.");
+}
+
+/** Assigns a lead (and any agreement behind it) to an Ops owner from Who owns what. */
+export async function assignLeadOwner(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const backUrl = String(formData.get("back") ?? "").trim();
+  const here = backUrl.startsWith("/") ? backUrl : "/clients/owners";
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "task.reassign")) back("Only the ops lead assigns a lead to another owner.");
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+
+  const toId = String(formData.get("ownerId") ?? "");
+  const to = db.members.find((m) => m.id === toId && m.active);
+  if (!to) back("Pick somebody who is here.");
+  const target = to as NonNullable<typeof to>;
+
+  await patchLead(leadId, { ownerId: toId }, member.id, "lead.ownerAssigned", "Assigned to " + target.name);
+  const esa = agreementForLead(db, leadId);
+  if (esa) {
+    await patchAgreement(esa.id, { ownerId: toId }, member.id, "esa.ownerAssigned", "Assigned to " + target.name);
+  }
+  await createTask({
+    kind: "check",
+    title: "New lead assigned: " + row.company,
+    body: "Assigned to you by " + member.name + ". Check if they are already our client and book the intro call.",
+    assigneeId: toId,
+    dueAt: Date.now(),
+    subjectType: "lead",
+    subjectId: leadId,
+    link: "/leads/" + leadId,
+  });
+  revalidatePath("/leads/" + leadId);
+  revalidatePath("/leads");
+  revalidatePath("/clients");
+  revalidatePath("/clients/owners");
+  back("Assigned " + row.company + " to " + target.name + ".");
 }
 
 /* ── The CVs that go to the client (15, Phase 4 steps 3 and 4) ── */
@@ -2864,8 +2910,8 @@ export async function setPositionTeam(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = "/positions/" + positionId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/positions/" + positionId);
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -2892,12 +2938,94 @@ export async function setPositionTeam(formData: FormData): Promise<void> {
       { type: "position", id: positionId },
     );
   }
-  revalidatePath(here);
+  revalidatePath("/positions/" + positionId);
   back(
     row.openingTaId
       ? "Recorded, and the TA System will be told."
       : "Recorded. It goes to the TA System with the opening once TA confirms it.",
   );
+}
+
+/** Update or create the requirement fields directly from the position's Requirement & JD sub-view. */
+export async function savePositionRequirement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/positions/" + positionId + "?view=jd");
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  const existing = row.requirementId ? db.requirements.find((r) => r.id === row.requirementId) ?? null : null;
+
+  const fields: Record<string, string> = { ...(existing?.fields ?? {}) };
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value).trim();
+  }
+  if (!fields.title) fields.title = row.title;
+
+  if (existing) {
+    await patchRequirement(existing.id, { fields }, member.id, "requirement.saved", null);
+  } else {
+    const client = row.clientId ? clientIn(db, row.clientId) : null;
+    const created = await addRequirement({
+      leadId: client?.leadId ?? "",
+      clientId: row.clientId,
+      clientTaId: row.clientTaId,
+      meetingId: null,
+      version: 1,
+      fields,
+      practical: true,
+      reason: null,
+      inviteBackAt: null,
+      openedAt: row.handedOverAt ?? Date.now(),
+      ownerId: row.ownerId,
+    });
+    await patchPosition(positionId, { requirementId: created.id }, member.id, "position.requirementLinked", null);
+  }
+
+  revalidatePath("/positions/" + positionId);
+  back("Requirement details saved.");
+}
+
+/** Approve the JD on a position and record jdApprovedAt so advertising opens. */
+export async function approvePositionJd(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/positions/" + positionId + "?view=jd");
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const now = Date.now();
+  await patchPosition(
+    positionId,
+    {
+      jdApprovedAt: now,
+      stage: row.stage === "handed_over" ? "searching" : row.stage,
+    },
+    member.id,
+    "position.jdApproved",
+    null,
+  );
+  if (row.openingTaId) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/jd-approved",
+      { jdApprovedAt: now, approvedByEmail: member.email },
+      { type: "position", id: positionId },
+    );
+  }
+  revalidatePath("/positions/" + positionId);
+  revalidatePath("/positions");
+  back("JD approved. Advertising is now open.");
 }
 
 /* ── Where the job is advertised (15, Phase 3 steps 14 to 16) ── */
@@ -2914,8 +3042,8 @@ export async function recordLinkedInPost(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = "/positions/" + positionId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/positions/" + positionId);
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "advert.manage")) back("Recording an advert is for ops or marketing.");
   const db = await desk();
   const position = positionIn(db, positionId);
@@ -2943,7 +3071,7 @@ export async function recordLinkedInPost(formData: FormData): Promise<void> {
       { type: "position", id: positionId },
     );
   }
-  revalidatePath(here);
+  revalidatePath("/positions/" + positionId);
   back(
     row.openingTaId
       ? "Recorded, and the TA System will be told - that is what lets the opening go Live."

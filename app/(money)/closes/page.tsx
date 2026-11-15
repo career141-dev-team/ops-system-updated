@@ -1,90 +1,97 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { checklistsNewestFirst, desk, member as memberIn, positionIn } from "@/data/desk";
-import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
-import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
+import { BackBar, PageBox, RecordCard, ViewPills, type Tone } from "@/app/ui/figma";
+import { checklistsNewestFirst, clientIn, desk, member as memberIn, positionIn } from "@/data/desk";
 import { closeInWords } from "@/lib/guarantee";
 import { currentMember } from "@/lib/session";
 
 /**
- * Closing positions (15, Phase 7 step 11).
- *
- * The list of things that get forgotten when a position ends: the LinkedIn
- * post left up, the TopJobs advert nobody closed, the opening still open in
- * the TA System. Nothing closes until every item is ticked.
+ * Closing positions index (`/closes`).
  */
 export default async function ClosesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ msg?: string; view?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg, q, sort } = await searchParams;
+  const { msg, view = "all" } = await searchParams;
 
   const db = await desk();
   const all = checklistsNewestFirst(db);
-  const rows: Listed[] = all.map((checklist) => {
-    const owner = memberIn(db, checklist.ownerId)?.name ?? "nobody";
-    const left = checklist.items.filter((item) => !item.doneAt).length;
+
+  const cards = all.map((checklist) => {
+    const owner = memberIn(db, checklist.ownerId)?.name ?? "Unassigned";
+    const position = checklist.positionId ? positionIn(db, checklist.positionId) : null;
+    const client = position?.clientId ? clientIn(db, position.clientId) : null;
+    const doneCount = checklist.items.filter((i) => Boolean(i.doneAt)).length;
+    const totalCount = checklist.items.length;
+    const isClosed = Boolean(checklist.completedAt);
+
     return {
-      id: checklist.id,
-      href: "/closes/" + checklist.id,
-      title: positionIn(db, checklist.positionId ?? "")?.title ?? checklist.openingTaId,
-      words: [owner, checklist.trigger, checklist.openingTaId],
-      says: closeInWords(checklist),
-      at: checklist.completedAt ?? checklist.createdAt,
-      late: !checklist.completedAt && left > 0,
-      who: owner,
-      chips: [
-        { what: checklist.trigger.replace(/_/g, " "), tone: "quiet" as const },
-        checklist.completedAt
-          ? { what: "closed", tone: "done" as const }
-          : { what: left + (left === 1 ? " item left" : " items left"), tone: "brand" as const },
-      ],
+      checklist,
+      owner,
+      title: position?.title ?? checklist.openingTaId,
+      overline: `${client?.name ?? "Opening"} · ${checklist.trigger.replace(/_/g, " ")}`,
+      statusText: isClosed ? "Closed" : closeInWords(checklist),
+      statusTone: (isClosed ? "ok" : "warn") as Tone,
+      clockText: `${doneCount} of ${totalCount} done`,
+      isClosed,
     };
   });
-  const shown = listed(rows, q, sort);
+
+  const openList = cards.filter((c) => !c.isClosed);
+  const closedList = cards.filter((c) => c.isClosed);
+  const shown = view === "open" ? openList : view === "closed" ? closedList : cards;
+
+  const views = [
+    { key: "all", label: "All", count: cards.length, href: "/closes" },
+    { key: "open", label: "Open", count: openList.length, href: "/closes?view=open" },
+    { key: "closed", label: "Closed", count: closedList.length, href: "/closes?view=closed" },
+  ];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-[14.5px] font-medium">Closing positions</h2>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
-          Every way a position ends opens this list: a guarantee that ran its ninety days, a refund, a fee written
-          off, a client who stopped, or a TA who closed the opening first. The items are the things that get
-          forgotten.
+    <PageBox width="full" className="gap-6">
+      <BackBar href="/placements" label="Placements" />
+
+      <div className="flex flex-col gap-1">
+        <h1 className="text-[32px] font-light leading-[40px] text-ink">
+          Closing positions
+        </h1>
+        <p className="max-w-[70ch] text-[14px] text-ink-soft">
+          Every way a position ends opens this list: a guarantee that ran its ninety days, a refund, a fee written off,
+          a client who stopped, or a TA who closed the opening first.
         </p>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      <ViewPills items={views} active={view} />
 
-      <Toolbar action="/closes" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
-
-      {shown.length === 0 ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          {rows.length === 0
-            ? "Nothing is closing. A list opens by itself when a guarantee ends, a refund is decided, a fee is written off, or a TA closes the opening first."
-            : foundInWords(0, rows.length, q)}
+      {msg && (
+        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+          {msg}
         </p>
-      ) : (
-        <Table head={LIST_HEAD}>
-          {shown.map((row) => (
-            <ListRow
-              key={row.id}
-              href={row.href}
-              title={row.title}
-              says={row.says}
-              chips={row.chips}
-              who={row.who}
-              when={day(row.at)}
-              late={row.late}
-            />
-          ))}
-        </Table>
       )}
 
-    </div>
+      {shown.length === 0 ? (
+        <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+          Nothing is closing right now. A checklist opens automatically when a guarantee ends, a refund is decided, or a position stops.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {shown.map((c) => (
+            <RecordCard
+              key={c.checklist.id}
+              href={`/closes/${c.checklist.id}`}
+              overline={c.overline}
+              ownerName={c.owner}
+              title={c.title}
+              statusText={c.statusText}
+              statusTone={c.statusTone}
+              clockText={c.clockText}
+            />
+          ))}
+        </div>
+      )}
+    </PageBox>
   );
 }

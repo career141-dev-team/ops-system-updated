@@ -184,6 +184,20 @@ export default function TopBar({
               </span>
             </summary>
             <div className="absolute right-0 top-[52px] z-30 flex w-[260px] flex-col gap-0.5 rounded-panel bg-surface p-2 shadow-float">
+              <Link
+                href="/account"
+                aria-current={isHere(path, "/account") ? "page" : undefined}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-sunk hover:text-ink aria-[current=page]:text-brand"
+              >
+                <span className="flex-1">Account &amp; help</span>
+              </Link>
+              <Link
+                href="/notifications"
+                aria-current={isHere(path, "/notifications") ? "page" : undefined}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-sunk hover:text-ink aria-[current=page]:text-brand"
+              >
+                <span className="flex-1">Notifications</span>
+              </Link>
               {more.pages
                 .filter((page) => mayShow(page.needs))
                 .map((page) => {
