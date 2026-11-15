@@ -146,17 +146,15 @@ export default async function NumbersPage({
                   className="group flex flex-1 flex-col items-center gap-1.5"
                 >
                   <span
-                    className={`text-[12px] font-medium ${
-                      selected ? "text-ink" : "text-ink-faint"
-                    }`}
+                    className={`text-[12px] font-medium ${selected ? "text-ink" : "text-ink-faint"
+                      }`}
                   >
                     {w.cvCount}
                   </span>
                   <div
                     style={{ height: `${barH}px` }}
-                    className={`w-full rounded-t-[8px] transition ${
-                      selected ? "bg-brand" : "bg-edge-strong/70 group-hover:bg-brand/60"
-                    }`}
+                    className={`w-full rounded-t-[8px] transition ${selected ? "bg-brand" : "bg-edge-strong/70 group-hover:bg-brand/60"
+                      }`}
                   />
                   <span className="text-[11.5px] font-medium text-ink-faint">{w.label}</span>
                 </Link>

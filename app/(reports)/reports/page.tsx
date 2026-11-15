@@ -63,16 +63,16 @@ export default async function ReportsPage({
   const needWordRows = thisWeek
     ? thisWeek.rows.slice(0, 6)
     : db.positions
-        .filter((p) => p.stage !== "closed")
-        .slice(0, 6)
-        .map((p) => ({
-          positionId: p.id,
-          title: p.title,
-          client: db.clients.find((c) => c.id === p.clientId)?.name ?? "Client",
-          primaryTa: db.members.find((m) => m.id === p.primaryTaId)?.name ?? "Unassigned",
-          status: p.stage,
-          state: p.stage,
-        }));
+      .filter((p) => p.stage !== "closed")
+      .slice(0, 6)
+      .map((p) => ({
+        positionId: p.id,
+        title: p.title,
+        client: db.clients.find((c) => c.id === p.clientId)?.name ?? "Client",
+        primaryTa: db.members.find((m) => m.id === p.primaryTaId)?.name ?? "Unassigned",
+        status: p.stage,
+        state: p.stage,
+      }));
 
   const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
 

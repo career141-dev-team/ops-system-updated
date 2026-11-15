@@ -269,9 +269,8 @@ export default async function InvoicesPage({
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <span
-                        className={`text-[12.5px] font-medium ${
-                          g.state === "refunded" ? "text-ok" : "text-warn"
-                        }`}
+                        className={`text-[12.5px] font-medium ${g.state === "refunded" ? "text-ok" : "text-warn"
+                          }`}
                       >
                         {g.state === "refunded" ? "Refunded" : "Refund pending"}
                       </span>
@@ -298,9 +297,9 @@ export default async function InvoicesPage({
                 const paid = paidSoFar(inv);
                 const overdue = Boolean(
                   inv.dueAt &&
-                    inv.dueAt < now &&
-                    inv.state !== "paid" &&
-                    inv.state !== "written_off",
+                  inv.dueAt < now &&
+                  inv.state !== "paid" &&
+                  inv.state !== "written_off",
                 );
                 const rightText =
                   inv.state === "paid"
