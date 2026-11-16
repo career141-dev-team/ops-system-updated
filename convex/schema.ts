@@ -518,6 +518,7 @@ export default defineSchema({
     state: v.string(),
     round: v.number(),
     slots: v.array(v.number()),
+    slotAnswers: v.optional(v.array(v.object({ at: v.number(), free: v.boolean() }))),
     slotLoops: v.number(),
     at: v.union(v.number(), v.null()),
     format: v.string(),

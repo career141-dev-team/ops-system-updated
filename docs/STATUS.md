@@ -121,7 +121,7 @@ holds their feedback. All of this is the client's side.
 | What the candidate said afterwards | TA's `interview.feedback` event → `draftCandidateFeedback` | drafted for the client and due the next morning, not sent at night |
 | The client's decision | `recordRoundDecision` | another round, selected, or rejected with their own words; a rejection re-counts the shortlist |
 | The reference | `requestReference`, `recordReferenceReport`, `relayReference`, `recordReferenceDecision` | only when the client asks; no form and no score (the owner, 26 Oct); passed on word for word; a dropped candidate re-counts the shortlist |
-| Screens | `app/interviews`, `app/interviews/[id]` | agreeing a time, booked, held and waiting on the client; everything about one interview on its own page |
+| Screens | `app/interviews`, `app/interviews/[id]` | the week board (Mon to Fri, today outlined, a pill per queue) and one interview on its own page: time tiles with free / busy as the candidate told the TA (`recordSlotAnswers`), the drafted feedback approved from the page, and ruled folds for attendance and the client's decision |
 
 Still to come in phase 5: the **Teams meeting made from the Ops mailbox** (a
 calendar permission the owner has yet to grant - the link is pasted in by a

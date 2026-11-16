@@ -74,6 +74,7 @@
   --color-violet-soft: #f0ecfe; /* color/violet-soft */
   --color-info: #167ca9; /* color/info */
   --color-info-soft: #eaf7fe; /* color/info-soft */
+  --color-success: #1e8a4c; /* color/success: "is free", a held interview */
 
   /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).
      New names, so Tailwind's own rounded-md and shadow-md keep their sizes
@@ -95,6 +96,8 @@
      the aside's edge shadow: tokens, so the dark theme can have its own. */
   --color-veil: rgb(245 247 250 / 0.6);
   --color-aside-shadow: rgb(22 24 26 / 0.38);
+  /* The dots on the page behind the bar and the cards: the FigJam default board (16 Nov). */
+  --color-grid: #dde0e6;
 }
 
 /* The top bar (116px) and the tab that names the workspace (44px): where the page's own box starts. */
@@ -137,6 +140,7 @@ html[data-theme="dark"] {
   --color-violet-soft: #29234a;
   --color-info: #62c3ec;
   --color-info-soft: #12303d;
+  --color-success: #4fd18b;
   --color-chip-a: #232b4d;
   --color-chip-a-ink: #a9b6ff;
   --color-chip-b: #3b2029;
@@ -145,6 +149,7 @@ html[data-theme="dark"] {
   --color-chip-c-ink: #9ad6a6;
   --color-veil: rgb(14 17 20 / 0.6);
   --color-aside-shadow: rgb(0 0 0 / 0.6);
+  --color-grid: #232a31;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px -4px rgb(0 0 0 / 0.35);
   --shadow-float: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -8px rgb(0 0 0 / 0.55);
 }
@@ -152,6 +157,10 @@ html[data-theme="dark"] {
 html,
 body {
   background: var(--color-paper);
+  /* A quiet dot grid, as the Figma frames and FigJam draw the board. Fixed, so it stays put when a page scrolls. */
+  background-image: radial-gradient(circle, var(--color-grid) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
   /* Tabular figures, so counts line up in a column. */

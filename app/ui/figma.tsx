@@ -532,6 +532,7 @@ export function FoldRow({
   done,
   defaultOpen = false,
   id,
+  variant = "card",
   children,
 }: {
   title: string;
@@ -540,8 +541,11 @@ export function FoldRow({
   done?: boolean;
   defaultOpen?: boolean;
   id?: string;
+  /** "line" is the plain ruled row of the interview page (Figma 249:10196); "card" is the grey one. */
+  variant?: "card" | "line";
   children?: ReactNode;
 }) {
+  const line = variant === "line";
   const resolvedState = state ?? (done === false ? "pending" : "done");
   const badge =
     resolvedState === "done" ? (
@@ -566,11 +570,11 @@ export function FoldRow({
     <details
       id={id}
       open={defaultOpen}
-      className="group w-full rounded-[20px] bg-sunk px-5 py-1"
+      className={"group w-full " + (line ? "border-b border-rule px-1" : "rounded-[20px] bg-sunk px-5 py-1")}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-3 py-3.5 transition-colors [&::-webkit-details-marker]:hidden">
+      <summary className={"flex cursor-pointer list-none items-center gap-3 transition-colors [&::-webkit-details-marker]:hidden " + (line ? "py-4" : "py-3.5")}>
         {badge}
-        <span className="text-[16px] font-medium leading-[26px] text-ink">{title}</span>
+        <span className={"text-[16px] leading-[26px] text-ink " + (line ? "font-normal" : "font-medium")}>{title}</span>
         <span className="flex-1" />
         {summary && (
           <span
@@ -591,7 +595,7 @@ export function FoldRow({
         />
       </summary>
       {children && (
-        <div className="flex flex-col gap-4 border-t border-rule pb-4 pt-3.5">
+        <div className={"flex flex-col gap-4 pb-4 " + (line ? "pt-1" : "border-t border-rule pt-3.5")}>
           {children}
         </div>
       )}

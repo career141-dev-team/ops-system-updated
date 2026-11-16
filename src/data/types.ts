@@ -684,6 +684,11 @@ export interface OpsInterview {
   round: number;
   /** The times the client offered, and the one everybody agreed. */
   slots: number[];
+  /**
+   * What Ops was told about the candidate for each offered time (16 Nov): free or busy, written by
+   * hand from what the TA heard. Never guessed, and missing on older interviews.
+   */
+  slotAnswers?: { at: number; free: boolean }[];
   slotLoops: number;
   at: number | null;
   format: string;
