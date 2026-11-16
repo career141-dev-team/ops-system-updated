@@ -42,8 +42,11 @@ function mailbox(own: number, reply: string): Fake[] {
  */
 function fakeGraph(messages: Fake[], asked: number[], extra: { sent?: Fake[] } = {}): void {
   const everything = [...messages, ...(extra.sent ?? [])];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = decodeURIComponent(String(input));
+    // Only Graph is faked; the Ops backend (a Convex run) must still be reached for real.
+    if (!url.includes("graph.microsoft.com") && !url.includes("oauth2")) return real(input, init);
     if (url.includes("oauth2")) return Response.json({ access_token: "token" });
     const files = url.match(/\/messages\/([^/]+)\/attachments/);
     if (files) {
