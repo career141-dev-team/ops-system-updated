@@ -15,8 +15,10 @@ import { desk, openTasksFor, pinsOf } from "@/data/desk";
 import { nextSteps } from "@/lib/agent";
 import { bellOf } from "@/lib/bell";
 import { workByPage } from "@/lib/sectionWork";
-import { currentMember } from "@/lib/session";
-import { ROLE_LABEL, can } from "@/lib/roles";
+import { currentMember, realMember } from "@/lib/session";
+import { ROLE_LABEL, can, previewList } from "@/lib/roles";
+import { viewAs } from "@/app/actions";
+import WorkspaceNotch from "@/app/WorkspaceNotch";
 import "./globals.css";
 
 // The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
@@ -46,13 +48,18 @@ export const metadata: Metadata = {
  * twenty-six pages across a screen; the design answers it with seven
  * workspaces across and the rest behind the profile, every page still under
  * one entry (src/lib/nav.ts). The bar hides once the page is scrolled and
- * comes back for the pointer at the top - the one overlay the owner allowed.
+ * comes back for the pointer at the top, and the profile opens a card over a
+ * blurred page (16 Nov) - the overlays the owner allowed, with a file shown
+ * from To approve (docs/09).
  *
  * What a person may see is worked out here, where the session is, and handed
  * to the bars - which know which page you are on and nothing else.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const member = await currentMember();
+  // Who really signed in: the profile card's name, and the roles they may look through (16 Nov).
+  const real = member ? await realMember() : null;
+  const previewing = member && real && member.role !== real.role;
   const may = {
     "money.manage": member ? can(member, "money.manage") : false,
     "settings.manage": member ? can(member, "settings.manage") : false,
@@ -73,13 +80,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // the page is rendered with it already there rather than appearing after.
   const jar = await cookies();
   const chatOpen = jar.get("ops_chat_open")?.value === "1";
+  // Light unless they chose dark: a cookie, so the page is drawn in it from the first byte (16 Nov).
+  const dark = jar.get("ops_theme")?.value === "dark";
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
 
   return (
     // suppressHydrationWarning: a browser extension writes its own style onto
     // <html> before React loads, and React then reports a mismatch that is not
     // ours (10 Nov, seen on the lead's review link). One level only.
-    <html lang="en" className={sans.variable} suppressHydrationWarning>
+    <html lang="en" className={sans.variable} data-theme={dark ? "dark" : "light"} suppressHydrationWarning>
       {/*
         `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
         
@@ -105,23 +114,35 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Keys />
         {member ? (
           <>
-          <TopBar may={may} counts={counts} bell={bell} clients={clients} chatOpen={chatOpen} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
+          <TopBar
+            may={may}
+            counts={counts}
+            bell={bell}
+            clients={clients}
+            chatOpen={chatOpen}
+            who={{ name: member.name, role: ROLE_LABEL[(real ?? member).role] }}
+            viewing={previewing ? ROLE_LABEL[member.role] : null}
+            chips={previewList((real ?? member).role).map((role) => ({ role, label: ROLE_LABEL[role], active: role === member.role }))}
+            dark={dark}
+          />
           <PhoneNav may={may} counts={counts} bell={bell} clients={clients} who={{ name: member.name, role: ROLE_LABEL[member.role] }} />
-          {/* No min-h-screen here (14 Nov): under the top bar's 116px it made every page
-              116px taller than the window, so even an empty page scrolled. */}
+          {/* No min-h-screen here (14 Nov): under the top bar and its tab (--page-top) it made every page
+              that much taller than the window, so even an empty page scrolled. */}
+          {/* The tab that names the workspace, on top of the page card (16 Nov, the Figma "Notch tab"). */}
+          <WorkspaceNotch />
           <div className="flex flex-col md:flex-row md:items-stretch">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             {/* On a desktop the page is one fixed box under the top bar (14 Nov, the owner):
                 the window never scrolls, the page's own box does, and only when what is in it
                 is taller than the box. A phone scrolls the window as before. */}
-            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh-116px)] md:flex-col md:overflow-hidden md:px-6 md:py-6 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
+            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
               {children}
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh-116px)] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_rgba(22,24,26,0.38)] lg:flex">
+              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh-var(--page-top))] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
                 <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
                   <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
                   <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
@@ -130,6 +151,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </aside>
             )}
           </div>
+          {/* Never invisible while previewing (16 Nov): who you are looking as, and the way back. */}
+          {previewing && real && (
+            <form action={viewAs} className="fixed inset-x-0 bottom-4 z-40 flex justify-center">
+              <input type="hidden" name="role" value={real.role} />
+              <span className="flex items-center gap-3 rounded-full bg-ink py-1.5 pl-4 pr-1.5 text-[14px] leading-[21px] text-ink-inverse shadow-float">
+                Viewing as {ROLE_LABEL[member.role]}
+                <button className="rounded-full bg-surface px-3.5 py-1 text-[14px] font-medium text-ink">Back to {ROLE_LABEL[real.role]}</button>
+              </span>
+            </form>
+          )}
           </>
         ) : (
           <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>

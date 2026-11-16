@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` follows the profile card's choice (html[data-theme]), not the machine's setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
  * The look, in one place (24 and 25; the owner's reference screens, 5 Nov).
  *
@@ -87,6 +90,63 @@
   --color-chip-b-ink: #a33a5b;
   --color-chip-c: #eef7ee;
   --color-chip-c-ink: #2f6b3a;
+
+  /* What sits over a page when a card is opened from the bar or a file is shown (16 Nov), and
+     the aside's edge shadow: tokens, so the dark theme can have its own. */
+  --color-veil: rgb(245 247 250 / 0.6);
+  --color-aside-shadow: rgb(22 24 26 / 0.38);
+}
+
+/* The top bar (116px) and the tab that names the workspace (44px): where the page's own box starts. */
+:root {
+  --page-top: 160px;
+}
+
+/*
+ * Dark mode (16 Nov, the owner): the same names with other values, chosen from the profile card
+ * and kept in a cookie that layout.tsx reads, so the page is drawn dark from the first byte.
+ * `brand` is lighter here because it is both a text colour and a button fill; `ink-inverse` is
+ * the dark that sits on a light `ink` button.
+ */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #0e1114;
+  --color-surface: #171b20;
+  --color-sunk: #1f242a;
+  --color-shell: #1c2127;
+  --color-shell-sunk: #14181c;
+  --color-shell-rule: #2a3038;
+  --color-ink: #eceef1;
+  --color-ink-soft: #b7bec7;
+  --color-ink-faint: #8e98a4;
+  --color-ink-inverse: #16191d;
+  --color-rule: #272d34;
+  --color-rule-strong: #39414a;
+  --color-brand: #5fc79c;
+  --color-brand-strong: #7ad8b0;
+  --color-bg-brand: #173a2d;
+  --color-danger: #ff7b72;
+  --color-warning: #e0b252;
+  --color-bg-warning: #33290f;
+  --color-bg-danger: #3b1c1b;
+  --color-bg-ok: #173a2d;
+  --color-brand-tint: #14291f;
+  --color-warn: #e0b252;
+  --color-warn-soft: #33290f;
+  --color-violet: #a99bff;
+  --color-violet-soft: #29234a;
+  --color-info: #62c3ec;
+  --color-info-soft: #12303d;
+  --color-chip-a: #232b4d;
+  --color-chip-a-ink: #a9b6ff;
+  --color-chip-b: #3b2029;
+  --color-chip-b-ink: #f0a0b8;
+  --color-chip-c: #1d3322;
+  --color-chip-c-ink: #9ad6a6;
+  --color-veil: rgb(14 17 20 / 0.6);
+  --color-aside-shadow: rgb(0 0 0 / 0.6);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px -4px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -8px rgb(0 0 0 / 0.55);
 }
 
 html,

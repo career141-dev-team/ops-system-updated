@@ -129,6 +129,11 @@ export function pdfNameFor(name: string): string {
   return (ext ? name.slice(0, -ext.length) : name) + ".pdf";
 }
 
+/** May a browser show it in the page (16 Nov, To approve's file view)? Only a PDF or a picture; anything else is a download. */
+export function previewable(mime: string): boolean {
+  return mime === "application/pdf" || /^image\/(png|jpeg|webp)$/.test(mime);
+}
+
 /** What a browser should call it. Guessed from the name; we never trust the sender's. */
 export function mimeFor(name: string): string {
   switch (extensionOf(name)) {

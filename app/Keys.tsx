@@ -21,6 +21,11 @@ import { keyActFor, rowAfter } from "@/lib/keys";
 export default function Keys() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Esc closes a file shown over To approve (`data-close` is its X, a plain link back).
+      if (event.key === "Escape") {
+        document.querySelector<HTMLElement>("[data-close]")?.click();
+        return;
+      }
       const act = keyActFor({
         key: event.key,
         ctrlKey: event.ctrlKey,

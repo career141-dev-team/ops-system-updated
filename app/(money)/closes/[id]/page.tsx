@@ -98,7 +98,7 @@ export default async function ClosePage({
               className="flex flex-wrap items-center gap-3.5 border-b border-rule py-4 last:border-b-0"
             >
               {isDone ? (
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ok text-white">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ok text-ink-inverse">
                   <Icon name="check" size={12} />
                 </span>
               ) : (

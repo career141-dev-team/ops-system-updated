@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { signOutAction } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { activeMembers, desk } from "@/data/desk";
 import { Avatar, PageBox, pillSecondary } from "@/app/ui/figma";
@@ -147,9 +148,10 @@ export default async function AccountPage() {
         </div>
 
         <div>
-          <Link href="/sign-in" className={pillSecondary}>
-            Sign out
-          </Link>
+          {/* A form, not a link: the link only changed the page and left the session behind (16 Nov). */}
+          <form action={signOutAction}>
+            <button className={pillSecondary}>Sign out</button>
+          </form>
         </div>
       </div>
     </PageBox>

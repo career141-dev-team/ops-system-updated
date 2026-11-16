@@ -49,7 +49,7 @@ export default async function TaskPage({
               className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]"
             />
           </label>
-          <button className="self-start rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-white">
+          <button className="self-start rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-ink-inverse">
             Done
           </button>
         </form>

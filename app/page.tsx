@@ -13,6 +13,7 @@ import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { testToolsShown } from "@/lib/clockPass";
 import { firstBecause, orderTheDay, whatFirstKey, type DayItem } from "@/lib/whatFirst";
 import { colomboDate } from "@/lib/calendar";
+import { previewable } from "@/lib/files";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { currentMember } from "@/lib/session";
 import { seesWholeDesk } from "@/lib/roles";
@@ -20,6 +21,7 @@ import {
   dayInWords,
   doneToday,
   firstName,
+  foldDrafts,
   greetingFor,
   laterLast,
   rowIcon,
@@ -44,7 +46,7 @@ type View = "today" | "approve" | "messages";
 export default async function MyWorkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; view?: string; later?: string; all?: string; kind?: string; n?: string; t?: string }>;
+  searchParams: Promise<{ msg?: string; view?: string; later?: string; all?: string; kind?: string; n?: string; t?: string; file?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -75,7 +77,8 @@ export default async function MyWorkPage({
 
   // The day, in the rules' order, with what was put off for later at the end.
   const items = laterLast(orderTheDay(dayItems(db, member.id, now)), later);
-  const [first, ...others] = items;
+  // The counts above use every item; the list under Then folds the drafts into one row.
+  const [first, ...others] = foldDrafts(items);
   const late = items.filter((i) => i.kind === "late").length;
   const done = doneToday(db.tasks, member.id, now);
   const total = done + items.length;
@@ -174,7 +177,7 @@ export default async function MyWorkPage({
       {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. Today only. */}
       {view === "today" && <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px]"
+        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px] dark:opacity-20"
         style={{
           background:
             "radial-gradient(closest-side at 35% 45%, rgba(196,181,253,0.55), transparent 70%), radial-gradient(closest-side at 65% 55%, rgba(153,246,228,0.55), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(187,247,208,0.5), transparent 70%)",
@@ -282,7 +285,7 @@ export default async function MyWorkPage({
                   {params.all ? (
                     <Link href={href("today")} className={caption + " hover:text-ink"}>Show fewer</Link>
                   ) : (
-                    others.length > 4 && <Link href={href("today", { all: "1" })} className={caption + " hover:text-ink"}>See all {items.length}</Link>
+                    others.length > 0 && <Link href={href("today", { all: "1" })} className={caption + " hover:text-ink"}>See all {items.length}</Link>
                   )}
                 </div>
                 {(params.all ? others : others.slice(0, 4)).map(dayRow)}
@@ -325,6 +328,8 @@ export default async function MyWorkPage({
           const here = go(at + 1);
           const next = go(at + 2 > list.length ? 1 : at + 2);
           const carries = draft ? (draft.attachmentFileIds ?? []).map((id) => fileIn(db, id)).filter((f) => f !== null) : [];
+          // Only a file this draft carries, and only one a browser can show, ever opens over the page.
+          const shown = carries.find((f) => f.id === params.file && previewable(f.mime));
           const whoFor = draft ? aboutWhom(db, draft.subjectType, draft.subjectId) : null;
           const chip = draft ? (draft.templateKey ? templateFor(db, draft.templateKey)?.name : null) ?? DRAFT_KINDS.find((k) => k.key === draftKind(draft))?.what : null;
           const pill = "flex items-center gap-2 rounded-full px-4 py-[9px] text-[14px] leading-[21px] transition-colors ";
@@ -365,9 +370,10 @@ export default async function MyWorkPage({
               {!draft ? (
                 <p className="mt-8 text-center text-[16px] leading-[26px] text-ink-soft">Nothing is waiting for your approval.</p>
               ) : (
-                <>
+                // data-solo holds the card and its buttons, so A / E / S find Approve, Edit and Skip.
+                <div data-row data-solo>
                   {/* The drafts behind this one, as the Figma stack. */}
-                  <div className="relative mt-[22px] pb-4" data-row data-solo>
+                  <div className="relative mt-[22px] pb-4">
                     {list.length > 2 && <div aria-hidden="true" className="rise absolute inset-x-11 bottom-0 top-[26px] rounded-[28px] bg-surface opacity-55 shadow-card" />}
                     {list.length > 1 && <div aria-hidden="true" className="rise absolute inset-x-[22px] bottom-0 top-[13px] rounded-[28px] bg-surface opacity-80 shadow-card" />}
                     <article key={draft.id} className="lift relative flex flex-col gap-3 rounded-[28px] bg-surface px-[34px] pb-[26px] pt-7 shadow-float">
@@ -387,7 +393,8 @@ export default async function MyWorkPage({
                       </div>
                       <div className="flex flex-wrap items-center gap-2 pt-1.5">
                         {carries.map((file) => (
-                          <Link key={file.id} href={"/api/files/" + file.id} className="flex items-center gap-2 rounded-full bg-sunk px-3.5 py-2 text-[14px] leading-[21px] text-ink-soft hover:text-ink">
+                          // A PDF or picture opens over this page (16 Nov, owner's Figma); anything else downloads.
+                          <Link key={file.id} href={previewable(file.mime) ? here + "&file=" + file.id : "/api/files/" + file.id} className="flex items-center gap-2 rounded-full bg-sunk px-3.5 py-2 text-[14px] leading-[21px] text-ink-soft hover:text-ink">
                             <Icon name="file" size={16} />
                             {file.name}
                           </Link>
@@ -427,7 +434,20 @@ export default async function MyWorkPage({
                     </form>
                   </div>
                   <p className="mt-3 text-center text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">A approve  ·  E edit  ·  S skip</p>
-                </>
+                </div>
+              )}
+
+              {/* The file over the page: the one overlay the owner allowed on To approve, closed by its X, the page behind it or Esc. */}
+              {shown && (
+                <div className="fixed inset-0 z-50">
+                  <Link href={here} aria-label="Close the file" tabIndex={-1} className="absolute inset-0 bg-veil backdrop-blur-[4px]" />
+                  <div className="absolute inset-x-4 bottom-0 top-[88px] mx-auto max-w-[1100px] overflow-hidden rounded-t-[48px] bg-black/90 px-5 pt-5 md:px-10 md:pt-10">
+                    <iframe src={"/api/files/" + shown.id + "?inline=1"} title={shown.name} className="size-full rounded-t-[36px] bg-white" />
+                  </div>
+                  <Link href={here} data-close aria-label="Close the file" className="absolute right-4 top-4 flex size-12 items-center justify-center rounded-full bg-surface text-ink shadow-float md:right-[5%] md:top-[88px] md:size-[75px]">
+                    <Icon name="x" size={30} />
+                  </Link>
+                </div>
               )}
 
               {/* Every routine notice at once (7 Nov, UX order 2): only drafts from a template a person approved once. */}

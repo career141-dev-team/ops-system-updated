@@ -130,12 +130,12 @@ export default async function NotificationsPage({
             {todayItems.length === 0 ? (
               <div className="px-4 py-6 text-[13.5px] text-ink-soft">Nothing new today.</div>
             ) : (
-              <div className="divide-y divide-edge/60">
+              <div className="flex flex-col gap-2.5">
                 {todayItems.map((item) => (
                   <Link
                     key={item.id}
                     href={item.href}
-                    className={`flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60 ${
+                    className={`flex items-center justify-between gap-4 rounded-[16px] px-4 py-4 transition hover:bg-sunk/60 ${
                       item.unread ? "bg-bg-brand/60" : ""
                     }`}
                   >
@@ -174,12 +174,12 @@ export default async function NotificationsPage({
               EARLIER
             </div>
             <div className={cardShell}>
-              <div className="divide-y divide-edge/60">
+              <div className="flex flex-col gap-2.5">
                 {earlierItems.slice(0, 15).map((item) => (
                   <Link
                     key={item.id}
                     href={item.href}
-                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-4 transition hover:bg-sunk/60"
                   >
                     <div className="flex min-w-0 items-center gap-3.5">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">

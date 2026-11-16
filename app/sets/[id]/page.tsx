@@ -218,7 +218,7 @@ export default async function SetPage({
       {/* AURA Reply Card (1:1042 — when set is sent and waiting on decisions) */}
       {set.state === "sent" && firstUndecided && (
         <div className="flex flex-wrap items-center gap-3.5 rounded-[24px] bg-surface px-[18px] py-4 shadow-float">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-white">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-ink-inverse">
             A
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">

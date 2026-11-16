@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { desk, fileIn } from "@/data/desk";
 import { linkFor, readBytes, usingR2 } from "@/data/fileStore";
+import { previewable } from "@/lib/files";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -12,7 +13,7 @@ import { currentMember } from "@/lib/session";
  * files in a folder on this machine there is nothing to sign, so it reads the
  * file and sends it.
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const member = await currentMember();
   if (!member) return new Response("Sign in first.", { status: 401 });
 
@@ -20,14 +21,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const row = fileIn(await desk(), id);
   if (!row) return new Response("There is no such file.", { status: 404 });
 
-  if (usingR2()) redirect(await linkFor(row.id, row.key, row.name));
+  // `?inline=1` is To approve showing the file over the page; only a PDF or a picture is ever shown, the rest still downloads.
+  const inline = new URL(request.url).searchParams.get("inline") === "1" && previewable(row.mime);
+  if (usingR2()) redirect(await linkFor(row.id, row.key, row.name, inline));
 
   const bytes = await readBytes(row.key);
   if (!bytes) return new Response("The file is missing from storage.", { status: 404 });
   return new Response(new Uint8Array(bytes), {
     headers: {
       "Content-Type": row.mime,
-      "Content-Disposition": 'attachment; filename="' + row.name + '"',
+      "Content-Disposition": (inline ? "inline" : "attachment") + '; filename="' + row.name + '"',
       // Never cached anywhere but the person's own download.
       "Cache-Control": "no-store",
     },

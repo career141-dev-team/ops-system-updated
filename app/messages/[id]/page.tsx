@@ -143,7 +143,7 @@ export default async function MessagePage({
               <input type="hidden" name="subject" value={proposed.subject} />
               <input type="hidden" name="body" value={proposed.body} />
               <input type="hidden" name="use" value="yes" />
-              <button className="rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-white">
+              <button className="rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-ink-inverse">
                 Use it
               </button>
             </form>
@@ -183,7 +183,7 @@ export default async function MessagePage({
               ? "Nothing can send this. The group was made on somebody's phone, and Meta gives no way for a system to join a group it did not create. Approve it, copy it and post it from your phone - that it is yours to post is written here."
               : "Approving sends it. While the system is in test mode it goes to the test address instead, and the result is written here."}
           </p>
-          <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-white">
+          <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-ink-inverse">
             {message.channel === "group_post" ? "Approve it, and post it myself" : "Approve and send"}
           </button>
         </form>

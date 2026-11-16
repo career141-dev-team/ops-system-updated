@@ -150,7 +150,7 @@ export default async function ThreadPage({
             <span className="mb-1 block text-[12px] text-ink-soft">Message</span>
             <textarea name="body" rows={7} className={field} />
           </label>
-          <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[13px] font-medium text-white">
+          <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[13px] font-medium text-ink-inverse">
             Draft the reply
           </button>
         </form>

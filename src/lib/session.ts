@@ -19,12 +19,15 @@ import { cookies } from "next/headers";
 
 import { desk, member as findMember } from "@/data/desk";
 import type { OpsMember } from "@/data/types";
+import { previewRoleFrom } from "./roles";
 import { seal, secretFrom, unseal } from "./seal";
 import { signInConfigFrom } from "./signIn";
 
 /** The real one. Signed, and kept apart from the development cookie by name. */
 const REAL = "ops_session";
 const DEV = "ops_dev_member";
+/** "View as": the role being previewed. Never trusted; see `previewRoleFrom`. */
+export const VIEW_AS = "ops_view_as";
 
 /** A working day is long; a week is not a session. */
 const SESSION_DAYS = 7;
@@ -68,12 +71,24 @@ async function memberIdFromCookie(): Promise<string | null> {
   return null;
 }
 
-export async function currentMember(): Promise<OpsMember | null> {
+/** The person who signed in, whatever role they are previewing. */
+export async function realMember(): Promise<OpsMember | null> {
   const chosen = await memberIdFromCookie();
   if (!chosen) return null;
   const found = findMember(await desk(), chosen);
   // Taken off the team mid-session, and the next page they open says so.
   return found && found.active ? found : null;
+}
+
+/**
+ * Who the app treats you as: you, or you looking through a lesser role's eyes (16 Nov).
+ * Only the role changes - the id stays yours, so what you do is still recorded as you.
+ */
+export async function currentMember(): Promise<OpsMember | null> {
+  const real = await realMember();
+  if (!real) return null;
+  const as = previewRoleFrom(real.role, (await cookies()).get(VIEW_AS)?.value);
+  return as ? { ...real, role: as } : real;
 }
 
 /** The real door. Only the Microsoft route reaches this. */
@@ -105,4 +120,5 @@ export async function signOut(): Promise<void> {
   const jar = await cookies();
   jar.delete(REAL);
   jar.delete(DEV);
+  jar.delete(VIEW_AS);
 }

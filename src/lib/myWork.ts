@@ -113,6 +113,24 @@ export function laterLast(items: DayItem[], skipped: string[]): DayItem[] {
   return [...items.filter((i) => !later.has(i.href)), ...items.filter((i) => later.has(i.href))];
 }
 
+/**
+ * Under "Then", the drafts behind Up next are one row, "7 drafts waiting for you" (16 Nov,
+ * the Figma "MW · My Work"): the To approve view is where they are read one by one.
+ * The first item is never folded, so Up next keeps its own draft and its Approve button.
+ */
+export function foldDrafts(items: DayItem[]): DayItem[] {
+  const [first, ...rest] = items;
+  const drafts = rest.filter((i) => i.kind === "draft" || i.kind === "routine");
+  if (drafts.length < 2) return items;
+  const folded: DayItem = { said: drafts.length + " drafts waiting for you", href: "/?view=approve", kind: "draft", at: Math.min(...drafts.map((d) => d.at)) };
+  const out: DayItem[] = [];
+  for (const i of rest) {
+    if (!drafts.includes(i)) out.push(i);
+    else if (!out.includes(folded)) out.push(folded);
+  }
+  return [first, ...out];
+}
+
 /** "SP" from "Shanika Perera", "MA" from "Mr Azeem", "HR" from "hr@meridian.lk": the avatar on a conversation. */
 export function initialsOf(name: string): string {
   const words = name.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
