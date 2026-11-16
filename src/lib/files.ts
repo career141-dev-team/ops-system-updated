@@ -18,6 +18,8 @@ export const FILE_KINDS = [
   "esa_countersigned",
   "cv",
   "invoice",
+  "invoice_template",
+  "credit_note_template",
   "offer_letter",
   "flyer",
   "scan",
@@ -34,6 +36,8 @@ export const KIND_MEANINGS: Record<FileKind, string> = {
   esa_countersigned: "Agreement, countersigned by the Director",
   cv: "A CV, as it went to the client",
   invoice: "Invoice",
+  invoice_template: "Invoice template (Word, with {{holes}})",
+  credit_note_template: "Credit note template (Word, with {{holes}})",
   offer_letter: "Offer letter",
   flyer: "Advert flyer",
   scan: "A scan of something on paper",
@@ -161,4 +165,20 @@ export function mimeFor(name: string): string {
     default:
       return "application/octet-stream";
   }
+}
+
+/**
+ * The template in use: the newest file of this kind that belongs to nothing
+ * (16 Nov). Before, the first one uploaded won, so a corrected agreement
+ * template was silently ignored and the old wording kept going out.
+ */
+export function currentTemplate<T extends { kind: string; subjectType: string | null; uploadedAt: number }>(
+  files: T[],
+  kind: string,
+): T | null {
+  let best: T | null = null;
+  for (const f of files) {
+    if (f.kind === kind && f.subjectType === null && (!best || f.uploadedAt > best.uploadedAt)) best = f;
+  }
+  return best;
 }

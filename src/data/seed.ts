@@ -25,6 +25,8 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "esa.declineDays", value: 14, updatedBy: null, updatedAt: null },
       { key: "set.minCvs", value: 5, updatedBy: null, updatedAt: null },
       { key: "set.ownershipWorkingDays", value: 7, updatedBy: null, updatedAt: null },
+      // Our own interview must pass before a CV goes to the client (owner, 16 Nov). An ops lead may switch it off, with a reason.
+      { key: "set.requireInternalInterview", value: true, updatedBy: null, updatedAt: null },
       { key: "feedback.chaseDays", value: 1, updatedBy: null, updatedAt: null },
       { key: "feedback.stopAfterSilentDays", value: 4, updatedBy: null, updatedAt: null },
       { key: "feedback.callAfterDays", value: 1, updatedBy: null, updatedAt: null },

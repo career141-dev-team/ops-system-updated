@@ -11,18 +11,24 @@ import {
   StatTile,
   StatusChip,
   ViewPills,
+  figmaField,
   figmaLabel,
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
+import { recordInternalInterview } from "@/app/actions";
 import {
   clientIn,
   desk,
   fileIn,
+  member as memberIn,
   positionIn,
   referenceForApplication,
 } from "@/data/desk";
+import { INTERNAL_MEANINGS, INTERNAL_OUTCOMES } from "@/lib/clientSets";
 import { candidatesForPosition } from "@/lib/positionCandidates";
+import { can } from "@/lib/roles";
+import { feedbackLog } from "@/lib/timeline";
 import { currentMember } from "@/lib/session";
 
 const JOURNEY_STEPS = [
@@ -79,6 +85,15 @@ export default async function PositionCandidatePage({
         iv.candidateName.toLowerCase() === candidate.name.toLowerCase()),
   );
   const reference = referenceForApplication(db, candidate.applicationTaId);
+  const feedback = feedbackLog(
+    db,
+    { applicationTaId: candidate.applicationTaId, name: candidate.name, openingTaId: position.openingTaId ?? "" },
+    (actorId) => (actorId ? memberIn(db, actorId)?.name ?? null : null),
+  );
+  const mayManage = can(me, "client.manage");
+  // The set that really holds them (the demo pipeline names a set for people who are not in it).
+  const inSetRow = candidate.setId ? itsSets.find((s) => s.id === candidate.setId) ?? null : null;
+  const inSet = inSetRow?.candidates.find((c) => c.applicationTaId === candidate.applicationTaId) ?? null;
   const cvFile = candidate.fileId ? fileIn(db, candidate.fileId) : null;
   const firstName = candidate.name.split(" ")[0] || candidate.name;
   const baseHref = `/positions/${position.id}/candidates/${encodeURIComponent(candidate.id)}`;
@@ -123,6 +138,7 @@ export default async function PositionCandidatePage({
             { key: "screening", label: "Screening & contacts", href: `${baseHref}?tab=screening` },
             { key: "submissions", label: "Submissions", href: `${baseHref}?tab=submissions` },
             { key: "interviews", label: "Interviews & feedback", href: `${baseHref}?tab=interviews` },
+            { key: "feedback", label: "Feedback", href: `${baseHref}?tab=feedback` },
             { key: "references", label: "References", href: `${baseHref}?tab=references` },
             { key: "activity", label: "Activity", href: `${baseHref}?tab=activity` },
           ]}
@@ -213,6 +229,53 @@ export default async function PositionCandidatePage({
           <div className="border-t border-rule pt-3 text-[14px] text-ink-soft">
             {candidate.contactSummary}
           </div>
+
+          {/* Our own interview, before the CV goes to the client (owner, 16 Nov) */}
+          <div className="flex flex-col gap-3 border-t border-rule pt-4">
+            <p className={figmaLabel}>OUR OWN INTERVIEW</p>
+            {!inSet ? (
+              <p className="text-[14px] text-ink-soft">
+                Not in a CV set yet. The interview is recorded once TA puts {firstName} in a set.
+              </p>
+            ) : (
+              <>
+                {inSet.internalInterview ? (
+                  <p className="text-[14px] text-ink">
+                    <span className="font-medium">{INTERNAL_MEANINGS[inSet.internalInterview.outcome]}</span>
+                    {" · "}
+                    {memberIn(db, inSet.internalInterview.by)?.name ?? "someone"}
+                    {inSet.internalInterview.notes ? ` · “${inSet.internalInterview.notes}”` : ""}
+                  </p>
+                ) : (
+                  <p className="text-[14px] text-ink-soft">Not interviewed by us yet.</p>
+                )}
+                {mayManage && inSetRow && inSetRow.state !== "sent" && (
+                  <form action={recordInternalInterview} className="flex flex-wrap items-end gap-3">
+                    <input type="hidden" name="setId" value={inSetRow.id} />
+                    <input type="hidden" name="applicationTaId" value={inSet.applicationTaId} />
+                    <input type="hidden" name="back" value={`${baseHref}?tab=screening`} />
+                    <label className="flex flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                      Outcome
+                      <select name="outcome" defaultValue="pass" className={figmaField}>
+                        {INTERNAL_OUTCOMES.map((o) => (
+                          <option key={o} value={o}>
+                            {INTERNAL_MEANINGS[o]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                      What you found (needed for a hold or a fail; a fail takes them out of the set)
+                      <input name="notes" className={figmaField} />
+                    </label>
+                    <button type="submit" className={pillPrimary}>
+                      Save
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -274,6 +337,28 @@ export default async function PositionCandidatePage({
                 </div>
                 <StatusChip label={iv.state} tone="info" />
               </Link>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "feedback" && (
+        <div className="flex flex-col gap-4">
+          <p className={figmaLabel}>EVERYTHING SAID ABOUT {candidate.name.toUpperCase()}</p>
+          {feedback.length === 0 ? (
+            <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+              Nothing yet. Our own interview, the client’s decisions, each interview round, what {firstName} told the TA
+              and the reference all appear here as they happen.
+            </div>
+          ) : (
+            feedback.map((entry, i) => (
+              <div key={`${entry.at}:${i}`} className="flex flex-col gap-0.5 rounded-[20px] bg-sunk px-5 py-4">
+                <span className="text-[12px] font-medium tracking-[0.4px] text-ink-faint">
+                  {entry.label} · {new Date(entry.at + 5.5 * 3_600_000).toISOString().slice(0, 10)}
+                  {entry.by ? ` · ${entry.by}` : ""}
+                </span>
+                <span className="text-[14px] text-ink">{entry.said}</span>
+              </div>
             ))
           )}
         </div>

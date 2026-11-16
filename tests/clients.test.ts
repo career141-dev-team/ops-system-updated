@@ -12,6 +12,7 @@ import {
   STAGE_MEANINGS,
   canMoveStage,
   problemWithBilling,
+  problemWithInvoiceBilling,
   problemWithStageMove,
   whereTheyStand,
 } from "@/lib/clients";
@@ -144,6 +145,7 @@ test("a client made from a company we already had keeps its own owner", async ()
     stage: "active",
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,
@@ -158,4 +160,11 @@ test("a client made from a company we already had keeps its own owner", async ()
   assert.equal(entry.before, "m_owner", "who had it");
   assert.equal(entry.after, "m_lead", "who has it now");
   assert.equal(entry.reason, "Owner on leave.");
+});
+
+test("an invoice is not drafted without billing name, address and email (16 Nov)", () => {
+  assert.equal(problemWithInvoiceBilling({ billingName: "A", billingAddress: "1 Road", billingEmail: "a@b.test" }), null);
+  const none = problemWithInvoiceBilling({ billingName: "", billingAddress: " ", billingEmail: "" }) ?? "";
+  assert.match(none, /billing name, billing address, billing email/);
+  assert.match(problemWithInvoiceBilling({ billingName: "A", billingEmail: "a@b.test" }) ?? "", /billing address/);
 });

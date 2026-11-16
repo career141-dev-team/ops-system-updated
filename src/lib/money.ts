@@ -107,9 +107,38 @@ export function problemWithDojChange(newDate: number, reason: string, now = Date
  * two months for a candidate who is not Sri Lankan. All three come off the
  * agreement, copied onto the placement when it was made.
  */
-export function feeAmount(rule: { feeMonths: number; feeBasis: string }, monthlySalary: number): number {
+export function feeAmount(
+  rule: { feeMonths: number; feeBasis: string },
+  monthlySalary: number,
+  split?: { basicSalary?: number | null; allowances?: number | null },
+): number {
   const months = rule.feeMonths > 0 ? rule.feeMonths : 1;
-  return Math.round(months * monthlySalary * 100) / 100;
+  return Math.round(months * salaryForFee(rule.feeBasis, monthlySalary, split) * 100) / 100;
+}
+
+/**
+ * The monthly figure the fee is a multiple of (16 Nov).
+ *
+ * "basic" takes basic alone; anything else takes gross = basic + allowances.
+ * When the split is unknown the salary TA gave is used as it stands - never a
+ * guess at what part of it is basic.
+ */
+export function salaryForFee(
+  feeBasis: string,
+  monthlySalary: number,
+  split?: { basicSalary?: number | null; allowances?: number | null },
+): number {
+  const basic = split?.basicSalary;
+  if (basic === null || basic === undefined || !(basic > 0)) return monthlySalary;
+  return feeBasis === "basic" ? basic : basic + (split?.allowances ?? 0);
+}
+
+/** Why the split may be changed after the fact: it moves an invoice. */
+export function problemWithSalarySplit(basic: number, allowances: number, reason: string): string | null {
+  if (!(basic > 0)) return "Give the basic salary as a number above zero.";
+  if (!(allowances >= 0)) return "Allowances cannot be negative. Use 0 for none.";
+  if (reason.trim().length < 4) return "Write why the split changed. The fee follows it.";
+  return null;
 }
 
 export function feeInWords(rule: { feeMonths: number; feeBasis: string }): string {

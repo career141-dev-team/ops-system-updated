@@ -78,3 +78,51 @@ test("the holes of a real template can be read without changing it", async () =>
   const file = await docx("{{companyName}} {{registrationNo}}", "{{effectiveDate}}");
   assert.deepEqual(await holesInDocx(file), ["companyName", "registrationNo", "effectiveDate"]);
 });
+
+/** A document whose one paragraph is the given runs and other XML, as Word writes it. */
+async function docxOfParagraph(inner: string): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", "<Types/>");
+  zip.file("word/document.xml", `<w:document><w:body><w:p>${inner}</w:p></w:body></w:document>`);
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+const run = (text: string, bold = false) =>
+  `<w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${text}</w:t></w:r>`;
+
+test("a hole split over two runs is found and filled, keeping the first run's look", async () => {
+  const file = await docxOfParagraph(run("Between us and ") + run("{{company", true) + run("Name}} of Colombo."));
+  assert.deepEqual(await holesInDocx(file), ["companyName"]);
+  const answer = await fillDocx(file, { companyName: "Smith & Co" });
+  assert.deepEqual(answer.missing, []);
+  const body = await textOf(answer.bytes!);
+  assert.match(body, /<w:rPr><w:b\/><\/w:rPr><w:t xml:space="preserve">Smith &amp; Co<\/w:t>/);
+  assert.match(body, /<w:t xml:space="preserve"> of Colombo\.<\/w:t>/, "the text after the hole stays");
+  assert.doesNotMatch(body, /\{\{|\}\}/);
+});
+
+test("a hole split over three runs, with spell-check and bookmark marks between, is filled", async () => {
+  const file = await docxOfParagraph(
+    run("Signed: {{sig") +
+      '<w:proofErr w:type="spellStart"/>' +
+      run("natory") +
+      '<w:bookmarkStart w:id="1" w:name="x"/>' +
+      run("Name}} (director)"),
+  );
+  assert.deepEqual(await holesInDocx(file), ["signatoryName"]);
+  const answer = await fillDocx(file, { signatoryName: "A. Perera" });
+  assert.deepEqual(answer.missing, []);
+  const body = await textOf(answer.bytes!);
+  assert.match(body, /Signed: A\. Perera/);
+  assert.match(body, /<w:proofErr w:type="spellStart"\/>/, "the marks between runs are left alone");
+  assert.match(body, /<w:bookmarkStart w:id="1" w:name="x"\/>/);
+  assert.match(body, / \(director\)/);
+  assert.doesNotMatch(body, /\{\{|\}\}|natory/);
+});
+
+test("a split hole with no value is still refused, not left in", async () => {
+  const file = await docxOfParagraph(run("{{regis") + run("trationNo}}"));
+  const answer = await fillDocx(file, {});
+  assert.equal(answer.bytes, null);
+  assert.deepEqual(answer.missing, ["registrationNo"]);
+});

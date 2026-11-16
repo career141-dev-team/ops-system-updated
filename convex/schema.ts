@@ -213,6 +213,7 @@ export default defineSchema({
     stage: v.string(),
     billingName: v.string(),
     billingEmail: v.string(),
+    billingAddress: v.string(),
     groupName: v.string(),
     notes: v.string(),
     reason: v.union(v.string(), v.null()),
@@ -455,6 +456,9 @@ export default defineSchema({
     candidateName: v.string(),
     state: v.string(),
     monthlySalary: v.union(v.number(), v.null()),
+    basicSalary: v.union(v.number(), v.null()),
+    allowances: v.number(),
+    package: v.string(),
     currency: v.string(),
     offerLetterFileRef: v.union(v.string(), v.null()),
     joinDate: v.union(v.number(), v.null()),
@@ -725,6 +729,9 @@ export default defineSchema({
     clientId: v.union(v.string(), v.null()),
     readState: v.union(v.literal("new"), v.literal("filed"), v.literal("actioned")),
     note: v.string(),
+    direction: v.optional(v.union(v.literal("in"), v.literal("out"))),
+    to: v.optional(v.array(v.string())),
+    attachments: v.optional(v.array(v.string())),
   })
     .index("by_provider", ["providerId"])
     .index("by_readState", ["readState"])

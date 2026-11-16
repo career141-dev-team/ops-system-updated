@@ -997,10 +997,10 @@ export default async function PositionPage({
                 const shortlisted = set.candidates.filter((c) => c.decision === "shortlisted").length;
                 const undecided = set.candidates.filter((c) => !c.decision).length;
                 return (
+                  <div key={set.id} className="flex flex-wrap items-center gap-3">
                   <Link
-                    key={set.id}
                     href={`/sets/${set.id}`}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] bg-sunk px-5 py-4 transition-colors hover:bg-shell"
+                    className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-4 rounded-[20px] bg-sunk px-5 py-4 transition-colors hover:bg-shell"
                   >
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[16px] font-medium text-ink">{set.name}</span>
@@ -1016,6 +1016,12 @@ export default async function PositionPage({
                       <Icon name="chevron-right" size={18} className="text-ink-faint" />
                     </div>
                   </Link>
+                  {set.candidates.some((c) => c.fileId) && (
+                    <a href={`/api/sets/${set.id}/zip`} className={pillSecondary}>
+                      Download all CVs
+                    </a>
+                  )}
+                  </div>
                 );
               })}
             </div>

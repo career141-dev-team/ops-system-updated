@@ -146,6 +146,12 @@ export interface OpsInbound {
   clientId: string | null;
   readState: "new" | "filed" | "actioned";
   note: string;
+  /** "out" is our own mail read back from Sent Items (16 Nov): shown in its thread, never a reply. Absent means in. */
+  direction?: "in" | "out";
+  /** Out only: who it went to. */
+  to?: string[];
+  /** File names the email carried (16 Nov). */
+  attachments?: string[];
 }
 
 /** Who changed what, before and after, and why. */
@@ -422,6 +428,8 @@ export interface OpsClient {
   /** Who we send the invoice to. Often not known while onboarding. */
   billingName: string;
   billingEmail: string;
+  /** Where the invoice is addressed. The invoice is not drafted without it (16 Nov). */
+  billingAddress: string;
   /** Their WhatsApp group, by its name: the sets and feedback go there. */
   groupName: string;
   notes: string;
@@ -469,6 +477,8 @@ export interface OpsClientSet {
     decision?: string | null;
     decisionReason?: string | null;
     decidedAt?: number | null;
+    /** Our own team's interview before the CV goes (owner, 16 Nov). */
+    internalInterview?: { by: string; at: number; outcome: "pass" | "hold" | "fail"; notes: string } | null;
   }[];
   /** Due at the client, counted from the day the agreement was signed. */
   dueAt: number | null;
@@ -761,6 +771,16 @@ export interface OpsPlacement {
   state: string;
   /** What the client agreed to pay them, a month. */
   monthlySalary: number | null;
+  /**
+   * The split behind monthlySalary (16 Nov): a fee on "basic" or on "gross" needs
+   * to know which part is basic. null = TA did not say; the fee then falls back
+   * to monthlySalary so nothing is invented.
+   */
+  basicSalary: number | null;
+  /** Monthly allowances on top of basic. Gross = basic + allowances. */
+  allowances: number;
+  /** TA's free-text package, kept as the candidate was offered it. */
+  package: string;
   currency: string;
   offerLetterFileRef: string | null;
   /** The day they are due to start, and the day they really did. */

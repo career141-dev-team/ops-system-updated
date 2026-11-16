@@ -12,6 +12,7 @@ import {
   draftNextChase,
   markMeetingHeld,
   markMeetingNotHeld,
+  previewAgreement,
   recordAgreementCountersigned,
   recordAgreementSigned,
   recordChangesWanted,
@@ -46,8 +47,11 @@ import {
   leadIn,
   meetingsForLead,
   member as memberIn,
+  numberOf,
   requirementForLead,
 } from "@/data/desk";
+import { currentTemplate } from "@/lib/files";
+import { REFUND_PCT } from "@/lib/guarantee";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { type DictatedRequirement } from "@/lib/aiTasks";
 import {
@@ -123,8 +127,7 @@ export default async function LeadPage({
 
   const esa = agreementForLead(db, lead.id);
   const esaMissing = esa ? missingFields(esa.fields) : [];
-  const esaTemplate =
-    db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null) ?? null;
+  const esaTemplate = currentTemplate(db.files, "esa_draft");
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
   const agreementDone = esa?.state === "signed" || esa?.state === "countersigned";
 
@@ -503,7 +506,7 @@ export default async function LeadPage({
                   <span className="text-ink-soft">Replacement</span>
                   <span className="font-medium text-ink">
                     {esa?.fields.replacementWorkingDays || "60"} working days ·{" "}
-                    {esa?.fields.refundPct || "25"}% refund if unfilled
+                    {esa?.fields.refundPct || numberOf(db, "refund.pct", REFUND_PCT)}% refund if unfilled
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
@@ -556,6 +559,28 @@ export default async function LeadPage({
                       Save the fields
                     </button>
                   </form>
+                  {esaTemplate && (
+                    <form action={previewAgreement} className="mt-3 flex flex-col gap-2">
+                      <input type="hidden" name="esaId" value={esa.id} />
+                      <button type="submit" className={pillSecondary + " self-start"}>
+                        Make a filled draft to look at
+                      </button>
+                      <p className="text-[12.5px] text-ink-soft">
+                        Fills the template with the saved fields, the way the send would. Nothing is sent.
+                      </p>
+                    </form>
+                  )}
+                  {draftFiles.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-1 text-[13px]">
+                      {[...draftFiles]
+                        .sort((a, b) => b.uploadedAt - a.uploadedAt)
+                        .map((f) => (
+                          <Link key={f.id} href={`/api/files/${f.id}`} className="text-brand hover:underline">
+                            Download filled draft: {f.name}
+                          </Link>
+                        ))}
+                    </div>
+                  )}
                 </details>
               )}
             </div>

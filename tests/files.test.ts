@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   MAX_FILE_BYTES,
   canBecomePdf,
+  currentTemplate,
   extensionOf,
   isFileKind,
   keyFor,
@@ -91,4 +92,16 @@ test("only a PDF or a picture is ever shown in the page; the rest download", () 
   assert.equal(previewable(mimeFor("sheet.csv")), false);
   assert.equal(previewable("image/svg+xml"), false, "a drawing can carry a script");
   assert.equal(previewable("text/html"), false);
+});
+
+test("the template in use is the newest one that belongs to nothing", () => {
+  const f = (id: string, kind: string, subjectType: string | null, uploadedAt: number) => ({ id, kind, subjectType, uploadedAt });
+  const files = [
+    f("old", "esa_draft", null, 1),
+    f("new", "esa_draft", null, 5),
+    f("filled", "esa_draft", "esa", 9),
+    f("other", "invoice", null, 9),
+  ];
+  assert.equal(currentTemplate(files, "esa_draft")?.id, "new", "not the first, not a filled draft");
+  assert.equal(currentTemplate(files, "offer_letter"), null);
 });

@@ -164,12 +164,14 @@ import {
   MIN_CVS,
   type SetState,
   canMoveTo as canMoveSetTo,
+  problemWithInternalInterview,
   problemWithSending,
 } from "@/lib/clientSets";
 import { docxToPdf } from "@/lib/docxToPdf";
 import {
   type FileKind,
   canBecomePdf,
+  currentTemplate,
   isFileKind,
   keyFor,
   mimeFor,
@@ -218,11 +220,13 @@ import {
 import {
   WRITE_OFF_DAYS,
   balanceOf,
+  feeAmount,
   feeInWords,
   invoiceLines,
   money,
   problemWithDojChange,
   problemWithNoShow,
+  problemWithSalarySplit,
   problemWithNoShowChoice,
   problemWithPayment,
   problemWithWriteOff,
@@ -281,8 +285,10 @@ import {
   type ClientStage,
   STAGE_MEANINGS,
   problemWithBilling,
+  problemWithInvoiceBilling,
   problemWithStageMove,
 } from "@/lib/clients";
+import { invoiceHoles, problemWithInvoiceFill } from "@/lib/invoiceDoc";
 import {
   afterNotHeld,
   agreementDueAt,
@@ -293,7 +299,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { OpsDatabase, OpsInterview, OpsMember, OpsMessage } from "@/data/types";
+import type { Id, OpsDatabase, OpsFile, OpsInterview, OpsMember, OpsMessage } from "@/data/types";
 import { buildInvite, colomboWhen, type InviteInput } from "@/lib/ics";
 import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
 import { previewRoleFrom } from "@/lib/roles";
@@ -1461,7 +1467,9 @@ export async function startAgreement(formData: FormData): Promise<void> {
       guaranteeDays: numberOf(db, "guarantee.days", 90),
       paymentDays: numberOf(db, "invoice.dueDays", 30),
       replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
-      refundPct: numberOf(db, "refund.pct", 25),
+      // The agreement says 50 (REFUND_PCT); a fallback of 25 once put the wrong
+      // number into new agreements (16 Nov).
+      refundPct: numberOf(db, "refund.pct", REFUND_PCT),
     }),
     companyName: row.company,
     signatoryName: row.contactName,
@@ -1515,6 +1523,103 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
 }
 
 /**
+ * The agreement as a document: the newest template, its holes filled from the
+ * fields, stored as Word and (when LibreOffice is there) as PDF (16 Nov).
+ *
+ * One function for the send and the preview, so what a person looks at before
+ * sending is exactly what would go. It makes no message and moves no state.
+ * A hole nothing fills stops it: the owner's incident is a draft that went to a
+ * client with placeholders still in it.
+ */
+async function fillAgreementDraft(
+  db: Awaited<ReturnType<typeof desk>>,
+  esa: NonNullable<ReturnType<typeof agreementIn>>,
+  version: number,
+  memberId: Id,
+  now: number,
+): Promise<{ error: string } | { wordFile: OpsFile; pdfFile: OpsFile | null; pdfReason: string }> {
+  // The owner's template, uploaded on the files screen as kind "Agreement,
+  // drafted". Without it there is no document to attach, and a cover email
+  // with nothing attached is worse than no email.
+  const template = currentTemplate(db.files, "esa_draft");
+  if (!template) {
+    return {
+      error:
+        "The agreement template is not here yet. Upload the ESA as a Word file on the Files screen, as “Agreement, drafted”, and this can go.",
+    };
+  }
+  const templateBytes = await readBytes(template.key);
+  if (!templateBytes) return { error: "The template file is registered but its bytes are gone. Upload it again on the Files screen." };
+  const fill = await fillDocx(Buffer.from(templateBytes), { ...esa.fields, effectiveDate: colomboDateInWords(now) });
+  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
+  if (holeProblem) return { error: holeProblem };
+
+  const base = "Agreement - " + safeName(String(esa.fields.companyName ?? "client")) + " - v" + version;
+  const wordKey = keyFor("esa_draft", "esa", esa.id, base + ".docx", now);
+  await putBytes(wordKey, fill.bytes!, mimeFor(base + ".docx"));
+  const wordFile = await addFile({
+    kind: "esa_draft",
+    key: wordKey,
+    name: base + ".docx",
+    size: fill.bytes!.byteLength,
+    mime: mimeFor(base + ".docx"),
+    sha256: sha256(fill.bytes!),
+    subjectType: "esa",
+    subjectId: esa.id,
+    madeFrom: template.id,
+    uploadedBy: memberId,
+  });
+
+  const pdf = await docxToPdf(fill.bytes!, base + ".docx");
+  if (!pdf.ok) return { wordFile, pdfFile: null, pdfReason: pdf.reason ?? "" };
+  const pdfKey = keyFor("esa_draft", "esa", esa.id, base + ".pdf", now);
+  await putBytes(pdfKey, pdf.bytes!, "application/pdf");
+  const pdfFile = await addFile({
+    kind: "esa_draft",
+    key: pdfKey,
+    name: base + ".pdf",
+    size: pdf.bytes!.byteLength,
+    mime: "application/pdf",
+    sha256: sha256(pdf.bytes!),
+    subjectType: "esa",
+    subjectId: esa.id,
+    madeFrom: wordFile.id,
+    uploadedBy: memberId,
+  });
+  return { wordFile, pdfFile, pdfReason: "" };
+}
+
+/**
+ * A look at the agreement before it is sent (16 Nov): fills it exactly as the
+ * send would, keeps the files, and makes no message. The drafts show on the
+ * lead as "Download filled draft".
+ */
+export async function previewAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const problem = problemWithDraft(row.fields);
+  if (problem) back(problem);
+  const draft = await fillAgreementDraft(db, row, row.state === "negotiating" ? row.version + 1 : row.version, member.id, Date.now());
+  if ("error" in draft) back(draft.error);
+  const made = draft as Exclude<typeof draft, { error: string }>;
+  revalidatePath(here);
+  back(
+    made.pdfFile
+      ? "A filled draft is ready to download below. Nothing was sent."
+      : "The Word draft is ready to download below. No PDF this time: " + made.pdfReason + " Nothing was sent.",
+  );
+}
+
+/**
  * Sends the agreement (15, Phase 2 step 11).
  *
  * Three things have to be true: every required field is filled, the owner's
@@ -1550,65 +1655,16 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   const problem = problemWithDraft(row.fields);
   if (problem) back(problem);
 
-  // The owner's template, uploaded on the files screen as kind "Agreement,
-  // drafted". Without it there is no document to attach, and a cover email
-  // with nothing attached is worse than no email.
-  const template = db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null);
-  if (!template) {
-    back(
-      "The agreement template is not here yet. Upload the ESA as a Word file on the Files screen, as \u201cAgreement, drafted\u201d, and this can go.",
-    );
-  }
-
   const now = Date.now();
-
-  // The document itself (step 10). The template's holes are filled from the
-  // fields, and a hole nothing fills stops the whole thing: the owner's
-  // incident is a draft that went to a client with placeholders still in it.
-  const templateBytes = await readBytes(template!.key);
-  if (!templateBytes) back("The template file is registered but its bytes are gone. Upload it again on the Files screen.");
-  const fill = await fillDocx(Buffer.from(templateBytes!), {
-    ...row.fields,
-    effectiveDate: colomboDateInWords(now),
-  });
-  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
-  if (holeProblem) back(holeProblem);
-
-  const base = "Agreement - " + safeName(String(row.fields.companyName ?? "client")) + " - v" + (again ? row.version + 1 : row.version);
-  const wordKey = keyFor("esa_draft", "esa", esaId, base + ".docx", now);
-  await putBytes(wordKey, fill.bytes!, mimeFor(base + ".docx"));
-  const wordFile = await addFile({
-    kind: "esa_draft",
-    key: wordKey,
-    name: base + ".docx",
-    size: fill.bytes!.byteLength,
-    mime: mimeFor(base + ".docx"),
-    sha256: sha256(fill.bytes!),
-    subjectType: "esa",
-    subjectId: esaId,
-    madeFrom: template!.id,
-    uploadedBy: member.id,
-  });
+  const draft = await fillAgreementDraft(db, row, version, member.id, now);
+  if ("error" in draft) back(draft.error);
+  const made = draft as Exclude<typeof draft, { error: string }>;
 
   // A client gets the PDF, never the Word file: a Word file can be edited by
   // whoever receives it. No LibreOffice means no agreement goes out from here,
   // which is the right answer on a laptop.
-  const pdf = await docxToPdf(fill.bytes!, base + ".docx");
-  if (!pdf.ok) back("The agreement was filled in but no PDF could be made. " + (pdf.reason ?? ""));
-  const pdfKey = keyFor("esa_draft", "esa", esaId, base + ".pdf", now);
-  await putBytes(pdfKey, pdf.bytes!, "application/pdf");
-  const pdfFile = await addFile({
-    kind: "esa_draft",
-    key: pdfKey,
-    name: base + ".pdf",
-    size: pdf.bytes!.byteLength,
-    mime: "application/pdf",
-    sha256: sha256(pdf.bytes!),
-    subjectType: "esa",
-    subjectId: esaId,
-    madeFrom: wordFile.id,
-    uploadedBy: member.id,
-  });
+  if (!made.pdfFile) back("The agreement was filled in but no PDF could be made. " + made.pdfReason);
+  const pdfFile = made.pdfFile!;
 
   const cover = templateFor(db, "esa.cover");
   const to = String(row.fields.signatoryEmail ?? "").trim();
@@ -2048,6 +2104,7 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   const details = {
     billingName: String(formData.get("billingName") ?? "").trim(),
     billingEmail: String(formData.get("billingEmail") ?? "").trim(),
+    billingAddress: String(formData.get("billingAddress") ?? "").trim(),
     groupName: String(formData.get("groupName") ?? "").trim(),
   };
   const problem = problemWithBilling(details);
@@ -2282,7 +2339,13 @@ export async function sendClientSet(formData: FormData): Promise<void> {
     .filter((c) => (c.role ?? "").toLowerCase() === "hr" && c.email.trim())
     .map((c) => c.email.trim());
 
-  const problem = problemWithSending(row.candidates, to, numberOf(db, "set.minCvs", MIN_CVS));
+  const problem = problemWithSending(
+    row.candidates,
+    to,
+    numberOf(db, "set.minCvs", MIN_CVS),
+    // On unless somebody switched it off: a desk that never had the setting still gets the rule.
+    db.settings.find((s) => s.key === "set.requireInternalInterview")?.value !== false,
+  );
   if (problem) back(problem);
 
   // The owner's hold at five (step 15): a client already sitting on five
@@ -2449,6 +2512,58 @@ export async function dropFromClientSet(formData: FormData): Promise<void> {
       (left.length < minimum
         ? "It is now short of " + minimum + ", so it cannot go until TA adds somebody."
         : "The set can still go: " + left.length + " CVs."),
+  );
+}
+
+/**
+ * Our own interview of a candidate, before their CV goes to the client
+ * (owner, 16 Nov). A pass lets the CV go; a hold keeps the set from going; a
+ * fail takes the candidate out of the set, with the notes as the reason. The
+ * result is on the audit either way, which is where the feedback log reads a
+ * failed candidate from (they are no longer in the set).
+ */
+export async function recordInternalInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const who = String(formData.get("applicationTaId") ?? "");
+  // Back to the page the form was on, but only to one of our own two pages, never to an address a form made up.
+  const from = String(formData.get("back") ?? "");
+  const here = /^\/(positions|sets)\/[A-Za-z0-9_-]+(\/candidates\/[^?#\s]+)?(\?tab=[a-z]+)?$/.test(from) ? from : "/sets/" + setId;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (row.state === "sent") back("That set has gone already; the interview comes before it goes.");
+
+  const outcome = String(formData.get("outcome") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+  const problem = problemWithInternalInterview(outcome, notes);
+  if (problem) back(problem);
+  const taken = row.candidates.find((c) => c.applicationTaId === who);
+  if (!taken) back("Nobody in this set by that id.");
+
+  const now = Date.now();
+  const done = { by: member.id, at: now, outcome: outcome as "pass" | "hold" | "fail", notes };
+  const candidates =
+    outcome === "fail"
+      ? row.candidates.filter((c) => c.applicationTaId !== who)
+      : row.candidates.map((c) => (c.applicationTaId === who ? { ...c, internalInterview: done } : c));
+  await patchClientSet(
+    setId,
+    { candidates },
+    member.id,
+    "clientSet.internalInterview." + outcome,
+    // "Name: notes", the same shape as a candidate dropped, so a failed candidate can be found again.
+    (taken?.name ?? who) + ": " + notes,
+  );
+  revalidatePath("/sets/" + setId);
+  back(
+    outcome === "fail"
+      ? (taken?.name ?? "They") + " failed our interview and is out of the set."
+      : "Recorded: " + (taken?.name ?? "they") + (outcome === "pass" ? " passed." : " is on hold."),
   );
 }
 
@@ -4333,6 +4448,51 @@ export async function changeJoinDate(formData: FormData): Promise<void> {
   );
 }
 
+/**
+ * Correct the basic / allowances split behind the fee (16 Nov).
+ *
+ * TA gives one salary and a free-text package, not the split, so Accounts or
+ * the ops lead fills it in. The fee follows it, so a reason is mandatory and
+ * goes to the audit. A draft invoice is re-priced; one already sent is not
+ * touched - that is a credit note, a separate document.
+ */
+export async function correctSalarySplit(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const basic = Number(String(formData.get("basicSalary") ?? "").replace(/,/g, ""));
+  const allowances = Number(String(formData.get("allowances") ?? "0").replace(/,/g, "") || "0");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithSalarySplit(basic, allowances, reason);
+  if (problem) back(problem);
+
+  const invoice = row.invoiceId ? invoiceIn(db, row.invoiceId) : null;
+  if (invoice && invoice.state !== "draft") {
+    back("The invoice has gone to the client. Change it with a credit note, not by editing the salary.");
+  }
+
+  await patchPlacement(placementId, { basicSalary: basic, allowances }, member.id, "placement.salarySplit", reason);
+  if (invoice) {
+    const amount = feeAmount(
+      { feeMonths: row.feeMonths, feeBasis: row.feeBasis },
+      row.monthlySalary ?? 0,
+      { basicSalary: basic, allowances },
+    );
+    await patchInvoice(invoice.id, { amount }, member.id, "invoice.repriced", reason);
+  }
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  back("Saved. The fee now follows basic " + money(basic, row.currency) + " and allowances " + money(allowances, row.currency) + ".");
+}
+
 /** We lost them before they joined (step 6). */
 export async function cancelPlacement(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4364,10 +4524,9 @@ export async function cancelPlacement(formData: FormData): Promise<void> {
 /**
  * Send the invoice (step 10).
  *
- * Accounts' own job, so it needs `money.manage`. The lines go in the body,
- * because the invoice document itself waits on a template from the owner -
- * the same rule as the agreement: we do not invent the paperwork a client
- * pays against.
+ * Accounts' own job, so it needs `money.manage`. With an invoice template
+ * uploaded the filled PDF is attached; without one the lines go in the body,
+ * because we do not invent the paperwork a client pays against.
  */
 export async function sendInvoice(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4384,9 +4543,11 @@ export async function sendInvoice(formData: FormData): Promise<void> {
 
   const placement = row.placementId ? placementIn(db, row.placementId) : null;
   const client = row.clientId ? clientIn(db, row.clientId) : null;
-  if (!client?.billingEmail) {
-    back("This client has no billing address on their record. Put it there first, or the invoice has nowhere to go.");
-  }
+  // FigJam: "Billing address exists?" - No goes to fixing the client record.
+  const billingProblem = client
+    ? problemWithInvoiceBilling(client)
+    : "This invoice has no client record. Link it to a client first.";
+  if (billingProblem) back(billingProblem);
 
   const lines = invoiceLines({
     number: row.number,
@@ -4424,9 +4585,57 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       .replace(/\{\{sentDate\}\}/g, row.setId ? (clientSetIn(db, row.setId)?.sentAt ? colomboDateInWords(clientSetIn(db, row.setId)!.sentAt!) : "the day we sent it") : "")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
+  // The invoice document (16 Nov): when the owner has uploaded a template, fill
+  // it, make the PDF and attach that. Without one the lines stay in the email
+  // body, as before - we never draw an invoice of our own.
+  const now = Date.now();
+  const templateKind = row.kind === "credit_note" ? "credit_note_template" : "invoice_template";
+  const docTemplate = db.files.find((f) => f.kind === templateKind && f.subjectType === null);
+  const attachmentFileIds: string[] = [];
+  if (docTemplate) {
+    const templateBytes = await readBytes(docTemplate.key);
+    if (!templateBytes) back("The invoice template is registered but its bytes are gone. Upload it again on the Files screen.");
+    const holes = invoiceHoles({
+      number: row.number,
+      amount: row.amount,
+      lateCharge: row.lateCharge,
+      currency: row.currency,
+      dueAt: row.dueAt,
+      reason: row.reason,
+      againstNumber: row.againstInvoiceId ? (invoiceIn(db, row.againstInvoiceId)?.number ?? null) : null,
+      now,
+      client: client!,
+      placement,
+      about: row.about,
+      positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
+    });
+    const filled = await fillDocx(Buffer.from(templateBytes!), holes);
+    const holeProblem = problemWithInvoiceFill(filled.missing);
+    if (holeProblem) back(holeProblem);
+    const base = safeName((row.kind === "credit_note" ? "Credit note " : "Invoice ") + row.number);
+    const pdf = await docxToPdf(filled.bytes!, base + ".docx");
+    if (!pdf.ok) back("The invoice was filled in but no PDF could be made. " + (pdf.reason ?? ""));
+    const pdfKey = keyFor("invoice", "invoice", invoiceId, base + ".pdf", now);
+    await putBytes(pdfKey, pdf.bytes!, "application/pdf");
+    const pdfFile = await addFile({
+      kind: "invoice",
+      key: pdfKey,
+      name: base + ".pdf",
+      size: pdf.bytes!.byteLength,
+      mime: "application/pdf",
+      sha256: sha256(pdf.bytes!),
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      madeFrom: docTemplate.id,
+      uploadedBy: member.id,
+    });
+    attachmentFileIds.push(pdfFile.id);
+  }
+
   const message = await draftMessage({
     channel: "email",
     to: [client?.billingEmail ?? ""].filter(Boolean),
+    attachmentFileIds,
     subject: fill(wording?.subject ?? "{{client}} - invoice {{invoiceNumber}}"),
     body: fill(wording?.body ?? "Dear {{contact}},\n\n{{invoice}}"),
     templateKey: "invoice.cover",
@@ -4434,7 +4643,6 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     subjectId: invoiceId,
   });
 
-  const now = Date.now();
   await patchInvoice(
     invoiceId,
     { state: "sent", sentAt: now, sentMessageId: message.id },
@@ -4934,6 +5142,7 @@ export async function runImport(formData: FormData): Promise<void> {
         stage: row.values.stage || "active",
         billingName: row.values.billingname ?? "",
         billingEmail: row.values.billingemail ?? "",
+        billingAddress: "",
         groupName: "",
         // An owner we cannot match is the ops lead's to sort out, so the
         // record says so instead of looking as though it was meant.

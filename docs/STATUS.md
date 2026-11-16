@@ -45,7 +45,8 @@ code is invented.
 | The banking and finance rule | `flagIndustry` in `src/lib/leads.ts` | reads the company and what they say they do, **never what they want to hire** |
 | The intro call, its reminders and rebooks | `src/lib/meetings.ts` | three attempts with no reply closes the lead, with a reason |
 | The agreement: fields from the real template | `src/lib/esa.ts` (`ESA_FIELDS`) | every hole in the template is a required field |
-| Filling the template, and the PDF | `src/lib/docxFill.ts` → `docxToPdf` | a hole with no value stops the send |
+| Filling the template, and the PDF | `src/lib/docxFill.ts` → `docxToPdf` | a hole with no value stops the send; a hole Word split over runs is gathered first (16 Nov) |
+| Template versions, check and preview (16 Nov) | `currentTemplate` in `src/lib/files.ts`, `checkTemplate` in `src/lib/esa.ts`, the "agreement template" card on `app/(settings)/files/page.tsx`, `previewAgreement` + `fillAgreementDraft` in `app/actions.ts`, "Make a filled draft" on `app/(clients)/leads/[id]/page.tsx` | newest upload is in use; blanks nothing fills and required fields never printed are listed; a preview makes the files, no message |
 | The chase: email, WhatsApp, email, WhatsApp, email, call | `CHASE_PLAN`, `chaseTheAgreement` in `src/data/desk.ts` | the clock drafts it; a person approves it; a reply stops it |
 | They want changes | `recordChangesWanted` in `app/actions.ts` | chasing stops, the version moves on, the two weeks keep running |
 | Signed, countersigned, declined | `app/actions.ts` | settling an agreement stops every clock on it |
@@ -85,6 +86,9 @@ System rather than on an opening Ops created itself.
 | A candidate with no CV taken out, with a reason | `dropFromClientSet` | the set still has to hold the minimum afterwards |
 | Sent to the client's own "hr" contacts, CVs attached | `sendClientSet` | at least 5 CVs, every one present, or it refuses and says which |
 | The day they received it, correctable | `recordSetReceived` | everything after the set counts from this |
+| All of a set's CVs as one zip (16 Nov) | `app/api/sets/[id]/zip/route.ts`, `zipName`/`problemWithZip` in `src/lib/clientSets.ts` | "Download all CVs" on the set page and the position's set list. Signed-in only; refuses, in words, when a CV is missing rather than leaving somebody out |
+| Our own interview before the CV goes (16 Nov) | `InternalInterview`, `problemWithInternalInterview`, the last argument of `problemWithSending` in `src/lib/clientSets.ts`; `recordInternalInterview` in `app/actions.ts` | pass / hold / fail with notes, kept on the set candidate. The set refuses to go while anyone lacks a **pass**, unless setting `set.requireInternalInterview` is off (seed: on; a desk without the setting counts as on). A fail takes the candidate out of the set; the notes stay on the audit as `clientSet.internalInterview.fail`. Form on the candidate page's *Screening & contacts* view; an "Interviewed" chip per candidate on the set page |
+| Candidate feedback log (16 Nov) | `subjectsOfCandidate`, `feedbackLog` in `src/lib/timeline.ts`, the *Feedback* view on the candidate page | `tests/feedbacklog.test.ts`. Read-only, newest first: our own interview, the client's decision on the CV, each round's decision, what the candidate told the TA, the reference. A candidate who failed our interview is read back from the audit, since the set no longer holds them (matched on the "Name: notes" reason, so it relies on the name being unchanged) |
 | Screens | `app/sets`, `app/sets/[id]` | waiting to go, soonest due first; then sent |
 
 | The clocks a set starts, all from the day they received it | `startReceiptClocks` in `src/data/desk.ts` | ownership, feedback chase, the two weeks before a hold, and three months for an unreported hire |
@@ -152,6 +156,9 @@ part that pays for everything.
 | They joined | `markPlacementJoined`, and TA's `placement.joined` event | one door for both ways in; the fee is drafted at once, because thirty days run from the first working day whether or not anybody remembered |
 | They never turned up | `markNoShow`, and TA's `placement.no_show` event | nothing invoiced and nothing refunded (the owner's rule); the client's choice between a replacement and stopping is drafted, and their answer reopens or closes the search in TA |
 | The fee invoice | `draftFeeInvoice` | the agreement's rule times the package, a number from the series, due thirty days from the first working day; invoicing twice is refused, and a replacement under the guarantee is not invoiced at all |
+| Basic and allowances | `correctSalarySplit`, `feeAmount` | the placement keeps basic, allowances and TA's package text; the fee on "basic" or "gross" follows them, and correcting the split needs a reason in the audit (16 Nov) |
+| The billing check | `problemWithInvoiceBilling` | no invoice drafted or sent without the client's billing name, address and email, each named when missing (16 Nov) |
+| The invoice document | `sendInvoice`, `invoiceHoles` | the uploaded invoice template is filled, made a PDF and attached to the draft; a hole nothing fills refuses it by name (16 Nov) |
 | Sending it | `sendInvoice` | to the billing address on the client's record, as a draft accounts approves; the clock that chases it starts from the due date, and TA is told the invoice state |
 | Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
 | Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
@@ -310,6 +317,8 @@ walks found something the tests had passed.
 | The TA events cursor is a time | `eventsAfter` in `src/lib/ta.ts`, `readTaEvents`, the stand-in in `src/data/fakeTa.ts` | the live route takes `after` in milliseconds and answers `cursor`; an id was refused with a 400 on the second read. The 5 Nov note that it took an id was wrong |
 | Depth waits for the client | `depthApplies` in `src/lib/depth.ts`, `evaluateDepth` | the two rules apply once a set has gone or a candidate is at a client stage; on the first real events run they queued "search again" for 23 live openings that had never sent a set |
 | The reader says why | `readOneMailbox` | the error behind "could not be read", 429 named, and a time limit the import may lengthen; the clock keeps 15 seconds |
+| The reader moves forward (16 Nov) | `readAllMailboxes` in `src/lib/graphMail.ts`, `readTheMailboxes` in `src/data/desk.ts`, setting `mail.reached.<box>` | our own and machine mail is never stored, so "start after the newest stored mail" re-read the same dropped page every pass and a client's reply behind it was never reached. Each box now keeps a cursor of its own: the newest receivedDateTime plus the ids seen at that second, so two messages in one second are never skipped. Pages are followed by Graph's `@odata.nextLink` (up to four a pass), not by asking again after a time. The cursor is saved only after the mail is recorded. More than 100 messages in one second would stall (not expected) |
+| Files and Sent Items (16 Nov) | `attachments`, `direction`, `to` on the inbound row (both stores), `app/(inbox)/mail/[key]`, `tests/mailcursor.test.ts` | the names of an email's files are kept (inline pictures left out) and listed on the thread. Each box's Sent Items is read with its own cursor (`mail.reached.<box>#sent`) and filed into threads as "we wrote" - read state "actioned", never counted as new mail, and it never calls `recordReply`, so our own mail cannot stop a chase. A copy of something this system sent is skipped (same id, or same subject and recipient within ten minutes) so it is not shown twice |
 
 ## Not built
 
@@ -322,7 +331,7 @@ Small things still open, each with its reason:
 
 | Thing | Why it waits |
 |---|---|
-| The invoice and credit-note **documents** | they wait on a template from the owner, exactly as the agreement did. Until then an invoice goes as lines in the body of an email, which works and is not our paperwork |
+| The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
 | The Teams meeting made from the Ops mailbox | `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All` admin consent nobody has granted (the .ics invite is built; only the automatic link is waiting) |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |

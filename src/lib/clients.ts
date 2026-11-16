@@ -62,6 +62,7 @@ export interface BillingDetails {
   billingName: string;
   billingEmail: string;
   groupName: string;
+  billingAddress?: string;
 }
 
 /**
@@ -76,6 +77,26 @@ export function problemWithBilling(details: BillingDetails): string | null {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "That billing email does not look like an email.";
   if (email && !details.billingName.trim()) return "Say who the billing contact is, not only their address.";
   return null;
+}
+
+/**
+ * The gate before an invoice is drafted or sent (16 Nov, FigJam "Billing
+ * address exists? No: fix client billing record").
+ *
+ * Strict where problemWithBilling is lenient: an invoice with no address on it
+ * is not an invoice a client can pay against, so all three are named at once.
+ */
+export function problemWithInvoiceBilling(client: {
+  billingName: string;
+  billingAddress?: string;
+  billingEmail: string;
+}): string | null {
+  const missing: string[] = [];
+  if (!client.billingName.trim()) missing.push("billing name");
+  if (!(client.billingAddress ?? "").trim()) missing.push("billing address");
+  if (!client.billingEmail.trim()) missing.push("billing email");
+  if (!missing.length) return null;
+  return "The client record is missing the " + missing.join(", ") + ". Fix it on the client page first, then the invoice can go.";
 }
 
 /** One line for the list: where they are and what is missing. */

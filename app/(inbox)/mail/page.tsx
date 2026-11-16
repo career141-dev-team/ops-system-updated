@@ -48,7 +48,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
   const box = boxAsked === "shared" || boxAsked === "all" || boxAsked === "mine" ? boxAsked : seesWholeDesk(member) || !haveOwn ? "all" : "mine";
   const keep = (i: { mailbox: string }) => (box === "mine" ? mine(i) : box === "shared" ? shared(i) : true);
   const db = { ...all, inbound: all.inbound.filter(keep) };
-  const counts = { mine: all.inbound.filter(mine).length, shared: all.inbound.filter(shared).length, all: all.inbound.length };
+  const counts = { mine: all.inbound.filter((i) => i.direction !== "out" && mine(i)).length, shared: all.inbound.filter((i) => i.direction !== "out" && shared(i)).length, all: all.inbound.filter((i) => i.direction !== "out").length };
   const waiting = inboundWaiting(db);
   const recent = inboundRecent(db);
   const aiOn = anyKeySet() && aiSwitches(db).on;

@@ -58,6 +58,7 @@ import type { DayItem } from "@/lib/whatFirst";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import { problemWithInvoiceBilling } from "@/lib/clients";
 import {
   CLOSE_TRIGGERS,
   GUARANTEE_DAYS,
@@ -112,7 +113,8 @@ import {
   ownershipWindow,
   silentDays,
 } from "@/lib/clientFeedback";
-import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
+import { type InboundMail, type MailCursor, readAllMailboxes } from "@/lib/graphMail";
+import { normalSubject } from "@/lib/mailbox";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
 import { cursorAfter, whatWeDoWithIt } from "@/lib/taEvents";
@@ -493,22 +495,57 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
 /** The clock pass as an actor: the audit and the timeline read it as "by itself". */
 export const CLOCK_ACTOR = "clock";
 
+/** Setting key prefix: how far the reader got in each mailbox (the box's address follows). */
+const MAIL_REACHED = "mail.reached.";
+
 export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
 ): Promise<{ ok: boolean; reason?: string; read: number; already: number; filed: number; waiting: number; chasesStopped: number; ignored: number }> {
-  // Each box carries on from the newest thing we already have from it, so a
-  // pass never re-reads and never skips. A box we have never read starts from
-  // the reader's own short window.
-  const since: Record<string, number> = {};
-  for (const i of (await desk()).inbound) {
-    if (i.mailbox && i.receivedAt > (since[i.mailbox] ?? 0)) since[i.mailbox] = i.receivedAt + 1000;
+  // Each box carries on from the newest thing we already have from it, or from
+  // how far the last read got if that is later (16 Nov): our own and machine
+  // mail is dropped and never stored, so a page of it left the start where it
+  // was and the same page was read, and dropped, every pass. A box we have
+  // never read starts from the reader's own short window.
+  const since: Record<string, MailCursor> = {};
+  const db = await desk();
+  for (const i of db.inbound) {
+    // "From" this second, not after it: what shares the second is told apart by
+    // id, here by recordInbound's own check (16 Nov).
+    if (i.mailbox && i.direction !== "out" && i.receivedAt > (since[i.mailbox]?.at ?? 0)) since[i.mailbox] = { at: i.receivedAt, ids: [] };
   }
-  const { mail, problems, ignored } = await readAllMailboxes(since);
+  const saved: Record<string, MailCursor> = {};
+  for (const s of db.settings) {
+    if (!s.key.startsWith(MAIL_REACHED)) continue;
+    const box = s.key.slice(MAIL_REACHED.length);
+    const [time, ids] = String(s.value).split("|");
+    const at = Number(time);
+    if (!Number.isFinite(at)) continue;
+    saved[box] = { at, ids: ids ? ids.split(",") : [] };
+    if (at >= (since[box]?.at ?? 0)) since[box] = saved[box];
+  }
+  const { mail, problems, ignored, reached } = await readAllMailboxes(since);
   const taken = await takeInbound(mail, by, now);
+  // Only after the mail is recorded: a pass that fails part-way must read the
+  // same page again rather than skip it.
+  for (const [box, cursor] of Object.entries(reached)) {
+    const before = saved[box];
+    if (!before || cursor.at > before.at || cursor.ids.length !== before.ids.length) {
+      await noteSetting(MAIL_REACHED + box, cursor.at + "|" + cursor.ids.join(","));
+    }
+  }
   // Some boxes may be readable and others not; say so rather than claiming
   // either a clean run or a total failure.
   return { ...taken, ignored, ok: problems.length === 0, reason: problems.join(" ") || undefined };
+}
+
+/** Is this Sent Items mail the copy of a message this system sent? Same id, or same subject and recipient within ten minutes. */
+function ourSend(m: OpsMessage, item: InboundMail): boolean {
+  if (m.providerMessageId && m.providerMessageId === item.providerId) return true;
+  const near = Math.abs((m.sentAt ?? m.createdAt) - item.receivedAt) < 10 * 60_000;
+  const same = normalSubject(m.subject).toLowerCase() === normalSubject(item.subject).toLowerCase();
+  const to = (item.to ?? []).map((a) => a.toLowerCase());
+  return near && same && m.to.some((a) => to.includes(a.toLowerCase()));
 }
 
 /** The same pass over mail from anywhere, so it can be tested and demonstrated. */
@@ -568,8 +605,19 @@ export async function takeInbound(
   let waiting = 0;
   let chasesStopped = 0;
 
+  // Our own sends, to tell their copy in Sent Items from a mail we never made.
+  const sentByUs = db.messages.filter((m) => m.state === "sent");
+
   for (const item of mail) {
-    const match = matchInbound(item, known);
+    const out = item.direction === "out";
+    // Sent Items also holds what this system sent. That already has its place
+    // in the thread; a second copy would show it twice.
+    if (out && sentByUs.some((m) => ourSend(m, item))) {
+      already += 1;
+      continue;
+    }
+    // A sent mail is matched on who it went to, as the other party.
+    const match = matchInbound(out ? { ...item, from: item.to?.[0] ?? "" } : item, known);
     const row = {
       channel: "email" as const,
       mailbox: item.mailbox,
@@ -585,6 +633,8 @@ export async function takeInbound(
       subjectId: match.subjectId,
       clientId: match.clientId,
       note: match.note,
+      ...(out ? { direction: "out" as const, to: item.to ?? [] } : {}),
+      ...(item.attachments?.length ? { attachments: item.attachments } : {}),
     };
 
     const saved = usingConvex()
@@ -594,6 +644,9 @@ export async function takeInbound(
       already += 1;
       continue;
     }
+    // Our own mail is filed for reading and is never a client answering: it
+    // must not stop a chase, and it never waits in "needs filing".
+    if (out) continue;
     read += 1;
 
     if (match.subjectId) filed += 1;
@@ -633,7 +686,7 @@ export function inboundWaiting(db: OpsDatabase): OpsInbound[] {
 }
 
 export function inboundRecent(db: OpsDatabase): OpsInbound[] {
-  return [...db.inbound].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
+  return db.inbound.filter((i) => i.direction !== "out").sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
 }
 
 /** Save a template's wording. Refused unless the screen checked the role first. */
@@ -2156,6 +2209,12 @@ export async function takePlacement(
     candidateName: theirs.candidateName ?? placementTaId,
     state: "placed",
     monthlySalary: theirs.placedSalary ?? null,
+    // TA gives the basis and a free-text package, not the split. When the salary
+    // it gave is already "basic" we know the basic; otherwise it stays unknown
+    // and Accounts fills it in (16 Nov).
+    basicSalary: theirs.salaryBasis === "basic" ? (theirs.placedSalary ?? null) : null,
+    allowances: 0,
+    package: theirs.package ?? "",
     currency: theirs.currency || "LKR",
     offerLetterFileRef: theirs.offerLetterFileId ?? null,
     joinDate: theirs.joinDateMs ?? null,
@@ -2350,8 +2409,16 @@ export async function draftFeeInvoice(
     return { ok: false, what: "Still missing " + missing.join(" and ") + ". Ask the TA System for it.", invoiceId: null };
   }
 
+  // FigJam: "Billing address exists?" - No means fix the client's billing
+  // record, not draft an invoice that has nowhere to go (16 Nov).
+  const client = placement.clientId ? clientIn(db, placement.clientId) : null;
+  const billing = client
+    ? problemWithInvoiceBilling(client)
+    : "This placement has no client record. Link it to a client with a billing name, address and email first.";
+  if (billing) return { ok: false, what: billing, invoiceId: null };
+
   const rule = { feeMonths: placement.feeMonths, feeBasis: placement.feeBasis };
-  const amount = feeAmount(rule, placement.monthlySalary ?? 0);
+  const amount = feeAmount(rule, placement.monthlySalary ?? 0, placement);
   const invoice = await addInvoice({
     number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
     kind: "fee",
@@ -3350,6 +3417,7 @@ export async function clientFromLead(
     stage,
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,

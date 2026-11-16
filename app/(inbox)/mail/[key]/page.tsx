@@ -111,6 +111,9 @@ export default async function ThreadPage({
             </div>
             <p className="mt-0.5 text-[12.5px] text-ink-soft">{item.subject}</p>
             <p className="mt-2 whitespace-pre-wrap text-[13.5px]">{item.body}</p>
+            {item.attachmentNames.length > 0 && (
+              <p className="mt-2 text-[12.5px] text-ink-soft">Files: {item.attachmentNames.join(", ")}</p>
+            )}
             {item.direction === "out" && item.state !== "sent" && (
               <Link href={"/messages/" + item.id} className="mt-2 inline-block text-[12.5px] text-brand hover:underline">
                 Open the draft
@@ -185,6 +188,10 @@ export default async function ThreadPage({
       <Part title="The files on it" says={filesSaid(thread.items)} open={false}>
         {thread.items.flatMap((item) => (item.attachments ? [item] : [])).length === 0 ? (
           <p className="text-[13px] text-ink-soft">Nothing was attached to anything on this conversation.</p>
+        ) : thread.items.some((item) => item.attachmentNames.length > 0) ? (
+          <ul className="list-disc pl-5 text-[13px] text-ink-soft">
+            {thread.items.flatMap((item) => item.attachmentNames.map((name) => <li key={item.id + name}>{name}</li>))}
+          </ul>
         ) : (
           <p className="text-[13px] text-ink-soft">
             Files sent with a message are kept with the message, exactly as the client received them. Open the
