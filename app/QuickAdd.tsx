@@ -147,7 +147,7 @@ export default function QuickAdd({ clients, inBar = false }: { clients: { id: st
         createPortal(
           <>
             <button type="button" data-close onClick={() => setOpen(false)} aria-label="Close" className="fixed inset-0 z-[60] cursor-default bg-veil backdrop-blur-[4px]" />
-            <div style={{ right }} className="fixed top-[96px] z-[70] max-h-[calc(100dvh-112px)] w-[300px] overflow-y-auto rounded-panel bg-surface p-2 shadow-float">{body}</div>
+            <div style={{ right }} className="fixed top-[96px] z-[70] max-h-[calc(100dvh/0.9-112px)] w-[300px] overflow-y-auto rounded-panel bg-surface p-2 shadow-float">{body}</div>
           </>,
           document.body,
         )}
