@@ -343,6 +343,14 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   "interview.reconfirm": async (timer, now) => {
     await remindAboutInterview(timer.subjectId, now);
   },
+  // Waiting on the client's times, or on a date they owe us: a chase is
+  // drafted for a person to approve (plan B3).
+  "slots.chase": async (timer, now) => {
+    await chaseForSlots(timer.subjectId, now);
+  },
+  "interview.report": async (timer, now) => {
+    await chaseForDate(timer.subjectId, now);
+  },
   // Thirty days after the first working day, and every month after that: the
   // late charge is recomputed and the chase drafted (Phase 6 steps 13 and 14).
   "invoice.due": async (timer, now) => {
@@ -2669,6 +2677,60 @@ export async function remindAboutInterview(
     link: "/interviews/" + interviewId,
   });
   return { ok: true, what: "The client's reminder is drafted and the TA has been asked. Message " + message.id };
+}
+
+/**
+ * A written chase to the client's people about an interview (16 Nov, plan B3).
+ *
+ * Two clocks used to leave only a task: `slots.chase` was never started and
+ * `interview.report` only said "ask them". Now each also drafts the email, so
+ * a person reads and approves instead of writing from nothing. A draft only -
+ * nothing is sent from here, and a client who has already answered is not chased.
+ */
+async function draftInterviewChase(
+  interviewId: Id,
+  kind: "slots" | "date",
+  now: number,
+): Promise<{ ok: boolean; what: string; messageId: Id | null }> {
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) return { ok: false, what: "That interview is gone.", messageId: null };
+  const waiting =
+    kind === "slots"
+      ? interview.state === "slots" && interview.slots.length === 0
+      : interview.at === null && (interview.state === "slots" || interview.state === "agreed");
+  if (!waiting) return { ok: false, what: "The client has already answered.", messageId: null };
+  if (!interview.interviewers.length) {
+    return { ok: false, what: "Nobody is named to chase. The task says who to ask.", messageId: null };
+  }
+  const owner = member(db, interview.ownerId)?.name ?? "Career 141";
+  const message = await draftMessage({
+    channel: "email",
+    to: interview.interviewers,
+    subject:
+      kind === "slots"
+        ? interview.candidateName + " - interview times"
+        : interview.candidateName + " - the interview date",
+    body:
+      "Dear all,\n\n" +
+      (kind === "slots"
+        ? "A gentle reminder: we are still waiting for times that suit you to interview " + interview.candidateName + "."
+        : "A gentle reminder: could you tell us the date you have booked for " + interview.candidateName + "'s interview, so we can prepare them?") +
+      "\n\nKind regards\n" +
+      owner,
+    templateKey: null,
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+  return { ok: true, what: "The chase is drafted. Message " + message.id, messageId: message.id };
+}
+
+export function chaseForSlots(interviewId: Id, now = Date.now()) {
+  return draftInterviewChase(interviewId, "slots", now);
+}
+
+export function chaseForDate(interviewId: Id, now = Date.now()) {
+  return draftInterviewChase(interviewId, "date", now);
 }
 
 /**

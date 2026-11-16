@@ -117,7 +117,7 @@ import {
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
-import { gate, isRoutine, needsApproval } from "@/lib/messages";
+import { doNotContactFrom, gate, isRoutine, needsApproval, sentToday } from "@/lib/messages";
 import {
   addressesFrom,
   buildThreads,
@@ -597,6 +597,10 @@ export async function saveDraft(formData: FormData): Promise<void> {
  * where the person is standing.
  */
 async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessage): Promise<string> {
+  // Read the sent messages fresh: approving every routine notice at once
+  // calls this in a loop, and a snapshot from before the loop would never
+  // count the ones that just went (16 Nov, plan B3).
+  const fresh = await desk();
   // Approved first, then the gate decides what really happens to it.
   const verdict = gate(
     { ...message, state: "approved" },
@@ -606,8 +610,8 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
       // cannot carry the environment (6 Nov).
       outreachLive: switchedOn(db, "switch.outreachLive") && outreachLiveInEnv(),
       testRecipient: (process.env.OPS_TEST_EMAIL ?? "").trim() || "test@example.test",
-      doNotContact: [],
-      sentToClientToday: 0,
+      doNotContact: doNotContactFrom(fresh.leads),
+      sentToClientToday: sentToday(fresh.messages, message.to),
       dailyCapPerClient: numberOf(db, "message.dailyCapPerClient", 4),
     },
   );
@@ -3496,6 +3500,19 @@ export async function requestInterviewSlots(formData: FormData): Promise<void> {
     "interview.slotsRequested",
     null,
   );
+  // We now wait on the client's times; a clock drafts the chase if they stay
+  // quiet (plan B3). A second request replaces the first clock.
+  await cancelClocksFor(db, "interview", interviewId, member.id, "Asked again.", ["slots.chase"]);
+  await startTimer({
+    kind: "slots.chase",
+    subjectType: "interview",
+    subjectId: interviewId,
+    startsAt: Date.now(),
+    dueAt: Date.now() + numberOf(db, "interview.slotsChaseDays", 2) * DAY,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: row.candidateName },
+  });
   revalidatePath(here);
   redirect(
     "/messages/" + message.id + "?msg=" + encodeURIComponent("The request is drafted. Read it, then approve it."),
@@ -3522,6 +3539,7 @@ export async function recordInterviewSlots(formData: FormData): Promise<void> {
 
   // New times are new questions: what the candidate said about the old ones no longer applies.
   await patchInterview(interviewId, { slots, slotAnswers: [] }, member.id, "interview.slotsFromClient", null);
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The client sent times.", ["slots.chase"]);
   // The candidate's half is the TA's: they ask, through their own channels.
   await createTask({
     kind: "check",
@@ -3608,7 +3626,7 @@ export async function recordClientBooking(formData: FormData): Promise<void> {
   if (at < Date.now()) back("That time has gone.");
 
   await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.clientBooked", null);
-  await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report"]);
+  await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report", "slots.chase"]);
   revalidatePath(here);
   back("Noted. Now book it on our side so the reminders run.");
 }
