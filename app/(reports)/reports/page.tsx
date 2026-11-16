@@ -74,7 +74,10 @@ export default async function ReportsPage({
         state: p.stage,
       }));
 
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
+  /** "2026-11-16" as "16 November", the way the frame writes it (249:10250). */
+const longDate = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }) : iso);
+
+const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
 
   return (
     <PageBox width="1080">
@@ -83,10 +86,10 @@ export default async function ReportsPage({
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
-              Week of {thisWeek?.weekOf ?? reportWeekOf(now)}
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
+              Week of {longDate(thisWeek?.weekOf ?? reportWeekOf(now))}
             </h1>
-            <p className="mt-1 text-[13.5px] text-ink-soft">
+            <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
               Built by the system Monday 08:00 · the TA lead checks it and sends it to the
               Director
             </p>

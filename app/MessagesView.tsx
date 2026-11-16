@@ -84,7 +84,7 @@ export default function MessagesView({
   return (
     <div className="relative flex flex-col rounded-sheet bg-surface shadow-card max-md:overflow-hidden md:flex-row md:!overflow-hidden">
       {/* The conversations. */}
-      <aside className="flex w-full shrink-0 flex-col gap-2.5 border-rule px-4 pb-6 pt-9 md:w-[520px] md:overflow-y-auto md:border-r md:pl-8 md:pr-6">
+      <aside className="flex w-full shrink-0 flex-col gap-2.5 border-rule px-4 pb-6 pt-9 md:w-[520px] md:pt-[84px] md:overflow-y-auto md:border-r md:pl-8 md:pr-6">
         <h1 className="text-[26px] leading-[34px] text-ink">Messages</h1>
         {nav}
         <Link href="/interviews" className="flex items-center gap-1.5 self-start px-2 py-1 text-[14px] leading-[21px] text-ink-soft hover:text-ink">
@@ -188,7 +188,7 @@ function ThreadPane({
   const shown = thread.items.slice(-30);
 
   return (
-    <section className="rise flex min-h-[560px] min-w-0 flex-1 flex-col gap-4 px-4 pb-7 pt-8 md:px-12">
+    <section className="rise flex min-h-[560px] min-w-0 flex-1 flex-col gap-4 px-4 pb-7 pt-8 md:px-12 md:pt-[84px]">
       <header className="flex flex-wrap items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h2 className="truncate text-[26px] leading-[34px] text-ink">{who}</h2>
