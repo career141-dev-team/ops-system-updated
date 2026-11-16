@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
-
+import { changeSetting } from "@/app/actions";
 import { desk } from "@/data/desk";
+import { figmaField, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { changeSetting } from "@/app/actions";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
 
-/**
- * Every number and switch in one place (15, Phase 1 steps 8 and 9), so nothing
- * that matters is buried in the code. Only the ops lead may change them, which
- * arrives with the editing step; this is the read.
- */
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string }>;
+}) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { msg } = await searchParams;
@@ -19,96 +20,110 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   const db = await desk();
   const settings = [...db.settings].sort((a, b) => a.key.localeCompare(b.key));
-  // A switch is anything whose value is yes or no, not only the ones named
-  // "switch.": the AI layer's per-task switches are booleans too, and they
-  // were being shown as numbers with a Save box (4 Nov).
-  const switches = settings.filter((s) => s.key.startsWith("switch.") || typeof s.value === "boolean");
+  const switches = settings.filter(
+    (s) => s.key.startsWith("switch.") || typeof s.value === "boolean",
+  );
   const numbers = settings.filter((s) => !switches.includes(s));
 
   return (
-    <div className="max-w-[760px]">
-      <h2 className="text-[14.5px] font-medium">Settings</h2>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
-        {mayChange
-          ? "Change any of these. Every change asks why, and is written down with the old value."
-          : "Only the ops lead can change these."}
-      </p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h2 className="font-serif text-[26px] font-medium leading-[1.2] text-ink">
+          Timers and working days
+        </h2>
+        <p className="mt-1 text-[13.5px] text-ink-soft">
+          {mayChange
+            ? "Every clock in the system runs from these. Only the ops lead can change them, and every change asks why."
+            : "Every clock in the system runs from these. Only the ops lead can change them."}
+        </p>
+      </div>
 
       {msg && (
-        <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
+        <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+          {msg}
+        </div>
       )}
 
-      <section className="mt-5 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Switches</h2>
-        {switches.map((setting) => (
-          <div key={setting.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-rule py-2.5 first:border-t-0">
-            <span className="flex-1 text-[13.5px]">{setting.key.replace("switch.", "")}</span>
-            <span className={"text-[13px] " + (setting.value === true ? "text-brand" : "text-ink-faint")}>
-              {setting.value === true ? "on" : "off"}
-            </span>
-            {LOCKED_SETTINGS.includes(setting.key) ? (
-              <span className="text-[12px] text-ink-faint">
-                Set by the owner at release time, not here
-              </span>
-            ) : (
-              mayChange && (
-                <form action={changeSetting} className="flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="key" value={setting.key} />
-                  <input
-                    name="reason"
-                    placeholder="Why?"
-                    className="w-[160px] rounded-lg border border-rule bg-paper px-2.5 py-1 text-[12.5px]"
-                  />
-                  <button className="rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper">
-                    Turn {setting.value === true ? "off" : "on"}
-                  </button>
-                </form>
-              )
-            )}
-          </div>
-        ))}
-      </section>
-
-      <section className="mt-3 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Numbers</h2>
+      <section className="divide-y divide-edge">
         {numbers.map((setting) => (
-          <div key={setting.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-rule py-2.5 first:border-t-0">
-            <span className="flex-1 text-[13.5px]">{setting.key}</span>
+          <div
+            key={setting.key}
+            className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0"
+          >
+            <div className="min-w-[200px] flex-1">
+              <div className="text-[15px] font-medium text-ink">{setting.key}</div>
+            </div>
             {mayChange ? (
               <form action={changeSetting} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="key" value={setting.key} />
                 <input
                   name="value"
                   defaultValue={String(setting.value)}
-                  className="w-[90px] rounded-lg border border-rule bg-paper px-2.5 py-1 text-[12.5px]"
+                  className={figmaField + " w-[120px] bg-sunk"}
                 />
                 <input
                   name="reason"
                   placeholder="Why?"
-                  className="w-[160px] rounded-lg border border-rule bg-paper px-2.5 py-1 text-[12.5px]"
+                  className={figmaField + " w-[180px]"}
                 />
-                <button className="rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper">
+                <button type="submit" className={pillSecondary}>
                   Save
                 </button>
               </form>
             ) : (
-              <span className="text-[13px] text-ink-soft">{String(setting.value)}</span>
+              <span className="rounded-[10px] bg-sunk px-3.5 py-2 text-[13.5px] font-medium text-ink">
+                {String(setting.value)}
+              </span>
             )}
           </div>
         ))}
       </section>
 
-      <section className="mt-3 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Holidays</h2>
-        <p className="mt-1 text-[13px] text-ink-soft">
-          Working days skip these, so "seven working days" means the same everywhere.
-        </p>
-        {db.holidays.map((holiday) => (
-          <p key={holiday.date} className="border-t border-rule py-2 text-[13.5px] first:border-t-0">
-            {holiday.date} · {holiday.name}
-          </p>
-        ))}
-      </section>
+      <div className="pt-2">
+        <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          SYSTEM SWITCHES
+        </div>
+        <section className="divide-y divide-edge">
+          {switches.map((setting) => (
+            <div
+              key={setting.key}
+              className="flex flex-wrap items-center justify-between gap-4 py-3.5"
+            >
+              <div className="min-w-[200px] flex-1">
+                <span className="text-[14.5px] text-ink">
+                  {setting.key.replace("switch.", "")}
+                </span>
+                <span
+                  className={`ml-2.5 text-[12.5px] font-medium ${
+                    setting.value === true ? "text-brand" : "text-ink-faint"
+                  }`}
+                >
+                  {setting.value === true ? "on" : "off"}
+                </span>
+              </div>
+              {LOCKED_SETTINGS.includes(setting.key) ? (
+                <span className="text-[12px] text-ink-faint">
+                  Set by the owner at release time
+                </span>
+              ) : (
+                mayChange && (
+                  <form action={changeSetting} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="key" value={setting.key} />
+                    <input
+                      name="reason"
+                      placeholder="Why?"
+                      className={figmaField + " w-[160px]"}
+                    />
+                    <button type="submit" className={pillSecondary}>
+                      Turn {setting.value === true ? "off" : "on"}
+                    </button>
+                  </form>
+                )
+              )}
+            </div>
+          ))}
+        </section>
+      </div>
     </div>
   );
 }

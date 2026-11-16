@@ -1,13 +1,16 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { completeClose, tickCloseItem } from "@/app/actions";
+import Icon from "@/app/Icon";
+import { BackBar, PageBox, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { checklistIn, clientIn, desk, member as memberIn, positionIn } from "@/data/desk";
-import { CLOSE_TRIGGERS, closeInWords, problemWithCloseComplete } from "@/lib/guarantee";
+import { CLOSE_TRIGGERS, problemWithCloseComplete } from "@/lib/guarantee";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/** One close: the items, each ticked by whoever can actually do it. */
+/**
+ * Frame 1:3365 — OP · Closing — [Role], [Client] (close the posts).
+ */
 export default async function ClosePage({
   params,
   searchParams,
@@ -23,86 +26,170 @@ export default async function ClosePage({
   const db = await desk();
   const checklist = checklistIn(db, id);
   if (!checklist) notFound();
+
   const position = checklist.positionId ? positionIn(db, checklist.positionId) : null;
   const client = checklist.clientId ? clientIn(db, checklist.clientId) : null;
+  const clientName = client?.name ?? "Client";
+  const placement =
+    db.placements.find((pl) => pl.openingTaId === checklist.openingTaId && pl.state !== "cancelled") ?? null;
+  const guarantee = placement
+    ? db.guarantees.find((g) => g.placementId === placement.id) ?? null
+    : null;
+
   const problem = problemWithCloseComplete(checklist.items);
   const mayManage = can(me, "client.manage");
 
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
-  const plain = "rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper";
+  const whenDate = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-4">
-      <div>
-        <Link href="/closes" className="text-[12.5px] text-brand hover:underline">
-          Back to the closes
-        </Link>
-        <h1 className="mt-2 text-[17px] font-medium">{position?.title ?? checklist.openingTaId}</h1>
-        <p className="mt-0.5 text-[13px] text-ink-soft">
-          {closeInWords(checklist)} · {memberIn(db, checklist.ownerId)?.name ?? "nobody"} owns it
-          {client && (
-            <>
-              {" · "}
-              <Link href={"/clients/" + client.id} className="text-brand hover:underline">
-                {client.name}
-              </Link>
-            </>
-          )}
-        </p>
-        <p className="mt-1 text-[12.5px] text-ink-faint">{CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}</p>
+    <PageBox width="1080" className="gap-6">
+      <BackBar
+        href={
+          placement
+            ? `/placements/${placement.id}`
+            : position
+              ? `/positions/${position.id}`
+              : "/closes"
+        }
+        label={
+          placement
+            ? `${placement.candidateName} · placement`
+            : position
+              ? `${position.title} · ${clientName}`
+              : "Closes"
+        }
+      />
+
+      {msg && (
+        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
+          {msg}
+        </div>
+      )}
+
+      {/* Header (1:3372) */}
+      <div className="flex flex-col gap-1.5 border-b border-rule pb-[18px]">
+        <span className="text-[14px] leading-[22px] text-ink-faint">
+          {position?.title ?? checklist.openingTaId} · {clientName} ·{" "}
+          {CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}
+        </span>
+        <h1 className="text-[40px] font-light leading-[50px] text-ink">Close the posts</h1>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {/* Floating Checklist Card (1:3378) */}
+      <div className="flex flex-col rounded-[28px] bg-surface px-[30px] py-[22px] shadow-float">
+        {checklist.items.map((item) => {
+          const isDone = Boolean(item.doneAt);
+          const roleBadge =
+            item.key === "pulse" ? "System" : item.whose === "ta" ? "TA" : "Ops";
+          const subtitle = isDone
+            ? `Closed ${item.doneAt ? whenLocal(item.doneAt) : ""}${
+                item.doneBy ? ` · by ${memberIn(db, item.doneBy)?.name ?? "somebody"}` : ""
+              }`
+            : item.key === "opening"
+              ? "Closes once the three posts above are closed"
+              : item.whose === "ta"
+                ? "The TA closes this one"
+                : "Ops closes this one";
 
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The list</h2>
-        {checklist.items.map((item) => (
-          <div
-            key={item.key}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0"
-          >
-            <div className="min-w-0 flex-1">
-              <p className={"text-[13.5px]" + (item.doneAt ? " text-ink-faint line-through" : "")}>{item.what}</p>
-              <p className="mt-0.5 text-[12px] text-ink-faint">
-                {item.whose === "ta" ? "The TA does this one" : "Ours"}
-                {item.doneAt && " · ticked " + whenLocal(item.doneAt)}
-                {item.doneBy && " by " + (memberIn(db, item.doneBy)?.name ?? "somebody")}
-              </p>
+          return (
+            <div
+              key={item.key}
+              className="flex flex-wrap items-center gap-3.5 border-b border-rule py-4 last:border-b-0"
+            >
+              {isDone ? (
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ok text-white">
+                  <Icon name="check" size={12} />
+                </span>
+              ) : (
+                <span className="size-5 shrink-0 rounded-full border-2 border-rule-strong" />
+              )}
+
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-[16px] leading-[26px] text-ink">{item.what}</span>
+                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                  {subtitle}
+                </span>
+              </div>
+
+              <span className="rounded-full bg-sunk px-2.5 py-0.5 text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
+                {roleBadge}
+              </span>
+
+              {isDone ? (
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ok">
+                    Done
+                  </span>
+                  {!checklist.completedAt && mayManage && (
+                    <form action={tickCloseItem}>
+                      <input type="hidden" name="checklistId" value={checklist.id} />
+                      <input type="hidden" name="key" value={item.key} />
+                      <button
+                        type="submit"
+                        className="text-[11px] font-medium text-ink-faint hover:text-ink hover:underline"
+                      >
+                        Undo
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ) : !checklist.completedAt && mayManage ? (
+                <form action={tickCloseItem}>
+                  <input type="hidden" name="checklistId" value={checklist.id} />
+                  <input type="hidden" name="key" value={item.key} />
+                  <button
+                    type="submit"
+                    className={item.key === "opening" ? pillSecondary : pillPrimary}
+                  >
+                    {item.key === "opening" ? "Close opening" : "Mark closed"}
+                  </button>
+                </form>
+              ) : (
+                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                  Waiting
+                </span>
+              )}
             </div>
-            {!checklist.completedAt && mayManage && (
-              <form action={tickCloseItem}>
-                <input type="hidden" name="checklistId" value={checklist.id} />
-                <input type="hidden" name="key" value={item.key} />
-                <button className={plain}>{item.doneAt ? "Untick" : "Tick"}</button>
-              </form>
+          );
+        })}
+
+        {!checklist.completedAt && mayManage && (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-4">
+            {problem ? (
+              <span className="text-[13px] text-warning">{problem}</span>
+            ) : (
+              <>
+                <span className="text-[14px] text-ink-soft">
+                  Every item is ticked — finish closing the position.
+                </span>
+                <form action={completeClose}>
+                  <input type="hidden" name="checklistId" value={checklist.id} />
+                  <button type="submit" className={pillPrimary}>
+                    <Icon name="check" size={16} />
+                    Everything is done — close the position
+                  </button>
+                </form>
+              </>
             )}
           </div>
-        ))}
-        <p className="mt-3 text-[12px] text-ink-faint">
-          Ticking &ldquo;close the opening&rdquo; asks the TA System to close it. That is deliberately an item of its
-          own: an opening closed while a post is still live is how somebody applies to a job that has gone.
-        </p>
-      </section>
+        )}
 
-      {!checklist.completedAt && mayManage && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Finish it</h2>
-          {problem ? (
-            <p className="mt-2 text-[13px] text-warning">{problem}</p>
-          ) : (
-            <form action={completeClose} className="mt-3 flex flex-col">
-              <input type="hidden" name="checklistId" value={checklist.id} />
-              <button className={button}>Everything is done — close the position</button>
-            </form>
-          )}
-        </section>
-      )}
+        {checklist.completedAt && (
+          <div className="mt-2 border-t border-rule pt-4 text-[14px] font-medium text-ok">
+            Closed {whenLocal(checklist.completedAt)}. Nothing of it is left running.
+          </div>
+        )}
+      </div>
 
-      {checklist.completedAt && (
-        <p className="text-[13px] text-ink-soft">Closed {whenLocal(checklist.completedAt)}. Nothing of it is left running.</p>
-      )}
-    </div>
+      {/* Shield Callout Banner (1:3411) */}
+      <div className="flex items-center gap-2.5 rounded-[16px] bg-sunk px-4 py-3.5">
+        <Icon name="shield" size={18} className="shrink-0 text-ink-soft" />
+        <span className="text-[14px] leading-[22px] text-ink-soft">
+          Closing the posts doesn’t end the guarantee — it keeps running
+          {guarantee ? ` until ${whenDate(guarantee.endsAt)}` : ""}. The invoice and payment records are kept.
+        </span>
+      </div>
+    </PageBox>
   );
 }

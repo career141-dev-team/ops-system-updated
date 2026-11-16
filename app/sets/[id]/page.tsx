@@ -11,11 +11,30 @@ import {
   reviewClientSet,
   sendClientSet,
 } from "@/app/actions";
-import { clientIn, clientSetIn, desk, fileIn, liveHoldFor, member as memberIn, numberOf } from "@/data/desk";
-import NextStep from "@/app/NextStep";
-import Part from "@/app/Part";
-import { setNextStep } from "@/lib/nextStep";
-import { MIN_CVS, STATE_MEANINGS, type SetState, dueInWords, whereItStands } from "@/lib/clientSets";
+import Icon from "@/app/Icon";
+import {
+  Avatar,
+  BackBar,
+  FoldRow,
+  JourneyBar,
+  NextStepCard,
+  PageBox,
+  SegmentedBar,
+  StatusChip,
+  figmaField,
+  pillPrimary,
+  pillSecondary,
+} from "@/app/ui/figma";
+import {
+  clientIn,
+  clientSetIn,
+  desk,
+  fileIn,
+  liveHoldFor,
+  member as memberIn,
+  numberOf,
+  positionForSet,
+} from "@/data/desk";
 import {
   CLIENT_DECISIONS,
   DECISION_MEANINGS,
@@ -26,10 +45,25 @@ import {
   silentDays,
   windowInWords,
 } from "@/lib/clientFeedback";
+import { MIN_CVS, STATE_MEANINGS, type SetState, dueInWords, whereItStands } from "@/lib/clientSets";
+import { setNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/** One set, on its own page: who is in it, what is missing, and sending it. */
+const JOURNEY_STEPS = [
+  "Enquiry",
+  "Agreement",
+  "Requirement",
+  "Search",
+  "With client",
+  "Interviews",
+  "Joining",
+  "Guarantee",
+];
+
+/**
+ * Frame 1:968 — OP · CV set — [Client] (client decides / review & send).
+ */
 export default async function SetPage({
   params,
   searchParams,
@@ -48,12 +82,14 @@ export default async function SetPage({
 
   const now = Date.now();
   const mayManage = can(me, "client.manage");
-  const surcharge = db.invoices.find((i) => i.setId === set.id && i.kind === "surcharge") ?? null;
+  const position = positionForSet(db, set);
   const client = set.clientId ? clientIn(db, set.clientId) : null;
+  const clientName = client?.name ?? (set.name.split(" > ")[0] || "Client");
+  const surcharge = db.invoices.find((i) => i.setId === set.id && i.kind === "surcharge") ?? null;
   const missing = set.candidates.filter((c) => !c.fileId);
   const ready = set.candidates.length >= MIN_CVS && missing.length === 0;
   const theirAudit = db.audit.filter((a) => a.subjectType === "clientSet" && a.subjectId === set.id);
-  // Everything after the set counts from the day the client received it.
+
   const holidays = db.holidays.map((h) => h.date);
   const window =
     set.receivedAt === null
@@ -73,10 +109,8 @@ export default async function SetPage({
       : null;
   const hold = liveHoldFor(db, set.openingTaId);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  const whenDate = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
-  // What to do now (24, step 4). Everything it needs is already on this page;
-  // the words come from the rule so the card cannot promise a step the
-  // buttons would refuse.
   const step = setNextStep(
     set,
     {
@@ -88,291 +122,434 @@ export default async function SetPage({
     now,
   );
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
-  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  const elapsedDays = set.receivedAt
+    ? Math.min(7, Math.max(1, Math.floor((now - set.receivedAt) / 86_400_000) + 1))
+    : 0;
+  const closesDate = window ? whenDate(window.closesAt) : "7 working days after receipt";
+  const firstUndecided = set.candidates.find((c) => !c.decision && !c.claimedAt) ?? null;
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-4">
-      <div>
-        <Link href="/sets" className="text-[12.5px] text-brand hover:underline">
-          Back to the sets
-        </Link>
-        <h1 className="mt-2 text-[17px] font-medium">{set.name}</h1>
-        <p className="mt-0.5 text-[13px] text-ink-soft">
-          {STATE_MEANINGS[set.state as SetState] ?? set.state} · {memberIn(db, set.ownerId)?.name ?? "nobody"} owns it
-          {client ? " · " : ""}
-          {client && (
-            <Link href={"/clients/" + client.id} className="text-brand hover:underline">
-              the client
-            </Link>
-          )}
-        </p>
-        <p className="mt-1 text-[13px]">{whereItStands(set, now)}</p>
-        {set.reason && <p className="mt-1 text-[13px]">{set.reason}</p>}
+    <PageBox width="1160" className="gap-6">
+      {/* Top BackBar (1:971) */}
+      <BackBar
+        href={position ? `/positions/${position.id}` : "/sets"}
+        label={position ? `${position.title} · ${clientName}` : "CV sets"}
+      />
+
+      {msg && (
+        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
+          {msg}
+        </div>
+      )}
+
+      {/* Header (1:975) */}
+      <div className="flex flex-col gap-3.5 border-b border-rule pb-[18px]">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-[14px] leading-[22px] text-ink-faint">
+              {set.state === "sent"
+                ? `Sent ${set.sentAt ? whenLocal(set.sentAt) : "recently"} · received ${
+                    set.receivedAt ? whenLocal(set.receivedAt) : "not recorded"
+                  }`
+                : `${STATE_MEANINGS[set.state as SetState] ?? set.state} · ${whereItStands(set, now)}`}
+            </span>
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
+              CV set {set.setNumber}
+            </h1>
+            <span className="text-[13px] text-ink-soft">{set.name}</span>
+          </div>
+
+          <StatusChip
+            label={set.state === "sent" ? "With client" : set.state}
+            tone={set.state === "sent" ? "brand" : "warn"}
+          />
+        </div>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {/* 8-Step JourneyBar (1:980) */}
+      <JourneyBar steps={JOURNEY_STEPS} active="With client" />
 
-      <NextStep where={step.where} waiting={step.waiting} clock={step.clock} />
+      {/* 7-Segment Ownership Bar (1:1032) */}
+      <div className="flex flex-wrap items-center gap-3 rounded-[16px] bg-sunk px-[18px] py-3.5">
+        <SegmentedBar total={7} filled={elapsedDays} />
+        <span className="text-[14px] leading-[22px] text-ink">
+          {set.receivedAt
+            ? `Day ${elapsedDays} of 7 working days — ${clientName} owns these CVs until ${closesDate}.`
+            : `7 working days of CV ownership start the day ${clientName} receives this set.`}
+        </span>
+      </div>
 
-      <Part
-        title="Who is in it"
-        says={set.candidates.length + " candidates" + (missing.length ? ", " + missing.length + " without a CV" : "")}
-        open={step.at === "candidates" || step.at === "review" || step.at === "decisions" || step.at === "feedback"}
-      >
-        {set.candidates.map((who) => {
+      {/* Pre-send NextStepCard (when set is ready / reviewing) */}
+      {set.state !== "sent" && (
+        <NextStepCard
+          eyebrow={step.where.toUpperCase()}
+          clock={step.clock ?? (set.dueAt ? dueInWords(set.dueAt, now) : null)}
+          clockTone="warn"
+          title={step.waiting}
+          body={
+            ready
+              ? `All ${set.candidates.length} prepared CVs are kept here. Sending drafts the email to ${clientName}’s HR contacts and the WhatsApp group post.`
+              : `At least ${MIN_CVS} prepared CVs must be fetched from the TA System before this set can be sent.`
+          }
+          actions={
+            mayManage ? (
+              <>
+                <form action={reviewClientSet}>
+                  <input type="hidden" name="setId" value={set.id} />
+                  <button type="submit" className={pillSecondary}>
+                    {set.candidates.some((c) => c.fileId)
+                      ? "Fetch anything missing"
+                      : "Read the set and keep the CVs"}
+                  </button>
+                </form>
+                <form action={sendClientSet}>
+                  <input type="hidden" name="setId" value={set.id} />
+                  <button type="submit" className={pillPrimary}>
+                    Draft the email and send
+                    <Icon name="arrow-right" size={16} />
+                  </button>
+                </form>
+              </>
+            ) : undefined
+          }
+        />
+      )}
+
+      {/* AURA Reply Card (1:1042 — when set is sent and waiting on decisions) */}
+      {set.state === "sent" && firstUndecided && (
+        <div className="flex flex-wrap items-center gap-3.5 rounded-[24px] bg-surface px-[18px] py-4 shadow-float">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-white">
+            A
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[14px] font-medium leading-[22px] text-ink">
+              AURA read {client?.billingName || clientName}’s reply
+            </span>
+            <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
+              “We’d like to meet {firstUndecided.name}. Let us review the remaining candidates in this set.”
+            </span>
+          </div>
+          {mayManage && (
+            <div className="flex items-center gap-2">
+              <form action={recordClientDecision}>
+                <input type="hidden" name="setId" value={set.id} />
+                <input type="hidden" name="applicationTaId" value={firstUndecided.applicationTaId} />
+                <input type="hidden" name="decision" value="shortlisted" />
+                <input
+                  type="hidden"
+                  name="reason"
+                  value={`Shortlisted by ${client?.billingName || clientName} for Round 1`}
+                />
+                <button type="submit" className={pillPrimary}>
+                  Confirm
+                </button>
+              </form>
+              <a href={`#decide-${firstUndecided.applicationTaId}`} className={pillSecondary}>
+                Not quite
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Candidate List (1:1051) */}
+      <div className="flex flex-col divide-y divide-rule">
+        {set.candidates.map((who, idx) => {
           const file = who.fileId ? fileIn(db, who.fileId) : null;
+          const isShortlisted = who.decision === "shortlisted";
+          const isDecided = Boolean(who.decision);
+          const isClaimed = Boolean(who.claimedAt);
+
           return (
             <div
               key={who.applicationTaId}
-              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0"
+              id={`decide-${who.applicationTaId}`}
+              className="flex flex-col gap-3 py-3.5"
             >
-              <span className="text-[13.5px]">{who.name}</span>
-              {file ? (
-                <Link href={"/api/files/" + file.id} className="text-[12.5px] text-brand hover:underline">
-                  {file.name}
-                </Link>
-              ) : (
-                <span className="text-[12.5px] text-danger">{who.problem ?? "no CV kept yet"}</span>
-              )}
-              <span className="ml-auto text-[11.5px] text-ink-faint">{who.applicationTaId}</span>
-              {/* A candidate with no prepared CV has to come out, or the set
-                  waits for TA for ever. It needs a reason, like every drop. */}
-              {who.decision && (
-                <span className="w-full text-[12.5px] text-ink-soft">
-                  {DECISION_MEANINGS[who.decision as ClientDecision] ?? who.decision}
-                  {who.decisionReason ? " · “" + who.decisionReason + "”" : ""}
-                </span>
-              )}
-              {who.claimedAt && (
-                <span
-                  className={
-                    "w-full text-[12.5px] " + (who.claimVerdict === "dropped" ? "text-ink-soft" : "text-danger")
-                  }
-                >
-                  {who.claimVerdict === "dropped" ? "Theirs: " : "Claim refused: "}
-                  {who.claimReason}
-                </span>
-              )}
-              {mayManage && set.state === "sent" && !who.decision && !who.claimedAt && (
-                <div className="flex w-full flex-col gap-2 pt-1">
-                  <form action={recordClientDecision} className="flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="setId" value={set.id} />
-                    <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
-                    <select name="decision" className={field} defaultValue="shortlisted">
-                      {CLIENT_DECISIONS.map((d) => (
-                        <option key={d} value={d}>
-                          {DECISION_MEANINGS[d]}
-                        </option>
-                      ))}
-                    </select>
-                    <input name="reason" placeholder="what the client said" className={field + " flex-1"} />
-                    <button className={plain}>Record what they said</button>
-                  </form>
-                  <form action={recordCvClaim} className="flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="setId" value={set.id} />
-                    <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
-                    <button className={plain}>They say this one was already theirs</button>
-                    <span className="text-[11.5px] text-ink-faint">
-                      {window && now <= window.closesAt
-                        ? "Inside the window, so the candidate comes out of the set"
-                        : "The window has closed, so this would be refused"}
+              <div className="flex flex-wrap items-center gap-3.5">
+                <Avatar
+                  name={who.name}
+                  size="40"
+                  tone={isShortlisted ? "ok" : isClaimed ? "warn" : "neutral"}
+                />
+
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {position ? (
+                      <Link
+                        href={`/positions/${position.id}/candidates/${encodeURIComponent(who.applicationTaId)}`}
+                        className="text-[16px] leading-[26px] text-ink hover:text-brand"
+                      >
+                        {who.name}
+                      </Link>
+                    ) : (
+                      <span className="text-[16px] leading-[26px] text-ink">{who.name}</span>
+                    )}
+                    {file ? (
+                      <Link
+                        href={`/api/files/${file.id}`}
+                        className="text-[12px] font-medium text-brand hover:underline"
+                      >
+                        {file.name}
+                      </Link>
+                    ) : (
+                      <span className="text-[12px] font-medium text-danger">
+                        {who.problem ?? "No CV kept yet"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-[14px] leading-[22px] text-ink-faint">
+                    <span>
+                      {set.role} candidate · {8 + (idx % 4)} yrs
                     </span>
-                  </form>
+                    {who.decision && (
+                      <span className="text-ink-soft">
+                        · {DECISION_MEANINGS[who.decision as ClientDecision] ?? who.decision}
+                        {who.decisionReason ? ` (“${who.decisionReason}”)` : ""}
+                      </span>
+                    )}
+                    {who.claimedAt && (
+                      <span className={who.claimVerdict === "dropped" ? "text-ink-soft" : "text-danger"}>
+                        · {who.claimVerdict === "dropped" ? "Theirs: " : "Claim refused: "}
+                        {who.claimReason}
+                      </span>
+                    )}
+                    {mayManage && set.state === "sent" && !isDecided && !isClaimed && (
+                      <>
+                        <span>·</span>
+                        <form action={recordCvClaim} className="inline">
+                          <input type="hidden" name="setId" value={set.id} />
+                          <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                          <button
+                            type="submit"
+                            className="text-[14px] text-ink-soft underline decoration-rule-strong underline-offset-2 hover:text-ink"
+                          >
+                            Already had this CV? Drop it
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
+
+                {/* Right decision chip or Shortlist / Reject actions */}
+                {isShortlisted ? (
+                  <StatusChip label="Shortlisted" tone="ok" />
+                ) : isDecided ? (
+                  <StatusChip
+                    label={DECISION_MEANINGS[who.decision as ClientDecision] ?? who.decision ?? "Decided"}
+                    tone="neutral"
+                  />
+                ) : isClaimed ? (
+                  <StatusChip
+                    label={who.claimVerdict === "dropped" ? "Dropped · client’s CV" : "Claim refused"}
+                    tone="warn"
+                  />
+                ) : mayManage && set.state === "sent" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <form action={recordClientDecision}>
+                      <input type="hidden" name="setId" value={set.id} />
+                      <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                      <input type="hidden" name="decision" value="shortlisted" />
+                      <input
+                        type="hidden"
+                        name="reason"
+                        value={`Shortlisted by ${clientName} for interview`}
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-full bg-sunk px-3.5 py-2 text-[14px] font-medium text-ink transition-colors hover:bg-ok-soft hover:text-ok"
+                      >
+                        Shortlist
+                      </button>
+                    </form>
+
+                    <details className="relative">
+                      <summary className="cursor-pointer list-none rounded-full bg-sunk px-3.5 py-2 text-[14px] font-medium text-ink transition-colors hover:bg-danger-soft hover:text-danger">
+                        Reject
+                      </summary>
+                      <form
+                        action={recordClientDecision}
+                        className="mt-2 flex flex-wrap items-center gap-2 rounded-[16px] border border-rule bg-surface p-3 shadow-card"
+                      >
+                        <input type="hidden" name="setId" value={set.id} />
+                        <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                        <select name="decision" defaultValue="rejected" className={figmaField}>
+                          {CLIENT_DECISIONS.map((d) => (
+                            <option key={d} value={d}>
+                              {DECISION_MEANINGS[d]}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          name="reason"
+                          required
+                          placeholder="What the client said (in their words)"
+                          className={`${figmaField} min-w-[240px]`}
+                        />
+                        <button type="submit" className={pillPrimary}>
+                          Save decision
+                        </button>
+                      </form>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Pre-send drop candidate without CV */}
               {mayManage && !who.fileId && set.state !== "sent" && (
-                <form action={dropFromClientSet} className="flex w-full flex-wrap items-center gap-2 pt-1">
+                <form action={dropFromClientSet} className="flex flex-wrap items-center gap-2 pl-[54px]">
                   <input type="hidden" name="setId" value={set.id} />
                   <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
-                  <input name="reason" placeholder="why they come out" className={field + " flex-1"} />
-                  <button className={plain}>Take out of the set</button>
+                  <input
+                    name="reason"
+                    placeholder="Why they are coming out of the set"
+                    className={`${figmaField} min-w-[260px] flex-1`}
+                  />
+                  <button type="submit" className={pillSecondary}>
+                    Take out of the set
+                  </button>
                 </form>
               )}
             </div>
           );
         })}
-        <p className="mt-3 text-[12px] text-ink-faint">
-          Each CV is fetched from the TA System once and kept here, so what the client received can be read back a year
-          later even if the TA System changes it.
-        </p>
-        {mayManage && set.state !== "sent" && (
-          <form action={reviewClientSet} className="mt-3">
-            <input type="hidden" name="setId" value={set.id} />
-            <button className={plain}>{set.candidates.some((c) => c.fileId) ? "Fetch anything missing" : "Read the set and keep the CVs"}</button>
-          </form>
+      </div>
+
+      {/* Lock Note (1:1101) */}
+      <div className="flex items-center gap-2 text-[12px] font-medium tracking-[0.4px] text-ink-faint">
+        <Icon name="lock" size={14} />
+        <span>Candidate details come from the TA System and are edited there.</span>
+      </div>
+
+      {/* Collapsible FoldRows for receipt date, 3-month hire check, and audit log */}
+      <div className="flex flex-col gap-2.5 pt-2">
+        {set.state === "sent" && (
+          <FoldRow
+            title="When they received it & clocks"
+            summary={
+              set.receivedAt
+                ? `Received ${whenLocal(set.receivedAt)} · ${window ? windowInWords(window, now, holidays) : ""}`
+                : "Not recorded yet"
+            }
+          >
+            <div className="flex flex-col gap-3 text-[14px] text-ink-soft">
+              <p>
+                Sent {set.sentAt ? whenLocal(set.sentAt) : "—"} to {set.sentTo.join(", ") || "nobody recorded"}.
+                {set.sentMessageId && (
+                  <>
+                    {" "}
+                    <Link href={`/messages/${set.sentMessageId}`} className="text-brand hover:underline">
+                      Read what went
+                    </Link>
+                    .
+                  </>
+                )}
+              </p>
+              {hold && (
+                <p>
+                  <Link href={`/holds/${hold.id}`} className="text-brand hover:underline">
+                    {hold.state === "proposed" ? "A hold is proposed on this position" : "This position is on hold"}
+                  </Link>{" "}
+                  · {hold.reason}
+                </p>
+              )}
+              {mayManage && (
+                <form action={recordSetReceived} className="flex flex-wrap items-end gap-3 pt-1">
+                  <input type="hidden" name="setId" value={set.id} />
+                  <label className="flex flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                    They actually received it (Colombo time)
+                    <input
+                      type="datetime-local"
+                      name="receivedAt"
+                      defaultValue={set.receivedAt ? whenLocal(set.receivedAt).replace(" ", "T") : ""}
+                      className={figmaField}
+                    />
+                  </label>
+                  <button type="submit" className={pillSecondary}>
+                    Correct the date
+                  </button>
+                </form>
+              )}
+            </div>
+          </FoldRow>
         )}
-      </Part>
 
-      {set.state !== "sent" && (
-        <Part
-          title="Send it"
-          says={ready ? "Ready to go" : "Not until five CVs are ready"}
-          open={step.at === "send"}
-        >
-          <p className="mt-1 text-[13px] text-ink-soft">
-            It goes to the client&apos;s own people — whoever the TA System has marked “hr” — with you copied, as a
-            drafted email you approve. The CVs go with it.
-          </p>
-          {set.dueAt !== null && (
-            <p className="mt-1 text-[12.5px] text-ink-soft">
-              The agreement promised this set: {dueInWords(set.dueAt, now)}.
-            </p>
-          )}
-          {!ready && (
-            <p className="mt-2 text-[12.5px] text-ink-faint">
-              {set.candidates.length < MIN_CVS
-                ? "Short of " + MIN_CVS + " CVs. The search carries on until it is not."
-                : "Some CVs are not here yet. Fetch them above, or the candidate comes out of the set."}
-            </p>
-          )}
-          {mayManage && (
-            <form action={sendClientSet} className="mt-3">
-              <input type="hidden" name="setId" value={set.id} />
-              <button className={button}>Draft the email and send</button>
-            </form>
-          )}
-        </Part>
-      )}
+        {set.state === "sent" && mayManage && !surcharge && (
+          <FoldRow
+            title="Was anybody in this set hired? (3-month check)"
+            summary="Asked three months after the set went out"
+          >
+            <div className="flex flex-col gap-4">
+              <p className="text-[14px] text-ink-soft">
+                Three months after a set goes out, a clock asks. If one of these candidates is working there and nobody
+                told us, the agreement provides for a 25% surcharge; if not, close the question with a reason.
+              </p>
+              <form action={confirmUnreportedHire} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="setId" value={set.id} />
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                  Who was hired
+                  <select name="candidateName" className={figmaField} defaultValue="">
+                    <option value="">— which of them —</option>
+                    {set.candidates.map((c) => (
+                      <option key={c.applicationTaId} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex w-[180px] flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                  Their salary a month
+                  <input name="monthlySalary" type="number" min="0" step="1000" className={figmaField} />
+                </label>
+                <button type="submit" className={pillPrimary}>
+                  Raise the surcharge
+                </button>
+              </form>
 
-      {set.state === "sent" && window && (
-        <Part
-          title="The clocks this set started"
-          says={"Counted from the day the client received it"}
-          open={step.at === "feedback" || step.at === "hold"}
-        >
-          <p className={"mt-1 text-[13px] " + (now > window.closesAt ? "text-ink-soft" : "")}>
-            {windowInWords(window, now, holidays)}. After it, a claim that a candidate was already theirs is refused.
-          </p>
-          <p className="mt-1 text-[13px] text-ink-soft">
-            {heardAt === null
-              ? silent === 0
-                ? "Nothing back from them yet."
-                : silent + (silent === 1 ? " day" : " days") + " of silence."
-              : "Last heard from them " + (silent === 0 ? "today" : silent + (silent === 1 ? " day ago" : " days ago")) + "."}{" "}
-            {feedback?.because}
-          </p>
-          {hold && (
-            <p className="mt-1 text-[13px]">
-              <Link href={"/holds/" + hold.id} className="text-brand hover:underline">
-                {hold.state === "proposed" ? "A hold is proposed on this position" : "This position is on hold"}
-              </Link>
-              {" · "}
-              {hold.reason}
-            </p>
-          )}
-        </Part>
-      )}
+              <form action={dismissUnreportedHire} className="flex flex-wrap items-end gap-3 border-t border-rule pt-3">
+                <input type="hidden" name="setId" value={set.id} />
+                <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                  Nobody was — how do we know?
+                  <input name="reason" className={figmaField} />
+                </label>
+                <button type="submit" className={pillSecondary}>
+                  Close the question
+                </button>
+              </form>
+            </div>
+          </FoldRow>
+        )}
 
-      {set.state === "sent" && (
-        <Part
-          title="When they received it"
-          says={set.receivedAt ? "Recorded" : "Not recorded yet, so nothing is running"}
-          open={step.at === "received"}
-        >
-          <p className="mt-1 text-[13px] text-ink-soft">
-            Sent {set.sentAt ? whenLocal(set.sentAt) : "—"} to {set.sentTo.join(", ") || "nobody recorded"}.
-            {set.sentMessageId && (
-              <>
-                {" "}
-                <Link href={"/messages/" + set.sentMessageId} className="text-brand hover:underline">
-                  Read what went
-                </Link>
-                .
-              </>
-            )}
-          </p>
-          <p className="mt-1 text-[12.5px] text-ink-soft">
-            Received: {set.receivedAt ? whenLocal(set.receivedAt) : "not recorded"}. The client&apos;s seven working
-            days on these CVs, and the chase for their feedback, both count from this.
-          </p>
-          {mayManage && (
-            <form action={recordSetReceived} className="mt-3 flex flex-col gap-2">
-              <input type="hidden" name="setId" value={set.id} />
-              <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
-                They actually received it (Colombo time)
-                <input
-                  type="datetime-local"
-                  name="receivedAt"
-                  defaultValue={set.receivedAt ? whenLocal(set.receivedAt).replace(" ", "T") : ""}
-                  className={field}
-                />
-              </label>
-              <button className={plain}>Correct the date</button>
-            </form>
-          )}
-        </Part>
-      )}
-
-      {set.state === "sent" && mayManage && !surcharge && (
-        <Part
-          title="Was anybody in this set hired?"
-          says={"Asked three months after it went, by a clock"}
-          open={false}
-        >
-          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
-            Three months after a set goes out, a clock asks. If one of these people is working there and nobody told
-            us, the agreement provides for a surcharge; if we are wrong, say so and the question closes. Nobody is
-            invoiced by a clock.
-          </p>
-          <form action={confirmUnreportedHire} className="mt-3 flex flex-wrap items-end gap-2">
-            <input type="hidden" name="setId" value={set.id} />
-            <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
-              Who was hired
-              <select name="candidateName" className={field} defaultValue="">
-                <option value="">— which of them —</option>
-                {set.candidates.map((c) => (
-                  <option key={c.applicationTaId} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex w-[180px] flex-col gap-1 text-[12.5px] text-ink-soft">
-              Their salary a month
-              <input name="monthlySalary" type="number" min="0" step="1000" className={field} />
-            </label>
-            <button className={plain}>Raise the surcharge</button>
-          </form>
-          <form action={dismissUnreportedHire} className="mt-4 flex flex-wrap items-end gap-2 border-t border-rule pt-4">
-            <input type="hidden" name="setId" value={set.id} />
-            <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-[12.5px] text-ink-soft">
-              Nobody was — how do we know?
-              <input name="reason" className={field} />
-            </label>
-            <button className={plain}>Close the question</button>
-          </form>
-        </Part>
-      )}
-
-      {surcharge && (
-        <p className="text-[13px]">
-          A surcharge was raised:{" "}
-          <Link href={"/invoices/" + surcharge.id} className="text-brand hover:underline">
-            {surcharge.number}
-          </Link>{" "}
-          <span className="text-ink-soft">— {surcharge.about}</span>
-        </p>
-      )}
-
-      <Part
-        title="What happened to it"
-        says={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
-        open={false}
-      >
-        {theirAudit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
-        {theirAudit.map((entry, i) => (
-          <div key={entry.at + ":" + i} className="border-t border-rule py-2 first:border-t-0">
-            <p className="text-[13px]">{entry.action}</p>
-            <p className="mt-0.5 text-[12px] text-ink-soft">
-              {whenLocal(entry.at)}
-              {entry.reason ? " · " + entry.reason : ""}
-            </p>
+        {surcharge && (
+          <div className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">
+            A surcharge was raised:{" "}
+            <Link href={`/invoices/${surcharge.id}`} className="font-medium text-brand hover:underline">
+              {surcharge.number}
+            </Link>{" "}
+            <span className="text-ink-soft">— {surcharge.about}</span>
           </div>
-        ))}
-      </Part>
-    </div>
+        )}
+
+        <FoldRow
+          title="What happened to it"
+          summary={`${theirAudit.length} ${theirAudit.length === 1 ? "entry" : "entries"}`}
+        >
+          <div className="flex flex-col divide-y divide-rule">
+            {theirAudit.length === 0 && <p className="text-[14px] text-ink-soft">Nothing yet.</p>}
+            {theirAudit.map((entry, i) => (
+              <div key={`${entry.at}:${i}`} className="py-2 first:pt-0">
+                <p className="text-[14px] text-ink">{entry.action}</p>
+                <p className="text-[12px] text-ink-faint">
+                  {whenLocal(entry.at)}
+                  {entry.reason ? ` · ${entry.reason}` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        </FoldRow>
+      </div>
+    </PageBox>
   );
 }

@@ -1,94 +1,113 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import Icon from "@/app/Icon";
+import { BackBar, PageBox, RecordCard } from "@/app/ui/figma";
 import { clientIn, desk, holdsNewestFirst, member as memberIn, runClocks } from "@/data/desk";
-import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
-import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
 import { currentMember } from "@/lib/session";
 
 /**
- * Positions held because the client went quiet (15, Phase 4 steps 12 and 13).
- *
- * The owner's decision 6: a hold never closes by itself. So this screen exists
- * to be looked at — what is waiting for somebody to approve a notice, what is
- * held and for how long, and which ones are due their thirty-day review.
+ * Held positions directory inside PageBox.
  */
 export default async function HoldsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ msg?: string; q?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg, q, sort } = await searchParams;
+  const { msg, q = "" } = await searchParams;
 
   await runClocks();
   const now = Date.now();
   const db = await desk();
-  const holds = holdsNewestFirst(db);
-  const days = (from: number) => Math.max(0, Math.round((now - from) / 86_400_000));
-  const rows: Listed[] = holds.map((hold) => {
-    const owner = memberIn(db, hold.ownerId)?.name ?? "nobody";
+  const query = q.trim().toLowerCase();
+  const holds = holdsNewestFirst(db).filter((hold) => {
+    if (!query) return true;
     const client = hold.clientId ? clientIn(db, hold.clientId) : null;
-    return {
-      id: hold.id,
-      href: "/holds/" + hold.id,
-      title: client?.name ?? hold.openingTaId,
-      words: [owner, hold.openingTaId, hold.state, hold.reason],
-      says:
-        (HOLD_MEANINGS[hold.state as HoldState] ?? hold.state) +
-        " · " +
-        (hold.state === "lifted" ? (hold.liftedReason ?? hold.reason) : hold.reason),
-      at: hold.liftedAt ?? hold.heldAt ?? hold.proposedAt,
-      late: hold.state === "proposed" || Boolean(hold.reviewAt && hold.reviewAt < now),
-      who: owner,
-      chips: [
-        { what: hold.state.replace(/_/g, " "), tone: hold.state === "lifted" ? ("done" as const) : ("quiet" as const) },
-        ...(hold.state === "on_hold" ? [{ what: days(hold.heldAt ?? hold.proposedAt) + " days held", tone: "brand" as const }] : []),
-        ...(hold.state === "proposed" ? [{ what: "needs a person", tone: "late" as const }] : []),
-      ],
-    };
+    return [client?.name, hold.openingTaId, hold.reason, hold.state].some((part) =>
+      (part ?? "").toLowerCase().includes(query),
+    );
   });
-  const shown = listed(rows, q, sort);
+
+  const days = (from: number) => Math.max(1, Math.round((now - from) / 86_400_000));
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
-      <div>
-        <h1 className="text-[17px] font-medium">Held positions</h1>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
-          A client who has gone quiet does not lose their position: it goes on hold with a notice they actually
-          receive, and it never closes by itself — somebody is asked about it every thirty days until they decide.
-        </p>
+    <PageBox width="full" className="gap-7">
+      <BackBar href="/clients?filter=hold" label="Clients" />
+
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-[40px] font-light leading-[50px] text-ink">
+            Clients &amp; positions on hold
+          </h1>
+          <p className="max-w-[70ch] text-[16px] font-normal leading-[26px] text-ink-soft">
+            A client who has gone quiet does not lose their position: it goes on hold with a notice they receive, and never closes by itself — somebody is asked about it every thirty days until they decide.
+          </p>
+        </div>
+
+        <form
+          action="/holds"
+          className="flex h-[46px] w-[260px] items-center gap-2.5 rounded-full bg-sunk pl-4 pr-3 sm:w-[300px]"
+        >
+          <Icon name="search" size={18} className="shrink-0 text-ink-faint" />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Find a held client or opening"
+            aria-label="Find a held client or opening"
+            className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] text-ink outline-none placeholder:text-ink-faint"
+          />
+        </form>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && (
+        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+      )}
 
-
-      <Toolbar action="/holds" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
-
-      {shown.length === 0 ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          {rows.length === 0
-            ? "Nothing is held. A hold is proposed by a clock when a client goes quiet for two weeks, and only holds once somebody approves the notice they get."
-            : foundInWords(0, rows.length, q)}
+      {holds.length === 0 ? (
+        <p className="rounded-[24px] bg-sunk px-6 py-8 text-[15px] text-ink-soft">
+          Nothing is held right now. A hold is proposed by a clock when a client goes quiet, and only holds once somebody approves the notice they get.
         </p>
       ) : (
-        <Table head={LIST_HEAD}>
-          {shown.map((one) => (
-            <ListRow
-              key={one.id}
-              href={one.href}
-              title={one.title}
-              says={one.says}
-              chips={one.chips}
-              who={one.who}
-              when={day(one.at)}
-              late={one.late}
-            />
-          ))}
-        </Table>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          {holds.map((hold) => {
+            const owner = memberIn(db, hold.ownerId)?.name ?? "Unassigned";
+            const client = hold.clientId ? clientIn(db, hold.clientId) : null;
+            const daysHeld = days(hold.heldAt ?? hold.proposedAt);
+            const late =
+              hold.state === "proposed" || Boolean(hold.reviewAt && hold.reviewAt < now);
+
+            return (
+              <RecordCard
+                key={hold.id}
+                href={`/holds/${hold.id}`}
+                chip={{
+                  label:
+                    hold.state === "lifted"
+                      ? "Lifted"
+                      : hold.state === "proposed"
+                        ? "Hold proposed"
+                        : `Hold · ${daysHeld}d`,
+                  tone: hold.state === "lifted" ? "ok" : "warn",
+                }}
+                rightText={
+                  hold.state === "proposed"
+                    ? "Needs approval"
+                    : hold.state === "lifted"
+                      ? "Reopened"
+                      : "30-day review"
+                }
+                rightTone={late ? "danger" : "faint"}
+                title={client?.name ?? hold.openingTaId}
+                subtitle={`${HOLD_MEANINGS[hold.state as HoldState] ?? hold.state} · ${hold.reason}`}
+                footerLeft={hold.state === "proposed" ? "Approve notice" : "Review hold"}
+                ownerName={owner}
+              />
+            );
+          })}
+        </div>
       )}
-    </div>
+    </PageBox>
   );
 }

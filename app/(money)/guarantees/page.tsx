@@ -1,107 +1,196 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { desk, guaranteesNewestFirst, member as memberIn, runClocks } from "@/data/desk";
-import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
-import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
+import Icon from "@/app/Icon";
+import { BackBar, PageBox, RecordCard, ViewPills, type Tone } from "@/app/ui/figma";
+import {
+  clientIn,
+  desk,
+  guaranteesNewestFirst,
+  member as memberIn,
+  placementIn,
+  positionIn,
+  runClocks,
+} from "@/data/desk";
+import { workingDaysBetween } from "@/lib/calendar";
 import { daysLeftInWords, guaranteeInWords } from "@/lib/guarantee";
 import { currentMember } from "@/lib/session";
 
 /**
- * Guarantees (15, Phase 7).
- *
- * Ninety days from joining, and only valid while the fee is fully paid. Three
- * lists: the ones running, the ones where somebody left, and the ones that
- * are over. "Ending this month" is first, because that is the one worth
- * reading on a Monday.
+ * Guarantees index (`/guarantees`) — inside the Placements workspace.
  */
 export default async function GuaranteesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ msg?: string; q?: string; view?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg, q, sort } = await searchParams;
+  const { msg, q, view = "all" } = await searchParams;
 
   await runClocks();
   const now = Date.now();
-  const month = 30 * 86_400_000;
   const db = await desk();
   const all = guaranteesNewestFirst(db);
   const holidays = db.holidays.map((h) => h.date);
-  const rows: Listed[] = all.map((guarantee) => {
-    const owner = memberIn(db, guarantee.ownerId)?.name ?? "nobody";
-    const unpaid = !guarantee.feePaidAt && (guarantee.state === "running" || guarantee.state === "warned");
-    return {
-      id: guarantee.id,
-      href: "/guarantees/" + guarantee.id,
-      title: guarantee.candidateName,
-      words: [owner, guarantee.openingTaId, guarantee.state],
-      says:
-        guaranteeInWords(guarantee, now, holidays) +
-        (unpaid ? " · the fee is not paid in full, so it would not hold" : ""),
-      at: guarantee.endsAt,
-      late: unpaid || guarantee.state === "replacing",
-      who: owner,
-      chips: [
-        { what: guarantee.state.replace(/_/g, " "), tone: guarantee.state === "ended_clean" ? ("done" as const) : ("quiet" as const) },
-        ...(guarantee.state === "running" || guarantee.state === "warned"
-          ? [{ what: daysLeftInWords(guarantee.endsAt, now), tone: "brand" as const }]
-          : []),
-        ...(unpaid ? [{ what: "fee unpaid", tone: "late" as const }] : []),
-      ],
-    };
-  });
-  const shown = listed(rows, q, sort);
-  // The one a person asks about on a Monday: the next guarantee to end.
+  const query = (q ?? "").trim().toLowerCase();
+
+  const cards = all
+    .map((guarantee) => {
+      const owner = memberIn(db, guarantee.ownerId)?.name ?? "Unassigned";
+      const placement = placementIn(db, guarantee.placementId);
+      const position = placement?.positionId ? positionIn(db, placement.positionId) : null;
+      const client = guarantee.clientId ? clientIn(db, guarantee.clientId) : null;
+      const clientName = client?.name ?? "Client";
+      const roleTitle = position?.title ?? guarantee.openingTaId;
+      const overline = `${clientName} · ${roleTitle}`;
+
+      const elapsedDays = Math.max(1, Math.min(90, Math.ceil((now - guarantee.startsAt) / 86_400_000)));
+      const daysLeft = Math.max(0, Math.ceil((guarantee.endsAt - now) / 86_400_000));
+      const unpaid = !guarantee.feePaidAt && (guarantee.state === "running" || guarantee.state === "warned");
+
+      let statusText = guaranteeInWords(guarantee, now, holidays);
+      let statusTone: Tone = "ok";
+      let clockText = `Day ${elapsedDays} of 90`;
+
+      if (guarantee.state === "replacing") {
+        statusText = "Left · replacing";
+        statusTone = "warn";
+        const elapsedWorking = guarantee.leftAt
+          ? workingDaysBetween(guarantee.leftAt, now, holidays)
+          : 1;
+        clockText = `Day ${Math.max(1, elapsedWorking)} of 60`;
+      } else if (guarantee.state === "refund_pending") {
+        statusText = "Refund pending";
+        statusTone = "warn";
+        clockText = "Awaiting credit note";
+      } else if (unpaid) {
+        statusText = "Fee unpaid";
+        statusTone = "danger";
+      } else if (daysLeft <= 15 && daysLeft > 0) {
+        statusText = `Ends in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`;
+        statusTone = "ok";
+      } else if (guarantee.state === "running" || guarantee.state === "warned") {
+        statusText = "All well";
+        statusTone = "ok";
+      } else {
+        statusText = guarantee.state.replace(/_/g, " ");
+        statusTone = "neutral";
+      }
+
+      return {
+        guarantee,
+        owner,
+        overline,
+        statusText,
+        statusTone,
+        clockText,
+      };
+    })
+    .filter((c) => {
+      if (!query) return true;
+      return [c.guarantee.candidateName, c.overline, c.owner, c.statusText].some((w) =>
+        w.toLowerCase().includes(query),
+      );
+    });
+
+  const running = cards.filter(
+    (c) => c.guarantee.state === "running" || c.guarantee.state === "warned",
+  );
+  const replacing = cards.filter(
+    (c) => c.guarantee.state === "replacing" || c.guarantee.state === "refund_pending",
+  );
+  const ended = cards.filter(
+    (c) =>
+      c.guarantee.state !== "running" &&
+      c.guarantee.state !== "warned" &&
+      c.guarantee.state !== "replacing" &&
+      c.guarantee.state !== "refund_pending",
+  );
+
+  const shown =
+    view === "running"
+      ? running
+      : view === "replacing"
+        ? replacing
+        : view === "ended"
+          ? ended
+          : cards;
+
+  const views = [
+    { key: "all", label: "All", count: cards.length, href: "/guarantees" },
+    { key: "running", label: "Running", count: running.length, href: "/guarantees?view=running" },
+    { key: "replacing", label: "Replacing / Refund", count: replacing.length, href: "/guarantees?view=replacing" },
+    { key: "ended", label: "Ended", count: ended.length, href: "/guarantees?view=ended" },
+  ];
+
   const soonest = all
     .filter((one) => one.state === "running" || one.state === "warned")
     .sort((a, b) => a.endsAt - b.endsAt)[0];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-[14.5px] font-medium">Guarantees</h2>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
-          Ninety days from the day somebody joined — not from the payment — and only valid while the fee is fully
-          paid. A warning on day 75. If somebody leaves, a replacement comes first; a refund is the Director&rsquo;s
-          decision, never a clock running out.
-        </p>
+    <PageBox width="full" className="gap-6">
+      <BackBar href="/placements" label="Placements" />
+
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-[32px] font-light leading-[40px] text-ink">
+            90-day guarantees
+          </h1>
+          <p className="max-w-[70ch] text-[14px] text-ink-soft">
+            Ninety days from the day somebody joined — not from the payment — and only valid while the fee is fully
+            paid. If somebody leaves, a replacement comes first.
+          </p>
+        </div>
+
+        <form action="/guarantees" method="get" className="flex items-center">
+          {view !== "all" && <input type="hidden" name="view" value={view} />}
+          <div className="flex h-10 items-center gap-2 rounded-full bg-sunk px-4 text-[14px]">
+            <Icon name="search" size={15} className="text-ink-faint" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Filter guarantees…"
+              className="w-40 bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
+            />
+          </div>
+        </form>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      <ViewPills items={views} active={view} />
 
-      <Toolbar action="/guarantees" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
+      {msg && (
+        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+          {msg}
+        </p>
+      )}
 
       {shown.length === 0 ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          {rows.length === 0
-            ? "No guarantee is running. One starts by itself the day somebody joins, and runs ninety days from that day."
-            : foundInWords(0, rows.length, q)}
-        </p>
+        <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+          No guarantee records match this filter. One starts by itself the day somebody joins, and runs ninety days from that day.
+        </div>
       ) : (
-        <Table head={LIST_HEAD}>
-          {shown.map((row) => (
-            <ListRow
-              key={row.id}
-              href={row.href}
-              title={row.title}
-              says={row.says}
-              chips={row.chips}
-              who={row.who}
-              when={day(row.at)}
-              late={row.late}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {shown.map((c) => (
+            <RecordCard
+              key={c.guarantee.id}
+              href={`/guarantees/${c.guarantee.id}`}
+              overline={c.overline}
+              ownerName={c.owner}
+              title={c.guarantee.candidateName}
+              statusText={c.statusText}
+              statusTone={c.statusTone}
+              clockText={c.clockText}
             />
           ))}
-        </Table>
+        </div>
       )}
 
       {soonest && (
-        <p className="text-[12px] text-ink-faint">
+        <p className="text-[13px] text-ink-faint">
           The soonest ends in {daysLeftInWords(soonest.endsAt, now)}.
         </p>
       )}
-    </div>
+    </PageBox>
   );
 }

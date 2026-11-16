@@ -13,3 +13,5 @@ node_modules/
 deploy/local/.env.backend.local
 tsconfig.tsbuildinfo
 next-env.d.ts
+
+graphify-out

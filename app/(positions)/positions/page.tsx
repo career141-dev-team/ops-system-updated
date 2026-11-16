@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import Icon from "@/app/Icon";
+import { PageBox, ViewPills, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import {
   clientIn,
   desk,
@@ -9,28 +12,48 @@ import {
   positionsNewestFirst,
   runClocks,
 } from "@/data/desk";
-import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
-import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
-import { depthInWords } from "@/lib/depth";
-import { positionNextStep } from "@/lib/nextStep";
 import { currentMember } from "@/lib/session";
 
+type BoardStage = "jd" | "search" | "with_client" | "interviews" | "joining";
+
+interface BoardCard {
+  id: string;
+  href: string;
+  clientName: string;
+  title: string;
+  stage: BoardStage;
+  dotClass: string;
+  statusText: string;
+  statusDanger?: boolean;
+  needsTa: boolean;
+  needsJd: boolean;
+  onHold: boolean;
+  closed: boolean;
+  searchWords: string;
+}
+
+const COLUMNS: { key: BoardStage; title: string }[] = [
+  { key: "jd", title: "Requirement & JD" },
+  { key: "search", title: "Advertising & search" },
+  { key: "with_client", title: "With the client" },
+  { key: "interviews", title: "Interviews" },
+  { key: "joining", title: "Offer & joining" },
+];
+
 /**
- * The positions, as a table (25, section 7).
+ * Frame 1:768 — OP · Openings — board by stage.
  *
- * TA owns the opening and does the searching; this is Ops's own view of it,
- * so a client can be answered without opening the TA System. The line under
- * each name is the same sentence the position's own page shows - whose move
- * it is - so the list and the page cannot say different things.
+ * Every position grouped into the 5 operational stages on the Figma board:
+ * Requirement & JD, Advertising & search, With the client, Interviews, and Offer & joining.
  */
 export default async function PositionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ msg?: string; q?: string; filter?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg, q, sort } = await searchParams;
+  const { msg, q = "", filter = "all" } = await searchParams;
 
   await runClocks();
   const now = Date.now();
@@ -41,70 +64,265 @@ export default async function PositionsPage({
       .map((one) => one.subjectId),
   );
 
-  const rows: Listed[] = positionsNewestFirst(db).map((position) => {
+  const allPositions = positionsNewestFirst(db);
+
+  const cards: BoardCard[] = allPositions.map((position) => {
     const client = position.clientId ? clientIn(db, position.clientId) : null;
+    const clientName = client?.name ?? (position.clientTaId || "Client");
     const hold = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
     const sets = db.clientSets.filter((row) => row.openingTaId === position.openingTaId);
-    const sent = sets.filter((row) => row.state === "sent").length;
-    const step = positionNextStep(
-      position,
-      {
-        queued: queued.has(position.id),
-        depthSaid: position.openingTaId ? depthInWords(position) : null,
-        holdState: hold ? hold.state : null,
-        setsSent: sent,
-      },
-      now,
-    );
-    const owner = memberIn(db, position.ownerId)?.name ?? "nobody";
+    const sentSets = sets.filter((row) => row.state === "sent");
+    const waitingSet = sentSets.find((s) => s.candidates.some((c) => !c.decision)) ?? null;
+    const readySet = sets.find((s) => s.state !== "sent" && s.state !== "withdrawn") ?? null;
+    const liveIv =
+      db.interviews.find(
+        (iv) =>
+          iv.openingTaId === position.openingTaId &&
+          ["slots", "agreed", "booked", "reconfirmed"].includes(iv.state),
+      ) ?? null;
+    const placement =
+      db.placements.find((pl) => pl.openingTaId === position.openingTaId && pl.state !== "cancelled") ?? null;
+
+    const closed = position.stage === "closed" || Boolean(position.closedAt);
+    const onHold = Boolean(hold) || position.stage === "on_hold";
+    const needsTa = !closed && (!position.primaryTaId || !position.openingTaId || queued.has(position.id));
+    const needsJd = !closed && !position.jdApprovedAt;
+
+    let stage: BoardStage = "search";
+    let dotClass = "bg-brand";
+    let statusText = "Searching";
+    let statusDanger = false;
+
+    const daysOpen = Math.max(1, Math.floor((now - (position.handedOverAt ?? position.createdAt)) / 86_400_000));
+
+    if (placement) {
+      stage = "joining";
+      dotClass = "bg-ok";
+      const joinDays = placement.joinDate ? Math.ceil((placement.joinDate - now) / 86_400_000) : 0;
+      statusText =
+        placement.joinedAt || joinDays <= 0
+          ? "Joining today"
+          : joinDays === 1
+            ? "Joining tomorrow"
+            : `Joining in ${joinDays} days`;
+    } else if (liveIv) {
+      stage = "interviews";
+      dotClass = "bg-info";
+      if (liveIv.at) {
+        const dt = new Date(liveIv.at + 5.5 * 3_600_000);
+        const weekday = dt.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+        const hm = dt.toISOString().slice(11, 16);
+        statusText = `${weekday} ${hm}`;
+      } else {
+        statusText = `Round ${liveIv.round} · agreeing time`;
+      }
+    } else if (waitingSet || readySet) {
+      stage = "with_client";
+      const activeSet = waitingSet ?? readySet!;
+      const silentDays = activeSet.receivedAt
+        ? Math.floor((now - activeSet.receivedAt) / 86_400_000)
+        : 0;
+      if (silentDays >= 2) {
+        dotClass = "bg-danger";
+        statusText = "Feedback late";
+        statusDanger = true;
+      } else {
+        dotClass = "bg-warning";
+        statusText =
+          activeSet.state === "sent"
+            ? `${activeSet.name} · Day ${Math.max(1, silentDays + 1)} of 7`
+            : `${activeSet.name} ready to send`;
+      }
+    } else if (!position.jdApprovedAt && position.stage === "handed_over") {
+      stage = "jd";
+      dotClass = "bg-warning";
+      statusText = "JD to approve";
+    } else {
+      stage = "search";
+      if (!position.primaryTaId) {
+        dotClass = "bg-warning";
+        statusText = "Needs a TA";
+      } else if (onHold) {
+        dotClass = "bg-danger";
+        statusText = hold?.state === "proposed" ? "Hold proposed" : "On hold";
+        statusDanger = hold?.state === "proposed";
+      } else {
+        dotClass = "bg-brand";
+        statusText = `Day ${Math.min(daysOpen, 21)} of 21`;
+      }
+    }
+
+    const ownerName = memberIn(db, position.ownerId)?.name ?? "";
+
     return {
       id: position.id,
-      href: "/positions/" + position.id,
-      title: (client?.name ?? position.clientTaId) + " · " + position.title,
-      words: [owner, position.openingTaId ?? "", position.title, client?.name ?? ""],
-      says: step.waiting,
-      at: position.updatedAt ?? position.createdAt,
-      late: hold?.state === "proposed",
-      who: owner,
-      chips: [
-        { what: position.stage.replace(/_/g, " "), tone: "quiet" as const },
-        ...(position.openingTaId ? [] : [{ what: "no opening yet", tone: "careful" as const }]),
-        ...(sent ? [{ what: sent + (sent === 1 ? " set sent" : " sets sent"), tone: "brand" as const }] : []),
-        ...(hold ? [{ what: hold.state === "proposed" ? "hold proposed" : "on hold", tone: "late" as const }] : []),
-      ],
+      href: stage === "jd" ? `/positions/${position.id}?view=jd` : `/positions/${position.id}`,
+      clientName,
+      title: position.title,
+      stage,
+      dotClass,
+      statusText,
+      statusDanger,
+      needsTa,
+      needsJd,
+      onHold,
+      closed,
+      searchWords: [clientName, position.title, position.openingTaId ?? "", ownerName, statusText]
+        .join(" ")
+        .toLowerCase(),
     };
   });
 
-  const shown = listed(rows, q, sort);
+  const openCards = cards.filter((c) => !c.closed);
+  const needsTaCount = openCards.filter((c) => c.needsTa).length;
+  const needsJdCount = openCards.filter((c) => c.needsJd).length;
+  const onHoldCount = openCards.filter((c) => c.onHold).length;
+  const closedCount = cards.filter((c) => c.closed).length;
+
+  const query = q.trim().toLowerCase();
+  const filtered = cards.filter((card) => {
+    if (query && !card.searchWords.includes(query)) return false;
+    if (filter === "needs_ta") return card.needsTa;
+    if (filter === "jd") return card.needsJd;
+    if (filter === "hold") return card.onHold;
+    if (filter === "closed") return card.closed;
+    return !card.closed;
+  });
 
   return (
-    <div className="flex flex-col gap-3">
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
-
-      <Toolbar action="/positions" q={q} sort={sort} sorts={SORTS} found={foundInWords(shown.length, rows.length, q)} />
-
-      {shown.length === 0 ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          {rows.length === 0
-            ? "Nothing has been handed over yet. A position appears here when a requirement meeting is held and the role goes to the TA System - including the ones TA has not confirmed an opening for."
-            : foundInWords(0, rows.length, q)}
-        </p>
-      ) : (
-        <Table head={LIST_HEAD}>
-          {shown.map((row) => (
-            <ListRow
-              key={row.id}
-              href={row.href}
-              title={row.title}
-              says={row.says}
-              chips={row.chips}
-              who={row.who}
-              when={day(row.at)}
-              late={row.late}
-            />
-          ))}
-        </Table>
+    <PageBox width="full" className="gap-[26px]">
+      {msg && (
+        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
+          {msg}
+        </div>
       )}
-    </div>
+
+      {/* Top filter & search bar (1:771) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <ViewPills
+          items={[
+            { key: "all", label: "All", count: openCards.length, href: `/positions?filter=all${q ? `&q=${encodeURIComponent(q)}` : ""}` },
+            { key: "needs_ta", label: "Needs a TA", count: needsTaCount, href: `/positions?filter=needs_ta${q ? `&q=${encodeURIComponent(q)}` : ""}` },
+            { key: "jd", label: "JD to approve", count: needsJdCount, href: `/positions?filter=jd${q ? `&q=${encodeURIComponent(q)}` : ""}` },
+            { key: "hold", label: "On hold", count: onHoldCount, href: `/positions?filter=hold${q ? `&q=${encodeURIComponent(q)}` : ""}` },
+            { key: "closed", label: "Closed", count: closedCount || undefined, href: `/positions?filter=closed${q ? `&q=${encodeURIComponent(q)}` : ""}` },
+          ]}
+          active={filter}
+        />
+
+        <div className="ml-auto flex flex-wrap items-center gap-2.5">
+          <form action="/positions" method="get" className="flex h-[44px] w-[320px] items-center gap-2.5 rounded-full bg-sunk px-4">
+            {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
+            <Icon name="find" size={18} className="shrink-0 text-ink-faint" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Find a role or client"
+              className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
+            />
+          </form>
+
+          <Link href="/talent-pulse" className={pillSecondary}>
+            Talent Pulse
+          </Link>
+
+          <Link href="/clients?filter=leads" className={pillPrimary}>
+            <Icon name="plus" size={16} />
+            New opening
+          </Link>
+        </div>
+      </div>
+
+      {/* Closed filter view */}
+      {filter === "closed" ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-[12px] font-medium uppercase tracking-[0.84px] text-ink-faint">
+            CLOSED OPENINGS · {filtered.length}
+          </p>
+          {filtered.length === 0 ? (
+            <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+              No closed openings match your filter.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+              {filtered.map((card) => (
+                <Link
+                  key={card.id}
+                  href={card.href}
+                  className="flex flex-col gap-1 rounded-[16px] bg-sunk p-4 transition-colors hover:bg-shell"
+                >
+                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                    {card.clientName}
+                  </span>
+                  <span className="text-[16px] font-medium leading-[26px] text-ink">
+                    {card.title}
+                  </span>
+                  <div className="flex items-center gap-1.5 pt-1.5">
+                    <span className="size-[7px] shrink-0 rounded-full bg-ink-faint" aria-hidden="true" />
+                    <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
+                      Closed
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* 5-Column Stage Kanban Board (1:785) */
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+          {COLUMNS.map((col) => {
+            const colCards = filtered.filter((c) => c.stage === col.key);
+            return (
+              <div
+                key={col.key}
+                className="flex min-h-[380px] flex-col gap-2.5 rounded-[24px] bg-sunk px-3.5 pb-3.5 pt-[18px]"
+              >
+                <div className="flex items-center justify-between px-1 pb-1.5">
+                  <span className="text-[14px] font-medium leading-[22px] text-ink">
+                    {col.title}
+                  </span>
+                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                    {colCards.length}
+                  </span>
+                </div>
+
+                {colCards.length === 0 ? (
+                  <div className="flex flex-1 items-center justify-center rounded-[16px] border border-dashed border-rule px-3 py-8 text-center text-[12px] text-ink-faint">
+                    Nothing in {col.title.toLowerCase()}
+                  </div>
+                ) : (
+                  colCards.map((card) => (
+                    <Link
+                      key={card.id}
+                      href={card.href}
+                      className="flex flex-col gap-1 rounded-[16px] bg-surface p-4 shadow-card transition-shadow hover:shadow-float"
+                    >
+                      <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
+                        {card.clientName}
+                      </span>
+                      <span className="text-[16px] font-medium leading-[26px] text-ink">
+                        {card.title}
+                      </span>
+                      <div className="flex items-center gap-1.5 pt-1.5">
+                        <span className={`size-[7px] shrink-0 rounded-full ${card.dotClass}`} aria-hidden="true" />
+                        <span
+                          className={`text-[12px] font-medium leading-4 tracking-[0.4px] ${
+                            card.statusDanger ? "text-danger" : "text-ink-soft"
+                          }`}
+                        >
+                          {card.statusText}
+                        </span>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </PageBox>
   );
 }

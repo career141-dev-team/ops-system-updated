@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { quickAdd } from "@/app/actions";
@@ -50,6 +51,13 @@ export default function QuickAdd({ clients, inBar = false }: { clients: { id: st
     <details className={inBar ? "group relative" : "group rounded-lg"}>
       {summary}
       <div className={inBar ? "absolute right-0 top-[52px] z-30 w-[300px] rounded-panel bg-surface p-2 shadow-float" : ""}>
+      <Link
+        href="/leads/new"
+        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-brand hover:bg-sunk"
+      >
+        <span>Capture a lead</span>
+        <Icon name="arrow-right" size={14} />
+      </Link>
 
       <datalist id="quick-clients">
         {clients.map((c) => (

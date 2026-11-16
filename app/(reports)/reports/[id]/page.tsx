@@ -1,13 +1,28 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-
 import { approveWeeklyReport } from "@/app/actions";
 import { desk, member as memberIn, reportIn } from "@/data/desk";
-import { REPORT_MEANINGS, type ReportState, problemWithReport, reportText, rowInWords } from "@/lib/reports";
+import {
+  BackBar,
+  FoldRow,
+  PageBox,
+  StatTile,
+  StatusChip,
+  pillPrimary,
+  pillSecondary,
+} from "@/app/ui/figma";
+import {
+  REPORT_MEANINGS,
+  type ReportState,
+  problemWithReport,
+  reportText,
+  rowInWords,
+} from "@/lib/reports";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/** One week's report: every line, and the Director's email once it is read. */
+export const dynamic = "force-dynamic";
+
 export default async function ReportPage({
   params,
   searchParams,
@@ -25,92 +40,131 @@ export default async function ReportPage({
   if (!report) notFound();
 
   const problem = problemWithReport(report.rows);
-  const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "border-t border-rule py-3 first:border-t-0";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
-
-  // Grouped by client, the way the Director reads it.
-  const clients = [...new Set(report.rows.map((r) => r.client))].sort((a, b) => a.localeCompare(b));
+  const whenLocal = (at: number) =>
+    new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  const clients = [...new Set(report.rows.map((r) => r.client))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const cardShell = "rounded-[24px] border border-edge bg-surface p-5";
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
-      <div>
-        <Link href="/reports" className="text-[12.5px] text-brand hover:underline">
-          Back to the reports
-        </Link>
-        <h1 className="mt-2 text-[17px] font-medium">Week of {report.weekOf}</h1>
-        <p className="mt-0.5 text-[13px] text-ink-soft">
-          {REPORT_MEANINGS[report.state as ReportState] ?? report.state} · built {whenLocal(report.builtAt)}
-          {report.approvedBy && " · read by " + (memberIn(db, report.approvedBy)?.name ?? "somebody")}
-        </p>
-        {report.note && <p className="mt-1 text-[12.5px] text-warning">{report.note}</p>}
-      </div>
+    <PageBox width="1080">
+      <div className="flex flex-col gap-6">
+        <BackBar href="/reports" label="Reports" />
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
-
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">
-          {report.rows.length} {report.rows.length === 1 ? "position" : "positions"}
-        </h2>
-        {report.rows.length === 0 && (
-          <p className="mt-2 text-[13px] text-ink-soft">
-            No position was open in this week, so there is nothing to send.
-          </p>
-        )}
-        {clients.map((client) => (
-          <div key={client} className={row}>
-            <p className="text-[13.5px] font-medium">{client}</p>
-            {report.rows
-              .filter((r) => r.client === client)
-              .map((line) => (
-                <p key={line.positionId} className="mt-1 text-[13px]">
-                  <Link href={"/positions/" + line.positionId} className="text-brand hover:underline">
-                    {line.title}
-                  </Link>{" "}
-                  <span className="text-ink-soft">
-                    ({line.primaryTa}) — {rowInWords(line)}
-                  </span>
-                </p>
-              ))}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+              Weekly TA report
+            </p>
+            <h1 className="mt-1 font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+              Week of {report.weekOf}
+            </h1>
+            <p className="mt-1 text-[13.5px] text-ink-soft">
+              Built {whenLocal(report.builtAt)}
+              {report.approvedBy
+                ? ` · read by ${memberIn(db, report.approvedBy)?.name ?? "somebody"}`
+                : ""}
+            </p>
           </div>
-        ))}
-      </section>
+          <StatusChip tone={report.state === "sent" ? "ok" : "warn"}>
+            {REPORT_MEANINGS[report.state as ReportState] ?? report.state}
+          </StatusChip>
+        </div>
 
-      {report.state === "review" && can(me, "report.read") && (
-        <section className={card}>
-          <h2 className="text-[14.5px] font-medium">Read it, then approve it</h2>
-          <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
-            Approving drafts the Director&rsquo;s email. If a line is wrong, fix it where it lives — on the position or
-            the set — and build the report again; nothing here is edited by hand, or the report would stop matching the
-            work.
-          </p>
-          {problem ? (
-            <p className="mt-2 text-[13px] text-warning">{problem}</p>
+        {report.note && (
+          <div className="rounded-[18px] border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-ink">
+            {report.note}
+          </div>
+        )}
+
+        {msg && (
+          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+            {msg}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <StatTile value={String(report.rows.length)} label="positions covered" />
+          <StatTile value={String(clients.length)} label="clients" />
+          <StatTile
+            value={report.state === "sent" ? "Sent" : "In review"}
+            label="Director email"
+          />
+        </div>
+
+        {report.state === "review" && can(me, "report.read") && (
+          <div className={cardShell}>
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+              READ &amp; APPROVE
+            </div>
+            <p className="mt-1.5 text-[13.5px] text-ink-soft">
+              Approving drafts the Director&rsquo;s email. If a line is wrong, fix it on the
+              position or set and rebuild the report.
+            </p>
+            {problem ? (
+              <p className="mt-2 text-[13px] font-medium text-warn">{problem}</p>
+            ) : (
+              <form action={approveWeeklyReport} className="mt-4">
+                <input type="hidden" name="reportId" value={report.id} />
+                <button type="submit" className={pillPrimary}>
+                  Approve, and draft the Director&apos;s email
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {report.messageId && (
+          <div>
+            <Link href={`/messages/${report.messageId}`} className={pillSecondary}>
+              Open Director&apos;s email draft
+            </Link>
+          </div>
+        )}
+
+        <div className={cardShell}>
+          <h2 className="font-serif text-[18px] font-medium text-ink">
+            {report.rows.length} {report.rows.length === 1 ? "position" : "positions"}
+          </h2>
+          {report.rows.length === 0 ? (
+            <p className="mt-2 text-[13.5px] text-ink-soft">
+              No position was open in this week, so there is nothing to send.
+            </p>
           ) : (
-            <form action={approveWeeklyReport} className="mt-3 flex flex-col">
-              <input type="hidden" name="reportId" value={report.id} />
-              <button className={button}>Approve, and draft the Director&apos;s email</button>
-            </form>
+            <div className="mt-3 divide-y divide-edge/60">
+              {clients.map((client) => (
+                <div key={client} className="py-3 first:pt-0 last:pb-0">
+                  <div className="text-[14px] font-medium text-ink">{client}</div>
+                  <div className="mt-1.5 flex flex-col gap-1.5">
+                    {report.rows
+                      .filter((r) => r.client === client)
+                      .map((line) => (
+                        <div key={line.positionId} className="text-[13px] text-ink-soft">
+                          <Link
+                            href={`/positions/${line.positionId}`}
+                            className="font-medium text-brand hover:underline"
+                          >
+                            {line.title}
+                          </Link>{" "}
+                          ({line.primaryTa}) — {rowInWords(line)}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </section>
-      )}
+        </div>
 
-      {report.messageId && (
-        <p className="text-[13px]">
-          <Link href={"/messages/" + report.messageId} className="text-brand hover:underline">
-            The Director&rsquo;s email
-          </Link>{" "}
-          <span className="text-ink-soft">— it still waits for somebody to send it.</span>
-        </p>
-      )}
-
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">As the Director will read it</h2>
-        <p className="mt-2 whitespace-pre-wrap text-[13px] text-ink-soft">
-          {reportText(report.weekOf, report.rows) || "Nothing to read."}
-        </p>
-      </section>
-    </div>
+        <FoldRow title="Plain-text email preview" summary="Exact body sent to Director">
+          <div className={cardShell}>
+            <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[1.6] text-ink-soft">
+              {reportText(report.weekOf, report.rows)}
+            </pre>
+          </div>
+        </FoldRow>
+      </div>
+    </PageBox>
   );
 }

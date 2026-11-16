@@ -1,21 +1,33 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-
-import { buildWeeklyReportNow } from "@/app/actions";
+import Icon from "@/app/Icon";
+import { approveWeeklyReport, buildWeeklyReportNow } from "@/app/actions";
 import { desk, reportsNewestFirst, runClocks } from "@/data/desk";
-import { reportInWords, reportWeekOf } from "@/lib/reports";
+import {
+  PageBox,
+  StatTile,
+  ViewPills,
+  pillPrimary,
+  pillSecondary,
+} from "@/app/ui/figma";
+import {
+  REPORT_MEANINGS,
+  type ReportState,
+  problemWithReport,
+  reportInWords,
+  reportWeekOf,
+  rowInWords,
+} from "@/lib/reports";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/**
- * The weekly report (15, Phase 3 step 18 and Phase 7 step 9).
- *
- * The owner's rule: the report is built by the system and reviewed by the TA
- * lead on a Monday, then it goes to the Director. Today it is made by hand
- * from a sheet, which is why it is late or wrong. Each week's report is kept
- * as it was built, so last Monday's still says what it said last Monday.
- */
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+export const dynamic = "force-dynamic";
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string }>;
+}) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { msg } = await searchParams;
@@ -26,74 +38,190 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const reports = reportsNewestFirst(db);
   const thisWeek = reports.find((r) => r.weekOf === reportWeekOf(now)) ?? null;
   const earlier = reports.filter((r) => r.id !== thisWeek?.id);
-  const recipients = String(db.settings.find((s) => s.key === "report.recipients")?.value ?? "").trim();
+  const recipients = String(
+    db.settings.find((s) => s.key === "report.recipients")?.value ?? "",
+  ).trim();
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0";
-  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  const activePositions = db.positions.filter((p) => p.stage !== "closed").length;
+  const cvsSent = db.clientSets.reduce(
+    (sum, s) => sum + (s.sentAt ? s.candidates.length : 0),
+    0,
+  );
+  const interviewCount = db.interviews.filter((i) => i.state !== "cancelled").length;
+  const placementCount = db.placements.length;
+
+  const canRead = can(me, "report.read");
+  const reportProblem = thisWeek ? problemWithReport(thisWeek.rows) : null;
+
+  const tabs = [
+    { key: "weekly", label: "Weekly TA report", href: "/reports" },
+    { key: "operations", label: "Operations", href: "/numbers" },
+    { key: "response", label: "Client response", href: "/numbers?view=response" },
+    { key: "finance", label: "Finance & guarantees", href: "/numbers?view=finance" },
+  ];
+
+  const needWordRows = thisWeek
+    ? thisWeek.rows.slice(0, 6)
+    : db.positions
+      .filter((p) => p.stage !== "closed")
+      .slice(0, 6)
+      .map((p) => ({
+        positionId: p.id,
+        title: p.title,
+        client: db.clients.find((c) => c.id === p.clientId)?.name ?? "Client",
+        primaryTa: db.members.find((m) => m.id === p.primaryTaId)?.name ?? "Unassigned",
+        status: p.stage,
+        state: p.stage,
+      }));
+
+  const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
-      <div>
-        <h2 className="text-[14.5px] font-medium">The weekly report</h2>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
-          Every open position, where it stands, and who is waiting for whom. Built at eight on a Monday morning, read
-          by the ops lead, then sent to the Director as a drafted email.
-        </p>
-      </div>
+    <PageBox width="1080">
+      <div className="flex flex-col gap-6">
+        <ViewPills items={tabs} active="weekly" />
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
-
-      {!recipients && (
-        <p className="rounded-lg border border-warning bg-surface px-3 py-2 text-[13px]">
-          Nobody is set to receive it. Put the Director&rsquo;s address in{" "}
-          <Link href="/settings" className="text-brand hover:underline">
-            the settings
-          </Link>{" "}
-          under <span className="font-medium">report.recipients</span>, or approving a report has nowhere to send it.
-        </p>
-      )}
-
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">This week</h2>
-        {thisWeek ? (
-          <div className={row}>
-            <div className="min-w-0 flex-1">
-              <Link href={"/reports/" + thisWeek.id} className="text-[13.5px] text-brand hover:underline">
-                Week of {thisWeek.weekOf}
-              </Link>
-              <p className="mt-0.5 text-[12.5px] text-ink-soft">{reportInWords(thisWeek)}</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="mt-1 text-[13px] text-ink-soft">
-              Nothing built for the week of {reportWeekOf(now)} yet. It builds itself on Monday morning; you can also
-              do it now.
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+              Week of {thisWeek?.weekOf ?? reportWeekOf(now)}
+            </h1>
+            <p className="mt-1 text-[13.5px] text-ink-soft">
+              Built by the system Monday 08:00 · the TA lead checks it and sends it to the
+              Director
             </p>
-            {can(me, "report.read") && (
-              <form action={buildWeeklyReportNow} className="mt-3">
-                <button className={plain}>Build this week&apos;s report</button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {thisWeek && (
+              <Link href={`/reports/${thisWeek.id}`} className={pillSecondary}>
+                Open full report
+              </Link>
+            )}
+            {!thisWeek && canRead && (
+              <form action={buildWeeklyReportNow}>
+                <button type="submit" className={pillPrimary}>
+                  Build this week&apos;s report
+                </button>
               </form>
             )}
-          </>
-        )}
-      </section>
-
-      <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Earlier weeks</h2>
-        {earlier.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">None yet.</p>}
-        {earlier.map((report) => (
-          <div key={report.id} className={row}>
-            <div className="min-w-0 flex-1">
-              <Link href={"/reports/" + report.id} className="text-[13.5px] text-brand hover:underline">
-                Week of {report.weekOf}
-              </Link>
-              <p className="mt-0.5 text-[12.5px] text-ink-soft">{reportInWords(report)}</p>
-            </div>
+            {thisWeek && thisWeek.state === "review" && canRead && !reportProblem && (
+              <form action={approveWeeklyReport}>
+                <input type="hidden" name="reportId" value={thisWeek.id} />
+                <button type="submit" className={pillPrimary}>
+                  Approve &amp; send to Director
+                </button>
+              </form>
+            )}
           </div>
-        ))}
-      </section>
-    </div>
+        </div>
+
+        {msg && (
+          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+            {msg}
+          </div>
+        )}
+
+        {!recipients && (
+          <div className="rounded-[18px] border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-ink">
+            Nobody is set to receive it. Put the Director&rsquo;s address in{" "}
+            <Link href="/settings" className="font-medium text-brand hover:underline">
+              Settings
+            </Link>{" "}
+            under <span className="font-medium">report.recipients</span>.
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatTile size="lg" value={String(activePositions)} label="active positions" />
+          <StatTile size="lg" value={String(cvsSent)} label="CVs sent to clients" />
+          <StatTile size="lg" value={String(interviewCount)} label="interviews" />
+          <StatTile size="lg" value={String(placementCount)} label="placements" />
+        </div>
+
+        <div>
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            POSITIONS THAT NEED A WORD
+          </div>
+          <div className={cardShell}>
+            {needWordRows.length === 0 ? (
+              <div className="px-4 py-6 text-[13.5px] text-ink-soft">
+                No active positions to flag this week.
+              </div>
+            ) : (
+              <div className="divide-y divide-edge/60">
+                {needWordRows.map((r) => {
+                  const isReportRow = "waitingOn" in r;
+                  const subtitle = isReportRow
+                    ? rowInWords(r as Parameters<typeof rowInWords>[0])
+                    : `Primary TA: ${(r as { primaryTa: string }).primaryTa}`;
+                  const badge = isReportRow
+                    ? (r as { state?: string }).state ?? "Active"
+                    : (r as { status: string }).status;
+                  return (
+                    <Link
+                      key={r.positionId}
+                      href={`/positions/${r.positionId}`}
+                      className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                    >
+                      <div className="flex min-w-0 items-center gap-3.5">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                          <Icon name="briefcase" size={16} />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="truncate text-[14px] font-medium text-ink">
+                            {r.title} · {r.client}
+                          </div>
+                          <div className="truncate text-[12px] text-ink-soft">{subtitle}</div>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span className="text-[12.5px] font-medium text-warn">
+                          {String(badge).replace(/_/g, " ")}
+                        </span>
+                        <Icon name="chevron-right" size={16} className="text-ink-faint" />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            EARLIER WEEKS
+          </div>
+          <div className={cardShell}>
+            {earlier.length === 0 ? (
+              <div className="px-4 py-6 text-[13.5px] text-ink-soft">No earlier reports yet.</div>
+            ) : (
+              <div className="divide-y divide-edge/60">
+                {earlier.map((rep) => (
+                  <Link
+                    key={rep.id}
+                    href={`/reports/${rep.id}`}
+                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium text-ink">
+                        Week of {rep.weekOf}
+                      </div>
+                      <div className="text-[12px] text-ink-soft">{reportInWords(rep)}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-[12.5px] text-ink-soft">
+                        {REPORT_MEANINGS[rep.state as ReportState] ?? rep.state}
+                      </span>
+                      <Icon name="chevron-right" size={16} className="text-ink-faint" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </PageBox>
   );
 }

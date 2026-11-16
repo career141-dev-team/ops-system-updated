@@ -1,21 +1,38 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-
-import { clientsNewestFirst, desk, leadsNewestFirst, member as memberIn, positionsNewestFirst } from "@/data/desk";
-import { LIST_HEAD, ListRow, Table, Toolbar } from "@/app/ui";
-import { SORTS, day, foundInWords, listed, type Listed } from "@/lib/listing";
+import Icon, { type IconName } from "@/app/Icon";
+import {
+  clientsNewestFirst,
+  desk,
+  leadsNewestFirst,
+  member as memberIn,
+  positionsNewestFirst,
+} from "@/data/desk";
+import { PageBox, figmaField, pillPrimary } from "@/app/ui/figma";
+import { day, listed, type Listed } from "@/lib/listing";
 import { currentMember } from "@/lib/session";
 
-/**
- * One box that finds anything (25, section 7).
- *
- * A person knows the client's name, not which of eight places the thing is
- * filed under. So this looks in all of them at once - enquiries, clients,
- * positions, CV sets, interviews, placements and invoices - and says what
- * kind each row is.
- *
- * The same search rule as every list page, so what it finds here and what a
- * list finds there are the same thing.
- */
+export const dynamic = "force-dynamic";
+
+type KindKey =
+  | "client"
+  | "enquiry"
+  | "position"
+  | "CV set"
+  | "interview"
+  | "placement"
+  | "invoice";
+
+const GROUP_META: { key: KindKey; heading: string; icon: IconName }[] = [
+  { key: "client", heading: "CLIENT", icon: "clients" },
+  { key: "enquiry", heading: "ENQUIRIES", icon: "clients" },
+  { key: "position", heading: "OPENINGS", icon: "briefcase" },
+  { key: "CV set", heading: "CV SETS", icon: "send" },
+  { key: "interview", heading: "INTERVIEWS", icon: "calendar" },
+  { key: "placement", heading: "PLACEMENTS", icon: "user" },
+  { key: "invoice", heading: "INVOICES", icon: "wallet" },
+];
+
 export default async function FindPage({
   searchParams,
 }: {
@@ -27,11 +44,12 @@ export default async function FindPage({
 
   const db = await desk();
   const who = (id: string) => memberIn(db, id)?.name ?? "nobody";
-  const rows: Listed[] = [];
+  const rows: (Listed & { kind: KindKey })[] = [];
 
   for (const lead of leadsNewestFirst(db)) {
     rows.push({
       id: "lead:" + lead.id,
+      kind: "enquiry",
       href: "/leads/" + lead.id,
       title: lead.company,
       words: [who(lead.ownerId), lead.contactEmail ?? "", lead.source],
@@ -46,6 +64,7 @@ export default async function FindPage({
   for (const client of clientsNewestFirst(db)) {
     rows.push({
       id: "client:" + client.id,
+      kind: "client",
       href: "/clients/" + client.id,
       title: client.name,
       words: [who(client.ownerId), client.billingEmail, client.nameKey],
@@ -60,6 +79,7 @@ export default async function FindPage({
   for (const position of positionsNewestFirst(db)) {
     rows.push({
       id: "position:" + position.id,
+      kind: "position",
       href: "/positions/" + position.id,
       title: position.title,
       words: [who(position.ownerId), position.clientTaId, position.openingTaId ?? ""],
@@ -74,6 +94,7 @@ export default async function FindPage({
   for (const set of db.clientSets) {
     rows.push({
       id: "set:" + set.id,
+      kind: "CV set",
       href: "/sets/" + set.id,
       title: set.name,
       words: [who(set.ownerId), set.openingTaId, set.role],
@@ -88,6 +109,7 @@ export default async function FindPage({
   for (const interview of db.interviews) {
     rows.push({
       id: "interview:" + interview.id,
+      kind: "interview",
       href: "/interviews/" + interview.id,
       title: interview.candidateName,
       words: [who(interview.ownerId), interview.openingTaId, interview.applicationTaId],
@@ -102,6 +124,7 @@ export default async function FindPage({
   for (const placement of db.placements) {
     rows.push({
       id: "placement:" + placement.id,
+      kind: "placement",
       href: "/placements/" + placement.id,
       title: placement.candidateName,
       words: [who(placement.ownerId), placement.openingTaId, placement.placementTaId],
@@ -116,6 +139,7 @@ export default async function FindPage({
   for (const invoice of db.invoices) {
     rows.push({
       id: "invoice:" + invoice.id,
+      kind: "invoice",
       href: "/invoices/" + invoice.id,
       title: invoice.number,
       words: [who(invoice.ownerId), invoice.kind, invoice.about ?? ""],
@@ -128,50 +152,118 @@ export default async function FindPage({
   }
 
   const asked = (q ?? "").trim();
-  const shown = asked ? listed(rows, q, sort) : [];
+  const shown = asked ? (listed(rows, q, sort) as (Listed & { kind: KindKey })[]) : [];
+  const topHit = shown[0];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
-        <h1 className="text-[18px] font-medium leading-tight">Find</h1>
-        <p className="mt-1 max-w-[80ch] text-[12.5px] text-ink-soft">
-          One box over everything this desk keeps: enquiries, clients, positions, CV sets, interviews, placements and
-          invoices. Type part of a name, a number, or the person who owns it.
-        </p>
-      </div>
-
-      <Toolbar
-        action="/find"
-        q={q}
-        sort={sort}
-        sorts={SORTS}
-        found={asked ? foundInWords(shown.length, rows.length, q) : rows.length + " things to search"}
-      />
-
-      {!asked ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          Type something above. The search looks at the name, the one-line summary, the client and the owner - so a
-          company name finds their enquiry, their positions, their sets and their invoices at once.
-        </p>
-      ) : shown.length === 0 ? (
-        <p className="rounded-xl border border-rule bg-surface px-4 py-6 text-[13px] text-ink-soft">
-          {foundInWords(0, rows.length, q)}
-        </p>
-      ) : (
-        <Table head={LIST_HEAD}>
-          {shown.map((row) => (
-            <ListRow
-              key={row.id}
-              href={row.href}
-              title={row.title}
-              says={row.says}
-              chips={row.chips}
-              who={row.who}
-              when={day(row.at)}
+    <PageBox width="1080">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-4">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+              {asked ? `“${asked}”` : "Find anything"}
+            </h1>
+            <span className="text-[14px] text-ink-faint">
+              {asked
+                ? `${shown.length} result${shown.length === 1 ? "" : "s"}`
+                : `${rows.length} records on the desk`}
+            </span>
+          </div>
+          <form action="/find" className="flex items-center gap-2">
+            <input
+              name="q"
+              defaultValue={asked}
+              placeholder="Search clients, openings, sets, invoices..."
+              className={figmaField + " w-[280px]"}
             />
-          ))}
-        </Table>
-      )}
-    </div>
+            <button type="submit" className={pillPrimary}>
+              Search
+            </button>
+          </form>
+        </div>
+
+        {asked && shown.length > 0 && (
+          <Link
+            href={topHit.href}
+            className="flex items-center gap-3.5 rounded-[24px] bg-sunk px-5 py-4 transition hover:bg-sunk/80"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-[15px] font-semibold text-surface">
+              A
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14.5px] text-ink">
+                Top match: <strong className="font-medium">{topHit.title}</strong> ({topHit.says}).
+                {shown.length > 1
+                  ? ` ${shown.length - 1} other matching record${shown.length - 1 === 1 ? "" : "s"} below.`
+                  : ""}
+              </p>
+              <p className="mt-0.5 text-[12px] font-medium text-ink-faint">
+                AURA · from across the desk
+              </p>
+            </div>
+            <Icon name="chevron-right" size={16} className="shrink-0 text-ink-faint" />
+          </Link>
+        )}
+
+        {!asked ? (
+          <div className="rounded-[24px] border border-edge bg-surface p-6">
+            <p className="text-[14px] text-ink-soft">
+              Type a client name, role, candidate, invoice number, or owner above. The search looks
+              across enquiries, clients, openings, CV sets, interviews, placements, and invoices at
+              once.
+            </p>
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="rounded-[24px] border border-edge bg-surface p-6">
+            <p className="text-[14px] text-ink-soft">
+              Nothing matched “{asked}” across {rows.length} records.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {GROUP_META.map((group) => {
+              const items = shown.filter((r) => r.kind === group.key);
+              if (items.length === 0) return null;
+              return (
+                <div key={group.key}>
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                    {group.heading}
+                  </div>
+                  <div className="rounded-[24px] border border-edge bg-surface p-2">
+                    <div className="divide-y divide-edge/60">
+                      {items.map((row) => (
+                        <Link
+                          key={row.id}
+                          href={row.href}
+                          className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                        >
+                          <div className="flex min-w-0 items-center gap-3.5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                              <Icon name={group.icon} size={16} />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="truncate text-[14px] font-medium text-ink">
+                                {row.title}
+                              </div>
+                              <div className="truncate text-[12px] text-ink-soft">
+                                {row.says} · {row.who}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span className="text-[12.5px] text-ink-faint">{day(row.at)}</span>
+                            <Icon name="chevron-right" size={16} className="text-ink-faint" />
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PageBox>
   );
 }

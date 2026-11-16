@@ -68,7 +68,7 @@ export default function Bell({ initial, round = false }: { initial: BellCount; r
   if (round) {
     return (
       <Link
-        href="/"
+        href="/notifications"
         title={words}
         aria-label={words}
         className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell"
