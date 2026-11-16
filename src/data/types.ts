@@ -471,6 +471,8 @@ export interface OpsClientSet {
     decision?: string | null;
     decisionReason?: string | null;
     decidedAt?: number | null;
+    /** Our own team's interview before the CV goes (owner, 16 Nov). */
+    internalInterview?: { by: string; at: number; outcome: "pass" | "hold" | "fail"; notes: string } | null;
   }[];
   /** Due at the client, counted from the day the agreement was signed. */
   dueAt: number | null;

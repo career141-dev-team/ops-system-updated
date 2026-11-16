@@ -50,6 +50,8 @@ import { setNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
+const INTERNAL_CHIP = { pass: "Interviewed · passed", hold: "Interview · on hold", fail: "Interview · failed" } as const;
+
 const JOURNEY_STEPS = [
   "Enquiry",
   "Agreement",
@@ -333,6 +335,14 @@ export default async function SetPage({
                   </div>
                 </div>
 
+                {/* Our own interview, which comes before the CV goes (owner, 16 Nov) */}
+                <StatusChip
+                  label={who.internalInterview ? INTERNAL_CHIP[who.internalInterview.outcome] : "Not interviewed"}
+                  tone={
+                    who.internalInterview?.outcome === "pass" ? "ok" : who.internalInterview ? "warn" : "neutral"
+                  }
+                />
+
                 {/* Right decision chip or Shortlist / Reject actions */}
                 {isShortlisted ? (
                   <StatusChip label="Shortlisted" tone="ok" />
@@ -416,6 +426,14 @@ export default async function SetPage({
           );
         })}
       </div>
+
+      {set.candidates.some((c) => c.fileId) && (
+        <div>
+          <a href={`/api/sets/${set.id}/zip`} className={pillSecondary}>
+            Download all CVs
+          </a>
+        </div>
+      )}
 
       {/* Lock Note (1:1101) */}
       <div className="flex items-center gap-2 text-[12px] font-medium tracking-[0.4px] text-ink-faint">
