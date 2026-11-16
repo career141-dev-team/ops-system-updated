@@ -143,6 +143,9 @@ part that pays for everything.
 | They joined | `markPlacementJoined`, and TA's `placement.joined` event | one door for both ways in; the fee is drafted at once, because thirty days run from the first working day whether or not anybody remembered |
 | They never turned up | `markNoShow`, and TA's `placement.no_show` event | nothing invoiced and nothing refunded (the owner's rule); the client's choice between a replacement and stopping is drafted, and their answer reopens or closes the search in TA |
 | The fee invoice | `draftFeeInvoice` | the agreement's rule times the package, a number from the series, due thirty days from the first working day; invoicing twice is refused, and a replacement under the guarantee is not invoiced at all |
+| Basic and allowances | `correctSalarySplit`, `feeAmount` | the placement keeps basic, allowances and TA's package text; the fee on "basic" or "gross" follows them, and correcting the split needs a reason in the audit (16 Nov) |
+| The billing check | `problemWithInvoiceBilling` | no invoice drafted or sent without the client's billing name, address and email, each named when missing (16 Nov) |
+| The invoice document | `sendInvoice`, `invoiceHoles` | the uploaded invoice template is filled, made a PDF and attached to the draft; a hole nothing fills refuses it by name (16 Nov) |
 | Sending it | `sendInvoice` | to the billing address on the client's record, as a draft accounts approves; the clock that chases it starts from the due date, and TA is told the invoice state |
 | Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
 | Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
@@ -313,7 +316,7 @@ Small things still open, each with its reason:
 
 | Thing | Why it waits |
 |---|---|
-| The invoice and credit-note **documents** | they wait on a template from the owner, exactly as the agreement did. Until then an invoice goes as lines in the body of an email, which works and is not our paperwork |
+| The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
 | The Teams meeting made from the Ops mailbox | a calendar permission nobody has granted |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
