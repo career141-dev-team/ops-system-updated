@@ -235,7 +235,7 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ stage: "dormant" }), theirs()).waiting, /this client is dormant/);
 });
 
-test("the top bar's five workspaces and five behind the profile, and every page under one", () => {
+test("the top bar's five workspaces and six behind the profile, and every page under one", () => {
   // From twenty-seven (25, section 3), then eight in the sidebar, then the
   // approved Figma top bar (13 Nov). A hold, a set and an advert are faces of
   // a position, so they are reached through it and marked against it.
@@ -246,7 +246,7 @@ test("the top bar's five workspaces and five behind the profile, and every page 
   );
   assert.deepEqual(
     more.pages.map((page) => page.href),
-    ["/work", "/mail", "/invoices", "/reports", "/settings"],
+    ["/candidates", "/work", "/mail", "/invoices", "/reports", "/settings"],
   );
   assert.equal(NAV.length, 2, "the bar and the profile, nothing else");
   const entries = NAV.flatMap((section) => section.pages);

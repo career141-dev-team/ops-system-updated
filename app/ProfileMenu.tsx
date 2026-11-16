@@ -87,7 +87,7 @@ export default function ProfileMenu({
         createPortal(
           <>
             <button type="button" data-close onClick={() => setOpen(false)} aria-label="Close the menu" className="fixed inset-0 z-[60] cursor-default bg-veil backdrop-blur-[4px]" />
-            <div role="menu" className="fixed right-6 top-[96px] z-[70] flex max-h-[calc(100dvh-112px)] w-[300px] flex-col gap-0.5 overflow-y-auto rounded-panel bg-surface p-2 shadow-float">
+            <div role="menu" className="fixed right-6 top-[96px] z-[70] flex max-h-[calc(100dvh/0.9-112px)] w-[300px] flex-col gap-0.5 overflow-y-auto rounded-panel bg-surface p-2 shadow-float">
               <div className="px-3 pb-2 pt-2">
                 <p className="text-[16px] font-medium leading-[26px] text-ink">{who.name}</p>
                 <p className="text-[14px] leading-[21px] text-ink-faint">{who.role}</p>

@@ -173,7 +173,7 @@ export default async function MyWorkPage({
 
   return (
     // A column on a desktop, so on Today the greeting, Up next and AURA stay put and only the list scrolls (14 Nov).
-    <div className="relative rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card max-md:overflow-hidden md:flex md:flex-col md:px-10">
+    <div className={"relative rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card max-md:overflow-hidden md:flex md:flex-col md:px-10 " + (view === "approve" ? "md:pt-[60px]" : "")}>
       {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. Today only. */}
       {view === "today" && <div
         aria-hidden="true"
@@ -185,7 +185,7 @@ export default async function MyWorkPage({
       />}
 
       <div className={"relative mx-auto flex w-full flex-col md:min-h-0 md:flex-1 " + (view === "approve" ? "max-w-[920px]" : "max-w-[820px]")}>
-        {viewNav("justify-center")}
+        {viewNav(view === "approve" ? "justify-start" : "justify-center")}
 
         {view !== "approve" && (
         <header className="rise mt-1 flex flex-col items-center gap-1 text-center">

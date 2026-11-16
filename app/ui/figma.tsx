@@ -155,7 +155,7 @@ export function PageBox({
             ? "max-w-[1160px]"
             : "max-w-none";
   return (
-    <div className="relative rounded-sheet bg-surface px-5 pb-10 pt-9 shadow-card max-md:overflow-hidden md:flex md:flex-col md:overflow-y-auto md:px-12">
+    <div className="relative rounded-sheet bg-surface px-5 pb-10 pt-9 shadow-card max-md:overflow-hidden md:flex md:flex-col md:overflow-y-auto md:px-12 md:pt-[68px]">
       <div className={`rise mx-auto flex w-full flex-col ${maxCls} ${className}`}>
         {msg && (
           <p className="mb-5 rounded-panel border border-rule bg-sunk/60 px-4 py-2.5 text-[14px] leading-[21px] text-ink">

@@ -129,20 +129,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {/* No min-h-screen here (14 Nov): under the top bar and its tab (--page-top) it made every page
               that much taller than the window, so even an empty page scrolled. */}
           {/* The tab that names the workspace, on top of the page card (16 Nov, the Figma "Notch tab"). */}
-          <WorkspaceNotch />
+          <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
+            <WorkspaceNotch />
+          </Suspense>
           <div className="flex flex-col md:flex-row md:items-stretch">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             {/* On a desktop the page is one fixed box under the top bar (14 Nov, the owner):
                 the window never scrolls, the page's own box does, and only when what is in it
                 is taller than the box. A phone scrolls the window as before. */}
-            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
+            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh/0.9-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
               {children}
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh-var(--page-top))] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
+              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh/0.9-var(--page-top))] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
                 <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
                   <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
                   <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
