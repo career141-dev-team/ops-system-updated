@@ -170,6 +170,7 @@ import { docxToPdf } from "@/lib/docxToPdf";
 import {
   type FileKind,
   canBecomePdf,
+  currentTemplate,
   isFileKind,
   keyFor,
   mimeFor,
@@ -292,7 +293,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { OpsDatabase, OpsMember, OpsMessage } from "@/data/types";
+import type { Id, OpsDatabase, OpsFile, OpsMember, OpsMessage } from "@/data/types";
 import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
 import { previewRoleFrom } from "@/lib/roles";
 
@@ -1445,7 +1446,9 @@ export async function startAgreement(formData: FormData): Promise<void> {
       guaranteeDays: numberOf(db, "guarantee.days", 90),
       paymentDays: numberOf(db, "invoice.dueDays", 30),
       replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
-      refundPct: numberOf(db, "refund.pct", 25),
+      // The agreement says 50 (REFUND_PCT); a fallback of 25 once put the wrong
+      // number into new agreements (16 Nov).
+      refundPct: numberOf(db, "refund.pct", REFUND_PCT),
     }),
     companyName: row.company,
     signatoryName: row.contactName,
@@ -1499,6 +1502,103 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
 }
 
 /**
+ * The agreement as a document: the newest template, its holes filled from the
+ * fields, stored as Word and (when LibreOffice is there) as PDF (16 Nov).
+ *
+ * One function for the send and the preview, so what a person looks at before
+ * sending is exactly what would go. It makes no message and moves no state.
+ * A hole nothing fills stops it: the owner's incident is a draft that went to a
+ * client with placeholders still in it.
+ */
+async function fillAgreementDraft(
+  db: Awaited<ReturnType<typeof desk>>,
+  esa: NonNullable<ReturnType<typeof agreementIn>>,
+  version: number,
+  memberId: Id,
+  now: number,
+): Promise<{ error: string } | { wordFile: OpsFile; pdfFile: OpsFile | null; pdfReason: string }> {
+  // The owner's template, uploaded on the files screen as kind "Agreement,
+  // drafted". Without it there is no document to attach, and a cover email
+  // with nothing attached is worse than no email.
+  const template = currentTemplate(db.files, "esa_draft");
+  if (!template) {
+    return {
+      error:
+        "The agreement template is not here yet. Upload the ESA as a Word file on the Files screen, as “Agreement, drafted”, and this can go.",
+    };
+  }
+  const templateBytes = await readBytes(template.key);
+  if (!templateBytes) return { error: "The template file is registered but its bytes are gone. Upload it again on the Files screen." };
+  const fill = await fillDocx(Buffer.from(templateBytes), { ...esa.fields, effectiveDate: colomboDateInWords(now) });
+  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
+  if (holeProblem) return { error: holeProblem };
+
+  const base = "Agreement - " + safeName(String(esa.fields.companyName ?? "client")) + " - v" + version;
+  const wordKey = keyFor("esa_draft", "esa", esa.id, base + ".docx", now);
+  await putBytes(wordKey, fill.bytes!, mimeFor(base + ".docx"));
+  const wordFile = await addFile({
+    kind: "esa_draft",
+    key: wordKey,
+    name: base + ".docx",
+    size: fill.bytes!.byteLength,
+    mime: mimeFor(base + ".docx"),
+    sha256: sha256(fill.bytes!),
+    subjectType: "esa",
+    subjectId: esa.id,
+    madeFrom: template.id,
+    uploadedBy: memberId,
+  });
+
+  const pdf = await docxToPdf(fill.bytes!, base + ".docx");
+  if (!pdf.ok) return { wordFile, pdfFile: null, pdfReason: pdf.reason ?? "" };
+  const pdfKey = keyFor("esa_draft", "esa", esa.id, base + ".pdf", now);
+  await putBytes(pdfKey, pdf.bytes!, "application/pdf");
+  const pdfFile = await addFile({
+    kind: "esa_draft",
+    key: pdfKey,
+    name: base + ".pdf",
+    size: pdf.bytes!.byteLength,
+    mime: "application/pdf",
+    sha256: sha256(pdf.bytes!),
+    subjectType: "esa",
+    subjectId: esa.id,
+    madeFrom: wordFile.id,
+    uploadedBy: memberId,
+  });
+  return { wordFile, pdfFile, pdfReason: "" };
+}
+
+/**
+ * A look at the agreement before it is sent (16 Nov): fills it exactly as the
+ * send would, keeps the files, and makes no message. The drafts show on the
+ * lead as "Download filled draft".
+ */
+export async function previewAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+
+  const problem = problemWithDraft(row.fields);
+  if (problem) back(problem);
+  const draft = await fillAgreementDraft(db, row, row.state === "negotiating" ? row.version + 1 : row.version, member.id, Date.now());
+  if ("error" in draft) back(draft.error);
+  const made = draft as Exclude<typeof draft, { error: string }>;
+  revalidatePath(here);
+  back(
+    made.pdfFile
+      ? "A filled draft is ready to download below. Nothing was sent."
+      : "The Word draft is ready to download below. No PDF this time: " + made.pdfReason + " Nothing was sent.",
+  );
+}
+
+/**
  * Sends the agreement (15, Phase 2 step 11).
  *
  * Three things have to be true: every required field is filled, the owner's
@@ -1534,65 +1634,16 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   const problem = problemWithDraft(row.fields);
   if (problem) back(problem);
 
-  // The owner's template, uploaded on the files screen as kind "Agreement,
-  // drafted". Without it there is no document to attach, and a cover email
-  // with nothing attached is worse than no email.
-  const template = db.files.find((f) => f.kind === "esa_draft" && f.subjectType === null);
-  if (!template) {
-    back(
-      "The agreement template is not here yet. Upload the ESA as a Word file on the Files screen, as \u201cAgreement, drafted\u201d, and this can go.",
-    );
-  }
-
   const now = Date.now();
-
-  // The document itself (step 10). The template's holes are filled from the
-  // fields, and a hole nothing fills stops the whole thing: the owner's
-  // incident is a draft that went to a client with placeholders still in it.
-  const templateBytes = await readBytes(template!.key);
-  if (!templateBytes) back("The template file is registered but its bytes are gone. Upload it again on the Files screen.");
-  const fill = await fillDocx(Buffer.from(templateBytes!), {
-    ...row.fields,
-    effectiveDate: colomboDateInWords(now),
-  });
-  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
-  if (holeProblem) back(holeProblem);
-
-  const base = "Agreement - " + safeName(String(row.fields.companyName ?? "client")) + " - v" + (again ? row.version + 1 : row.version);
-  const wordKey = keyFor("esa_draft", "esa", esaId, base + ".docx", now);
-  await putBytes(wordKey, fill.bytes!, mimeFor(base + ".docx"));
-  const wordFile = await addFile({
-    kind: "esa_draft",
-    key: wordKey,
-    name: base + ".docx",
-    size: fill.bytes!.byteLength,
-    mime: mimeFor(base + ".docx"),
-    sha256: sha256(fill.bytes!),
-    subjectType: "esa",
-    subjectId: esaId,
-    madeFrom: template!.id,
-    uploadedBy: member.id,
-  });
+  const draft = await fillAgreementDraft(db, row, version, member.id, now);
+  if ("error" in draft) back(draft.error);
+  const made = draft as Exclude<typeof draft, { error: string }>;
 
   // A client gets the PDF, never the Word file: a Word file can be edited by
   // whoever receives it. No LibreOffice means no agreement goes out from here,
   // which is the right answer on a laptop.
-  const pdf = await docxToPdf(fill.bytes!, base + ".docx");
-  if (!pdf.ok) back("The agreement was filled in but no PDF could be made. " + (pdf.reason ?? ""));
-  const pdfKey = keyFor("esa_draft", "esa", esaId, base + ".pdf", now);
-  await putBytes(pdfKey, pdf.bytes!, "application/pdf");
-  const pdfFile = await addFile({
-    kind: "esa_draft",
-    key: pdfKey,
-    name: base + ".pdf",
-    size: pdf.bytes!.byteLength,
-    mime: "application/pdf",
-    sha256: sha256(pdf.bytes!),
-    subjectType: "esa",
-    subjectId: esaId,
-    madeFrom: wordFile.id,
-    uploadedBy: member.id,
-  });
+  if (!made.pdfFile) back("The agreement was filled in but no PDF could be made. " + made.pdfReason);
+  const pdfFile = made.pdfFile!;
 
   const cover = templateFor(db, "esa.cover");
   const to = String(row.fields.signatoryEmail ?? "").trim();

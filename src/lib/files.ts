@@ -158,3 +158,19 @@ export function mimeFor(name: string): string {
       return "application/octet-stream";
   }
 }
+
+/**
+ * The template in use: the newest file of this kind that belongs to nothing
+ * (16 Nov). Before, the first one uploaded won, so a corrected agreement
+ * template was silently ignored and the old wording kept going out.
+ */
+export function currentTemplate<T extends { kind: string; subjectType: string | null; uploadedAt: number }>(
+  files: T[],
+  kind: string,
+): T | null {
+  let best: T | null = null;
+  for (const f of files) {
+    if (f.kind === kind && f.subjectType === null && (!best || f.uploadedAt > best.uploadedAt)) best = f;
+  }
+  return best;
+}

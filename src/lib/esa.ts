@@ -250,3 +250,21 @@ export function problemWithChanges(what: string): string | null {
   if (what.trim().length < 10) return "Write down what they want changed. The next version is drafted from this.";
   return null;
 }
+
+/** Holes the template may have that are not agreement fields: the system fills them. */
+const SYSTEM_HOLES = ["effectiveDate"];
+
+/**
+ * What is wrong between a template's holes and the fields we collect (16 Nov).
+ *
+ * `unknown`: a hole nothing fills, so every send would refuse. `unused`: a
+ * required field the template never prints, so somebody fills it in for
+ * nothing and the document may be missing it.
+ */
+export function checkTemplate(holes: string[]): { unknown: string[]; unused: EsaField[] } {
+  const known = new Set([...ESA_FIELDS.map((f) => f.key), ...SYSTEM_HOLES]);
+  return {
+    unknown: holes.filter((h) => !known.has(h)),
+    unused: ESA_FIELDS.filter((f) => f.required && !holes.includes(f.key)),
+  };
+}
