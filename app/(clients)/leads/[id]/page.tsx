@@ -891,6 +891,14 @@ export default async function LeadPage({
                     className="mt-3 flex flex-col gap-3"
                   >
                     <input type="hidden" name="leadId" value={lead.id} />
+                    <label className="flex flex-col gap-1">
+                      <span className={figmaLabel}>Meeting link or address (goes in the drafted invite)</span>
+                      <input
+                        name="link"
+                        placeholder="https://teams.microsoft.com/..."
+                        className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                      />
+                    </label>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <label className="flex flex-col gap-1">
                         <span className={figmaLabel}>When (Colombo time)</span>
@@ -1275,6 +1283,14 @@ export default async function LeadPage({
                 {mayManage && !nextBooked && (
                   <form action={bookIntroCall} className="flex flex-col gap-3">
                     <input type="hidden" name="leadId" value={lead.id} />
+                    <label className="flex flex-col gap-1">
+                      <span className={figmaLabel}>Meeting link or address (goes in the drafted invite)</span>
+                      <input
+                        name="link"
+                        placeholder="https://teams.microsoft.com/..."
+                        className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                      />
+                    </label>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <label className="flex flex-col gap-1">
                         <span className={figmaLabel}>When (Colombo time)</span>

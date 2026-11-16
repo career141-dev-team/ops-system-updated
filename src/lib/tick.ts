@@ -57,7 +57,12 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   "interview.report": {
     kind: "check",
     title: "The client booked an interview and has not told us the date",
-    body: "They said they would book it themselves. Ask them when it is, or nothing after it can be tracked.",
+    body: "They said they would book it themselves. The chase is drafted - read it, then approve it. Without the date nothing after it can be tracked.",
+  },
+  "slots.chase": {
+    kind: "approve",
+    title: "The client has not sent interview times",
+    body: "The chase is drafted. Read it, then approve it. If they stay quiet, ring them.",
   },
   "ad.close": {
     kind: "check",

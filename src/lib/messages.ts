@@ -9,6 +9,7 @@
  */
 
 import type { MessageState, OpsMessage } from "@/data/types";
+import { colomboDate } from "./calendar";
 
 export interface SendContext {
   /** False in development and on the preview. Nothing real goes out. */
@@ -41,6 +42,40 @@ export function needsApproval(message: Pick<OpsMessage, "state" | "channel">): b
  */
 export function unfilledHoles(text: string): string[] {
   return [...(text ?? "").matchAll(/\{\{([^}]{1,60})\}\}/g)].map((match) => match[1].trim());
+}
+
+/**
+ * Addresses never to be written to (16 Nov, plan B3): the contact of every lead
+ * marked do-not-invite, which is how "never invited back" is recorded. Until
+ * 16 Nov `approveOne` passed an empty list, so the gate's rule never blocked.
+ */
+export function doNotContactFrom(leads: { contactEmail: string; doNotInvite: boolean }[]): string[] {
+  return leads
+    .filter((l) => l.doNotInvite)
+    .flatMap((l) => l.contactEmail.split(/[\n,;]+/))
+    .map((a) => a.trim().toLowerCase())
+    .filter((a) => a.includes("@"));
+}
+
+/**
+ * How many messages already went to any of these people today, Colombo time.
+ * Counts what was really sent, not drafts or blocked ones.
+ */
+export function sentToday(
+  messages: Pick<OpsMessage, "to" | "state" | "sentAt" | "channel">[],
+  recipients: string[],
+  now = Date.now(),
+): number {
+  const wanted = new Set(recipients.map((r) => r.trim().toLowerCase()));
+  const today = colomboDate(now);
+  return messages.filter(
+    (m) =>
+      m.state === "sent" &&
+      m.sentAt !== null &&
+      colomboDate(m.sentAt) === today &&
+      (m.channel === "email" || m.channel === "whatsapp") &&
+      m.to.some((t) => wanted.has(t.trim().toLowerCase())),
+  ).length;
 }
 
 export function gate(

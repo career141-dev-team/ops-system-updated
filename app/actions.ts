@@ -117,7 +117,7 @@ import {
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
-import { gate, isRoutine, needsApproval } from "@/lib/messages";
+import { doNotContactFrom, gate, isRoutine, needsApproval, sentToday } from "@/lib/messages";
 import {
   addressesFrom,
   buildThreads,
@@ -243,6 +243,7 @@ import {
   problemWithAnswers,
   problemWithPick,
   problemWithReference,
+  problemWithReschedule,
   problemWithRelay,
   problemWithRoundDecision,
   problemWithSlots,
@@ -298,7 +299,8 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { Id, OpsDatabase, OpsFile, OpsMember, OpsMessage } from "@/data/types";
+import type { Id, OpsDatabase, OpsFile, OpsInterview, OpsMember, OpsMessage } from "@/data/types";
+import { buildInvite, colomboWhen, type InviteInput } from "@/lib/ics";
 import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
 import { previewRoleFrom } from "@/lib/roles";
 
@@ -601,6 +603,10 @@ export async function saveDraft(formData: FormData): Promise<void> {
  * where the person is standing.
  */
 async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessage): Promise<string> {
+  // Read the sent messages fresh: approving every routine notice at once
+  // calls this in a loop, and a snapshot from before the loop would never
+  // count the ones that just went (16 Nov, plan B3).
+  const fresh = await desk();
   // Approved first, then the gate decides what really happens to it.
   const verdict = gate(
     { ...message, state: "approved" },
@@ -610,8 +616,8 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
       // cannot carry the environment (6 Nov).
       outreachLive: switchedOn(db, "switch.outreachLive") && outreachLiveInEnv(),
       testRecipient: (process.env.OPS_TEST_EMAIL ?? "").trim() || "test@example.test",
-      doNotContact: [],
-      sentToClientToday: 0,
+      doNotContact: doNotContactFrom(fresh.leads),
+      sentToClientToday: sentToday(fresh.messages, message.to),
       dailyCapPerClient: numberOf(db, "message.dailyCapPerClient", 4),
     },
   );
@@ -1262,9 +1268,19 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
   }
 
   await patchLead(leadId, { state: "intro_call" }, member.id, "lead.introCallBooked", null);
+  const invite = await draftMeetingInvite(
+    member,
+    lead as NonNullable<typeof lead>,
+    { id: meeting.id, kind: "intro", at },
+    String(formData.get("link") ?? "").trim(),
+  );
   revalidatePath(here);
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
-  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+  back(
+    "Booked, with a reminder the day before and an hour before." +
+      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      (warning ? " " + warning : ""),
+  );
 }
 
 /**
@@ -1970,6 +1986,101 @@ async function filesFor(
     out.push({ name: file.name, mime: file.mime, bytes });
   }
   return out;
+}
+
+/**
+ * Keeps a calendar invite as a file and returns its id, for a draft to carry (16 Nov, plan B2).
+ * The email is still a draft a person approves; the .ics only travels with it.
+ */
+async function keepInvite(
+  invite: InviteInput,
+  subjectType: string,
+  subjectId: string,
+  uploadedBy: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(buildInvite(invite));
+  const name = "invite.ics";
+  const key = keyFor("invite", subjectType, subjectId, name);
+  await putBytes(key, bytes, "text/calendar");
+  const file = await addFile({
+    kind: "invite",
+    key,
+    name,
+    size: bytes.byteLength,
+    mime: "text/calendar",
+    sha256: sha256(bytes),
+    subjectType,
+    subjectId,
+    madeFrom: null,
+    uploadedBy,
+  });
+  return file.id;
+}
+
+function interviewInvite(
+  iv: Pick<OpsInterview, "id" | "candidateName" | "round" | "at" | "whereOrLink" | "interviewers" | "reschedules">,
+  member: OpsMember,
+): InviteInput {
+  return {
+    uid: "interview-" + iv.id + "@ops.career141.com",
+    startsAt: iv.at ?? 0,
+    summary: "Interview: " + iv.candidateName + ", round " + iv.round,
+    location: iv.whereOrLink,
+    url: /^https?:\/\//.test(iv.whereOrLink) ? iv.whereOrLink : undefined,
+    organizer: { name: member.name, email: member.email },
+    attendees: iv.interviewers,
+    sequence: iv.reschedules?.length ?? 0,
+  };
+}
+
+/**
+ * The invite email to a client's contact for an intro call or a requirement meeting.
+ * A draft, with the .ics attached. No address on the lead means no draft, and the caller says so.
+ */
+async function draftMeetingInvite(
+  member: OpsMember,
+  lead: { company: string; contactName: string; contactEmail: string },
+  meeting: { id: string; kind: string; at: number },
+  link: string,
+): Promise<string | null> {
+  const to = interviewersFrom(lead.contactEmail);
+  if (!to.length) return null;
+  const what = meeting.kind === "intro" ? "introductory call" : "requirement meeting";
+  const fileId = await keepInvite(
+    {
+      uid: "meeting-" + meeting.id + "@ops.career141.com",
+      startsAt: meeting.at,
+      summary: "Career 141 and " + lead.company + ": " + what,
+      location: link || undefined,
+      url: /^https?:\/\//.test(link) ? link : undefined,
+      organizer: { name: member.name, email: member.email },
+      attendees: to,
+    },
+    "meeting",
+    meeting.id,
+    member.id,
+  );
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: "Our " + what + ", " + colomboWhen(meeting.at),
+    body:
+      "Dear " +
+      (lead.contactName || "all") +
+      ",\n\nOur " +
+      what +
+      " is on " +
+      colomboWhen(meeting.at) +
+      "." +
+      (link ? "\n\n" + link : "") +
+      "\n\nThe calendar invite is attached.\n\nKind regards\n" +
+      member.name,
+    templateKey: null,
+    attachmentFileIds: [fileId],
+    subjectType: "meeting",
+    subjectId: meeting.id,
+  });
+  return message.id;
 }
 
 /* ── The client record (15, Phase 2 step 19) ─────────────────── */
@@ -2808,9 +2919,19 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     { type: "meeting", id: meeting.id },
   );
 
+  const invite = await draftMeetingInvite(
+    member,
+    row,
+    { id: meeting.id, kind: "requirement", at },
+    String(formData.get("link") ?? "").trim(),
+  );
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   revalidatePath(here);
-  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+  back(
+    "Booked, with a reminder the day before and an hour before." +
+      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      (warning ? " " + warning : ""),
+  );
 }
 
 /**
@@ -3494,6 +3615,19 @@ export async function requestInterviewSlots(formData: FormData): Promise<void> {
     "interview.slotsRequested",
     null,
   );
+  // We now wait on the client's times; a clock drafts the chase if they stay
+  // quiet (plan B3). A second request replaces the first clock.
+  await cancelClocksFor(db, "interview", interviewId, member.id, "Asked again.", ["slots.chase"]);
+  await startTimer({
+    kind: "slots.chase",
+    subjectType: "interview",
+    subjectId: interviewId,
+    startsAt: Date.now(),
+    dueAt: Date.now() + numberOf(db, "interview.slotsChaseDays", 2) * DAY,
+    warnAt: null,
+    ownerId: row.ownerId,
+    payload: { label: row.candidateName },
+  });
   revalidatePath(here);
   redirect(
     "/messages/" + message.id + "?msg=" + encodeURIComponent("The request is drafted. Read it, then approve it."),
@@ -3520,6 +3654,7 @@ export async function recordInterviewSlots(formData: FormData): Promise<void> {
 
   // New times are new questions: what the candidate said about the old ones no longer applies.
   await patchInterview(interviewId, { slots, slotAnswers: [] }, member.id, "interview.slotsFromClient", null);
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The client sent times.", ["slots.chase"]);
   // The candidate's half is the TA's: they ask, through their own channels.
   await createTask({
     kind: "check",
@@ -3606,7 +3741,7 @@ export async function recordClientBooking(formData: FormData): Promise<void> {
   if (at < Date.now()) back("That time has gone.");
 
   await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.clientBooked", null);
-  await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report"]);
+  await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report", "slots.chase"]);
   revalidatePath(here);
   back("Noted. Now book it on our side so the reminders run.");
 }
@@ -3658,6 +3793,14 @@ export async function bookInterview(formData: FormData): Promise<void> {
     to: interviewers,
     subject: fill(wording?.subject ?? "Interview: {{candidate}}, {{when}}"),
     body: fill(wording?.body ?? "Dear all,\n\n{{candidate}} is confirmed for {{when}}.\n\n{{whereOrLink}}"),
+    attachmentFileIds: [
+      await keepInvite(
+        interviewInvite({ ...row, at: wanted.at, whereOrLink: wanted.whereOrLink, interviewers }, member),
+        "interview",
+        interviewId,
+        member.id,
+      ),
+    ],
     templateKey: "interview.invite",
     subjectType: "interview",
     subjectId: interviewId,
@@ -3766,6 +3909,107 @@ export async function recordCandidateOut(formData: FormData): Promise<void> {
       answer.messageId +
       "?msg=" +
       encodeURIComponent(answer.what + " The notice to the client is drafted - read it, then approve it."),
+  );
+}
+
+/**
+ * A booked interview moved to a new agreed time (16 Nov, plan B1).
+ *
+ * The round stays, the move goes into `reschedules`, the old clocks stop and
+ * new ones start from the new time, and the client's people get an updated
+ * invite as a DRAFT. TA hears through the same interview write that booking
+ * uses (it is keyed on the application, opening and round), so no new TA
+ * endpoint is involved. Cancel-and-rebook stays for "ask for new times".
+ */
+export async function rescheduleInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const to = Date.parse(String(formData.get("at") ?? "") + ":00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithReschedule({ state: row.state, from: row.at, to, reason });
+  if (problem) back(problem);
+  const whereOrLink = String(formData.get("whereOrLink") ?? "").trim() || row.whereOrLink;
+
+  const now = Date.now();
+  const from = row.at ?? to;
+  const reschedules = [...(row.reschedules ?? []), { from, to, by: member.id, at: now, reason }];
+  await patchInterview(
+    interviewId,
+    // Back to "booked": a reconfirmation was for the old time.
+    { at: to, state: "booked", whereOrLink, reschedules },
+    member.id,
+    "interview.rescheduled",
+    reason,
+  );
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The interview moved.", null);
+  await startInterviewClocks({ ...row, at: to }, now);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: row.interviewers,
+    subject: "Moved: " + row.candidateName + ", now " + colomboDateInWords(to),
+    body:
+      "Dear all,\n\n" +
+      row.candidateName +
+      "'s interview (round " +
+      row.round +
+      ") has moved from " +
+      colomboDateInWords(from) +
+      ", " +
+      new Date(from + 5.5 * HOUR).toISOString().slice(11, 16) +
+      " to " +
+      colomboDateInWords(to) +
+      ", " +
+      new Date(to + 5.5 * HOUR).toISOString().slice(11, 16) +
+      ".\n\n" +
+      whereOrLink +
+      "\n\nKind regards\n" +
+      member.name,
+    // Same UID, one more SEQUENCE: the client's calendar moves the entry instead of adding a second.
+    attachmentFileIds: [
+      await keepInvite(
+        interviewInvite({ ...row, at: to, whereOrLink, reschedules }, member),
+        "interview",
+        interviewId,
+        member.id,
+      ),
+    ],
+    templateKey: null,
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+  await patchInterview(interviewId, { inviteMessageId: message.id }, member.id, "interview.inviteRedrafted", null);
+
+  await queueTaWrite(
+    "/integrations/v1/interviews",
+    {
+      applicationId: row.applicationTaId,
+      openingId: row.openingTaId,
+      scheduledAt: to,
+      round: row.round,
+      interviewFormat: row.format,
+      interviewers: row.interviewers,
+      teamsLink: row.format === "online" ? whereOrLink : null,
+      coordinatedBy: "ops",
+    },
+    { type: "interview", id: interviewId },
+  );
+  revalidatePath(here);
+  revalidatePath("/interviews");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("Moved. The updated invite is drafted, the TA System has been told, and the reminders are reset."),
   );
 }
 

@@ -700,6 +700,11 @@ export interface OpsInterview {
    */
   slotAnswers?: { at: number; free: boolean }[];
   slotLoops: number;
+  /**
+   * Every time a booked interview moved to a new agreed time (16 Nov): the round stays, and this
+   * is the history. Missing on older interviews, which never moved.
+   */
+  reschedules?: { from: number; to: number; by: Id; at: number; reason: string }[];
   at: number | null;
   format: string;
   /** Addresses of the people interviewing, who get the invite. */

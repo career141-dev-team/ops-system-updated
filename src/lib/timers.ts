@@ -84,6 +84,7 @@ export function clockInWords(kind: string): string {
     "ad.close": "a TopJobs advert to close",
     "interview.day": "the interview itself",
     "interview.report": "a date the client owes us",
+    "slots.chase": "times the client owes us",
     "silence.hold": "two weeks of client silence",
     "hold.review": "a hold to look at again",
     "hire.unreported": "a possible unreported hire",

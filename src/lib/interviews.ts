@@ -224,6 +224,27 @@ export function problemWithAttendance(state: string, at: number, now = Date.now(
   return null;
 }
 
+/**
+ * Moving a booked interview to a new agreed time (16 Nov, plan B1).
+ *
+ * Only a booked one moves: before that nothing is promised, and after it has
+ * been held it is history. A reason is required, like every other thing here
+ * that goes off plan.
+ */
+export function problemWithReschedule(
+  wanted: { state: string; from: number | null; to: number; reason: string },
+  now = Date.now(),
+): string | null {
+  if (wanted.state !== "booked" && wanted.state !== "reconfirmed") {
+    return "Only a booked interview can be moved. Book it first, or ask for new times.";
+  }
+  if (!Number.isFinite(wanted.to)) return "Give the new day and time.";
+  if (wanted.to < now) return "That time has gone.";
+  if (wanted.from !== null && wanted.to === wanted.from) return "That is the time it already has.";
+  if (wanted.reason.trim().length < 4) return "Write why it is moving.";
+  return null;
+}
+
 export const ROUND_DECISIONS: Record<string, string> = {
   next: "Another round",
   selected: "Selected - no more rounds",
