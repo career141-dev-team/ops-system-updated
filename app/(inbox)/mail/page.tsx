@@ -94,10 +94,10 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
             aria-current={box === key ? "page" : undefined}
             className={
               "rounded-full border px-3 py-1 text-[12.5px] transition-colors " +
-              (box === key ? "border-ink bg-ink text-white" : "border-rule-strong bg-surface text-ink-soft hover:text-ink")
+              (box === key ? "border-ink bg-ink text-ink-inverse" : "border-rule-strong bg-surface text-ink-soft hover:text-ink")
             }
           >
-            {label} <span className={box === key ? "text-white/70" : "text-ink-faint"}>{n}</span>
+            {label} <span className={box === key ? "text-ink-inverse/70" : "text-ink-faint"}>{n}</span>
           </a>
         ))}
       </nav>
@@ -161,7 +161,7 @@ export default async function MailPage({ searchParams }: { searchParams: Promise
               <span className="mb-1 block text-[12px] text-ink-soft">Message</span>
               <textarea name="body" rows={7} className="w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]" />
             </label>
-            <button className="self-start rounded-full bg-brand px-4 py-1.5 text-[13px] font-medium text-white">
+            <button className="self-start rounded-full bg-brand px-4 py-1.5 text-[13px] font-medium text-ink-inverse">
               Draft it
             </button>
           </form>

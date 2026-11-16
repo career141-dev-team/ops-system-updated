@@ -7,8 +7,8 @@ import { useEffect, useRef, useState } from "react";
 
 import Bell from "@/app/Bell";
 import Icon from "@/app/Icon";
+import ProfileMenu from "@/app/ProfileMenu";
 import QuickAdd from "@/app/QuickAdd";
-import { toggleChat } from "@/app/actions";
 import type { Bell as BellCount } from "@/lib/bell";
 import { NAV, isHere } from "@/lib/nav";
 import type { WorkCount } from "@/lib/sectionWork";
@@ -26,7 +26,8 @@ import { barShown } from "@/lib/topBar";
  * says who must never lose it. It sits in its own space at the top of the
  * page, so at the top nothing is under it; scrolled, it slides over the page
  * when called back. That is an overlay, which this app otherwise forbids:
- * the owner chose it for the bar, and nothing else (docs/09).
+ * the owner chose it for the bar, and for the card that opens from the profile,
+ * with the page blurred behind it (16 Nov, `ProfileMenu`; docs/09).
  *
  * The desk only. A phone keeps its own bar and bottom bar (PhoneNav).
  */
@@ -37,6 +38,9 @@ export default function TopBar({
   bell,
   clients,
   chatOpen,
+  viewing,
+  chips,
+  dark,
 }: {
   may: Record<string, boolean>;
   counts: Record<string, WorkCount>;
@@ -44,6 +48,9 @@ export default function TopBar({
   bell: BellCount;
   clients: { id: string; name: string }[];
   chatOpen: boolean;
+  viewing: string | null;
+  chips: { role: string; label: string; active: boolean }[];
+  dark: boolean;
 }) {
   const path = usePathname() ?? "/";
   const bar = useRef<HTMLDivElement>(null);
@@ -88,14 +95,8 @@ export default function TopBar({
     };
   }, []);
 
-  const [workspaces, more] = NAV;
+  const [workspaces] = NAV;
   const mayShow = (needs?: string) => !needs || may[needs];
-  const initials = who.name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join("");
 
   return (
     // The space the bar takes at the top of the page, so nothing starts under it.
@@ -170,66 +171,7 @@ export default function TopBar({
           <Bell initial={bell} round />
 
           {/* The profile: who you are, and the pages that are not workspaces. */}
-          <details className="group relative shrink-0">
-            <summary
-              title={who.name + " · " + who.role}
-              className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden"
-            >
-              <span className="flex size-10 items-center justify-center rounded-full bg-bg-brand text-[14px] font-medium text-brand">
-                {initials}
-              </span>
-              <span className="hidden flex-col text-left 2xl:flex">
-                <span className="text-[14px] font-medium leading-[21px] text-ink">{who.name}</span>
-                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">{who.role}</span>
-              </span>
-            </summary>
-            <div className="absolute right-0 top-[52px] z-30 flex w-[260px] flex-col gap-0.5 rounded-panel bg-surface p-2 shadow-float">
-              <Link
-                href="/account"
-                aria-current={isHere(path, "/account") ? "page" : undefined}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-sunk hover:text-ink aria-[current=page]:text-brand"
-              >
-                <span className="flex-1">Account &amp; help</span>
-              </Link>
-              <Link
-                href="/notifications"
-                aria-current={isHere(path, "/notifications") ? "page" : undefined}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-sunk hover:text-ink aria-[current=page]:text-brand"
-              >
-                <span className="flex-1">Notifications</span>
-              </Link>
-              {more.pages
-                .filter((page) => mayShow(page.needs))
-                .map((page) => {
-                  const count = counts[page.href];
-                  return (
-                    <Link
-                      key={page.href}
-                      href={page.href}
-                      title={page.about}
-                      aria-current={isHere(path, page.href) ? "page" : undefined}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-sunk hover:text-ink aria-[current=page]:text-brand"
-                    >
-                      <span className="flex-1">{page.what}</span>
-                      {count && count.waiting > 0 && (
-                        <span className={"text-[12px] " + (count.late ? "text-danger" : "text-ink-faint")}>{count.waiting}</span>
-                      )}
-                    </Link>
-                  );
-                })}
-              {/* AURA's column, open or shut (docs/31). A form, so it works before hydration. */}
-              <form action={toggleChat}>
-                <input type="hidden" name="back" value={path} />
-                <button
-                  aria-pressed={chatOpen}
-                  className="flex w-full items-center rounded-lg px-3 py-2 text-left text-[14px] text-ink-soft hover:bg-sunk hover:text-ink"
-                >
-                  {chatOpen ? "Close AURA" : "Open AURA"}
-                </button>
-              </form>
-              <p className="mx-3 mt-1 border-t border-rule pt-2 text-[12px] text-ink-faint">Test data only</p>
-            </div>
-          </details>
+          <ProfileMenu may={may} counts={counts} who={who} viewing={viewing} chips={chips} dark={dark} chatOpen={chatOpen} />
         </header>
       </div>
     </div>

@@ -91,3 +91,31 @@ export const ROLE_LABEL: Record<OpsRole, string> = {
 export function seesWholeDesk(member: Pick<OpsMember, "role">): boolean {
   return member.role === "ops_lead" || member.role === "director_ops";
 }
+
+/**
+ * View as (16 Nov, the owner): a person may preview the desk as a role, but never
+ * as one that can do more than their own.
+ *
+ * "Can do more" is every capability they lack, and also the whole desk: the ops lead and
+ * the Director open on everyone's mail, which is not in the matrix but is still more
+ * to see. The cookie that holds the choice is never trusted - `previewRoleFrom` is asked
+ * again on every request - so a cookie somebody wrote for themselves gains nothing.
+ */
+export const ROLES = Object.keys(MATRIX) as OpsRole[];
+
+export function canPreview(real: OpsRole, as: OpsRole): boolean {
+  if (real === as) return true;
+  if (seesWholeDesk({ role: as }) && !seesWholeDesk({ role: real })) return false;
+  return MATRIX[as].every((c) => MATRIX[real].includes(c));
+}
+
+/** The roles this role may pick, their own first. */
+export function previewList(real: OpsRole): OpsRole[] {
+  return [real, ...ROLES.filter((r) => r !== real && canPreview(real, r))];
+}
+
+/** The role a cookie asks to preview, or null when it is nothing, their own, or not allowed. */
+export function previewRoleFrom(real: OpsRole, cookie: string | undefined): OpsRole | null {
+  const as = ROLES.find((r) => r === cookie);
+  return as && as !== real && canPreview(real, as) ? as : null;
+}

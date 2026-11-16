@@ -292,7 +292,8 @@ import {
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
 import type { OpsDatabase, OpsMember, OpsMessage } from "@/data/types";
-import { currentMember } from "@/lib/session";
+import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
+import { previewRoleFrom } from "@/lib/roles";
 
 /**
  * What the screens can do. Every one of them checks the role first, and every
@@ -5718,6 +5719,35 @@ export async function deleteChat(formData: FormData): Promise<void> {
   if (jar.get(CHAT_COOKIE)?.value === thread) jar.delete(CHAT_COOKIE);
   revalidatePath(back);
   redirect(back + confirmed("Chat deleted."));
+}
+
+/** Sign out for real (16 Nov): the cookies go, then the sign-in page. It was a link that left them behind. */
+export async function signOutAction(): Promise<void> {
+  await signOut();
+  redirect("/sign-in");
+}
+
+/**
+ * Light or dark (16 Nov, the owner). A cookie, so the page is drawn in it from the first byte.
+ * No redirect: the profile card stays open while the theme changes behind it.
+ */
+export async function setTheme(theme: "dark" | "light"): Promise<void> {
+  const jar = await cookies();
+  jar.set("ops_theme", theme === "dark" ? "dark" : "light", { path: "/", sameSite: "lax", maxAge: 365 * 24 * 60 * 60 });
+}
+
+/**
+ * View as (16 Nov): look at the desk as a role with no more powers than yours, until you sign out.
+ * Your own role clears it. Anything else is refused here and ignored again on every request.
+ */
+export async function viewAs(formData: FormData): Promise<void> {
+  const real = await realMember();
+  if (!real) redirect("/sign-in");
+  const jar = await cookies();
+  const as = previewRoleFrom(real.role, String(formData.get("role") ?? ""));
+  if (as) jar.set(VIEW_AS, as, { httpOnly: true, path: "/", sameSite: "lax" });
+  else jar.delete(VIEW_AS);
+  redirect(backTo(formData, "/"));
 }
 
 /** The desk's column, open or shut, kept in a cookie so the page renders it without a flicker. */

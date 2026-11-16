@@ -177,7 +177,7 @@ export default async function MyWorkPage({
       {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. Today only. */}
       {view === "today" && <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px]"
+        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px] dark:opacity-20"
         style={{
           background:
             "radial-gradient(closest-side at 35% 45%, rgba(196,181,253,0.55), transparent 70%), radial-gradient(closest-side at 65% 55%, rgba(153,246,228,0.55), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(187,247,208,0.5), transparent 70%)",
@@ -440,7 +440,7 @@ export default async function MyWorkPage({
               {/* The file over the page: the one overlay the owner allowed on To approve, closed by its X, the page behind it or Esc. */}
               {shown && (
                 <div className="fixed inset-0 z-50">
-                  <Link href={here} aria-label="Close the file" tabIndex={-1} className="absolute inset-0 bg-[rgba(245,247,250,0.6)] backdrop-blur-[4px]" />
+                  <Link href={here} aria-label="Close the file" tabIndex={-1} className="absolute inset-0 bg-veil backdrop-blur-[4px]" />
                   <div className="absolute inset-x-4 bottom-0 top-[88px] mx-auto max-w-[1100px] overflow-hidden rounded-t-[48px] bg-black/90 px-5 pt-5 md:px-10 md:pt-10">
                     <iframe src={"/api/files/" + shown.id + "?inline=1"} title={shown.name} className="size-full rounded-t-[36px] bg-white" />
                   </div>

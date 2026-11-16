@@ -112,6 +112,20 @@ export function pageAndSectionFor(path: string): { page: NavPage; section: NavSe
   return best ? { page: best.page, section: best.section } : null;
 }
 
+/** The pages that are in no entry but still say where you are (16 Nov, the notch above the page). */
+const OTHER_TITLES: Record<string, string> = { "/account": "Account", "/notifications": "Notifications", "/chat": "AURA" };
+
+/**
+ * The name on the tab above the page: the entry the path is under, so it always matches the
+ * highlighted pill in the bar, or - for a page in none - its own name. Null when there is none.
+ */
+export function workspaceTitle(path: string): string | null {
+  const own = pageAndSectionFor(path)?.page.what;
+  if (own) return own;
+  const other = Object.keys(OTHER_TITLES).find((p) => path === p || path.startsWith(p + "/"));
+  return other ? OTHER_TITLES[other] : null;
+}
+
 /** Is this the entry we are under? The same rule, for marking it. */
 export function isHere(path: string, href: string): boolean {
   return (COVERS[href] ?? [href]).some((under) =>

@@ -36,7 +36,7 @@ export default async function AiPage({
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
+  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-ink-inverse hover:opacity-90";
   const plain = "rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper";
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 

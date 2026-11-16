@@ -24,7 +24,7 @@ export default function QuickAdd({ clients, inBar = false }: { clients: { id: st
   const path = usePathname() ?? "/";
   const field =
     "w-full rounded-md border border-shell-rule bg-surface px-2 py-1.5 text-[12.5px] text-ink outline-none placeholder:text-ink-faint focus:border-brand";
-  const save = "mt-1.5 self-start rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white active:scale-[0.98]";
+  const save = "mt-1.5 self-start rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-ink-inverse active:scale-[0.98]";
   const row = "flex flex-col gap-1.5 px-2 pb-2 pt-1";
   const sub = "cursor-pointer select-none px-2 py-1 text-[12.5px] text-ink-soft hover:text-ink";
 

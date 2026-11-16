@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { can, refusal, ROLE_LABEL } from "@/lib/roles";
+import { can, canPreview, previewList, previewRoleFrom, refusal, ROLE_LABEL, ROLES } from "@/lib/roles";
 import type { OpsRole } from "@/data/types";
 
 const member = (role: OpsRole, active = true) => ({ role, active });
@@ -57,4 +57,33 @@ test("the ops lead and the Director open on the whole desk; an ops owner on thei
   assert.equal(seesWholeDesk({ role: "director_ops" }), true);
   assert.equal(seesWholeDesk({ role: "ops_owner" }), false);
   assert.equal(seesWholeDesk({ role: "accounts" }), false);
+});
+
+test("View as never gives more than the person has", () => {
+  // Everybody may pick their own role, and nobody may pick one with a power they lack.
+  for (const role of ROLES) assert.equal(canPreview(role, role), true);
+  assert.equal(canPreview("ops_owner", "ops_lead"), false);
+  assert.equal(canPreview("ops_owner", "accounts"), false, "money is not an owner's");
+  assert.equal(canPreview("ops_owner", "director_ops"), false);
+  assert.equal(canPreview("ops_owner", "marketing"), true);
+  assert.equal(canPreview("ops_lead", "ops_owner"), true);
+  assert.equal(canPreview("ops_lead", "accounts"), true);
+  assert.equal(canPreview("ops_lead", "director_ops"), false, "only the Director decides a refund");
+  assert.equal(canPreview("marketing", "ops_owner"), false);
+  assert.equal(canPreview("director_ro", "ops_owner"), false);
+  // Whatever the matrix says, no role may preview a larger part of the desk than their own.
+  for (const real of ROLES) for (const as of previewList(real)) {
+    for (const cap of ["inbox.read", "task.do", "task.reassign", "message.approve", "client.manage", "money.manage", "refund.decide", "settings.manage", "template.edit", "file.keep", "advert.manage", "report.read"] as const) {
+      if (can({ role: as, active: true }, cap)) assert.equal(can({ role: real, active: true }, cap), true, real + " as " + as + " gained " + cap);
+    }
+  }
+  assert.deepEqual(previewList("director_ro").slice(0, 1), ["director_ro"]);
+});
+
+test("a View as cookie is only ever a request, asked again each time", () => {
+  assert.equal(previewRoleFrom("ops_lead", "accounts"), "accounts");
+  assert.equal(previewRoleFrom("ops_lead", "ops_lead"), null, "your own role is no preview");
+  assert.equal(previewRoleFrom("ops_owner", "director_ops"), null, "a cookie written for more power is ignored");
+  assert.equal(previewRoleFrom("ops_owner", "root"), null);
+  assert.equal(previewRoleFrom("ops_owner", undefined), null);
 });

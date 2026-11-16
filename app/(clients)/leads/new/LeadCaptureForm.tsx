@@ -224,7 +224,7 @@ export default function LeadCaptureForm({
                 className={
                   "rounded-full px-3.5 py-2 text-[14px] leading-[21px] transition-colors " +
                   (active
-                    ? "bg-ink font-medium text-white"
+                    ? "bg-ink font-medium text-ink-inverse"
                     : "bg-sunk font-normal text-ink-soft hover:text-ink")
                 }
               >

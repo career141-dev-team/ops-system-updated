@@ -96,7 +96,7 @@ export function Tabs({
 /* ── Buttons ────────────────────────────────────────────────────── */
 
 export const buttonClass =
-  "inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white " +
+  "inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-ink-inverse " +
   "transition-transform duration-150 ease-out hover:bg-brand-strong active:scale-[0.98]";
 
 export const quietButtonClass =

@@ -586,7 +586,7 @@ export default async function PositionPage({
           {/* Right Column: Drafted by AURA JD Card (1:1975) */}
           <div className="flex flex-1 flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
             <div className="flex flex-wrap items-center gap-2.5">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-white">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-ink-inverse">
                 A
               </div>
               <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
@@ -639,7 +639,7 @@ export default async function PositionPage({
               <Link
                 href={`/positions/${position.id}?view=jd&style=shorter`}
                 className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "shorter" ? "bg-ink text-white" : "bg-sunk text-ink hover:bg-shell"
+                  style === "shorter" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
                 }`}
               >
                 Shorter
@@ -647,7 +647,7 @@ export default async function PositionPage({
               <Link
                 href={`/positions/${position.id}?view=jd&style=senior`}
                 className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "senior" ? "bg-ink text-white" : "bg-sunk text-ink hover:bg-shell"
+                  style === "senior" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
                 }`}
               >
                 More senior
@@ -655,7 +655,7 @@ export default async function PositionPage({
               <Link
                 href={`/positions/${position.id}?view=jd&style=salary`}
                 className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "salary" ? "bg-ink text-white" : "bg-sunk text-ink hover:bg-shell"
+                  style === "salary" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
                 }`}
               >
                 Add salary
@@ -777,7 +777,7 @@ export default async function PositionPage({
                 ].map((item) => (
                   <div key={item.label} className="flex items-center gap-2">
                     {item.done ? (
-                      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-ok text-white">
+                      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-ok text-ink-inverse">
                         <Icon name="check" size={11} />
                       </span>
                     ) : (

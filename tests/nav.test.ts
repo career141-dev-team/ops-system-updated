@@ -12,7 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor } from "@/lib/nav";
+import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor, workspaceTitle } from "@/lib/nav";
 
 const APP = join(process.cwd(), "app");
 
@@ -67,4 +67,17 @@ test("every page on the phone's bar is a real sidebar entry", () => {
     assert.ok(hrefs.includes(href) || PHONE_ONLY[href], href + " is on the phone bar but not in the sidebar, and not named as phone-only");
   }
   assert.equal(PHONE_PAGES.length, 4, "four fit a thumb; five do not");
+});
+
+test("the tab above the page names the entry the bar marks, or the page itself", () => {
+  assert.equal(workspaceTitle("/"), "My Work");
+  assert.equal(workspaceTitle("/clients/abc"), "Clients");
+  assert.equal(workspaceTitle("/sets/abc"), "Openings", "a CV set is a face of a position");
+  assert.equal(workspaceTitle("/guarantees/x"), "Placements");
+  assert.equal(workspaceTitle("/invoices"), "Finance");
+  assert.equal(workspaceTitle("/account"), "Account");
+  assert.equal(workspaceTitle("/notifications"), "Notifications");
+  assert.equal(workspaceTitle("/chat"), "AURA");
+  assert.equal(workspaceTitle("/sign-in"), null);
+  for (const section of NAV) for (const page of section.pages) assert.equal(workspaceTitle(page.href), page.what);
 });

@@ -205,7 +205,7 @@ function Said({ children, tone = "", label = "AURA" }: { children: React.ReactNo
 function Mine({ text, sent = true }: { text: string; sent?: boolean }) {
   return (
     <div className="chat-in mb-4 flex flex-col items-end">
-      <div className="max-w-[86%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed text-white shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
+      <div className="max-w-[86%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
         <p className="whitespace-pre-wrap">{text}</p>
       </div>
       <p className="mt-0.5 text-[10.5px] text-ink-faint">{sent ? "Sent ✓" : "Sending…"}</p>
@@ -378,7 +378,7 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
                       <span className="flex gap-1.5">
                         <button
                           disabled={!value.trim() || value.trim() === s.value}
-                          className="rounded-lg bg-ink px-2.5 py-1 text-[12px] font-medium text-white hover:bg-black disabled:opacity-40"
+                          className="rounded-lg bg-ink px-2.5 py-1 text-[12px] font-medium text-ink-inverse hover:opacity-90 disabled:opacity-40"
                         >
                           Save
                         </button>
@@ -465,7 +465,7 @@ function Press({ label }: { label: string }) {
     <button
       disabled={pending}
       aria-busy={pending}
-      className="relative flex w-full items-center justify-between gap-3 rounded-xl bg-ink px-3.5 py-2 text-left text-[12.5px] font-medium leading-snug text-white shadow-[0_1px_2px_rgba(22,24,26,0.2)] transition-colors hover:bg-black active:scale-[0.99] disabled:opacity-70"
+      className="relative flex w-full items-center justify-between gap-3 rounded-xl bg-ink px-3.5 py-2 text-left text-[12.5px] font-medium leading-snug text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.2)] transition-colors hover:opacity-90 active:scale-[0.99] disabled:opacity-70"
     >
       <span className={"min-w-0 " + (pending ? "opacity-40" : "")}>{label}</span>
       <span aria-hidden="true" className={"shrink-0 " + (pending ? "opacity-0" : "")}>↵</span>
@@ -498,7 +498,7 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
       <button
         disabled={pending}
         aria-label="Send"
-        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-ink text-white hover:bg-black active:scale-[0.96] disabled:opacity-60"
+        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-ink text-ink-inverse hover:opacity-90 active:scale-[0.96] disabled:opacity-60"
       >
         ↑
       </button>
@@ -549,14 +549,14 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
                   aria-label="Chat name"
                   className="min-w-0 flex-1 rounded-md border border-brand bg-surface px-1.5 py-0.5 text-[12.5px] outline-none ring-2 ring-brand/20"
                 />
-                <button className="rounded-md bg-ink px-2 py-0.5 text-[11.5px] text-white hover:bg-black">Save</button>
+                <button className="rounded-md bg-ink px-2 py-0.5 text-[11.5px] text-ink-inverse hover:opacity-90">Save</button>
                 <button type="button" onClick={() => setRenaming(null)} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-ink-soft hover:text-ink">Cancel</button>
               </form>
             ) : deleting === c.id ? (
               <form action={deleteChat} className="flex min-w-0 flex-1 items-center gap-1">
                 {hidden(c.id)}
                 <span className="min-w-0 flex-1 truncate text-[12.5px] text-danger">Delete &ldquo;{c.name}&rdquo; and all of it?</span>
-                <button className="rounded-md bg-danger px-2 py-0.5 text-[11.5px] text-white">Delete</button>
+                <button className="rounded-md bg-danger px-2 py-0.5 text-[11.5px] text-ink-inverse">Delete</button>
                 <button type="button" onClick={() => setDeleting(null)} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-ink-soft hover:text-ink">Keep</button>
               </form>
             ) : (

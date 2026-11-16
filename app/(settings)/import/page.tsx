@@ -30,7 +30,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
 
   const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
   const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13px] font-mono";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-white hover:opacity-90";
+  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-ink-inverse hover:opacity-90";
   const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
 
   return (
