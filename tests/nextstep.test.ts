@@ -196,6 +196,7 @@ test("a client's card points at the work, or at what the record is missing", () 
     stage: "active",
     name: "SAMPLE CLIENT",
     billingEmail: "finance@example.test",
+    billingAddress: "1 Test Road, Colombo 03",
     groupName: "Career 141 x Sample",
     ...over,
   });

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   cancelPlacement,
   changeJoinDate,
+  correctSalarySplit,
   markJoined,
   markNoShow,
   recordNoShowChoice,
@@ -36,6 +37,7 @@ import {
 import { daysLeftInWords, guaranteeInWords } from "@/lib/guarantee";
 import {
   NO_SHOW_CHOICES,
+  feeAmount,
   feeInWords,
   invoiceInWords,
   missingPlacementFields,
@@ -160,8 +162,9 @@ export default async function PlacementPage({
 
   // Calculate estimated fee for preview
   const estimatedFeeAmount = placement.monthlySalary
-    ? Math.round(placement.monthlySalary * placement.feeMonths)
+    ? feeAmount(placement, placement.monthlySalary, placement)
     : null;
+  const maySplit = can(me, "money.manage") || mayManage;
   const estimatedFeeText = invoice
     ? money(invoice.amount, invoice.currency)
     : estimatedFeeAmount
@@ -656,6 +659,39 @@ export default async function PlacementPage({
           Collapsible Folds for all actions & history
          =================================================================== */}
       <div className="flex flex-col gap-3">
+        {/* Fold: the basic / allowances split behind the fee (16 Nov) */}
+        {maySplit && placement.monthlySalary && (
+          <FoldRow
+            title="Fold · Basic salary and allowances"
+            summary={
+              placement.basicSalary
+                ? `Basic ${money(placement.basicSalary, placement.currency)} + allowances ${money(placement.allowances, placement.currency)}`
+                : "Split not known - the fee uses the salary as TA gave it"
+            }
+            defaultOpen={!placement.basicSalary && placement.state === "joined"}
+          >
+            <p className="mb-3 max-w-[70ch] text-[14px] text-ink-soft">
+              The fee is {feeInWords(placement)}. {placement.package ? `TA's package: ${placement.package}` : "TA gave no package text."}
+            </p>
+            <form action={correctSalarySplit} className="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="placementId" value={placement.id} />
+              <label className={`min-w-[160px] ${figmaLabel}`}>
+                Basic, a month
+                <input name="basicSalary" defaultValue={placement.basicSalary ?? ""} className={figmaField} />
+              </label>
+              <label className={`min-w-[160px] ${figmaLabel}`}>
+                Allowances, a month
+                <input name="allowances" defaultValue={placement.allowances} className={figmaField} />
+              </label>
+              <label className={`min-w-[240px] flex-1 ${figmaLabel}`}>
+                Why
+                <input name="reason" className={figmaField} />
+              </label>
+              <button className={pillSecondary}>Save the split</button>
+            </form>
+          </FoldRow>
+        )}
+
         {/* Fold: Joining day actions (markJoined, markNoShow, changeJoinDate, cancelPlacement) */}
         {placement.state === "placed" && mayManage && (
           <div id="fold-joining">

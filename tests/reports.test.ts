@@ -176,6 +176,7 @@ test("Monday builds one report a week, leaves it to be read, and sets next Monda
     stage: "active",
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,

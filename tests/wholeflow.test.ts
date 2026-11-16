@@ -87,6 +87,7 @@ test("1. a client with a signed agreement, and a position handed to TA", async (
     stage: "active",
     billingName: "SAMPLE CLIENT (PVT) LTD",
     billingEmail: "finance@example.test",
+    billingAddress: "1 Test Road, Colombo 03",
     groupName: "",
     notes: "",
     reason: null,

@@ -422,6 +422,8 @@ export interface OpsClient {
   /** Who we send the invoice to. Often not known while onboarding. */
   billingName: string;
   billingEmail: string;
+  /** Where the invoice is addressed. The invoice is not drafted without it (16 Nov). */
+  billingAddress: string;
   /** Their WhatsApp group, by its name: the sets and feedback go there. */
   groupName: string;
   notes: string;
@@ -756,6 +758,16 @@ export interface OpsPlacement {
   state: string;
   /** What the client agreed to pay them, a month. */
   monthlySalary: number | null;
+  /**
+   * The split behind monthlySalary (16 Nov): a fee on "basic" or on "gross" needs
+   * to know which part is basic. null = TA did not say; the fee then falls back
+   * to monthlySalary so nothing is invented.
+   */
+  basicSalary: number | null;
+  /** Monthly allowances on top of basic. Gross = basic + allowances. */
+  allowances: number;
+  /** TA's free-text package, kept as the candidate was offered it. */
+  package: string;
   currency: string;
   offerLetterFileRef: string | null;
   /** The day they are due to start, and the day they really did. */

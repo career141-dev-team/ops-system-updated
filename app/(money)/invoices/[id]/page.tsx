@@ -103,6 +103,9 @@ export default async function InvoiceDetailPage({
     currency: inv.currency,
   });
 
+  const hasTemplate = db.files.some(
+    (f) => f.kind === (inv.kind === "credit_note" ? "credit_note_template" : "invoice_template") && f.subjectType === null,
+  );
   const history = db.audit
     .filter((e) => e.subjectType === "invoice" && e.subjectId === inv.id)
     .sort((a, b) => b.at - a.at);
@@ -136,7 +139,7 @@ export default async function InvoiceDetailPage({
                 ? "ok"
                 : inv.state === "disputed" || overdue
                   ? "danger"
-                  : inv.state === "sent" || inv.state === "partial"
+                  : inv.state === "sent" || inv.state === "partly_paid"
                     ? "warn"
                     : "quiet"
             }
@@ -265,6 +268,11 @@ export default async function InvoiceDetailPage({
             defaultOpen={inv.state === "draft"}
           >
             <div className={cardShell}>
+              <p className="mb-3 text-[13px] text-ink-soft">
+                {hasTemplate
+                  ? "Sending fills your Word template and attaches it as a PDF. The lines below are the same figures."
+                  : "No invoice template is uploaded yet, so the lines below go in the body of the email. Upload one on the Files screen as an invoice template and the PDF is attached instead."}
+              </p>
               <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-[1.6] text-ink">
                 {linesText}
               </pre>

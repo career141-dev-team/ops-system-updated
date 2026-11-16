@@ -162,6 +162,7 @@ test("a set TA says is ready becomes a set here, once, with its clock", async ()
     stage: "active",
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,

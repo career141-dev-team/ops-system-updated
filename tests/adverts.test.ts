@@ -122,6 +122,7 @@ test("Tuesday compiles one issue a week, and sets the next Tuesday's clock", asy
     stage: "active",
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,

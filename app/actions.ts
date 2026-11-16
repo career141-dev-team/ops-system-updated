@@ -218,11 +218,13 @@ import {
 import {
   WRITE_OFF_DAYS,
   balanceOf,
+  feeAmount,
   feeInWords,
   invoiceLines,
   money,
   problemWithDojChange,
   problemWithNoShow,
+  problemWithSalarySplit,
   problemWithNoShowChoice,
   problemWithPayment,
   problemWithWriteOff,
@@ -280,8 +282,10 @@ import {
   type ClientStage,
   STAGE_MEANINGS,
   problemWithBilling,
+  problemWithInvoiceBilling,
   problemWithStageMove,
 } from "@/lib/clients";
+import { invoiceHoles, problemWithInvoiceFill } from "@/lib/invoiceDoc";
 import {
   afterNotHeld,
   agreementDueAt,
@@ -1937,6 +1941,7 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   const details = {
     billingName: String(formData.get("billingName") ?? "").trim(),
     billingEmail: String(formData.get("billingEmail") ?? "").trim(),
+    billingAddress: String(formData.get("billingAddress") ?? "").trim(),
     groupName: String(formData.get("groupName") ?? "").trim(),
   };
   const problem = problemWithBilling(details);
@@ -4089,6 +4094,51 @@ export async function changeJoinDate(formData: FormData): Promise<void> {
   );
 }
 
+/**
+ * Correct the basic / allowances split behind the fee (16 Nov).
+ *
+ * TA gives one salary and a free-text package, not the split, so Accounts or
+ * the ops lead fills it in. The fee follows it, so a reason is mandatory and
+ * goes to the audit. A draft invoice is re-priced; one already sent is not
+ * touched - that is a credit note, a separate document.
+ */
+export async function correctSalarySplit(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const basic = Number(String(formData.get("basicSalary") ?? "").replace(/,/g, ""));
+  const allowances = Number(String(formData.get("allowances") ?? "0").replace(/,/g, "") || "0");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithSalarySplit(basic, allowances, reason);
+  if (problem) back(problem);
+
+  const invoice = row.invoiceId ? invoiceIn(db, row.invoiceId) : null;
+  if (invoice && invoice.state !== "draft") {
+    back("The invoice has gone to the client. Change it with a credit note, not by editing the salary.");
+  }
+
+  await patchPlacement(placementId, { basicSalary: basic, allowances }, member.id, "placement.salarySplit", reason);
+  if (invoice) {
+    const amount = feeAmount(
+      { feeMonths: row.feeMonths, feeBasis: row.feeBasis },
+      row.monthlySalary ?? 0,
+      { basicSalary: basic, allowances },
+    );
+    await patchInvoice(invoice.id, { amount }, member.id, "invoice.repriced", reason);
+  }
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  back("Saved. The fee now follows basic " + money(basic, row.currency) + " and allowances " + money(allowances, row.currency) + ".");
+}
+
 /** We lost them before they joined (step 6). */
 export async function cancelPlacement(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4120,10 +4170,9 @@ export async function cancelPlacement(formData: FormData): Promise<void> {
 /**
  * Send the invoice (step 10).
  *
- * Accounts' own job, so it needs `money.manage`. The lines go in the body,
- * because the invoice document itself waits on a template from the owner -
- * the same rule as the agreement: we do not invent the paperwork a client
- * pays against.
+ * Accounts' own job, so it needs `money.manage`. With an invoice template
+ * uploaded the filled PDF is attached; without one the lines go in the body,
+ * because we do not invent the paperwork a client pays against.
  */
 export async function sendInvoice(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4140,9 +4189,11 @@ export async function sendInvoice(formData: FormData): Promise<void> {
 
   const placement = row.placementId ? placementIn(db, row.placementId) : null;
   const client = row.clientId ? clientIn(db, row.clientId) : null;
-  if (!client?.billingEmail) {
-    back("This client has no billing address on their record. Put it there first, or the invoice has nowhere to go.");
-  }
+  // FigJam: "Billing address exists?" - No goes to fixing the client record.
+  const billingProblem = client
+    ? problemWithInvoiceBilling(client)
+    : "This invoice has no client record. Link it to a client first.";
+  if (billingProblem) back(billingProblem);
 
   const lines = invoiceLines({
     number: row.number,
@@ -4180,9 +4231,57 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       .replace(/\{\{sentDate\}\}/g, row.setId ? (clientSetIn(db, row.setId)?.sentAt ? colomboDateInWords(clientSetIn(db, row.setId)!.sentAt!) : "the day we sent it") : "")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
+  // The invoice document (16 Nov): when the owner has uploaded a template, fill
+  // it, make the PDF and attach that. Without one the lines stay in the email
+  // body, as before - we never draw an invoice of our own.
+  const now = Date.now();
+  const templateKind = row.kind === "credit_note" ? "credit_note_template" : "invoice_template";
+  const docTemplate = db.files.find((f) => f.kind === templateKind && f.subjectType === null);
+  const attachmentFileIds: string[] = [];
+  if (docTemplate) {
+    const templateBytes = await readBytes(docTemplate.key);
+    if (!templateBytes) back("The invoice template is registered but its bytes are gone. Upload it again on the Files screen.");
+    const holes = invoiceHoles({
+      number: row.number,
+      amount: row.amount,
+      lateCharge: row.lateCharge,
+      currency: row.currency,
+      dueAt: row.dueAt,
+      reason: row.reason,
+      againstNumber: row.againstInvoiceId ? (invoiceIn(db, row.againstInvoiceId)?.number ?? null) : null,
+      now,
+      client: client!,
+      placement,
+      about: row.about,
+      positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
+    });
+    const filled = await fillDocx(Buffer.from(templateBytes!), holes);
+    const holeProblem = problemWithInvoiceFill(filled.missing);
+    if (holeProblem) back(holeProblem);
+    const base = safeName((row.kind === "credit_note" ? "Credit note " : "Invoice ") + row.number);
+    const pdf = await docxToPdf(filled.bytes!, base + ".docx");
+    if (!pdf.ok) back("The invoice was filled in but no PDF could be made. " + (pdf.reason ?? ""));
+    const pdfKey = keyFor("invoice", "invoice", invoiceId, base + ".pdf", now);
+    await putBytes(pdfKey, pdf.bytes!, "application/pdf");
+    const pdfFile = await addFile({
+      kind: "invoice",
+      key: pdfKey,
+      name: base + ".pdf",
+      size: pdf.bytes!.byteLength,
+      mime: "application/pdf",
+      sha256: sha256(pdf.bytes!),
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      madeFrom: docTemplate.id,
+      uploadedBy: member.id,
+    });
+    attachmentFileIds.push(pdfFile.id);
+  }
+
   const message = await draftMessage({
     channel: "email",
     to: [client?.billingEmail ?? ""].filter(Boolean),
+    attachmentFileIds,
     subject: fill(wording?.subject ?? "{{client}} - invoice {{invoiceNumber}}"),
     body: fill(wording?.body ?? "Dear {{contact}},\n\n{{invoice}}"),
     templateKey: "invoice.cover",
@@ -4190,7 +4289,6 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     subjectId: invoiceId,
   });
 
-  const now = Date.now();
   await patchInvoice(
     invoiceId,
     { state: "sent", sentAt: now, sentMessageId: message.id },
@@ -4690,6 +4788,7 @@ export async function runImport(formData: FormData): Promise<void> {
         stage: row.values.stage || "active",
         billingName: row.values.billingname ?? "",
         billingEmail: row.values.billingemail ?? "",
+        billingAddress: "",
         groupName: "",
         // An owner we cannot match is the ops lead's to sort out, so the
         // record says so instead of looking as though it was meant.

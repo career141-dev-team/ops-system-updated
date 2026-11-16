@@ -58,6 +58,7 @@ import type { DayItem } from "@/lib/whatFirst";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
+import { problemWithInvoiceBilling } from "@/lib/clients";
 import {
   CLOSE_TRIGGERS,
   GUARANTEE_DAYS,
@@ -2148,6 +2149,12 @@ export async function takePlacement(
     candidateName: theirs.candidateName ?? placementTaId,
     state: "placed",
     monthlySalary: theirs.placedSalary ?? null,
+    // TA gives the basis and a free-text package, not the split. When the salary
+    // it gave is already "basic" we know the basic; otherwise it stays unknown
+    // and Accounts fills it in (16 Nov).
+    basicSalary: theirs.salaryBasis === "basic" ? (theirs.placedSalary ?? null) : null,
+    allowances: 0,
+    package: theirs.package ?? "",
     currency: theirs.currency || "LKR",
     offerLetterFileRef: theirs.offerLetterFileId ?? null,
     joinDate: theirs.joinDateMs ?? null,
@@ -2342,8 +2349,16 @@ export async function draftFeeInvoice(
     return { ok: false, what: "Still missing " + missing.join(" and ") + ". Ask the TA System for it.", invoiceId: null };
   }
 
+  // FigJam: "Billing address exists?" - No means fix the client's billing
+  // record, not draft an invoice that has nowhere to go (16 Nov).
+  const client = placement.clientId ? clientIn(db, placement.clientId) : null;
+  const billing = client
+    ? problemWithInvoiceBilling(client)
+    : "This placement has no client record. Link it to a client with a billing name, address and email first.";
+  if (billing) return { ok: false, what: billing, invoiceId: null };
+
   const rule = { feeMonths: placement.feeMonths, feeBasis: placement.feeBasis };
-  const amount = feeAmount(rule, placement.monthlySalary ?? 0);
+  const amount = feeAmount(rule, placement.monthlySalary ?? 0, placement);
   const invoice = await addInvoice({
     number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
     kind: "fee",
@@ -3288,6 +3303,7 @@ export async function clientFromLead(
     stage,
     billingName: "",
     billingEmail: "",
+    billingAddress: "",
     groupName: "",
     notes: "",
     reason: null,

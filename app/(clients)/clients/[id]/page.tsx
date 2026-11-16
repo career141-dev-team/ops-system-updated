@@ -722,6 +722,14 @@ export default async function ClientPage({
                   />
                 </label>
                 <label className="flex flex-col gap-1.5">
+                  <span className={figmaLabel}>Billing address</span>
+                  <input
+                    name="billingAddress"
+                    defaultValue={client.billingAddress ?? ""}
+                    className="rounded-[10px] bg-surface px-3.5 py-3 text-[16px] text-ink outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
                   <span className={figmaLabel}>WhatsApp group</span>
                   <input
                     name="groupName"
@@ -745,6 +753,7 @@ export default async function ClientPage({
           ) : (
             <p className="text-[14px] text-ink-soft">
               {client.billingName || "No billing contact"} · {client.billingEmail || "No email"} ·{" "}
+              {client.billingAddress || "No billing address"} ·{" "}
               {client.groupName || "No WhatsApp group"}
             </p>
           )}
