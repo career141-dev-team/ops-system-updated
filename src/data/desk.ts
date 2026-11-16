@@ -485,19 +485,40 @@ export async function recordReply(subjectType: string, subjectId: Id, by: Id): P
 /** The clock pass as an actor: the audit and the timeline read it as "by itself". */
 export const CLOCK_ACTOR = "clock";
 
+/** Setting key prefix: how far the reader got in each mailbox (the box's address follows). */
+const MAIL_REACHED = "mail.reached.";
+
 export async function readTheMailboxes(
   by: Id,
   now = Date.now(),
 ): Promise<{ ok: boolean; reason?: string; read: number; already: number; filed: number; waiting: number; chasesStopped: number; ignored: number }> {
-  // Each box carries on from the newest thing we already have from it, so a
-  // pass never re-reads and never skips. A box we have never read starts from
-  // the reader's own short window.
+  // Each box carries on from the newest thing we already have from it, or from
+  // how far the last read got if that is later (16 Nov): our own and machine
+  // mail is dropped and never stored, so a page of it left the start where it
+  // was and the same page was read, and dropped, every pass. A box we have
+  // never read starts from the reader's own short window.
   const since: Record<string, number> = {};
-  for (const i of (await desk()).inbound) {
+  const db = await desk();
+  for (const i of db.inbound) {
     if (i.mailbox && i.receivedAt > (since[i.mailbox] ?? 0)) since[i.mailbox] = i.receivedAt + 1000;
   }
-  const { mail, problems, ignored } = await readAllMailboxes(since);
+  const saved: Record<string, number> = {};
+  for (const s of db.settings) {
+    if (!s.key.startsWith(MAIL_REACHED)) continue;
+    const box = s.key.slice(MAIL_REACHED.length);
+    const at = Number(s.value);
+    if (Number.isFinite(at)) {
+      saved[box] = at;
+      if (at + 1000 > (since[box] ?? 0)) since[box] = at + 1000;
+    }
+  }
+  const { mail, problems, ignored, reached } = await readAllMailboxes(since);
   const taken = await takeInbound(mail, by, now);
+  // Only after the mail is recorded: a pass that fails part-way must read the
+  // same page again rather than skip it.
+  for (const [box, at] of Object.entries(reached)) {
+    if (at > (saved[box] ?? 0)) await noteSetting(MAIL_REACHED + box, String(at));
+  }
   // Some boxes may be readable and others not; say so rather than claiming
   // either a clean run or a total failure.
   return { ...taken, ignored, ok: problems.length === 0, reason: problems.join(" ") || undefined };

@@ -73,6 +73,8 @@ export type ReadResult =
 /** How many to take in one pass, and how long the whole pass may take. */
 export const BATCH = 25;
 export const TIME_LIMIT_MS = 15_000;
+/** Full pages with nothing to keep that one pass reads past; the rest waits for the next pass. */
+export const MAX_EMPTY_PAGES = 3;
 
 /**
  * The mailboxes we read, in order. Set as a comma-separated list, so a shared
@@ -263,25 +265,36 @@ export async function readOneMailbox(address: string, since: number, timeLimitMs
  */
 export async function readAllMailboxes(
   since: Record<string, number> = {},
-): Promise<{ mail: InboundMail[]; problems: string[]; read: string[]; ignored: number }> {
+): Promise<{ mail: InboundMail[]; problems: string[]; read: string[]; ignored: number; reached: Record<string, number> }> {
   const mail: InboundMail[] = [];
   const problems: string[] = [];
   const read: string[] = [];
+  const reached: Record<string, number> = {};
   let ignored = 0;
   const list = mailboxes();
-  if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read, ignored };
+  if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read, ignored, reached };
 
   for (const address of list) {
-    const result = await readOneMailbox(address, since[address] ?? defaultSince());
-    if (result.ok) {
+    let from = since[address] ?? defaultSince();
+    // A full page that kept nothing (our own and machine mail) is read past in
+    // the same pass, a few pages at most, so a run of it cannot hide a client's
+    // reply for hours. A page that kept something stops here: the rest waits
+    // for the next pass, as before.
+    for (let page = 1; page <= MAX_EMPTY_PAGES + 1; page++) {
+      const result = await readOneMailbox(address, from);
+      if (!result.ok) {
+        problems.push(result.reason);
+        break;
+      }
       mail.push(...result.mail);
       ignored += result.ignored;
-      read.push(address);
-    } else {
-      problems.push(result.reason);
+      if (page === 1) read.push(address);
+      reached[address] = result.reachedAt;
+      if (!result.pageFull || result.mail.length > 0 || result.reachedAt < from) break;
+      from = result.reachedAt + 1000;
     }
   }
-  return { mail, problems, read, ignored };
+  return { mail, problems, read, ignored, reached };
 }
 
 /**
