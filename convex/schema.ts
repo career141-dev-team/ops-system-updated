@@ -520,6 +520,9 @@ export default defineSchema({
     slots: v.array(v.number()),
     slotAnswers: v.optional(v.array(v.object({ at: v.number(), free: v.boolean() }))),
     slotLoops: v.number(),
+    reschedules: v.optional(
+      v.array(v.object({ from: v.number(), to: v.number(), by: v.string(), at: v.number(), reason: v.string() })),
+    ),
     at: v.union(v.number(), v.null()),
     format: v.string(),
     interviewers: v.array(v.string()),

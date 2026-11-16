@@ -239,6 +239,7 @@ import {
   problemWithAnswers,
   problemWithPick,
   problemWithReference,
+  problemWithReschedule,
   problemWithRelay,
   problemWithRoundDecision,
   problemWithSlots,
@@ -3651,6 +3652,98 @@ export async function recordCandidateOut(formData: FormData): Promise<void> {
       answer.messageId +
       "?msg=" +
       encodeURIComponent(answer.what + " The notice to the client is drafted - read it, then approve it."),
+  );
+}
+
+/**
+ * A booked interview moved to a new agreed time (16 Nov, plan B1).
+ *
+ * The round stays, the move goes into `reschedules`, the old clocks stop and
+ * new ones start from the new time, and the client's people get an updated
+ * invite as a DRAFT. TA hears through the same interview write that booking
+ * uses (it is keyed on the application, opening and round), so no new TA
+ * endpoint is involved. Cancel-and-rebook stays for "ask for new times".
+ */
+export async function rescheduleInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const to = Date.parse(String(formData.get("at") ?? "") + ":00+05:30");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithReschedule({ state: row.state, from: row.at, to, reason });
+  if (problem) back(problem);
+  const whereOrLink = String(formData.get("whereOrLink") ?? "").trim() || row.whereOrLink;
+
+  const now = Date.now();
+  const from = row.at ?? to;
+  const reschedules = [...(row.reschedules ?? []), { from, to, by: member.id, at: now, reason }];
+  await patchInterview(
+    interviewId,
+    // Back to "booked": a reconfirmation was for the old time.
+    { at: to, state: "booked", whereOrLink, reschedules },
+    member.id,
+    "interview.rescheduled",
+    reason,
+  );
+  await cancelClocksFor(db, "interview", interviewId, member.id, "The interview moved.", null);
+  await startInterviewClocks({ ...row, at: to }, now);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: row.interviewers,
+    subject: "Moved: " + row.candidateName + ", now " + colomboDateInWords(to),
+    body:
+      "Dear all,\n\n" +
+      row.candidateName +
+      "'s interview (round " +
+      row.round +
+      ") has moved from " +
+      colomboDateInWords(from) +
+      ", " +
+      new Date(from + 5.5 * HOUR).toISOString().slice(11, 16) +
+      " to " +
+      colomboDateInWords(to) +
+      ", " +
+      new Date(to + 5.5 * HOUR).toISOString().slice(11, 16) +
+      ".\n\n" +
+      whereOrLink +
+      "\n\nKind regards\n" +
+      member.name,
+    templateKey: null,
+    subjectType: "interview",
+    subjectId: interviewId,
+  });
+  await patchInterview(interviewId, { inviteMessageId: message.id }, member.id, "interview.inviteRedrafted", null);
+
+  await queueTaWrite(
+    "/integrations/v1/interviews",
+    {
+      applicationId: row.applicationTaId,
+      openingId: row.openingTaId,
+      scheduledAt: to,
+      round: row.round,
+      interviewFormat: row.format,
+      interviewers: row.interviewers,
+      teamsLink: row.format === "online" ? whereOrLink : null,
+      coordinatedBy: "ops",
+    },
+    { type: "interview", id: interviewId },
+  );
+  revalidatePath(here);
+  revalidatePath("/interviews");
+  redirect(
+    "/messages/" +
+      message.id +
+      "?msg=" +
+      encodeURIComponent("Moved. The updated invite is drafted, the TA System has been told, and the reminders are reset."),
   );
 }
 

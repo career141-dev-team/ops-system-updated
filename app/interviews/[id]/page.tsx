@@ -17,6 +17,7 @@ import {
   relayReference,
   requestInterviewSlots,
   requestReference,
+  rescheduleInterview,
 } from "@/app/actions";
 import Icon from "@/app/Icon";
 import {
@@ -539,6 +540,41 @@ export default async function InterviewPage({
 
             {mayManage && (interview.state === "booked" || interview.state === "reconfirmed") && (
               <>
+                <form
+                  action={rescheduleInterview}
+                  className="mt-4 flex flex-col gap-3 border-t border-rule pt-4"
+                >
+                  <input type="hidden" name="interviewId" value={interview.id} />
+                  <p className="text-[14px] text-ink-soft">
+                    A new time has been agreed for this same round. For a different set of times, cancel it below and
+                    ask for new ones.
+                  </p>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className={`min-w-[220px] ${figmaLabel}`}>
+                      The new day and time (Colombo)
+                      <input name="at" type="datetime-local" className={figmaField} />
+                    </label>
+                    <label className={`min-w-[240px] flex-1 ${figmaLabel}`}>
+                      Why is it moving?
+                      <input name="reason" className={figmaField} />
+                    </label>
+                  </div>
+                  <label className={figmaLabel}>
+                    New meeting link or address (leave empty if it stays)
+                    <input name="whereOrLink" className={figmaField} />
+                  </label>
+                  <button className={`${pillSecondary} self-start`}>Move it, and draft the updated invite</button>
+                  {(interview.reschedules ?? []).length > 0 && (
+                    <ul className="text-[12px] text-ink-faint">
+                      {(interview.reschedules ?? []).map((r) => (
+                        <li key={r.at}>
+                          Moved from {whenLocal(r.from)} to {whenLocal(r.to)}: {r.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </form>
+
                 <form
                   action={markInterviewAttendance}
                   className="mt-4 flex flex-col gap-3 border-t border-rule pt-4"

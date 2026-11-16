@@ -23,7 +23,8 @@ const types = readFileSync(join(process.cwd(), "src", "data", "types.ts"), "utf8
 
 /** Each one is optional in the type too, so the app already expects nothing. */
 // slotAnswers (16 Nov): older interviews have none, and the page reads it as "not told", never as free.
-const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers"];
+// reschedules (16 Nov): an interview that never moved has no history, and the page reads that as none.
+const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers", "reschedules"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

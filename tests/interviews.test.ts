@@ -28,6 +28,7 @@ import {
   problemWithNewSlots,
   problemWithPick,
   problemWithReference,
+  problemWithReschedule,
   problemWithRelay,
   problemWithRoundDecision,
   problemWithSlots,
@@ -417,4 +418,22 @@ test("free or busy is only what Ops was told, and picks the time the button is f
   assert.equal(chosenSlot(iv, a), c, "a busy time cannot be picked");
   assert.equal(chosenSlot({ ...iv, at: b }, null), b, "an agreed time stays chosen");
   assert.equal(chosenSlot({ slots: [], at: null }, null), null);
+});
+
+test("a booked interview can move to a later time, with a reason (plan B1)", () => {
+  const now = MONDAY_TEN - DAY;
+  const ok = { state: "booked", from: MONDAY_TEN, to: MONDAY_TEN + DAY, reason: "Panel is travelling" };
+  assert.equal(problemWithReschedule(ok, now), null);
+  assert.equal(problemWithReschedule({ ...ok, state: "reconfirmed" }, now), null);
+});
+
+test("a reschedule is refused when it cannot be one", () => {
+  const now = MONDAY_TEN - DAY;
+  const ok = { state: "booked", from: MONDAY_TEN, to: MONDAY_TEN + DAY, reason: "Panel is travelling" };
+  assert.match(problemWithReschedule({ ...ok, state: "agreed" }, now) ?? "", /booked/i);
+  assert.match(problemWithReschedule({ ...ok, state: "attended" }, now) ?? "", /booked/i);
+  assert.match(problemWithReschedule({ ...ok, to: NaN }, now) ?? "", /new day/i);
+  assert.match(problemWithReschedule({ ...ok, to: now - HOUR }, now) ?? "", /gone/i);
+  assert.match(problemWithReschedule({ ...ok, to: MONDAY_TEN }, now) ?? "", /already has/i);
+  assert.match(problemWithReschedule({ ...ok, reason: " no " }, now) ?? "", /why/i);
 });
