@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 
 import { keepFile, makePdfOfFile } from "@/app/actions";
 import { desk, filesNewestFirst } from "@/data/desk";
-import { fileStoreInWords, usingR2 } from "@/data/fileStore";
-import { FILE_KINDS, KIND_MEANINGS, MAX_FILE_BYTES, canBecomePdf, sizeInWords } from "@/lib/files";
+import { fileStoreInWords, readBytes, usingR2 } from "@/data/fileStore";
+import { holesInDocx } from "@/lib/docxFill";
+import { checkTemplate } from "@/lib/esa";
+import { FILE_KINDS, KIND_MEANINGS, MAX_FILE_BYTES, canBecomePdf, currentTemplate, sizeInWords } from "@/lib/files";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -28,6 +30,19 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
 
   const db = await desk();
   const files = filesNewestFirst(db);
+  const templates = files.filter((f) => f.kind === "esa_draft" && f.subjectType === null);
+  const current = currentTemplate(files, "esa_draft");
+  // A template that is not a readable .docx (a PDF, a damaged file) is said so, not thrown.
+  let holes: string[] | null = null;
+  if (current) {
+    try {
+      const bytes = await readBytes(current.key);
+      holes = bytes ? await holesInDocx(Buffer.from(bytes)) : null;
+    } catch {
+      holes = null;
+    }
+  }
+  const check = holes ? checkTemplate(holes) : null;
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
 
   return (
@@ -74,6 +89,52 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
           </form>
         ) : (
           <p className="mt-2 text-[13px] text-ink-faint">{refusal("file.keep")}</p>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+        <h2 className="text-[14.5px] font-medium">The agreement template</h2>
+        {templates.length === 0 ? (
+          <p className="mt-2 text-[13px] text-ink-soft">
+            None yet. Keep the ESA as a Word file above, as &ldquo;Agreement, drafted&rdquo; with nothing it belongs to.
+            Write each blank as {"{{companyName}}"}; the newest upload is the one in use.
+          </p>
+        ) : (
+          <>
+            {templates.map((file, i) => (
+              <div key={file.id} className="flex flex-wrap items-baseline gap-x-3 border-t border-rule py-2 first:border-t-0">
+                <a href={"/api/files/" + file.id} className="text-[13.5px] text-brand hover:underline">
+                  {file.name}
+                </a>
+                <span className="text-[12px] text-ink-faint">
+                  {new Date(file.uploadedAt).toISOString().slice(0, 16).replace("T", " ")}
+                </span>
+                {i === 0 && <span className="text-[12px] font-medium text-ok">in use</span>}
+              </div>
+            ))}
+            <div className="mt-2 border-t border-rule pt-2 text-[13px]">
+              {holes === null ? (
+                <p className="text-ink-soft">The template in use could not be read as a Word file, so it cannot be checked.</p>
+              ) : check && check.unknown.length === 0 && check.unused.length === 0 ? (
+                <p className="text-ok">Every blank in it is something we fill, and every required field has a blank.</p>
+              ) : (
+                check && (
+                  <>
+                    {check.unknown.length > 0 && (
+                      <p>
+                        Blanks nothing fills (a send will refuse): {check.unknown.map((h) => "{{" + h + "}}").join(", ")}.
+                      </p>
+                    )}
+                    {check.unused.length > 0 && (
+                      <p className="mt-1">
+                        Required fields the template never prints: {check.unused.map((f) => f.label.toLowerCase()).join(", ")}.
+                      </p>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          </>
         )}
       </section>
 

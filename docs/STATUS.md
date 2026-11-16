@@ -45,7 +45,8 @@ code is invented.
 | The banking and finance rule | `flagIndustry` in `src/lib/leads.ts` | reads the company and what they say they do, **never what they want to hire** |
 | The intro call, its reminders and rebooks | `src/lib/meetings.ts` | three attempts with no reply closes the lead, with a reason |
 | The agreement: fields from the real template | `src/lib/esa.ts` (`ESA_FIELDS`) | every hole in the template is a required field |
-| Filling the template, and the PDF | `src/lib/docxFill.ts` → `docxToPdf` | a hole with no value stops the send |
+| Filling the template, and the PDF | `src/lib/docxFill.ts` → `docxToPdf` | a hole with no value stops the send; a hole Word split over runs is gathered first (16 Nov) |
+| Template versions, check and preview (16 Nov) | `currentTemplate` in `src/lib/files.ts`, `checkTemplate` in `src/lib/esa.ts`, the "agreement template" card on `app/(settings)/files/page.tsx`, `previewAgreement` + `fillAgreementDraft` in `app/actions.ts`, "Make a filled draft" on `app/(clients)/leads/[id]/page.tsx` | newest upload is in use; blanks nothing fills and required fields never printed are listed; a preview makes the files, no message |
 | The chase: email, WhatsApp, email, WhatsApp, email, call | `CHASE_PLAN`, `chaseTheAgreement` in `src/data/desk.ts` | the clock drafts it; a person approves it; a reply stops it |
 | They want changes | `recordChangesWanted` in `app/actions.ts` | chasing stops, the version moves on, the two weeks keep running |
 | Signed, countersigned, declined | `app/actions.ts` | settling an agreement stops every clock on it |

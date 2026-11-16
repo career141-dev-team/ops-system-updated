@@ -2,7 +2,8 @@
  * Filling the agreement template (15, Phase 2 step 10).
  *
  * A .docx is a zip of XML. The holes in our template are written
- * `{{likeThis}}`, each one inside a single run of text, so filling it is a
+ * `{{likeThis}}`. Word often splits one hole over several runs of text, so
+ * `joinSplitHoles` gathers it back into one run first. Filling is then a
  * replacement in `word/document.xml` and nothing else in the document moves -
  * no styles, no page breaks, no signature block.
  *
@@ -19,10 +20,70 @@ const TEXT_PARTS = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xm
 
 const HOLE = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g;
 
+const PARAGRAPH = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
+const RUN = /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g;
+const TEXT = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
+
+/**
+ * Puts a hole that Word split over several runs back into one run (16 Nov).
+ *
+ * Before this, `{{companyName}}` stored as `{{company` + `Name}}` was not found
+ * by the fill at all and went to the client as it was. The whole hole moves
+ * into the run it started in (so it keeps that run's look), the fragments are
+ * cut out of the runs after it, and anything between the runs (spell-check
+ * marks, bookmarks) is left alone. Paragraphs with no split hole are untouched.
+ */
+export function joinSplitHoles(xml: string): string {
+  return xml.replace(PARAGRAPH, (para) => {
+    const runs = [...para.matchAll(RUN)].map((m) => ({
+      at: m.index!,
+      raw: m[0],
+      text: [...m[0].matchAll(TEXT)].map((t) => t[1]).join(""),
+    }));
+    if (runs.length < 2) return para;
+    const starts: number[] = [];
+    let full = "";
+    for (const run of runs) {
+      starts.push(full.length);
+      full += run.text;
+    }
+    const runAt = (offset: number) => {
+      let k = runs.length - 1;
+      while (starts[k] > offset) k--;
+      return k;
+    };
+    const edits: { from: number; to: number; with: string }[][] = runs.map(() => []);
+    for (const hole of full.matchAll(HOLE)) {
+      const start = hole.index!;
+      const end = start + hole[0].length;
+      const a = runAt(start);
+      const b = runAt(end - 1);
+      if (a === b) continue;
+      edits[a].push({ from: start - starts[a], to: runs[a].text.length, with: hole[0] });
+      for (let k = a + 1; k < b; k++) edits[k].push({ from: 0, to: runs[k].text.length, with: "" });
+      edits[b].push({ from: 0, to: end - starts[b], with: "" });
+    }
+    let out = para;
+    for (let k = runs.length - 1; k >= 0; k--) {
+      if (!edits[k].length) continue;
+      let text = runs[k].text;
+      for (const e of edits[k].sort((x, y) => y.from - x.from)) text = text.slice(0, e.from) + e.with + text.slice(e.to);
+      let first = true;
+      const raw = runs[k].raw.replace(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>|<w:t\/>/g, () => {
+        if (!first) return "";
+        first = false;
+        return `<w:t xml:space="preserve">${text}</w:t>`;
+      });
+      out = out.slice(0, runs[k].at) + raw + out.slice(runs[k].at + runs[k].raw.length);
+    }
+    return out;
+  });
+}
+
 /** Every hole in the template, each one once, in the order they appear. */
 export function holesIn(xml: string): string[] {
   const names: string[] = [];
-  for (const match of xml.matchAll(HOLE)) {
+  for (const match of joinSplitHoles(xml).matchAll(HOLE)) {
     if (!names.includes(match[1])) names.push(match[1]);
   }
   return names;
@@ -75,7 +136,7 @@ export async function fillDocx(file: Buffer, values: Record<string, string>): Pr
 
   for (const path of Object.keys(zip.files)) {
     if (!TEXT_PARTS.test(path)) continue;
-    const xml = await zip.file(path)!.async("string");
+    const xml = joinSplitHoles(await zip.file(path)!.async("string"));
     const next = xml.replace(HOLE, (whole, name: string) => {
       const value = (values[name] ?? "").trim();
       if (!value) {
@@ -85,7 +146,7 @@ export async function fillDocx(file: Buffer, values: Record<string, string>): Pr
       if (!filled.includes(name)) filled.push(name);
       return forXml(value);
     });
-    if (next !== xml) zip.file(path, next);
+    zip.file(path, next);
   }
 
   if (missing.length) return { bytes: null, missing, filled };

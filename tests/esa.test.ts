@@ -12,6 +12,7 @@ import {
   type EsaState,
   canMoveTo,
   chaseStep,
+  checkTemplate,
   defaultFields,
   expiresAt,
   missingFields,
@@ -329,4 +330,12 @@ test("a negotiation stops the chasing, and only the chasing", async () => {
     ["esa.decline"],
     "the two-week clock is still running",
   );
+});
+
+test("the template check names holes nothing fills and required fields the template never prints", () => {
+  const check = checkTemplate(["companyName", "effectiveDate", "mysteryHole"]);
+  assert.deepEqual(check.unknown, ["mysteryHole"], "effectiveDate is filled by the system, so it is not unknown");
+  assert(check.unused.some((f) => f.key === "registrationNo"));
+  assert(!check.unused.some((f) => f.key === "companyName"));
+  assert(!check.unused.some((f) => f.key === "notes"), "an optional field may be left out of the template");
 });
