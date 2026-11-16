@@ -21,6 +21,7 @@ export const FILE_KINDS = [
   "offer_letter",
   "flyer",
   "scan",
+  "invite",
   "other",
 ] as const;
 
@@ -36,6 +37,7 @@ export const KIND_MEANINGS: Record<FileKind, string> = {
   offer_letter: "Offer letter",
   flyer: "Advert flyer",
   scan: "A scan of something on paper",
+  invite: "A calendar invite",
   other: "Something else",
 };
 
@@ -147,6 +149,8 @@ export function mimeFor(name: string): string {
       return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     case ".csv":
       return "text/csv";
+    case ".ics":
+      return "text/calendar";
     case ".png":
       return "image/png";
     case ".jpg":

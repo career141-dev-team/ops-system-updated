@@ -293,7 +293,8 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { OpsDatabase, OpsMember, OpsMessage } from "@/data/types";
+import type { OpsDatabase, OpsInterview, OpsMember, OpsMessage } from "@/data/types";
+import { buildInvite, colomboWhen, type InviteInput } from "@/lib/ics";
 import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
 import { previewRoleFrom } from "@/lib/roles";
 
@@ -1257,9 +1258,19 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
   }
 
   await patchLead(leadId, { state: "intro_call" }, member.id, "lead.introCallBooked", null);
+  const invite = await draftMeetingInvite(
+    member,
+    lead as NonNullable<typeof lead>,
+    { id: meeting.id, kind: "intro", at },
+    String(formData.get("link") ?? "").trim(),
+  );
   revalidatePath(here);
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
-  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+  back(
+    "Booked, with a reminder the day before and an hour before." +
+      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      (warning ? " " + warning : ""),
+  );
 }
 
 /**
@@ -1915,6 +1926,101 @@ async function filesFor(
     out.push({ name: file.name, mime: file.mime, bytes });
   }
   return out;
+}
+
+/**
+ * Keeps a calendar invite as a file and returns its id, for a draft to carry (16 Nov, plan B2).
+ * The email is still a draft a person approves; the .ics only travels with it.
+ */
+async function keepInvite(
+  invite: InviteInput,
+  subjectType: string,
+  subjectId: string,
+  uploadedBy: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(buildInvite(invite));
+  const name = "invite.ics";
+  const key = keyFor("invite", subjectType, subjectId, name);
+  await putBytes(key, bytes, "text/calendar");
+  const file = await addFile({
+    kind: "invite",
+    key,
+    name,
+    size: bytes.byteLength,
+    mime: "text/calendar",
+    sha256: sha256(bytes),
+    subjectType,
+    subjectId,
+    madeFrom: null,
+    uploadedBy,
+  });
+  return file.id;
+}
+
+function interviewInvite(
+  iv: Pick<OpsInterview, "id" | "candidateName" | "round" | "at" | "whereOrLink" | "interviewers" | "reschedules">,
+  member: OpsMember,
+): InviteInput {
+  return {
+    uid: "interview-" + iv.id + "@ops.career141.com",
+    startsAt: iv.at ?? 0,
+    summary: "Interview: " + iv.candidateName + ", round " + iv.round,
+    location: iv.whereOrLink,
+    url: /^https?:\/\//.test(iv.whereOrLink) ? iv.whereOrLink : undefined,
+    organizer: { name: member.name, email: member.email },
+    attendees: iv.interviewers,
+    sequence: iv.reschedules?.length ?? 0,
+  };
+}
+
+/**
+ * The invite email to a client's contact for an intro call or a requirement meeting.
+ * A draft, with the .ics attached. No address on the lead means no draft, and the caller says so.
+ */
+async function draftMeetingInvite(
+  member: OpsMember,
+  lead: { company: string; contactName: string; contactEmail: string },
+  meeting: { id: string; kind: string; at: number },
+  link: string,
+): Promise<string | null> {
+  const to = interviewersFrom(lead.contactEmail);
+  if (!to.length) return null;
+  const what = meeting.kind === "intro" ? "introductory call" : "requirement meeting";
+  const fileId = await keepInvite(
+    {
+      uid: "meeting-" + meeting.id + "@ops.career141.com",
+      startsAt: meeting.at,
+      summary: "Career 141 and " + lead.company + ": " + what,
+      location: link || undefined,
+      url: /^https?:\/\//.test(link) ? link : undefined,
+      organizer: { name: member.name, email: member.email },
+      attendees: to,
+    },
+    "meeting",
+    meeting.id,
+    member.id,
+  );
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: "Our " + what + ", " + colomboWhen(meeting.at),
+    body:
+      "Dear " +
+      (lead.contactName || "all") +
+      ",\n\nOur " +
+      what +
+      " is on " +
+      colomboWhen(meeting.at) +
+      "." +
+      (link ? "\n\n" + link : "") +
+      "\n\nThe calendar invite is attached.\n\nKind regards\n" +
+      member.name,
+    templateKey: null,
+    attachmentFileIds: [fileId],
+    subjectType: "meeting",
+    subjectId: meeting.id,
+  });
+  return message.id;
 }
 
 /* ── The client record (15, Phase 2 step 19) ─────────────────── */
@@ -2694,9 +2800,19 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     { type: "meeting", id: meeting.id },
   );
 
+  const invite = await draftMeetingInvite(
+    member,
+    row,
+    { id: meeting.id, kind: "requirement", at },
+    String(formData.get("link") ?? "").trim(),
+  );
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   revalidatePath(here);
-  back("Booked, with a reminder the day before and an hour before." + (warning ? " " + warning : ""));
+  back(
+    "Booked, with a reminder the day before and an hour before." +
+      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      (warning ? " " + warning : ""),
+  );
 }
 
 /**
@@ -3544,6 +3660,14 @@ export async function bookInterview(formData: FormData): Promise<void> {
     to: interviewers,
     subject: fill(wording?.subject ?? "Interview: {{candidate}}, {{when}}"),
     body: fill(wording?.body ?? "Dear all,\n\n{{candidate}} is confirmed for {{when}}.\n\n{{whereOrLink}}"),
+    attachmentFileIds: [
+      await keepInvite(
+        interviewInvite({ ...row, at: wanted.at, whereOrLink: wanted.whereOrLink, interviewers }, member),
+        "interview",
+        interviewId,
+        member.id,
+      ),
+    ],
     templateKey: "interview.invite",
     subjectType: "interview",
     subjectId: interviewId,
@@ -3717,6 +3841,15 @@ export async function rescheduleInterview(formData: FormData): Promise<void> {
       whereOrLink +
       "\n\nKind regards\n" +
       member.name,
+    // Same UID, one more SEQUENCE: the client's calendar moves the entry instead of adding a second.
+    attachmentFileIds: [
+      await keepInvite(
+        interviewInvite({ ...row, at: to, whereOrLink, reschedules }, member),
+        "interview",
+        interviewId,
+        member.id,
+      ),
+    ],
     templateKey: null,
     subjectType: "interview",
     subjectId: interviewId,
