@@ -15,3 +15,4 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 
 graphify-out
+.vercel

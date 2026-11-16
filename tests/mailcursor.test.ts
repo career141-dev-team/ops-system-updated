@@ -25,7 +25,7 @@ const { desk, readTheMailboxes } = await import("@/data/desk");
 const MINUTE = 60_000;
 const BASE = Date.now() - 36 * 60 * MINUTE;
 
-type Fake = { id: string; from: string; at: number };
+type Fake = { id: string; from: string; at: number; subject?: string; to?: string; files?: string[] };
 /** `own` messages from our own domain, then one client reply, a minute apart. */
 function mailbox(own: number, reply: string): Fake[] {
   const list: Fake[] = [];
@@ -34,25 +34,45 @@ function mailbox(own: number, reply: string): Fake[] {
   return list;
 }
 
-/** Stands in for Graph: token, then `$filter=receivedDateTime ge X`, oldest first, `$top` of them. */
-function fakeGraph(messages: Fake[], asked: number[]): void {
+/**
+ * Stands in for Graph: token, then `$filter=receivedDateTime ge X`, oldest
+ * first, `$top` of them, with an `@odata.nextLink` when more are left. The
+ * Sent Items folder and the attachment list are served too. `asked` collects
+ * the `ge` of every first request (not of the pages Graph's own link leads to).
+ */
+function fakeGraph(messages: Fake[], asked: number[], extra: { sent?: Fake[] } = {}): void {
+  const everything = [...messages, ...(extra.sent ?? [])];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url = decodeURIComponent(String(input));
     if (url.includes("oauth2")) return Response.json({ access_token: "token" });
-    const ge = Date.parse(decodeURIComponent(url).match(/receivedDateTime ge ([^&]+)/)![1]);
+    const files = url.match(/\/messages\/([^/]+)\/attachments/);
+    if (files) {
+      const names = everything.find((m) => m.id === files[1])?.files ?? [];
+      return Response.json({ value: [...names.map((name) => ({ name, isInline: false })), { name: "logo.png", isInline: true }] });
+    }
+    const sent = url.includes("/mailFolders/sentitems/");
+    const ge = Date.parse(url.match(/receivedDateTime ge ([^&]+)/)![1]);
     const top = Number(url.match(/\$top=(\d+)/)![1]);
-    asked.push(ge);
-    const page = messages.filter((m) => m.at >= ge).slice(0, top);
+    const skip = Number(url.match(/[?&]skip=(\d+)/)?.[1] ?? 0);
+    if (!url.includes("skip=")) asked.push(ge);
+    const all = (sent ? extra.sent ?? [] : messages).filter((m) => m.at >= ge);
+    const page = all.slice(skip, skip + top);
+    const more = skip + top < all.length;
     return Response.json({
       value: page.map((m) => ({
         id: m.id,
-        subject: "Re: hello",
+        subject: m.subject ?? "Re: hello",
         receivedDateTime: new Date(m.at).toISOString(),
         bodyPreview: "hi",
         body: { content: "hi" },
         from: { emailAddress: { address: m.from, name: "x" } },
+        toRecipients: m.to ? [{ emailAddress: { address: m.to } }] : [],
+        hasAttachments: Boolean(m.files?.length),
         internetMessageHeaders: [],
       })),
+      ...(more
+        ? { "@odata.nextLink": "https://graph.microsoft.com/v1.0/next?" + (sent ? "/mailFolders/sentitems/" : "") + "skip=" + (skip + top) + "&receivedDateTime ge " + new Date(ge).toISOString() + "&$top=" + top }
+        : {}),
     });
   }) as typeof fetch;
 }
@@ -86,4 +106,69 @@ test("the next pass starts where the last one reached, not at the old start", as
   const third = await readTheMailboxes("clock");
   assert.equal(third.read, 0);
   assert.equal(await filed("reply-2"), 1);
+});
+
+test("two messages in one second, either side of a page boundary, are both kept", async () => {
+  const asked: number[] = [];
+  process.env.OPS_MAILBOXES = "three@career141.com";
+  // 30 client messages in the same second: 25 fit a page, 5 spill over. Asking again
+  // "after that second" would lose the 5; the id cursor does not.
+  const burst: Fake[] = Array.from({ length: 30 }, (_, i) => ({ id: "burst-" + i, from: "hr@sampleclient.test", at: BASE + 500 * MINUTE }));
+  fakeGraph(burst, asked);
+  await readTheMailboxes("clock");
+  assert.equal((await desk()).inbound.filter((i) => i.providerId.startsWith("burst-")).length, 25, "the first page");
+  await readTheMailboxes("clock");
+  assert.equal((await desk()).inbound.filter((i) => i.providerId.startsWith("burst-")).length, 30, "the rest of the same second, none twice");
+});
+
+test("a message with files keeps their names, and the picture in the signature is not one", async () => {
+  const asked: number[] = [];
+  process.env.OPS_MAILBOXES = "four@career141.com";
+  fakeGraph([{ id: "with-files", from: "hr@sampleclient.test", at: BASE + 600 * MINUTE, files: ["cv-set-2.pdf", "terms.docx"] }, { id: "no-files", from: "hr@sampleclient.test", at: BASE + 601 * MINUTE }], asked);
+  await readTheMailboxes("clock");
+  const rows = (await desk()).inbound;
+  assert.deepEqual(rows.find((i) => i.providerId === "with-files")?.attachments, ["cv-set-2.pdf", "terms.docx"]);
+  assert.equal(rows.find((i) => i.providerId === "no-files")?.attachments, undefined);
+});
+
+test("our own sent mail is filed in its thread and never stops a chase", async () => {
+  const { repo } = await import("@/data/store");
+  const { referenceFor } = await import("@/lib/mailMatch");
+  const { buildThreads } = await import("@/lib/mailbox");
+  repo.reset();
+  const NOW = Date.now();
+  const chase = repo.startTimer({
+    kind: "feedback.chase",
+    subjectType: "clientSet",
+    subjectId: "cs_1",
+    startsAt: NOW,
+    dueAt: NOW + 24 * 3_600_000,
+    warnAt: null,
+    ownerId: "m_owner",
+    payload: { label: "SAMPLE CLIENT set 2" },
+  });
+  const asked: number[] = [];
+  process.env.OPS_MAILBOXES = "five@career141.com";
+  // The subject carries our reference to the set: were it from the client, it would stop the chase.
+  fakeGraph([], asked, {
+    sent: [{ id: "sent-1", from: "five@career141.com", to: "hr@sampleclient.test", at: BASE + 700 * MINUTE, subject: "Set 2 " + referenceFor("clientSet", "cs_1"), files: ["set2.zip"] }],
+  });
+  const r = await readTheMailboxes("clock");
+  assert.equal(r.chasesStopped, 0);
+  assert.equal(r.read, 0, "sent mail is not counted as new mail to answer");
+  assert.notEqual(repo.timers().find((t) => t.id === chase.id)?.state, "cancelled");
+
+  const db = await desk();
+  const row = db.inbound.find((i) => i.providerId === "sent-1");
+  assert.equal(row?.direction, "out");
+  assert.equal(row?.readState, "actioned", "nobody has to answer our own mail");
+  assert.equal(row?.subjectId, "cs_1", "it is filed against the set");
+  const thread = buildThreads(db.inbound, db.messages).find((t) => t.items.some((i) => i.providerId === "sent-1"));
+  assert.equal(thread?.items[0].direction, "out");
+  assert.deepEqual(thread?.items[0].attachmentNames, ["set2.zip"]);
+  assert.equal(thread?.waitingOnUs, false);
+
+  // A second pass records it once.
+  await readTheMailboxes("clock");
+  assert.equal((await desk()).inbound.filter((i) => i.providerId === "sent-1").length, 1);
 });

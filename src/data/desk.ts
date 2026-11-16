@@ -112,7 +112,8 @@ import {
   ownershipWindow,
   silentDays,
 } from "@/lib/clientFeedback";
-import { type InboundMail, readAllMailboxes } from "@/lib/graphMail";
+import { type InboundMail, type MailCursor, readAllMailboxes } from "@/lib/graphMail";
+import { normalSubject } from "@/lib/mailbox";
 import { matchInbound, stopsChasing } from "@/lib/mailMatch";
 import { dueNow, keyFor as outboxKeyFor, nextTryAt, shouldGiveUp } from "@/lib/outbox";
 import { cursorAfter, whatWeDoWithIt } from "@/lib/taEvents";
@@ -497,31 +498,45 @@ export async function readTheMailboxes(
   // mail is dropped and never stored, so a page of it left the start where it
   // was and the same page was read, and dropped, every pass. A box we have
   // never read starts from the reader's own short window.
-  const since: Record<string, number> = {};
+  const since: Record<string, MailCursor> = {};
   const db = await desk();
   for (const i of db.inbound) {
-    if (i.mailbox && i.receivedAt > (since[i.mailbox] ?? 0)) since[i.mailbox] = i.receivedAt + 1000;
+    // "From" this second, not after it: what shares the second is told apart by
+    // id, here by recordInbound's own check (16 Nov).
+    if (i.mailbox && i.direction !== "out" && i.receivedAt > (since[i.mailbox]?.at ?? 0)) since[i.mailbox] = { at: i.receivedAt, ids: [] };
   }
-  const saved: Record<string, number> = {};
+  const saved: Record<string, MailCursor> = {};
   for (const s of db.settings) {
     if (!s.key.startsWith(MAIL_REACHED)) continue;
     const box = s.key.slice(MAIL_REACHED.length);
-    const at = Number(s.value);
-    if (Number.isFinite(at)) {
-      saved[box] = at;
-      if (at + 1000 > (since[box] ?? 0)) since[box] = at + 1000;
-    }
+    const [time, ids] = String(s.value).split("|");
+    const at = Number(time);
+    if (!Number.isFinite(at)) continue;
+    saved[box] = { at, ids: ids ? ids.split(",") : [] };
+    if (at >= (since[box]?.at ?? 0)) since[box] = saved[box];
   }
   const { mail, problems, ignored, reached } = await readAllMailboxes(since);
   const taken = await takeInbound(mail, by, now);
   // Only after the mail is recorded: a pass that fails part-way must read the
   // same page again rather than skip it.
-  for (const [box, at] of Object.entries(reached)) {
-    if (at > (saved[box] ?? 0)) await noteSetting(MAIL_REACHED + box, String(at));
+  for (const [box, cursor] of Object.entries(reached)) {
+    const before = saved[box];
+    if (!before || cursor.at > before.at || cursor.ids.length !== before.ids.length) {
+      await noteSetting(MAIL_REACHED + box, cursor.at + "|" + cursor.ids.join(","));
+    }
   }
   // Some boxes may be readable and others not; say so rather than claiming
   // either a clean run or a total failure.
   return { ...taken, ignored, ok: problems.length === 0, reason: problems.join(" ") || undefined };
+}
+
+/** Is this Sent Items mail the copy of a message this system sent? Same id, or same subject and recipient within ten minutes. */
+function ourSend(m: OpsMessage, item: InboundMail): boolean {
+  if (m.providerMessageId && m.providerMessageId === item.providerId) return true;
+  const near = Math.abs((m.sentAt ?? m.createdAt) - item.receivedAt) < 10 * 60_000;
+  const same = normalSubject(m.subject).toLowerCase() === normalSubject(item.subject).toLowerCase();
+  const to = (item.to ?? []).map((a) => a.toLowerCase());
+  return near && same && m.to.some((a) => to.includes(a.toLowerCase()));
 }
 
 /** The same pass over mail from anywhere, so it can be tested and demonstrated. */
@@ -581,8 +596,19 @@ export async function takeInbound(
   let waiting = 0;
   let chasesStopped = 0;
 
+  // Our own sends, to tell their copy in Sent Items from a mail we never made.
+  const sentByUs = db.messages.filter((m) => m.state === "sent");
+
   for (const item of mail) {
-    const match = matchInbound(item, known);
+    const out = item.direction === "out";
+    // Sent Items also holds what this system sent. That already has its place
+    // in the thread; a second copy would show it twice.
+    if (out && sentByUs.some((m) => ourSend(m, item))) {
+      already += 1;
+      continue;
+    }
+    // A sent mail is matched on who it went to, as the other party.
+    const match = matchInbound(out ? { ...item, from: item.to?.[0] ?? "" } : item, known);
     const row = {
       channel: "email" as const,
       mailbox: item.mailbox,
@@ -598,6 +624,8 @@ export async function takeInbound(
       subjectId: match.subjectId,
       clientId: match.clientId,
       note: match.note,
+      ...(out ? { direction: "out" as const, to: item.to ?? [] } : {}),
+      ...(item.attachments?.length ? { attachments: item.attachments } : {}),
     };
 
     const saved = usingConvex()
@@ -607,6 +635,9 @@ export async function takeInbound(
       already += 1;
       continue;
     }
+    // Our own mail is filed for reading and is never a client answering: it
+    // must not stop a chase, and it never waits in "needs filing".
+    if (out) continue;
     read += 1;
 
     if (match.subjectId) filed += 1;
@@ -646,7 +677,7 @@ export function inboundWaiting(db: OpsDatabase): OpsInbound[] {
 }
 
 export function inboundRecent(db: OpsDatabase): OpsInbound[] {
-  return [...db.inbound].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
+  return db.inbound.filter((i) => i.direction !== "out").sort((a, b) => b.receivedAt - a.receivedAt).slice(0, 20);
 }
 
 /** Save a template's wording. Refused unless the screen checked the role first. */

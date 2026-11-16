@@ -35,6 +35,8 @@ export interface ThreadItem {
   providerId: string | null;
   inReplyTo: string | null;
   attachments: number;
+  /** In only: the file names the email carried. */
+  attachmentNames: string[];
 }
 
 export interface Thread {
@@ -129,6 +131,10 @@ export interface InboundLike {
   subjectType: string | null;
   subjectId: string | null;
   clientId: string | null;
+  /** Our own mail read back from Sent Items: a thread item going out, not a reply. */
+  direction?: "in" | "out";
+  to?: string[];
+  attachments?: string[];
 }
 
 export interface OutboundLike {
@@ -160,19 +166,22 @@ export function buildThreads(inbound: InboundLike[], outbound: OutboundLike[], c
   for (const mail of inbound) {
     if (mail.channel !== channel) continue;
     const about = mail.subjectType && mail.subjectId ? { type: mail.subjectType, id: mail.subjectId } : null;
+    const out = mail.direction === "out";
+    const who = out ? (mail.to?.[0] ?? "") : mail.from;
     items.push({
-      direction: "in",
+      direction: out ? "out" : "in",
       id: mail.id,
       at: mail.receivedAt,
-      who: mail.from,
-      whoName: mail.fromName || mail.from,
+      who,
+      whoName: out ? who : mail.fromName || mail.from,
       subject: mail.subject,
       body: mail.body,
-      state: null,
+      state: out ? "sent" : null,
       providerId: mail.providerId,
       inReplyTo: mail.inReplyTo,
-      attachments: 0,
-      key: threadKeyOf({ about, subject: mail.subject, who: mail.from, id: mail.id }),
+      attachments: mail.attachments?.length ?? 0,
+      attachmentNames: mail.attachments ?? [],
+      key: threadKeyOf({ about, subject: mail.subject, who, id: mail.id }),
       about,
       clientId: mail.clientId,
     });
@@ -194,6 +203,7 @@ export function buildThreads(inbound: InboundLike[], outbound: OutboundLike[], c
       providerId: message.providerMessageId,
       inReplyTo: message.inReplyToProviderId ?? null,
       attachments: message.attachmentFileIds.length,
+      attachmentNames: [],
       key: threadKeyOf({ about, subject: message.subject, who, id: message.id }),
       about,
       clientId: null,

@@ -49,7 +49,29 @@ export interface InboundMail {
   subject: string;
   body: string;
   inReplyTo: string | null;
+  /**
+   * "out" is our own mail read back from Sent Items (16 Nov): it is filed into
+   * its thread for reading and never counts as a client answering.
+   */
+  direction?: "in" | "out";
+  /** Out only: who it went to. */
+  to?: string[];
+  /** File names, when the message had any (inline pictures left out). */
+  attachments?: string[];
 }
+
+/**
+ * How far a mailbox was read: the newest receivedDateTime and the ids of the
+ * messages seen at exactly that second (16 Nov). Graph times have one-second
+ * resolution, so "after this time" can skip a message that shares the second
+ * with the last one read; "from this time, minus the ids already seen" cannot.
+ */
+export interface MailCursor {
+  at: number;
+  ids: string[];
+}
+/** More than this at one second is not kept; the pass would re-read the surplus. */
+export const MAX_CURSOR_IDS = 100;
 
 export type ReadResult =
   | {
@@ -67,6 +89,10 @@ export type ReadResult =
        */
       reachedAt: number;
       pageFull: boolean;
+      /** Graph's own link to the next page, followed instead of asking again by time. */
+      next: string | null;
+      /** Ids of what the page held at `reachedAt`, kept before anything was left out. */
+      tail: string[];
     }
   | { ok: false; mailbox: string; reason: string };
 
@@ -156,7 +182,12 @@ type GraphMessage = {
   body?: { content?: string };
   internetMessageHeaders?: { name: string; value: string }[];
   from?: { emailAddress?: { address?: string; name?: string } };
+  toRecipients?: { emailAddress?: { address?: string } }[];
+  hasAttachments?: boolean;
 };
+
+/** Where to read: everything but Sent Items (the default), or Sent Items alone. */
+export type Folder = "all" | "sent";
 
 /**
  * One mailbox's recent mail, oldest first so a burst is worked through in order
@@ -182,7 +213,14 @@ type GraphMessage = {
  * which is the newest thing we already recorded for that box. So a pass always
  * moves forward and nothing is read twice or skipped, however busy the box is.
  */
-export async function readOneMailbox(address: string, since: number, timeLimitMs = TIME_LIMIT_MS): Promise<ReadResult> {
+export async function readOneMailbox(
+  address: string,
+  since: number,
+  timeLimitMs = TIME_LIMIT_MS,
+  opts: { folder?: Folder; next?: string | null; seen?: string[] } = {},
+): Promise<ReadResult> {
+  const sent = opts.folder === "sent";
+  const seen = new Set(opts.seen ?? []);
   if (!readerEnabled()) return { ok: false, mailbox: address, reason: "Reading the mailboxes is switched off." };
   if (!graphReady()) return { ok: false, mailbox: address, reason: "The mailbox credentials are not set yet." };
 
@@ -195,13 +233,15 @@ export async function readOneMailbox(address: string, since: number, timeLimitMs
     if (!access) return { ok: false, mailbox: address, reason: "Microsoft would not give us a token." };
 
     const url =
+      opts.next ||
       "https://graph.microsoft.com/v1.0/users/" +
       encodeURIComponent(address) +
+      (sent ? "/mailFolders/sentitems" : "") +
       "/messages?$top=" +
       BATCH +
       "&$orderby=receivedDateTime asc&$filter=receivedDateTime ge " +
       new Date(since).toISOString() +
-      "&$select=id,subject,receivedDateTime,bodyPreview,body,from,internetMessageHeaders";
+      "&$select=id,subject,receivedDateTime,bodyPreview,body,from,toRecipients,hasAttachments,internetMessageHeaders";
 
     const response = await fetch(url, { headers: { authorization: "Bearer " + access }, signal: stop });
     if (!response.ok) {
@@ -215,18 +255,24 @@ export async function readOneMailbox(address: string, since: number, timeLimitMs
             : "Microsoft answered " + response.status;
       return { ok: false, mailbox: address, reason: address + ": " + why + "." };
     }
-    const json = (await response.json()) as { value?: GraphMessage[] };
+    const json = (await response.json()) as { value?: GraphMessage[]; "@odata.nextLink"?: string };
     const page = json.value ?? [];
-    const reachedAt = page.reduce((n, m) => Math.max(n, m.receivedDateTime ? Date.parse(m.receivedDateTime) : 0), since);
+    const timeOf = (m: GraphMessage) => (m.receivedDateTime ? Date.parse(m.receivedDateTime) : 0);
+    const reachedAt = page.reduce((n, m) => Math.max(n, timeOf(m)), since);
+    // Same second as where we started: the ids already seen there still count.
+    const tail = [...new Set([...(reachedAt === since ? [...seen] : []), ...page.filter((m) => timeOf(m) === reachedAt).map((m) => m.id)])];
 
     // Our own people first, then anything no person sent (6 Nov). The second
     // one is counted rather than silently dropped: the screen says how many
     // and why, because quietly losing a client's email would be far worse
     // than showing a newsletter.
     let ignored = 0;
-    const mail: InboundMail[] = (json.value ?? [])
-      .filter((m) => !isOurs(m.from?.emailAddress?.address ?? "", ourDomains()))
+    const fresh = page.filter((m) => !seen.has(m.id));
+    const mail: InboundMail[] = fresh
+      // Sent Items is all ours by definition: it is kept, as "out".
+      .filter((m) => sent || !isOurs(m.from?.emailAddress?.address ?? "", ourDomains()))
       .filter((m) => {
+        if (sent) return true;
         const why = machineMail({
           from: m.from?.emailAddress?.address ?? "",
           headers: m.internetMessageHeaders ?? [],
@@ -235,18 +281,31 @@ export async function readOneMailbox(address: string, since: number, timeLimitMs
         return !why;
       })
       .map((m) => ({
-      mailbox: address,
-      providerId: m.id,
-      from: m.from?.emailAddress?.address ?? "",
-      fromName: m.from?.emailAddress?.name ?? "",
-      receivedAt: m.receivedDateTime ? Date.parse(m.receivedDateTime) : Date.now(),
-      subject: m.subject ?? "",
-      body: (m.body?.content ?? m.bodyPreview ?? "").slice(0, 20_000),
-      inReplyTo:
-        m.internetMessageHeaders?.find((h) => h.name.toLowerCase() === "in-reply-to")?.value ?? null,
+        mailbox: address,
+        providerId: m.id,
+        from: m.from?.emailAddress?.address ?? "",
+        fromName: m.from?.emailAddress?.name ?? "",
+        receivedAt: m.receivedDateTime ? Date.parse(m.receivedDateTime) : Date.now(),
+        subject: m.subject ?? "",
+        body: (m.body?.content ?? m.bodyPreview ?? "").slice(0, 20_000),
+        inReplyTo:
+          m.internetMessageHeaders?.find((h) => h.name.toLowerCase() === "in-reply-to")?.value ?? null,
+        ...(sent
+          ? { direction: "out" as const, to: (m.toRecipients ?? []).map((r) => r.emailAddress?.address ?? "").filter(Boolean) }
+          : {}),
       }));
 
-    return { ok: true, mail, mailbox: address, ignored, ms: Date.now() - started, reachedAt, pageFull: page.length >= BATCH };
+    // Names only for messages that have files, and only for the ones we keep.
+    for (const item of mail) {
+      if (!page.find((m) => m.id === item.providerId)?.hasAttachments) continue;
+      item.attachments = await attachmentNames(address, item.providerId, access, stop);
+    }
+
+    return { ok: true, mail, mailbox: address, ignored, ms: Date.now() - started, reachedAt,
+      pageFull: page.length >= BATCH,
+      next: json["@odata.nextLink"] ?? null,
+      tail: tail.slice(0, MAX_CURSOR_IDS),
+    };
   } catch (e) {
     const timedOut = (e as Error)?.name === "TimeoutError";
     return {
@@ -258,44 +317,78 @@ export async function readOneMailbox(address: string, since: number, timeLimitMs
   }
 }
 
+/** The file names on one message. A failure here costs the names, never the email. */
+async function attachmentNames(address: string, id: string, access: string, signal: AbortSignal): Promise<string[]> {
+  try {
+    const response = await fetch(
+      "https://graph.microsoft.com/v1.0/users/" + encodeURIComponent(address) + "/messages/" + encodeURIComponent(id) + "/attachments?$select=name,isInline",
+      { headers: { authorization: "Bearer " + access }, signal },
+    );
+    if (!response.ok) return [];
+    const json = (await response.json()) as { value?: { name?: string; isInline?: boolean }[] };
+    return (json.value ?? []).filter((a) => a.name && !a.isInline).map((a) => String(a.name).slice(0, 200));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Every named mailbox, one after another. One that cannot be read does not
  * stop the others: its reason is carried back so the screen can show which
  * box is unhappy and which are fine.
  */
 export async function readAllMailboxes(
-  since: Record<string, number> = {},
-): Promise<{ mail: InboundMail[]; problems: string[]; read: string[]; ignored: number; reached: Record<string, number> }> {
+  since: Record<string, MailCursor | number> = {},
+): Promise<{ mail: InboundMail[]; problems: string[]; read: string[]; ignored: number; reached: Record<string, MailCursor> }> {
   const mail: InboundMail[] = [];
   const problems: string[] = [];
   const read: string[] = [];
-  const reached: Record<string, number> = {};
+  const reached: Record<string, MailCursor> = {};
   let ignored = 0;
   const list = mailboxes();
   if (!list.length) return { mail, problems: ["No mailbox is named yet (OPS_MAILBOXES)."], read, ignored, reached };
 
+  // Each box twice: what came in, and Sent Items (16 Nov). Sent has its own
+  // cursor, under the box's address plus "#sent".
   for (const address of list) {
-    let from = since[address] ?? defaultSince();
-    // A full page that kept nothing (our own and machine mail) is read past in
-    // the same pass, a few pages at most, so a run of it cannot hide a client's
-    // reply for hours. A page that kept something stops here: the rest waits
-    // for the next pass, as before.
-    for (let page = 1; page <= MAX_EMPTY_PAGES + 1; page++) {
-      const result = await readOneMailbox(address, from);
-      if (!result.ok) {
-        problems.push(result.reason);
-        break;
+    const before = problems.length;
+    for (const folder of ["all", "sent"] as const) {
+      // One reason per box: if the inbox could not be read, Sent Items cannot either.
+      if (folder === "sent" && problems.length > before) break;
+      const key = folder === "sent" ? address + SENT : address;
+      const start = since[key];
+      const cursor: MailCursor = typeof start === "number" ? { at: start, ids: [] } : (start ?? { at: defaultSince(), ids: [] });
+      let next: string | null = null;
+      let at = cursor.at;
+      let ids = cursor.ids;
+      // A full page that kept nothing (our own and machine mail) is followed to
+      // the next one in the same pass, a few at most, so a run of it cannot hide
+      // a client's reply for hours. A page that kept something stops here and
+      // the rest waits for the next pass. Pages are followed by Graph's own
+      // nextLink, not by asking again "after this time", which skipped whatever
+      // shared the last second.
+      for (let page = 1; page <= MAX_EMPTY_PAGES + 1; page++) {
+        const result: ReadResult = await readOneMailbox(address, at, TIME_LIMIT_MS, { folder, next, seen: ids });
+        if (!result.ok) {
+          problems.push(result.reason);
+          break;
+        }
+        mail.push(...result.mail);
+        ignored += result.ignored;
+        if (page === 1 && folder === "all") read.push(address);
+        at = result.reachedAt;
+        ids = result.tail;
+        reached[key] = { at, ids };
+        next = result.next;
+        if (!next || !result.pageFull || result.mail.length > 0) break;
       }
-      mail.push(...result.mail);
-      ignored += result.ignored;
-      if (page === 1) read.push(address);
-      reached[address] = result.reachedAt;
-      if (!result.pageFull || result.mail.length > 0 || result.reachedAt < from) break;
-      from = result.reachedAt + 1000;
     }
   }
   return { mail, problems, read, ignored, reached };
 }
+
+/** Suffix on a box's address for the cursor of its Sent Items. */
+export const SENT = "#sent";
 
 /**
  * A pretend arrival, for building the screens before the mailbox exists. It is
