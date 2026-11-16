@@ -123,10 +123,19 @@ holds their feedback. All of this is the client's side.
 | The reference | `requestReference`, `recordReferenceReport`, `relayReference`, `recordReferenceDecision` | only when the client asks; no form and no score (the owner, 26 Oct); passed on word for word; a dropped candidate re-counts the shortlist |
 | Screens | `app/interviews`, `app/interviews/[id]` | the week board (Mon to Fri, today outlined, a pill per queue) and one interview on its own page: time tiles with free / busy as the candidate told the TA (`recordSlotAnswers`), the drafted feedback approved from the page, and ruled folds for attendance and the client's decision |
 
-Still to come in phase 5: the **Teams meeting made from the Ops mailbox** (a
-calendar permission the owner has yet to grant - the link is pasted in by a
-person until then), reading a client's reply for its times by itself (Phase 9),
-and the ICS export.
+Added 16 Nov (scheduling and follow-ups):
+
+| Thing | Where | What it does |
+|---|---|---|
+| Reschedule | `rescheduleInterview`, `problemWithReschedule` (`src/lib/interviews.ts`), `reschedules` on the interview | a booked interview gets a new agreed time and keeps its round; the move (from, to, who, when, why) is kept; the old clocks stop and new ones start; an updated invite is drafted; TA is told through the same interview write as booking (no new TA endpoint). Cancel-and-rebook stays for "ask for new times" |
+| Calendar invites (.ics) | `src/lib/ics.ts`, `keepInvite` in `app/actions.ts` | a standard invite (UTC times, stable UID, SEQUENCE up on every move) attached to the drafted interview invite, the reschedule invite, and the intro-call and requirement-meeting invites (a draft to the lead's contact, with an optional link) |
+| Chasing the client's times and dates | `slots.chase` clock started by `requestInterviewSlots`, `chaseForSlots` / `chaseForDate` in `desk.ts` | after two days (setting `interview.slotsChaseDays`) a chase is drafted; `interview.report` now drafts one too, instead of only leaving a task. Drafts only; a client who has answered is not chased |
+| The outbound gate | `doNotContactFrom`, `sentToday` in `src/lib/messages.ts`, `approveOne` | the do-not-contact list is the contacts of leads marked do-not-invite, and the daily cap counts what really went today (Colombo day) - until now both were passed empty, so neither ever blocked |
+
+Still to come in phase 5: the **Teams meeting made from the Ops mailbox**
+(needs `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All` admin consent -
+the link is pasted in by a person until then, and the .ics carries it), and
+reading a client's reply for its times by itself (Phase 9).
 
 ## Built: phase 6, the placement and the money
 
@@ -314,7 +323,7 @@ Small things still open, each with its reason:
 | Thing | Why it waits |
 |---|---|
 | The invoice and credit-note **documents** | they wait on a template from the owner, exactly as the agreement did. Until then an invoice goes as lines in the body of an email, which works and is not our paperwork |
-| The Teams meeting made from the Ops mailbox | a calendar permission nobody has granted |
+| The Teams meeting made from the Ops mailbox | `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All` admin consent nobody has granted (the .ics invite is built; only the automatic link is waiting) |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
 | The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |

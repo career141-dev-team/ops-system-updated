@@ -8,7 +8,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { draftKind, fillTemplate, gate, isRoutine, needsApproval, type SendContext, unfilledHoles } from "@/lib/messages";
+import {
+  doNotContactFrom,
+  draftKind,
+  fillTemplate,
+  gate,
+  isRoutine,
+  needsApproval,
+  sentToday,
+  type SendContext,
+  unfilledHoles,
+} from "@/lib/messages";
 
 const ctx = (over: Partial<SendContext> = {}): SendContext => ({
   outreachLive: false,
