@@ -15,6 +15,9 @@ import {
   dueFromEsa,
   dueInWords,
   problemWithSending,
+  problemWithZip,
+  uniqueNames,
+  zipName,
   setName,
   whereItStands,
 } from "@/lib/clientSets";
@@ -79,6 +82,16 @@ test("a set cannot go out short, to nobody, or without every CV", () => {
 
   // A client on a different minimum is a settings change, not a code change.
   assert.equal(problemWithSending(four, ["hr@example.test"], 4), null);
+});
+
+test("the zip is named for the set, refuses a hole, and keeps two same-named CVs", () => {
+  assert.equal(zipName("Acme / Lanka", 'Finance: "Manager"', 2), "Acme Lanka - Finance Manager - set 2.zip");
+  assert.equal(problemWithZip(five()), null);
+  assert.match(problemWithZip([]) ?? "", /no candidates/i);
+  const hole = five();
+  hole[1] = { ...hole[1], fileId: null };
+  assert.match(problemWithZip(hole) ?? "", /SAMPLE CANDIDATE TWO/);
+  assert.deepEqual(uniqueNames(["a.pdf", "b.pdf", "a.pdf", "a.pdf"]), ["a.pdf", "b.pdf", "a (2).pdf", "a (3).pdf"]);
 });
 
 test("one line says where the set stands", () => {

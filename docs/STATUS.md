@@ -85,6 +85,7 @@ System rather than on an opening Ops created itself.
 | A candidate with no CV taken out, with a reason | `dropFromClientSet` | the set still has to hold the minimum afterwards |
 | Sent to the client's own "hr" contacts, CVs attached | `sendClientSet` | at least 5 CVs, every one present, or it refuses and says which |
 | The day they received it, correctable | `recordSetReceived` | everything after the set counts from this |
+| All of a set's CVs as one zip (16 Nov) | `app/api/sets/[id]/zip/route.ts`, `zipName`/`problemWithZip` in `src/lib/clientSets.ts` | "Download all CVs" on the set page and the position's set list. Signed-in only; refuses, in words, when a CV is missing rather than leaving somebody out |
 | Screens | `app/sets`, `app/sets/[id]` | waiting to go, soonest due first; then sent |
 
 | The clocks a set starts, all from the day they received it | `startReceiptClocks` in `src/data/desk.ts` | ownership, feedback chase, the two weeks before a hold, and three months for an unreported hire |

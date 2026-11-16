@@ -417,6 +417,14 @@ export default async function SetPage({
         })}
       </div>
 
+      {set.candidates.some((c) => c.fileId) && (
+        <div>
+          <a href={`/api/sets/${set.id}/zip`} className={pillSecondary}>
+            Download all CVs
+          </a>
+        </div>
+      )}
+
       {/* Lock Note (1:1101) */}
       <div className="flex items-center gap-2 text-[12px] font-medium tracking-[0.4px] text-ink-faint">
         <Icon name="lock" size={14} />

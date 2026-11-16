@@ -134,3 +134,34 @@ export function whereItStands(
   const short = set.candidates.length < MIN_CVS ? " · short of " + MIN_CVS : "";
   return (STATE_MEANINGS[set.state as SetState] ?? set.state) + ", " + held + " · " + due + short;
 }
+
+/**
+ * The zip of a set's CVs (16 Nov): "Client - Position - set N.zip".
+ *
+ * Characters Windows and Content-Disposition both dislike are dropped, so the
+ * name survives being saved on any laptop.
+ */
+export function zipName(client: string, role: string, setNumber: number): string {
+  const clean = (s: string) => s.replace(/[\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  return clean(client) + " - " + clean(role) + " - set " + setNumber + ".zip";
+}
+
+/** Why the zip cannot be made, or null. A zip with a hole in it would be a quiet lie about the set. */
+export function problemWithZip(candidates: SetCandidate[]): string | null {
+  if (!candidates.length) return "This set has no candidates.";
+  const missing = candidates.filter((c) => !c.fileId);
+  if (!missing.length) return null;
+  return "No CV kept for " + missing.map((c) => c.name).join(", ") + ". Read the set first, so every CV is kept.";
+}
+
+/** One name per file inside the zip: a second "Name.pdf" becomes "Name (2).pdf" rather than overwriting the first. */
+export function uniqueNames(names: string[]): string[] {
+  const seen = new Map<string, number>();
+  return names.map((name) => {
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    if (n === 1) return name;
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? name.slice(0, dot) + " (" + n + ")" + name.slice(dot) : name + " (" + n + ")";
+  });
+}
