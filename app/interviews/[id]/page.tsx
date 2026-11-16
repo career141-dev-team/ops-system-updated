@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
+  approveAndSend,
   bookInterview,
   cancelInterview,
   markInterviewAttendance,
@@ -12,13 +13,13 @@ import {
   recordReferenceDecision,
   recordReferenceReport,
   recordRoundDecision,
+  recordSlotAnswers,
   relayReference,
   requestInterviewSlots,
   requestReference,
 } from "@/app/actions";
 import Icon from "@/app/Icon";
 import {
-  BackBar,
   FoldRow,
   JourneyBar,
   NextStepCard,
@@ -47,8 +48,11 @@ import {
   type InterviewState,
   type ReferenceState,
   type Scheduler,
+  chosenSlot,
+  interviewClock,
   interviewInWords,
   noticeStanding,
+  slotAnswerFor,
 } from "@/lib/interviews";
 import { interviewNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
@@ -95,12 +99,12 @@ export default async function InterviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; pick?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { id } = await params;
-  const { msg } = await searchParams;
+  const { msg, pick } = await searchParams;
 
   const now = Date.now();
   const db = await desk();
@@ -126,14 +130,15 @@ export default async function InterviewPage({
     interview.interviewers[0]?.split("@")[0] ||
     clientName;
 
-  // Build the 3-column slot comparison cards (Frame 1:1260) when picking or booking a time
-  const offeredSlots =
-    interview.slots.length > 0
-      ? interview.slots
-      : interview.at
-        ? [interview.at]
-        : [];
-  const chosenSlot = interview.at ?? offeredSlots[0] ?? null;
+  // The times on the tiles, and the one the Book button is for (the URL's ?pick= when it is allowed).
+  const offeredSlots = interview.slots.length > 0 ? interview.slots : interview.at ? [interview.at] : [];
+  const chosen = chosenSlot(interview, pick ? Number(pick) : null);
+  const clock = interviewClock(interview, now);
+  // The feedback the TA logged, drafted for the client: the newest message made from that template.
+  const feedbackDraft =
+    db.messages
+      .filter((m) => m.subjectType === "interview" && m.subjectId === id && m.templateKey === "interview.client_feedback")
+      .sort((x, y) => y.createdAt - x.createdAt)[0] ?? null;
 
   // Subtitle matches Frame 1:1187 / 1:2148: "Senior Java Engineer · Acme Holdings · round 1"
   const subtitleParts = [
@@ -145,15 +150,19 @@ export default async function InterviewPage({
     subtitleParts.push(formatSubtitleWhen(interview.at, now));
   }
 
-  return (
-    <PageBox width="1080" className="gap-6">
-      <BackBar
-        href="/interviews"
-        label="Interviews"
-        ownerName={owner?.name ?? "Unassigned"}
-      />
+  const tileDay = (at: number) => formatSlotDay(at);
+  const bookLabel = chosen ? "Book " + formatSlotDay(chosen).split(" ")[0] + " " + formatSlotTime(chosen) : "Record times";
 
-      {/* Header (1:1214 / 1:2175) */}
+  return (
+    <PageBox width="1080" msg={msg} className="gap-4">
+      {/* Back (Figma 249:10142): the round chevron and where it goes. */}
+      <Link href="/interviews" className="group inline-flex w-fit items-center gap-4 text-[14px] leading-[21px] text-ink-faint hover:text-ink">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-rule-strong text-ink transition-colors group-hover:bg-sunk">
+          <Icon name="chevron-left" size={18} />
+        </span>
+        Interviews
+      </Link>
+
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5 text-[14px] leading-[21px] text-ink-faint">
           {position ? (
@@ -180,100 +189,76 @@ export default async function InterviewPage({
             </>
           )}
         </div>
-        <h1 className="text-[32px] font-light leading-[40px] text-ink md:text-[40px] md:leading-[50px]">
-          {interview.candidateName}
-        </h1>
+        <h1 className="text-[32px] font-light leading-[40px] text-ink md:text-[40px] md:leading-[50px]">{interview.candidateName}</h1>
       </div>
 
-      {/* 8-step JourneyBar (1:1217 / 1:2178) */}
       <JourneyBar active="Interviews" />
+      <div className="h-2" aria-hidden="true" />
 
-      {msg && (
-        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
-          {msg}
-        </p>
-      )}
-
-      {/* Up Next card — Frame 1:1187 (Slots / Agreed) vs Frame 1:2148 (Attended / Feedback) vs Booked */}
+      {/* Slots / agreed (Figma 249:10142) */}
       {(interview.state === "slots" || interview.state === "agreed") && (
         <NextStepCard
           eyebrow={`UP NEXT · ${interview.scheduler === "us" ? "WE SCHEDULE" : "CLIENT SCHEDULES"}`}
-          clock={step.clock ?? "Today"}
-          clockTone="warn"
-          title={
-            interview.state === "agreed"
-              ? "Book the agreed time and send the invite"
-              : "Pick a time that suits both"
-          }
+          clock={clock ? { label: clock.label, tone: clock.tone } : undefined}
+          title={interview.state === "agreed" ? "Book the agreed time and send the invite" : "Pick a time that suits both"}
           body={
             offeredSlots.length > 0
-              ? `The client offered ${offeredSlots.length} ${offeredSlots.length === 1 ? "time" : "times"}. ${firstName} told the TA when they are free.`
+              ? `The client offered ${offeredSlots.length} ${offeredSlots.length === 1 ? "time" : "times"}. ${firstName} has told the TA when they are free; mark it below.`
               : step.waiting
           }
           byItself="When you book, a Teams invite goes to both and a reminder goes the day before at 9:00."
         >
-          {/* 3-column Slot Comparison Cards (Frame 1:1260) */}
           {offeredSlots.length > 0 && (
             <div className="grid grid-cols-1 gap-3 py-1.5 sm:grid-cols-3">
-              {offeredSlots.map((slotAt, idx) => {
-                const isPicked = chosenSlot === slotAt;
-                const isFree = isPicked || idx === 0;
-                return (
-                  <div
-                    key={slotAt}
-                    className={
-                      isPicked
-                        ? "flex flex-col gap-1.5 rounded-[24px] border-2 border-brand bg-bg-brand px-[18px] py-4"
-                        : "flex flex-col gap-1.5 rounded-[24px] bg-sunk px-[18px] py-4"
-                    }
-                  >
-                    <p className="text-[14px] leading-[21px] text-ink-faint">
-                      {formatSlotDay(slotAt)}
-                    </p>
-                    <p className="text-[18px] font-medium leading-[27px] text-ink">
-                      {formatSlotTime(slotAt)}
-                    </p>
-                    <div className="flex items-center justify-between gap-2">
-                      {isFree ? (
-                        <span className="inline-flex items-center gap-1.5 text-[14px] leading-[21px] text-ok">
-                          <Icon name="check" size={14} className="text-ok" />
-                          {firstName} is free
-                        </span>
-                      ) : (
-                        <span className="text-[14px] leading-[21px] text-ink-faint">
-                          Alternative slot
-                        </span>
-                      )}
-                      {mayManage && interview.state === "slots" && interview.scheduler === "us" && !isPicked && (
-                        <form action={recordCandidatePick}>
-                          <input type="hidden" name="interviewId" value={interview.id} />
-                          <input type="hidden" name="at" value={String(slotAt)} />
-                          <button className="text-[13px] font-medium text-brand hover:underline">
-                            Pick
-                          </button>
-                        </form>
-                      )}
-                    </div>
+              {offeredSlots.map((slotAt) => {
+                const isChosen = chosen === slotAt;
+                const answer = slotAnswerFor(interview, slotAt);
+                const tile =
+                  "flex flex-col gap-1 rounded-[32px] px-[18px] py-4 " +
+                  (isChosen ? "border-2 border-brand bg-brand-tint" : "bg-sunk");
+                const inner = (
+                  <>
+                    <p className={"text-[14px] leading-[21px] " + (answer === "busy" ? "text-ink-faint" : isChosen ? "text-ink-faint" : "text-ink")}>{tileDay(slotAt)}</p>
+                    <p className={"text-[18px] font-medium leading-[26px] " + (answer === "busy" ? "text-ink-faint" : "text-ink")}>{formatSlotTime(slotAt)}</p>
+                    {answer === "free" && (
+                      <p className="flex items-center gap-1.5 text-[14px] leading-[21px] text-success">
+                        <Icon name="check" size={14} />
+                        {firstName} is free
+                      </p>
+                    )}
+                    {answer === "busy" && (
+                      <p className="flex items-center gap-1.5 text-[14px] leading-[21px] text-ink-faint">
+                        <Icon name="x" size={14} />
+                        {firstName} is busy
+                      </p>
+                    )}
+                  </>
+                );
+                // A time is chosen by the URL, so the page stays a plain server page; a busy time cannot be.
+                return answer === "busy" || interview.state !== "slots" ? (
+                  <div key={slotAt} className={tile}>
+                    {inner}
                   </div>
+                ) : (
+                  <Link key={slotAt} href={`/interviews/${interview.id}?pick=${slotAt}`} aria-current={isChosen ? "true" : undefined} className={tile + " transition-colors hover:bg-bg-brand"}>
+                    {inner}
+                  </Link>
                 );
               })}
             </div>
           )}
 
-          {/* Action buttons (Frame 1:1283) */}
           {mayManage && (
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
-              {interview.state === "slots" && chosenSlot && interview.scheduler === "us" ? (
+              {interview.state === "slots" && chosen && interview.scheduler === "us" ? (
                 <form action={recordCandidatePick}>
                   <input type="hidden" name="interviewId" value={interview.id} />
-                  <input type="hidden" name="at" value={String(chosenSlot)} />
-                  <button className={pillPrimary}>
-                    Book {formatSlotDay(chosenSlot).split(" ").slice(0, 2).join(" ")} {formatSlotTime(chosenSlot)}
-                  </button>
+                  <input type="hidden" name="at" value={String(chosen)} />
+                  <button className={pillPrimary}>{bookLabel}</button>
                 </form>
-              ) : interview.state === "agreed" && chosenSlot ? (
+              ) : interview.state === "agreed" && chosen ? (
                 <a href="#fold-book" className={pillPrimary}>
-                  Book {formatSlotDay(chosenSlot).split(" ").slice(0, 2).join(" ")} {formatSlotTime(chosenSlot)}
+                  {bookLabel}
                 </a>
               ) : (
                 <a href="#fold-time" className={pillPrimary}>
@@ -285,9 +270,7 @@ export default async function InterviewPage({
                 <form action={requestInterviewSlots}>
                   <input type="hidden" name="interviewId" value={interview.id} />
                   <input type="hidden" name="to" value={interview.interviewers.join("\n")} />
-                  <button className={pillSecondary}>
-                    Ask the client for more times
-                  </button>
+                  <button className={pillSecondary}>Ask the client for more times</button>
                 </form>
               )}
             </div>
@@ -295,73 +278,66 @@ export default async function InterviewPage({
         </NextStepCard>
       )}
 
-      {/* Frame 1:2148 — Attended: Send feedback to client / Record client decision */}
+      {/* Held, feedback to the client (Figma 249:10196) */}
       {interview.state === "attended" && (
         <NextStepCard
-          eyebrow={`UP NEXT · ${step.where.toUpperCase()}`}
-          clock={step.clock ?? "Today"}
-          clockTone="warn"
-          title={
-            !interview.decision
-              ? `Send ${firstName}’s feedback to ${contactFirstName}`
-              : step.waiting
-          }
+          eyebrow="UP NEXT"
+          clock={clock ? { label: clock.label, tone: clock.tone } : undefined}
+          title={!interview.decision ? `Send ${firstName}’s feedback to ${contactFirstName}` : step.waiting}
           body={
-            !interview.decision
-              ? "The TA logged it after 5 pm. It goes to the client on WhatsApp once you approve."
-              : interviewInWords(interview, now)
+            interview.decision
+              ? interviewInWords(interview, now)
+              : feedbackDraft
+                ? `The TA logged it. ${feedbackDraft.state === "sent" ? "It went" : feedbackDraft.state === "draft" ? "It goes" : "It is approved and goes"} to the client ${feedbackDraft.channel === "whatsapp" ? "on WhatsApp" : "by " + feedbackDraft.channel}${feedbackDraft.state === "draft" ? " once you approve" : ""}.`
+                : `The TA has not logged ${firstName}’s feedback yet. It is drafted for you here as soon as they do.`
           }
         >
-          {/* Mint feedback preview box (Frame 1:2221) */}
-          <div className="max-w-[640px] rounded-[20px] bg-bg-brand px-[18px] py-3.5 text-[16px] leading-[26px] text-ink">
-            {interview.candidateFeedback ||
-              `Hi ${contactFirstName} — ${firstName} enjoyed meeting you today. They are keen on the role, can start in a month, and are ready for the next step. Shall we set up round ${interview.round + 1}?`}
-          </div>
+          {!interview.decision && feedbackDraft && (
+            <div className="whitespace-pre-wrap rounded-[20px] bg-brand-tint px-[18px] py-3.5 text-[16px] leading-[26px] text-ink">{feedbackDraft.body}</div>
+          )}
 
-          {mayManage && (
+          {mayManage && !interview.decision && feedbackDraft?.state === "draft" && (
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
-              {interview.inviteMessageId ? (
-                <Link href={"/messages/" + interview.inviteMessageId} className={pillPrimary}>
-                  Approve and send
-                </Link>
-              ) : (
-                <a href="#fold-decision" className={pillPrimary}>
-                  Approve and send
-                </a>
-              )}
-              <a href="#fold-decision" className={pillSecondary}>
-                {interview.decision ? "View client decision" : "Edit / Record decision"}
+              <form action={approveAndSend}>
+                <input type="hidden" name="messageId" value={feedbackDraft.id} />
+                <input type="hidden" name="back" value={"/interviews/" + interview.id} />
+                <button className={pillPrimary}>Approve and send</button>
+              </form>
+              <Link href={"/messages/" + feedbackDraft.id} className={pillSecondary}>
+                Edit
+              </Link>
+            </div>
+          )}
+          {!interview.decision && feedbackDraft && feedbackDraft.state !== "draft" && (
+            <p className="text-[14px] leading-[21px] text-ink-faint">
+              Already {feedbackDraft.state === "sent" ? "sent" : "approved"}. <a href="#fold-decision" className="text-brand hover:underline">Record what the client decides</a> below.
+            </p>
+          )}
+        </NextStepCard>
+      )}
+
+      {/* Booked / reconfirmed / no-show / cancelled */}
+      {interview.state !== "slots" && interview.state !== "agreed" && interview.state !== "attended" && (
+        <NextStepCard
+          eyebrow={`UP NEXT · ${step.where.toUpperCase()}`}
+          clock={clock ? { label: clock.label, tone: clock.tone } : undefined}
+          title={step.waiting}
+          body={`${interviewInWords(interview, now)} · ${SCHEDULER_MEANINGS[interview.scheduler as Scheduler] ?? interview.scheduler} · candidate ${interview.applicationTaId} in the TA System.`}
+        >
+          {mayManage && (interview.state === "booked" || interview.state === "reconfirmed") && (
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <form action={markInterviewAttendance}>
+                <input type="hidden" name="interviewId" value={interview.id} />
+                <input type="hidden" name="came" value="attended" />
+                <button className={pillPrimary}>Mark as held</button>
+              </form>
+              <a href="#fold-attendance" className={pillSecondary}>
+                No-show, pull-out or reschedule
               </a>
             </div>
           )}
         </NextStepCard>
       )}
-
-      {/* Booked / Reconfirmed / Other states */}
-      {interview.state !== "slots" &&
-        interview.state !== "agreed" &&
-        interview.state !== "attended" && (
-          <NextStepCard
-            eyebrow={`UP NEXT · ${step.where.toUpperCase()}`}
-            clock={step.clock ?? undefined}
-            clockTone={step.clock ? "warn" : "neutral"}
-            title={step.waiting}
-            body={`${interviewInWords(interview, now)} · ${SCHEDULER_MEANINGS[interview.scheduler as Scheduler] ?? interview.scheduler} · candidate ${interview.applicationTaId} in the TA System.`}
-          >
-            {mayManage && (interview.state === "booked" || interview.state === "reconfirmed") && (
-              <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                <form action={markInterviewAttendance}>
-                  <input type="hidden" name="interviewId" value={interview.id} />
-                  <input type="hidden" name="came" value="attended" />
-                  <button className={pillPrimary}>Mark as held</button>
-                </form>
-                <a href="#fold-attendance" className={pillSecondary}>
-                  No-show, pull-out or reschedule
-                </a>
-              </div>
-            )}
-          </NextStepCard>
-        )}
 
       {/* Collapsible Folds (Frames 1:2227, 1:2236) */}
       <div className="flex flex-col gap-3">
@@ -369,7 +345,9 @@ export default async function InterviewPage({
         {(interview.state === "slots" || interview.state === "agreed") && mayManage && (
           <div id="fold-time">
             <FoldRow
-              title="Fold · The time"
+              variant="line"
+              state={interview.at ? "done" : "pending"}
+              title="The time"
               summary={
                 interview.slots.length
                   ? `${interview.slots.length} offered`
@@ -394,7 +372,7 @@ export default async function InterviewPage({
                       {interview.slotLoops ? "Ask again for times" : "Ask the client for times"}
                     </button>
                     {interview.slotLoops > 0 && (
-                      <p className="text-[13px] text-ink-faint">
+                      <p className="text-[12px] text-ink-faint">
                         Asked {interview.slotLoops} {interview.slotLoops === 1 ? "time" : "times"} so far. After three
                         rounds with nothing agreed the TA is asked for a back-up instead.
                       </p>
@@ -430,6 +408,26 @@ export default async function InterviewPage({
               )}
 
               {interview.slots.length > 0 && interview.scheduler === "us" && (
+                <form action={recordSlotAnswers} className="mt-4 flex flex-col gap-3 border-t border-rule pt-4">
+                  <input type="hidden" name="interviewId" value={interview.id} />
+                  <p className={figmaLabel}>What {firstName} told the TA, for each time</p>
+                  {interview.slots.map((at) => (
+                    <label key={at} className="flex flex-wrap items-center justify-between gap-3 text-[14px] leading-[21px] text-ink">
+                      <span>
+                        {formatSlotDay(at)} · {formatSlotTime(at)}
+                      </span>
+                      <select name={"answer_" + at} defaultValue={slotAnswerFor(interview, at) ?? ""} className={figmaField + " !w-auto min-w-[160px]"}>
+                        <option value="">Not asked</option>
+                        <option value="free">Free</option>
+                        <option value="busy">Busy</option>
+                      </select>
+                    </label>
+                  ))}
+                  <button className={`${pillSecondary} self-start`}>Save what they said</button>
+                </form>
+              )}
+
+              {interview.slots.length > 0 && interview.scheduler === "us" && (
                 <form
                   action={recordCandidatePick}
                   className="mt-4 flex flex-wrap items-end gap-3 border-t border-rule pt-4"
@@ -457,7 +455,9 @@ export default async function InterviewPage({
         {(interview.state === "agreed" || interview.state === "slots") && mayManage && (
           <div id="fold-book">
             <FoldRow
-              title="Fold · Book it & send invite"
+              variant="line"
+              state="pending"
+              title="Book it and send the invite"
               summary={
                 interview.at
                   ? `${whenLocal(interview.at)} · ${FORMAT_MEANINGS[interview.format as keyof typeof FORMAT_MEANINGS] ?? interview.format}`
@@ -501,7 +501,7 @@ export default async function InterviewPage({
                     className={figmaField}
                   />
                 </label>
-                <p className="text-[12.5px] text-ink-faint">
+                <p className="text-[12px] text-ink-faint">
                   The link is pasted in by a person for now. Making the Teams meeting from the Ops mailbox needs a
                   calendar permission the owner has yet to grant, and a made-up link is worse than an asked-for one.
                 </p>
@@ -516,7 +516,9 @@ export default async function InterviewPage({
         {/* Fold 3: Attendance (Frame 1:2227) */}
         <div id="fold-attendance">
           <FoldRow
-            title="Fold · Attendance"
+            variant="line"
+            state={interview.attendedAt ? "done" : "pending"}
+            title="Attendance"
             summary={
               interview.attendedAt
                 ? `Held · marked ${formatSlotTime(interview.attendedAt)}`
@@ -532,7 +534,7 @@ export default async function InterviewPage({
               {interview.interviewers.join(", ") || "nobody named"}
             </p>
             {interview.whereOrLink && (
-              <p className="mt-1 break-words text-[13px] text-ink-faint">{interview.whereOrLink}</p>
+              <p className="mt-1 break-words text-[12px] text-ink-faint">{interview.whereOrLink}</p>
             )}
 
             {mayManage && (interview.state === "booked" || interview.state === "reconfirmed") && (
@@ -567,7 +569,7 @@ export default async function InterviewPage({
                     The candidate has pulled out — why?
                     <input name="reason" className={figmaField} />
                   </label>
-                  {standing && <p className="text-[12.5px] text-ink-faint">{standing.what}</p>}
+                  {standing && <p className="text-[12px] text-ink-faint">{standing.what}</p>}
                   <button className={`${pillSecondary} self-start`}>
                     Draft the notice to the client
                   </button>
@@ -582,7 +584,7 @@ export default async function InterviewPage({
                     The client has cancelled or moved it — why?
                     <input name="reason" className={figmaField} />
                   </label>
-                  <label className="flex items-center gap-2 text-[13.5px] text-ink-soft">
+                  <label className="flex items-center gap-2 text-[14px] text-ink-soft">
                     <input type="checkbox" name="again" value="yes" defaultChecked /> They want it rebooked (the round
                     is kept)
                   </label>
@@ -596,11 +598,15 @@ export default async function InterviewPage({
         {/* Fold 4: Client decides (Frame 1:2236) */}
         <div id="fold-decision">
           <FoldRow
-            title="Fold · Client decides"
+            variant="line"
+            state={interview.decision ? "done" : "pending"}
+            title="Client decides"
             summary={
               interview.decision
                 ? ROUND_DECISIONS[interview.decision] ?? interview.decision
-                : `Round ${interview.round + 1} · not moving · selected`
+                : interview.state === "attended"
+                  ? "Not recorded yet"
+                  : "After the interview"
             }
             defaultOpen={interview.state === "attended" && !interview.decision}
           >
@@ -642,7 +648,9 @@ export default async function InterviewPage({
         {/* Fold 5: Reference check (when selected or reference exists) */}
         {(interview.decision === "selected" || reference) && mayManage && (
           <FoldRow
-            title="Fold · A reference check"
+            variant="line"
+            state={reference?.state === "cleared" ? "done" : "pending"}
+            title="A reference check"
             summary={
               reference
                 ? REFERENCE_MEANINGS[reference.state as ReferenceState] ?? reference.state
@@ -657,7 +665,7 @@ export default async function InterviewPage({
                   Only when the client asks. The TA phones the referee directly — no form and no score out of ten — and
                   writes down what was said; we pass it on as it is.
                 </p>
-                <label className="flex items-center gap-2 text-[13.5px] text-ink-soft">
+                <label className="flex items-center gap-2 text-[14px] text-ink-soft">
                   <input type="checkbox" name="clientAsked" value="yes" /> The client asked for one
                 </label>
                 <button className={`${pillSecondary} self-start`}>Ask the TA for it</button>
@@ -717,7 +725,7 @@ export default async function InterviewPage({
                 )}
 
                 {reference.relayMessageId && (
-                  <p className="text-[13.5px]">
+                  <p className="text-[14px]">
                     <Link href={"/messages/" + reference.relayMessageId} className="text-brand hover:underline">
                       The message to the client →
                     </Link>
@@ -730,11 +738,13 @@ export default async function InterviewPage({
 
         {/* Fold 6: What happened to it */}
         <FoldRow
-          title="Fold · What happened to it"
-          summary={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries")}
+          variant="line"
+          state="pending"
+          title="What happened to it"
+          summary={theirAudit.length + (theirAudit.length === 1 ? " entry" : " entries") + " · owned by " + (owner?.name ?? "nobody")}
         >
           {interview.inviteMessageId && (
-            <p className="mb-3 text-[13.5px]">
+            <p className="mb-3 text-[14px]">
               <Link href={"/messages/" + interview.inviteMessageId} className="text-brand hover:underline">
                 The invite to the client&rsquo;s people →
               </Link>
@@ -744,7 +754,7 @@ export default async function InterviewPage({
           <div className="flex flex-col divide-y divide-rule">
             {theirAudit.map((entry) => (
               <div key={entry.id} className="py-2.5 first:pt-0 last:pb-0">
-                <p className="text-[13.5px] text-ink">
+                <p className="text-[14px] text-ink">
                   {entry.action}
                   {entry.after && <span className="text-ink-soft"> → {entry.after}</span>}
                 </p>
@@ -755,7 +765,7 @@ export default async function InterviewPage({
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[12.5px] text-ink-faint">
+          <p className="mt-3 text-[12px] text-ink-faint">
             {STATE_MEANINGS[interview.state as InterviewState] ?? interview.state}
             {interview.reason && " · " + interview.reason}
           </p>

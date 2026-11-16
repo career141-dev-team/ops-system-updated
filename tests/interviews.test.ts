@@ -14,11 +14,15 @@ import {
   ROUND_DECISIONS,
   STATE_MEANINGS,
   type InterviewState,
+  boardStatus,
   canMoveTo,
+  chosenSlot,
+  interviewClock,
   interviewInWords,
   interviewersFrom,
   noticeStanding,
   parseSlots,
+  problemWithAnswers,
   problemWithAttendance,
   problemWithInterviewBooking,
   problemWithNewSlots,
@@ -28,6 +32,8 @@ import {
   problemWithRoundDecision,
   problemWithSlots,
   reconfirmAt,
+  slotAnswerFor,
+  weekDays,
 } from "@/lib/interviews";
 
 const DAY = 86_400_000;
@@ -352,4 +358,63 @@ test("TA's own events move the interview without anybody typing", async () => {
   // An event about a candidate we have no interview for is left alone.
   await desk.takeInterviewEvent("interview.confirmed", { applicationId: "ta_nobody" }, now);
   assert.equal(repo.all().interviews.length, 1, "no row invented from an event");
+});
+
+test("the board's week is this week, Monday to Friday in Colombo, with the real today marked", () => {
+  // Wednesday 11 November 2026, 22:00 UTC is already Thursday 12th, 03:30 in Colombo.
+  const thursday = weekDays(Date.UTC(2026, 10, 11, 22, 0));
+  assert.deepEqual(thursday.days.map((d) => d.dayNum), [9, 10, 11, 12, 13]);
+  assert.deepEqual(thursday.days.map((d) => d.isToday), [false, false, false, true, false]);
+  assert.equal(thursday.rangeLabel, "9 – 13 November");
+  // On a Sunday the board still shows the week that just ended, and nothing is today.
+  const sunday = weekDays(Date.UTC(2026, 10, 15, 6, 0));
+  assert.equal(sunday.days[0].dayNum, 9);
+  assert.ok(sunday.days.every((d) => !d.isToday));
+  // A week away, across a month end.
+  const next = weekDays(Date.UTC(2026, 10, 26, 6, 0), 1);
+  assert.equal(next.rangeLabel, "30 Nov – 4 Dec");
+  assert.equal(next.endMs - next.days[0].startMs, 7 * DAY);
+});
+
+test("an interview's card says the right word and sits in the right queues", () => {
+  const row = (state: string, extra: Partial<Parameters<typeof boardStatus>[0]> = {}) =>
+    boardStatus({ state, round: 1, slotLoops: 0, decision: null, candidateFeedback: null, ...extra });
+  assert.equal(row("booked").label, "Booked");
+  assert.equal(row("reconfirmed", { round: 2 }).label, "Round 2");
+  assert.equal(row("attended", { decision: "next" }).label, "Held");
+  assert.deepEqual([row("attended").label, row("attended").needsFeedback], ["Feedback after 5", true]);
+  assert.equal(row("attended", { candidateFeedback: "keen" }).label, "Send feedback");
+  assert.deepEqual([row("slots").label, row("slots").needsTime, row("slots").toRebook], ["Pick a time", true, false]);
+  assert.equal(row("slots", { slotLoops: 2 }).toRebook, true, "two unanswered asks for times");
+  assert.deepEqual([row("no_show").label, row("no_show").toRebook], ["No-show", true]);
+  assert.deepEqual([row("cancelled").label, row("cancelled").toRebook], ["Cancelled", true]);
+  assert.equal(row("booked").needsTime || row("booked").needsFeedback || row("booked").toRebook, false);
+});
+
+test("the clock pill is a short word, and red only when somebody is waiting", () => {
+  const base = { at: null, updatedAt: MONDAY_TEN, attendedAt: null, decision: null };
+  assert.deepEqual(interviewClock({ ...base, state: "slots" }, MONDAY_TEN + HOUR), { label: "Today", tone: "warn" });
+  assert.deepEqual(interviewClock({ ...base, state: "slots" }, MONDAY_TEN + 3 * DAY), { label: "3 days waiting", tone: "danger" });
+  assert.deepEqual(interviewClock({ ...base, state: "attended", attendedAt: MONDAY_TEN }, MONDAY_TEN + DAY), { label: "1 day waiting", tone: "warn" });
+  assert.equal(interviewClock({ ...base, state: "attended", attendedAt: MONDAY_TEN }, MONDAY_TEN + 2 * DAY)?.tone, "danger");
+  assert.equal(interviewClock({ ...base, state: "attended", decision: "next" }, MONDAY_TEN + 9 * DAY), null);
+  assert.deepEqual(interviewClock({ ...base, state: "booked", at: MONDAY_TEN + DAY }, MONDAY_TEN), { label: "Tomorrow", tone: "quiet" });
+  assert.deepEqual(interviewClock({ ...base, state: "booked", at: MONDAY_TEN - 2 * DAY }, MONDAY_TEN), { label: "2 days late", tone: "danger" });
+  assert.equal(interviewClock({ ...base, state: "cancelled" }, MONDAY_TEN), null);
+});
+
+test("free or busy is only what Ops was told, and picks the time the button is for", () => {
+  const a = MONDAY_TEN + DAY;
+  const b = MONDAY_TEN + 2 * DAY;
+  const c = MONDAY_TEN + 3 * DAY;
+  const iv = { slots: [a, b, c], at: null, slotAnswers: [{ at: a, free: false }, { at: c, free: true }] };
+  assert.deepEqual([slotAnswerFor(iv, a), slotAnswerFor(iv, b), slotAnswerFor(iv, c)], ["busy", null, "free"]);
+  assert.equal(slotAnswerFor({}, a), null, "an old interview has no answers and invents none");
+  assert.equal(problemWithAnswers([{ at: a, free: true }], iv.slots), null);
+  assert.match(problemWithAnswers([{ at: MONDAY_TEN, free: true }], iv.slots) ?? "", /offered/);
+  assert.equal(chosenSlot(iv, null), c, "a time they are free beats one nobody has answered");
+  assert.equal(chosenSlot(iv, b), b);
+  assert.equal(chosenSlot(iv, a), c, "a busy time cannot be picked");
+  assert.equal(chosenSlot({ ...iv, at: b }, null), b, "an agreed time stays chosen");
+  assert.equal(chosenSlot({ slots: [], at: null }, null), null);
 });

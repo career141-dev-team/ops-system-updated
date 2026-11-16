@@ -236,6 +236,7 @@ import {
   problemWithAttendance,
   problemWithInterviewBooking,
   problemWithNewSlots,
+  problemWithAnswers,
   problemWithPick,
   problemWithReference,
   problemWithRelay,
@@ -3402,7 +3403,8 @@ export async function recordInterviewSlots(formData: FormData): Promise<void> {
   if (problem) back(problem);
   const { slots } = parseSlots(text);
 
-  await patchInterview(interviewId, { slots }, member.id, "interview.slotsFromClient", null);
+  // New times are new questions: what the candidate said about the old ones no longer applies.
+  await patchInterview(interviewId, { slots, slotAnswers: [] }, member.id, "interview.slotsFromClient", null);
   // The candidate's half is the TA's: they ask, through their own channels.
   await createTask({
     kind: "check",
@@ -3441,6 +3443,34 @@ export async function recordCandidatePick(formData: FormData): Promise<void> {
   await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.agreed", null);
   revalidatePath(here);
   back("Agreed. Now book it: who is interviewing, and where or the link.");
+}
+
+/**
+ * What the TA heard from the candidate about each time the client offered (16 Nov): free, busy or
+ * not asked. Written by hand, never guessed; the interview page shows it on the time tiles.
+ */
+export async function recordSlotAnswers(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = "/interviews/" + interviewId;
+  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+
+  const answers = row.slots.flatMap((at) => {
+    const said = String(formData.get("answer_" + at) ?? "");
+    return said === "free" || said === "busy" ? [{ at, free: said === "free" }] : [];
+  });
+  const problem = problemWithAnswers(answers, row.slots);
+  if (problem) back(problem);
+
+  await patchInterview(interviewId, { slotAnswers: answers }, member.id, "interview.slot_answers", null);
+  revalidatePath(here);
+  back("Saved. The times now show what the candidate said.");
 }
 
 /** The client told us the date they booked themselves (step 6). */
@@ -3645,7 +3675,7 @@ export async function cancelInterview(formData: FormData): Promise<void> {
     interviewId,
     // Rebooking keeps the round: a candidate who was at round two is still at
     // round two after the client moves the date.
-    again ? { state: "slots", at: null, slots: [], reason } : { state: "cancelled", reason },
+    again ? { state: "slots", at: null, slots: [], slotAnswers: [], reason } : { state: "cancelled", reason },
     member.id,
     again ? "interview.rebooking" : "interview.cancelled",
     reason,

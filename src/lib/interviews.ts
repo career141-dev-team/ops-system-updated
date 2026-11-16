@@ -19,7 +19,7 @@
  * Nothing here touches a database or sends anything.
  */
 
-import { COLOMBO_OFFSET_MS, DAY, HOUR } from "@/lib/calendar";
+import { COLOMBO_OFFSET_MS, DAY, HOUR, colomboDate } from "@/lib/calendar";
 
 /** Who agrees the time: we ask for slots, or the client books and tells us. */
 export type Scheduler = "us" | "client";
@@ -300,4 +300,132 @@ export function interviewInWords(
     if (row.slotLoops > 1) bits.push("round " + row.slotLoops + " of times");
   }
   return bits.join(" · ");
+}
+
+/* ── The week board and the interview page (16 Nov, Figma "IV · Interviews") ── */
+
+const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+export interface BoardDay {
+  name: (typeof WEEKDAY_NAMES)[number];
+  dayNum: number;
+  startMs: number;
+  endMs: number;
+  isToday: boolean;
+}
+
+/**
+ * Monday to Friday of the week `offset` weeks from today, in Colombo, and the words for it
+ * ("10 – 14 November", or "28 Nov – 2 Dec" across a month end). `endMs` is the end of Sunday,
+ * so a weekend interview can be told about instead of lost. Today is today: it used to be
+ * Wednesday whatever the day.
+ */
+export function weekDays(now: number, offset = 0): { days: BoardDay[]; rangeLabel: string; endMs: number } {
+  const local = new Date(now + COLOMBO_OFFSET_MS);
+  const toMonday = local.getUTCDay() === 0 ? -6 : 1 - local.getUTCDay();
+  const monday = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + toMonday + offset * 7) - COLOMBO_OFFSET_MS;
+  const today = colomboDate(now);
+  const days = WEEKDAY_NAMES.map((name, i): BoardDay => {
+    const startMs = monday + i * DAY;
+    return { name, dayNum: new Date(startMs + COLOMBO_OFFSET_MS).getUTCDate(), startMs, endMs: startMs + DAY, isToday: colomboDate(startMs) === today };
+  });
+  const first = new Date(days[0].startMs + COLOMBO_OFFSET_MS);
+  const last = new Date(days[4].startMs + COLOMBO_OFFSET_MS);
+  const rangeLabel =
+    first.getUTCMonth() === last.getUTCMonth()
+      ? first.getUTCDate() + " – " + last.getUTCDate() + " " + MONTH_NAMES[last.getUTCMonth()]
+      : first.getUTCDate() + " " + MONTH_NAMES[first.getUTCMonth()].slice(0, 3) + " – " + last.getUTCDate() + " " + MONTH_NAMES[last.getUTCMonth()].slice(0, 3);
+  return { days, rangeLabel, endMs: monday + 7 * DAY };
+}
+
+export interface BoardStatus {
+  label: string;
+  tone: "ok" | "warn" | "violet" | "info" | "danger" | "quiet";
+  /** The three queues the pills above the board count: an interview can be in more than one. */
+  needsTime: boolean;
+  needsFeedback: boolean;
+  toRebook: boolean;
+}
+
+/**
+ * The word and colour on an interview's card, and which queues it is in. A cancelled or no-show
+ * interview can go back to the times (`canMoveTo`), so both are "to rebook"; so is one that has
+ * asked for times twice with no answer.
+ */
+export function boardStatus(iv: {
+  state: string;
+  round: number;
+  slotLoops: number;
+  decision: string | null;
+  candidateFeedback: string | null;
+}): BoardStatus {
+  const needsTime = iv.state === "slots" || iv.state === "agreed";
+  const needsFeedback = iv.state === "attended" && !iv.decision;
+  const toRebook = iv.state === "cancelled" || iv.state === "no_show" || (iv.state === "slots" && iv.slotLoops >= 2);
+  const queues = { needsTime, needsFeedback, toRebook };
+  if (iv.state === "attended") {
+    return iv.decision
+      ? { label: "Held", tone: "ok", ...queues }
+      : { label: iv.candidateFeedback ? "Send feedback" : "Feedback after 5", tone: "warn", ...queues };
+  }
+  if (needsTime) return { label: "Pick a time", tone: "violet", ...queues };
+  if (iv.state === "no_show") return { label: "No-show", tone: "danger", ...queues };
+  if (iv.state === "cancelled") return { label: "Cancelled", tone: "quiet", ...queues };
+  return { label: iv.round > 1 ? "Round " + iv.round : "Booked", tone: "info", ...queues };
+}
+
+/** Whole Colombo calendar days from one instant to a later one. */
+function calendarDaysBetween(from: number, to: number): number {
+  return Math.round((Date.parse(colomboDate(to)) - Date.parse(colomboDate(from))) / DAY);
+}
+
+/**
+ * The short word in the Up next card's clock pill ("Today", "2 days waiting"), or null.
+ * Red only when somebody is waiting on us (the Figma "Clock": late means somebody is waiting).
+ * `interviewNextStep` has the long sentence; a pill cannot hold it.
+ */
+export function interviewClock(
+  iv: { state: string; at: number | null; updatedAt: number; attendedAt: number | null; decision: string | null },
+  now: number,
+): { label: string; tone: "warn" | "danger" | "quiet" } | null {
+  const waiting = (since: number, dangerAfter: number) => {
+    const days = Math.max(0, calendarDaysBetween(since, now));
+    return { label: days === 0 ? "Today" : days + (days === 1 ? " day waiting" : " days waiting"), tone: days >= dangerAfter ? ("danger" as const) : ("warn" as const) };
+  };
+  if (iv.state === "attended" && !iv.decision) return waiting(iv.attendedAt ?? iv.updatedAt, 2);
+  if (iv.state === "slots" || iv.state === "agreed") return waiting(iv.updatedAt, 3);
+  if ((iv.state === "booked" || iv.state === "reconfirmed") && iv.at !== null) {
+    const days = calendarDaysBetween(now, iv.at);
+    if (days < 0) return { label: days === -1 ? "A day late" : -days + " days late", tone: "danger" };
+    return { label: days === 0 ? "Today" : days === 1 ? "Tomorrow" : "In " + days + " days", tone: days === 0 ? "warn" : "quiet" };
+  }
+  return null;
+}
+
+/** What Ops was told about the candidate's availability for one offered time. Never guessed. */
+export function slotAnswerFor(iv: { slotAnswers?: { at: number; free: boolean }[] }, at: number): "free" | "busy" | null {
+  const found = iv.slotAnswers?.find((a) => a.at === at);
+  return found ? (found.free ? "free" : "busy") : null;
+}
+
+/** Only a time the client offered can be marked free or busy. */
+export function problemWithAnswers(answers: { at: number; free: boolean }[], slots: number[]): string | null {
+  if (answers.some((a) => !slots.includes(a.at))) return "Only the times the client offered can be marked free or busy.";
+  return null;
+}
+
+/**
+ * The time the "Book" button is for: the one picked on the page if it was offered and the
+ * candidate is not busy then; else the agreed time; else a time they are free; else the first
+ * not marked busy.
+ */
+export function chosenSlot(
+  iv: { slots: number[]; at: number | null; slotAnswers?: { at: number; free: boolean }[] },
+  pick: number | null,
+): number | null {
+  const offered = iv.slots.length ? iv.slots : iv.at ? [iv.at] : [];
+  if (pick !== null && offered.includes(pick) && slotAnswerFor(iv, pick) !== "busy") return pick;
+  if (iv.at !== null) return iv.at;
+  return offered.find((t) => slotAnswerFor(iv, t) === "free") ?? offered.find((t) => slotAnswerFor(iv, t) !== "busy") ?? null;
 }

@@ -74,6 +74,7 @@
   --color-violet-soft: #f0ecfe; /* color/violet-soft */
   --color-info: #167ca9; /* color/info */
   --color-info-soft: #eaf7fe; /* color/info-soft */
+  --color-success: #1e8a4c; /* color/success: "is free", a held interview */
 
   /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).
      New names, so Tailwind's own rounded-md and shadow-md keep their sizes
@@ -137,6 +138,7 @@ html[data-theme="dark"] {
   --color-violet-soft: #29234a;
   --color-info: #62c3ec;
   --color-info-soft: #12303d;
+  --color-success: #4fd18b;
   --color-chip-a: #232b4d;
   --color-chip-a-ink: #a9b6ff;
   --color-chip-b: #3b2029;
