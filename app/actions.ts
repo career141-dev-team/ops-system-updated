@@ -164,6 +164,7 @@ import {
   MIN_CVS,
   type SetState,
   canMoveTo as canMoveSetTo,
+  problemWithInternalInterview,
   problemWithSending,
 } from "@/lib/clientSets";
 import { docxToPdf } from "@/lib/docxToPdf";
@@ -2171,7 +2172,13 @@ export async function sendClientSet(formData: FormData): Promise<void> {
     .filter((c) => (c.role ?? "").toLowerCase() === "hr" && c.email.trim())
     .map((c) => c.email.trim());
 
-  const problem = problemWithSending(row.candidates, to, numberOf(db, "set.minCvs", MIN_CVS));
+  const problem = problemWithSending(
+    row.candidates,
+    to,
+    numberOf(db, "set.minCvs", MIN_CVS),
+    // On unless somebody switched it off: a desk that never had the setting still gets the rule.
+    db.settings.find((s) => s.key === "set.requireInternalInterview")?.value !== false,
+  );
   if (problem) back(problem);
 
   // The owner's hold at five (step 15): a client already sitting on five
@@ -2338,6 +2345,58 @@ export async function dropFromClientSet(formData: FormData): Promise<void> {
       (left.length < minimum
         ? "It is now short of " + minimum + ", so it cannot go until TA adds somebody."
         : "The set can still go: " + left.length + " CVs."),
+  );
+}
+
+/**
+ * Our own interview of a candidate, before their CV goes to the client
+ * (owner, 16 Nov). A pass lets the CV go; a hold keeps the set from going; a
+ * fail takes the candidate out of the set, with the notes as the reason. The
+ * result is on the audit either way, which is where the feedback log reads a
+ * failed candidate from (they are no longer in the set).
+ */
+export async function recordInternalInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const setId = String(formData.get("setId") ?? "");
+  const who = String(formData.get("applicationTaId") ?? "");
+  // Back to the page the form was on, but only to one of our own two pages, never to an address a form made up.
+  const from = String(formData.get("back") ?? "");
+  const here = /^\/(positions|sets)\/[A-Za-z0-9_-]+(\/candidates\/[^?#\s]+)?(\?tab=[a-z]+)?$/.test(from) ? from : "/sets/" + setId;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const set = clientSetIn(db, setId);
+  if (!set) redirect("/sets?msg=" + encodeURIComponent("That set is gone."));
+  const row = set as NonNullable<typeof set>;
+  if (row.state === "sent") back("That set has gone already; the interview comes before it goes.");
+
+  const outcome = String(formData.get("outcome") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+  const problem = problemWithInternalInterview(outcome, notes);
+  if (problem) back(problem);
+  const taken = row.candidates.find((c) => c.applicationTaId === who);
+  if (!taken) back("Nobody in this set by that id.");
+
+  const now = Date.now();
+  const done = { by: member.id, at: now, outcome: outcome as "pass" | "hold" | "fail", notes };
+  const candidates =
+    outcome === "fail"
+      ? row.candidates.filter((c) => c.applicationTaId !== who)
+      : row.candidates.map((c) => (c.applicationTaId === who ? { ...c, internalInterview: done } : c));
+  await patchClientSet(
+    setId,
+    { candidates },
+    member.id,
+    "clientSet.internalInterview." + outcome,
+    // "Name: notes", the same shape as a candidate dropped, so a failed candidate can be found again.
+    (taken?.name ?? who) + ": " + notes,
+  );
+  revalidatePath("/sets/" + setId);
+  back(
+    outcome === "fail"
+      ? (taken?.name ?? "They") + " failed our interview and is out of the set."
+      : "Recorded: " + (taken?.name ?? "they") + (outcome === "pass" ? " passed." : " is on hold."),
   );
 }
 

@@ -50,6 +50,8 @@ import { setNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
+const INTERNAL_CHIP = { pass: "Interviewed · passed", hold: "Interview · on hold", fail: "Interview · failed" } as const;
+
 const JOURNEY_STEPS = [
   "Enquiry",
   "Agreement",
@@ -332,6 +334,14 @@ export default async function SetPage({
                     )}
                   </div>
                 </div>
+
+                {/* Our own interview, which comes before the CV goes (owner, 16 Nov) */}
+                <StatusChip
+                  label={who.internalInterview ? INTERNAL_CHIP[who.internalInterview.outcome] : "Not interviewed"}
+                  tone={
+                    who.internalInterview?.outcome === "pass" ? "ok" : who.internalInterview ? "warn" : "neutral"
+                  }
+                />
 
                 {/* Right decision chip or Shortlist / Reject actions */}
                 {isShortlisted ? (

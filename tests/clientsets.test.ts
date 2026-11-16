@@ -14,6 +14,7 @@ import {
   canMoveTo,
   dueFromEsa,
   dueInWords,
+  problemWithInternalInterview,
   problemWithSending,
   problemWithZip,
   uniqueNames,
@@ -92,6 +93,28 @@ test("the zip is named for the set, refuses a hole, and keeps two same-named CVs
   hole[1] = { ...hole[1], fileId: null };
   assert.match(problemWithZip(hole) ?? "", /SAMPLE CANDIDATE TWO/);
   assert.deepEqual(uniqueNames(["a.pdf", "b.pdf", "a.pdf", "a.pdf"]), ["a.pdf", "b.pdf", "a (2).pdf", "a (3).pdf"]);
+});
+
+test("our own interview: notes are needed to hold or fail, and only a pass lets the set go", () => {
+  assert.equal(problemWithInternalInterview("pass", ""), null);
+  assert.match(problemWithInternalInterview("maybe", "x") ?? "", /pass, hold or fail/);
+  assert.match(problemWithInternalInterview("hold", " ") ?? "", /reason/);
+  assert.match(problemWithInternalInterview("fail", "ab") ?? "", /reason/);
+  assert.equal(problemWithInternalInterview("fail", "Could not explain the last role"), null);
+
+  const to = ["hr@example.test"];
+  const done = (outcome: "pass" | "hold" | "fail") => ({ by: "m_lead", at: 1, outcome, notes: "n" });
+  // Off, nobody is asked: the existing behaviour.
+  assert.equal(problemWithSending(five(), to, MIN_CVS, false), null);
+  // On, a set with no interviews is refused and the names are said.
+  assert.match(problemWithSending(five(), to, MIN_CVS, true) ?? "", /SAMPLE CANDIDATE ONE/);
+  const all = five().map((c) => ({ ...c, internalInterview: done("pass") }));
+  assert.equal(problemWithSending(all, to, MIN_CVS, true), null);
+  // A hold is not a pass.
+  all[3] = { ...all[3], internalInterview: done("hold") };
+  const said = problemWithSending(all, to, MIN_CVS, true) ?? "";
+  assert.match(said, /SAMPLE CANDIDATE FOUR/);
+  assert.doesNotMatch(said, /SAMPLE CANDIDATE ONE/);
 });
 
 test("one line says where the set stands", () => {

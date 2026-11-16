@@ -184,7 +184,10 @@ const SAID: Record<string, Words> = {
   "clientSet.candidateDropped": "A candidate was taken out of the set.",
   "clientSet.unreportedDismissed": "The unreported-hire question was dismissed.",
   "clientSet.decision": (_e, tail) => `The client's decision: ${tail.replace(/_/g, " ")}.`,
-  "clientSet.claim": (_e, tail) => `A CV was claimed: ${tail.replace(/_/g, " ")}.`,
+  "clientSet.internalInterview": (e, tail) =>
+    `Our own interview ${tail === "pass" ? "passed" : tail === "fail" ? "failed (out of the set)" : "is on hold"}` +
+    (e.reason ? `: ${e.reason}` : "."),
+  "clientSet.claim":(_e, tail) => `A CV was claimed: ${tail.replace(/_/g, " ")}.`,
   "hold.proposed": (e) => "A hold was proposed" + (e.reason ? `: ${e.reason}` : "."),
   "hold.held": "The client was put on hold.",
   "hold.review": "The hold came up for review.",

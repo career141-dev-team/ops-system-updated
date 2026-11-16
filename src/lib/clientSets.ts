@@ -80,6 +80,39 @@ export interface SetCandidate {
   fileId: string | null;
   /** Why there is no CV, when there is not. */
   problem: string | null;
+  /** Our own team's interview of them, before their CV goes to the client (owner, 16 Nov). */
+  internalInterview?: InternalInterview | null;
+}
+
+/**
+ * The team interviews a candidate before the client sees the CV (owner, 16 Nov).
+ *
+ * Only a pass lets the CV go. "hold" means not decided yet, "fail" takes the
+ * candidate out of the set. Notes are required for the two that stop it, so
+ * the next person knows why.
+ */
+export type InternalOutcome = "pass" | "hold" | "fail";
+export const INTERNAL_OUTCOMES: InternalOutcome[] = ["pass", "hold", "fail"];
+export const INTERNAL_MEANINGS: Record<InternalOutcome, string> = {
+  pass: "Passed our interview",
+  hold: "On hold, not decided",
+  fail: "Failed our interview",
+};
+
+export interface InternalInterview {
+  /** The member who held it. */
+  by: string;
+  at: number;
+  outcome: InternalOutcome;
+  notes: string;
+}
+
+export function problemWithInternalInterview(outcome: string, notes: string): string | null {
+  if (!INTERNAL_OUTCOMES.includes(outcome as InternalOutcome)) return "Choose pass, hold or fail.";
+  if (outcome !== "pass" && notes.trim().length < 4) {
+    return "Write what you found: a hold or a fail needs its reason.";
+  }
+  return null;
 }
 
 /**
@@ -92,6 +125,7 @@ export function problemWithSending(
   candidates: SetCandidate[],
   to: string[],
   minimum = MIN_CVS,
+  requireInternalInterview = false,
 ): string | null {
   if (!to.length) return "Nobody to send it to. The client has no contact marked “hr” in the TA System.";
   if (candidates.length < minimum) {
@@ -110,6 +144,16 @@ export function problemWithSending(
       missing.map((c) => c.name).join(", ") +
       ". Read the set again, and if TA still has no prepared CV the candidate comes out of it."
     );
+  }
+  if (requireInternalInterview) {
+    const waiting = candidates.filter((c) => c.internalInterview?.outcome !== "pass");
+    if (waiting.length) {
+      return (
+        "Our own interview has not passed for " +
+        waiting.map((c) => c.name).join(", ") +
+        ". Record it on the candidate's page, or an ops lead can switch the rule off in Settings."
+      );
+    }
   }
   return null;
 }

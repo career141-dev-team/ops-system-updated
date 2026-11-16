@@ -11,18 +11,23 @@ import {
   StatTile,
   StatusChip,
   ViewPills,
+  figmaField,
   figmaLabel,
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
+import { recordInternalInterview } from "@/app/actions";
 import {
   clientIn,
   desk,
   fileIn,
+  member as memberIn,
   positionIn,
   referenceForApplication,
 } from "@/data/desk";
+import { INTERNAL_MEANINGS, INTERNAL_OUTCOMES } from "@/lib/clientSets";
 import { candidatesForPosition } from "@/lib/positionCandidates";
+import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 const JOURNEY_STEPS = [
@@ -79,6 +84,10 @@ export default async function PositionCandidatePage({
         iv.candidateName.toLowerCase() === candidate.name.toLowerCase()),
   );
   const reference = referenceForApplication(db, candidate.applicationTaId);
+  const mayManage = can(me, "client.manage");
+  // The set that really holds them (the demo pipeline names a set for people who are not in it).
+  const inSetRow = candidate.setId ? itsSets.find((s) => s.id === candidate.setId) ?? null : null;
+  const inSet = inSetRow?.candidates.find((c) => c.applicationTaId === candidate.applicationTaId) ?? null;
   const cvFile = candidate.fileId ? fileIn(db, candidate.fileId) : null;
   const firstName = candidate.name.split(" ")[0] || candidate.name;
   const baseHref = `/positions/${position.id}/candidates/${encodeURIComponent(candidate.id)}`;
@@ -212,6 +221,53 @@ export default async function PositionCandidatePage({
           </div>
           <div className="border-t border-rule pt-3 text-[14px] text-ink-soft">
             {candidate.contactSummary}
+          </div>
+
+          {/* Our own interview, before the CV goes to the client (owner, 16 Nov) */}
+          <div className="flex flex-col gap-3 border-t border-rule pt-4">
+            <p className={figmaLabel}>OUR OWN INTERVIEW</p>
+            {!inSet ? (
+              <p className="text-[14px] text-ink-soft">
+                Not in a CV set yet. The interview is recorded once TA puts {firstName} in a set.
+              </p>
+            ) : (
+              <>
+                {inSet.internalInterview ? (
+                  <p className="text-[14px] text-ink">
+                    <span className="font-medium">{INTERNAL_MEANINGS[inSet.internalInterview.outcome]}</span>
+                    {" · "}
+                    {memberIn(db, inSet.internalInterview.by)?.name ?? "someone"}
+                    {inSet.internalInterview.notes ? ` · “${inSet.internalInterview.notes}”` : ""}
+                  </p>
+                ) : (
+                  <p className="text-[14px] text-ink-soft">Not interviewed by us yet.</p>
+                )}
+                {mayManage && inSetRow && inSetRow.state !== "sent" && (
+                  <form action={recordInternalInterview} className="flex flex-wrap items-end gap-3">
+                    <input type="hidden" name="setId" value={inSetRow.id} />
+                    <input type="hidden" name="applicationTaId" value={inSet.applicationTaId} />
+                    <input type="hidden" name="back" value={`${baseHref}?tab=screening`} />
+                    <label className="flex flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                      Outcome
+                      <select name="outcome" defaultValue="pass" className={figmaField}>
+                        {INTERNAL_OUTCOMES.map((o) => (
+                          <option key={o} value={o}>
+                            {INTERNAL_MEANINGS[o]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-[12px] font-medium text-ink-soft">
+                      What you found (needed for a hold or a fail; a fail takes them out of the set)
+                      <input name="notes" className={figmaField} />
+                    </label>
+                    <button type="submit" className={pillPrimary}>
+                      Save
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
