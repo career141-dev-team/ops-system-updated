@@ -2,7 +2,7 @@
 #
 # Add it beside the TA System's blocks and reload Caddy; nothing about TA's own
 # sites changes. The DNS is already there: ops-preview.career141.com is an A
-# record to 94.136.189.48, DNS only (2 Nov).
+# record to <VPS_IP>, DNS only (2 Nov).
 #
 # The password is the point. While the preview holds test data and signs people
 # in with the simple pick-your-name page, the only thing between it and the
@@ -42,5 +42,5 @@ ops-preview.career141.com {
 # The Convex dashboard for the preview backend stays off the internet. Reach it
 # over SSH instead, which needs no second password to look after:
 #
-#   ssh -L 6892:127.0.0.1:6892 root@94.136.189.48
+#   ssh -L 6892:127.0.0.1:6892 root@<VPS_IP>
 #   then http://127.0.0.1:6892 in a browser

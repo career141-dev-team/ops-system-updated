@@ -40,4 +40,4 @@
 | **Canvas** | The owner's planning board ("Career 141 operations") holding all flows and notes |
 | **c5237, c3626 …** | Canvas card numbers; c5237 is the newest two-system flow |
 | **Convex** | The backend and database technology the TA System uses (self-hosted on the VPS) |
-| **VPS** | The rented server (94.136.189.48) that runs the live TA System |
+| **VPS** | The rented server (<VPS_IP>) that runs the live TA System |
