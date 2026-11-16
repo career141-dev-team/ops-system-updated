@@ -37,6 +37,7 @@ export type IconName =
   | "mail"
   | "mic"
   | "send"
+  | "x"
   | "chevron-left"
   | "chevron-right"
   | "chevron-down"
@@ -58,6 +59,8 @@ export type IconName =
 const PATHS: Record<IconName, React.ReactNode> = {
   // Add: the plainest plus there is, because it sits beside eight pictures already.
   plus: <path d="M12 5v14M5 12h14" />,
+  // The close on a file shown over To approve (16 Nov, the Figma icon/x).
+  x: <path d="M6 6l12 12M18 6L6 18" />,
   // To approve's previous / next draft (13 Nov, the Figma icon/chevron-left and -right).
   "chevron-left": <path d="M15 5l-7 7 7 7" />,
   "chevron-right": <path d="M9 5l7 7-7 7" />,

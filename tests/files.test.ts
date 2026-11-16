@@ -14,6 +14,7 @@ import {
   keyFor,
   mimeFor,
   pdfNameFor,
+  previewable,
   problemWithUpload,
   safeName,
   sha256,
@@ -81,4 +82,13 @@ test("sizes are said in words", () => {
 test("a kind we do not know is not quietly accepted", () => {
   assert.equal(isFileKind("esa_signed"), true);
   assert.equal(isFileKind("contract"), false);
+});
+
+test("only a PDF or a picture is ever shown in the page; the rest download", () => {
+  assert.equal(previewable(mimeFor("cv.pdf")), true);
+  assert.equal(previewable(mimeFor("photo.PNG")), true);
+  assert.equal(previewable(mimeFor("cv.docx")), false);
+  assert.equal(previewable(mimeFor("sheet.csv")), false);
+  assert.equal(previewable("image/svg+xml"), false, "a drawing can carry a script");
+  assert.equal(previewable("text/html"), false);
 });

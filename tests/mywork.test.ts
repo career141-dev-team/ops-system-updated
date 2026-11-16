@@ -12,6 +12,7 @@ import {
   dayInWords,
   doneToday,
   firstName,
+  foldDrafts,
   greetingFor,
   laterLast,
   lateInWords,
@@ -94,4 +95,24 @@ test("a conversation's initials and its time, as the list says them", () => {
   assert.equal(shortWhen(NOW - 10 * 24 * H, NOW), "2 Nov");
   assert.equal(bubbleWhen(NOW - H, NOW), "Today 08:30");
   assert.equal(bubbleWhen(NOW - 3 * 24 * H, NOW), "Mon 09:30");
+});
+
+test("the drafts behind Up next become one row under Then, and Up next keeps its own", () => {
+  const item = (href: string, kind: DayItem["kind"], at: number): DayItem => ({ said: href, href, kind, at });
+  const call = item("/tasks/1", "late", 1);
+  const d1 = item("/messages/a", "draft", 5);
+  const d2 = item("/messages/b", "routine", 3);
+  const due = item("/tasks/2", "due", 9);
+
+  // A call first: both drafts fold, in the place of the first one, dated by the oldest.
+  const out = foldDrafts([call, d1, due, d2]);
+  assert.deepEqual(out.map((i) => i.href), ["/tasks/1", "/?view=approve", "/tasks/2"]);
+  assert.equal(out[1].said, "2 drafts waiting for you");
+  assert.equal(out[1].at, 3);
+  assert.equal(rowLabel(out[1], NOW).text, "Approve");
+
+  // A draft first stays whole; one draft alone is not folded.
+  assert.deepEqual(foldDrafts([d1, call, d2]).map((i) => i.href), ["/messages/a", "/tasks/1", "/messages/b"]);
+  assert.deepEqual(foldDrafts([call, d1, due]).map((i) => i.href), ["/tasks/1", "/messages/a", "/tasks/2"]);
+  assert.deepEqual(foldDrafts([]), []);
 });

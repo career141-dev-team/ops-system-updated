@@ -94,8 +94,8 @@ export async function readBytes(key: string): Promise<Uint8Array | null> {
  * through the app. Locally there is nothing to sign, so it is our own screen,
  * which asks who you are first.
  */
-export async function linkFor(fileId: string, key: string, name: string): Promise<string> {
-  if (!usingR2()) return "/api/files/" + fileId;
+export async function linkFor(fileId: string, key: string, name: string, inline = false): Promise<string> {
+  if (!usingR2()) return "/api/files/" + fileId + (inline ? "?inline=1" : "");
   const { GetObjectCommand } = await import("@aws-sdk/client-s3");
   const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
   const client = await r2();
@@ -105,7 +105,7 @@ export async function linkFor(fileId: string, key: string, name: string): Promis
       Bucket: bucket(),
       Key: key,
       ResponseContentType: mimeFor(name),
-      ResponseContentDisposition: 'attachment; filename="' + name + '"',
+      ResponseContentDisposition: (inline ? "inline" : "attachment") + '; filename="' + name + '"',
     }),
     { expiresIn: LINK_MINUTES * 60 },
   );

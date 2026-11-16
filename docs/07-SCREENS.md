@@ -33,6 +33,8 @@ meant to work, so the designs fit the flow. Nothing here is a design.
 - **Minimal, and no overlays.** No pop-up dialogs, no modals, no drawers over the page, no
   nested pop-ups. A thing opens as its own page or expands in place. A confirmation is a
   line with a button, not a box over the screen.
+  Two exceptions the owner drew: the top bar called back over the page, and a PDF or picture
+  opened from a draft in My Work's To approve (decisions, 13 and 16 Nov).
 - **One page per thing,** with a list and a detail view. Edit in place, save on the page,
   show the result in plain words ("Sent to the client", "Could not send — the email address
   is missing").
