@@ -77,6 +77,122 @@ export function subjectsOfPosition(db: OpsDatabase, position: Pick<OpsPosition, 
   return ids;
 }
 
+/**
+ * Every row's id that is about one candidate on one opening: the sets that
+ * hold them, their interviews and their reference (16 Nov). Matched on TA's
+ * application id, and on the name for an interview typed in by hand.
+ */
+export function subjectsOfCandidate(
+  db: OpsDatabase,
+  who: { applicationTaId: string; name: string; openingTaId: string },
+): Set<string> {
+  const ids = new Set<string>();
+  for (const s of db.clientSets) if (s.candidates.some((c) => c.applicationTaId === who.applicationTaId)) ids.add(s.id);
+  for (const iv of db.interviews) {
+    if (
+      iv.applicationTaId === who.applicationTaId ||
+      (iv.openingTaId === who.openingTaId && iv.candidateName.toLowerCase() === who.name.toLowerCase())
+    ) {
+      ids.add(iv.id);
+    }
+  }
+  for (const r of db.references) if (r.applicationTaId === who.applicationTaId) ids.add(r.id);
+  return ids;
+}
+
+export interface FeedbackEntry {
+  at: number;
+  kind: "internal" | "client" | "round" | "candidate" | "reference";
+  /** The label beside the line. */
+  label: string;
+  said: string;
+  by: string | null;
+}
+
+/**
+ * Everything anybody has said about one candidate, newest first (owner, 16 Nov):
+ * our own interview, what the client decided about the CV, each round's
+ * decision, what the candidate told the TA, and the reference. Nothing new is
+ * stored for it; the facts live on the set, the interview and the reference,
+ * and a candidate who failed our interview is read back from the audit, since
+ * the set no longer holds them.
+ */
+export function feedbackLog(
+  db: OpsDatabase,
+  who: { applicationTaId: string; name: string; openingTaId: string },
+  nameOf: (actorId: string | null) => string | null,
+): FeedbackEntry[] {
+  const out: FeedbackEntry[] = [];
+  const words = (s: string) => s.replace(/_/g, " ");
+  for (const set of db.clientSets) {
+    const c = set.candidates.find((x) => x.applicationTaId === who.applicationTaId);
+    if (c?.internalInterview) {
+      const i = c.internalInterview;
+      out.push({
+        at: i.at,
+        kind: "internal",
+        label: "Our interview",
+        said: (i.outcome === "pass" ? "Passed" : i.outcome === "fail" ? "Failed" : "On hold") + (i.notes ? `: ${i.notes}` : "."),
+        by: nameOf(i.by),
+      });
+    }
+    if (c?.decision && c.decidedAt) {
+      out.push({
+        at: c.decidedAt,
+        kind: "client",
+        label: `The client, ${set.name}`,
+        said: words(c.decision) + (c.decisionReason ? `: ${c.decisionReason}` : "."),
+        by: null,
+      });
+    }
+  }
+  // A candidate who failed our interview is no longer in any set; the audit still has them, as "Name: notes".
+  const sets = new Set(db.clientSets.filter((s) => s.openingTaId === who.openingTaId).map((s) => s.id));
+  for (const a of db.audit) {
+    if (a.action !== "clientSet.internalInterview.fail" || !sets.has(a.subjectId)) continue;
+    const prefix = who.name + ": ";
+    if (a.reason?.startsWith(prefix)) {
+      out.push({ at: a.at, kind: "internal", label: "Our interview", said: "Failed: " + a.reason.slice(prefix.length), by: nameOf(a.actorId) });
+    }
+  }
+  const mine = subjectsOfCandidate(db, who);
+  for (const iv of db.interviews) {
+    if (!mine.has(iv.id)) continue;
+    if (iv.decision) {
+      out.push({
+        at: iv.decidedAt ?? iv.updatedAt,
+        kind: "round",
+        label: `Round ${iv.round}`,
+        said: words(iv.decision) + (iv.decisionReason ? `: ${iv.decisionReason}` : "."),
+        by: null,
+      });
+    }
+    if (iv.candidateFeedback) {
+      const heard = db.audit.find((a) => a.subjectId === iv.id && a.action === "interview.candidateFeedback");
+      out.push({
+        at: heard?.at ?? iv.updatedAt,
+        kind: "candidate",
+        label: `The candidate, round ${iv.round}`,
+        said: iv.candidateFeedback,
+        by: null,
+      });
+    }
+  }
+  for (const r of db.references) {
+    if (!mine.has(r.id)) continue;
+    out.push({
+      at: r.reportedAt ?? r.requestedAt,
+      kind: "reference",
+      label: "Reference",
+      said:
+        (r.report ? r.report : "Asked for, no answer yet.") +
+        (r.decision ? ` Client: ${words(r.decision)}${r.reason ? ` (${r.reason})` : ""}.` : ""),
+      by: null,
+    });
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
 /** The audit rows about any of those subjects, newest first. */
 export function gather(db: OpsDatabase, subjects: Set<string>): OpsAuditEntry[] {
   return db.audit.filter((a) => subjects.has(a.subjectId)).sort((a, b) => b.at - a.at);
