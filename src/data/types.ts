@@ -146,6 +146,12 @@ export interface OpsInbound {
   clientId: string | null;
   readState: "new" | "filed" | "actioned";
   note: string;
+  /** "out" is our own mail read back from Sent Items (16 Nov): shown in its thread, never a reply. Absent means in. */
+  direction?: "in" | "out";
+  /** Out only: who it went to. */
+  to?: string[];
+  /** File names the email carried (16 Nov). */
+  attachments?: string[];
 }
 
 /** Who changed what, before and after, and why. */

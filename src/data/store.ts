@@ -1434,7 +1434,12 @@ export const repo = {
     const db = load();
     const seen = db.inbound.find((i) => i.providerId === mail.providerId);
     if (seen) return { id: seen.id, already: true };
-    const row: OpsInbound = { ...mail, id: id("in"), readState: mail.subjectId ? "filed" : "new" };
+    // Our own mail read back from Sent Items is never "new": nobody has to answer it.
+    const row: OpsInbound = {
+      ...mail,
+      id: id("in"),
+      readState: mail.direction === "out" ? "actioned" : mail.subjectId ? "filed" : "new",
+    };
     db.inbound.push(row);
     audit({
       actorId: null,

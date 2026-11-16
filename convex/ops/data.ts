@@ -2069,6 +2069,9 @@ export const recordInbound = internalMutation({
     subjectId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
     note: v.string(),
+    direction: v.optional(v.union(v.literal("in"), v.literal("out"))),
+    to: v.optional(v.array(v.string())),
+    attachments: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const seen = await ctx.db
@@ -2079,7 +2082,7 @@ export const recordInbound = internalMutation({
 
     const id = await ctx.db.insert("opsInbound", {
       ...args,
-      readState: args.subjectId ? ("filed" as const) : ("new" as const),
+      readState: args.direction === "out" ? ("actioned" as const) : args.subjectId ? ("filed" as const) : ("new" as const),
     });
     await writeAudit(ctx, {
       actorId: null,
