@@ -79,5 +79,5 @@ test("the tab above the page names the entry the bar marks, or the page itself",
   assert.equal(workspaceTitle("/notifications"), "Notifications");
   assert.equal(workspaceTitle("/chat"), "AURA");
   assert.equal(workspaceTitle("/sign-in"), null);
-  for (const section of NAV) for (const page of section.pages) assert.equal(workspaceTitle(page.href), page.what);
+  for (const section of NAV) for (const page of section.pages) assert.equal(workspaceTitle(page.href), page.what === "Reports" ? "Report" : page.what, "the frames call it Report");
 });

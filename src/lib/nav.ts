@@ -48,6 +48,7 @@ export const NAV: NavSection[] = [
     what: "More",
     about: "The board, the inbox, and setting the desk up",
     pages: [
+      { href: "/candidates", what: "Candidates", about: "The people in our openings, read from the TA System" },
       { href: "/work", what: "The work", about: "Every enquiry and position in the stage it is really in" },
       { href: "/mail", what: "Inbox", about: "Every conversation, email and WhatsApp, and the calls we were asked to make" },
       // Finance and Reports are in the Figma "Top nav" but hidden there, so
@@ -77,6 +78,7 @@ export const COVERS: Record<string, string[]> = {
   "/settings": ["/settings", "/templates", "/files", "/ta", "/import", "/health", "/ai", "/holidays", "/baseline"],
   "/mail": ["/mail", "/calls", "/messages", "/tasks"],
   "/work": ["/work", "/find"],
+  "/candidates": ["/candidates"],
 };
 
 /**
@@ -121,13 +123,16 @@ const OTHER_TITLES: Record<string, string> = { "/account": "Account", "/notifica
  */
 export function workspaceTitle(path: string): string | null {
   const own = pageAndSectionFor(path)?.page.what;
-  if (own) return own;
+  // The frames call the Reports tab "Report" (249:10250).
+  if (own) return own === "Reports" ? "Report" : own;
   const other = Object.keys(OTHER_TITLES).find((p) => path === p || path.startsWith(p + "/"));
   return other ? OTHER_TITLES[other] : null;
 }
 
 /** Is this the entry we are under? The same rule, for marking it. */
 export function isHere(path: string, href: string): boolean {
+  // Candidates sits under My Work in the frames (249:11300), though it has its own tab name.
+  if (href === "/" && (path === "/candidates" || path.startsWith("/candidates/"))) return true;
   return (COVERS[href] ?? [href]).some((under) =>
     under === "/" ? path === "/" : path === under || path.startsWith(under + "/"),
   );
