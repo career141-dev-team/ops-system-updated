@@ -42,7 +42,7 @@ function parseView(raw: string | undefined): View {
 function statusTone(state: string, overdue: boolean): string {
   if (state === "paid") return "text-ok";
   if (state === "disputed" || overdue) return "text-danger";
-  if (state === "sent" || state === "partial") return "text-warn";
+  if (state === "sent" || state === "partly_paid") return "text-warn";
   return "text-ink-faint";
 }
 
@@ -116,7 +116,7 @@ export default async function InvoicesPage({
       );
     }
     if (view === "payments") {
-      return inv.payments.length > 0 || inv.state === "paid" || inv.state === "partial";
+      return inv.payments.length > 0 || inv.state === "paid" || inv.state === "partly_paid";
     }
     if (view === "refunds") {
       return inv.kind === "credit_note";

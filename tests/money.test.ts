@@ -32,6 +32,7 @@ import {
   placementInWords,
   problemWithDojChange,
   problemWithNoShow,
+  problemWithSalarySplit,
   problemWithNoShowChoice,
   problemWithPayment,
   problemWithWriteOff,
@@ -259,6 +260,7 @@ test("a placement event becomes a placement, a notice and the three clocks", asy
     stage: "active",
     billingName: "SAMPLE CLIENT (PVT) LTD",
     billingEmail: "finance@example.test",
+    billingAddress: "1 Test Road, Colombo 03",
     groupName: "",
     notes: "",
     reason: null,
@@ -349,6 +351,7 @@ test("the chase recomputes the charge, asks accounts, and sets the next month", 
     stage: "active",
     billingName: "SAMPLE CLIENT (PVT) LTD",
     billingEmail: "finance@example.test",
+    billingAddress: "1 Test Road, Colombo 03",
     groupName: "",
     notes: "",
     reason: null,
@@ -409,4 +412,78 @@ test("the chase recomputes the charge, asks accounts, and sets the next month", 
   repo.patchInvoice(invoice.id, { disputed: true, disputedReason: "They query the package." }, "m_accounts", "invoice.disputed", null);
   await desk.chaseThePayment(invoice.id, now + DAY);
   assert.equal(repo.invoiceIn(invoice.id)?.lateCharge, 0);
+});
+
+test("the fee follows the agreement's basis, with allowances (16 Nov)", () => {
+  const split = { basicSalary: 300_000, allowances: 150_000 };
+  assert.equal(feeAmount({ feeMonths: 1, feeBasis: "basic" }, 450_000, split), 300_000);
+  assert.equal(feeAmount({ feeMonths: 1, feeBasis: "gross" }, 450_000, split), 450_000);
+  assert.equal(feeAmount({ feeMonths: 2, feeBasis: "basic" }, 450_000, split), 600_000);
+  // Gross is basic plus allowances, even when monthlySalary disagrees: the split is the corrected truth.
+  assert.equal(feeAmount({ feeMonths: 1, feeBasis: "gross" }, 400_000, split), 450_000);
+  // Split unknown: the salary as TA gave it, never a guess.
+  assert.equal(feeAmount({ feeMonths: 1, feeBasis: "basic" }, 450_000, { basicSalary: null, allowances: 0 }), 450_000);
+  assert.equal(feeAmount({ feeMonths: 1, feeBasis: "basic" }, 450_000), 450_000);
+});
+
+test("correcting the split needs numbers and a reason", () => {
+  assert.equal(problemWithSalarySplit(300_000, 150_000, "Offer letter says so"), null);
+  assert.match(problemWithSalarySplit(0, 0, "Offer letter says so") ?? "", /basic/i);
+  assert.match(problemWithSalarySplit(300_000, -1, "Offer letter says so") ?? "", /negative/i);
+  assert.match(problemWithSalarySplit(300_000, 0, " ") ?? "", /why/i);
+});
+
+test("a fee invoice is not drafted for a client with no billing address (16 Nov)", async () => {
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  const now = Date.now();
+  const bare = repo.addClient({
+    leadId: null,
+    taClientId: "ta_c9",
+    name: "NO ADDRESS CLIENT",
+    nameKey: "no address client",
+    stage: "active",
+    billingName: "NO ADDRESS (PVT) LTD",
+    billingEmail: "finance@bare.test",
+    billingAddress: "",
+    groupName: "",
+    notes: "",
+    reason: null,
+    ownerId: "m_owner",
+  });
+  const placement = repo.addPlacement({
+    placementTaId: "ta_p9",
+    applicationTaId: "ta_a9",
+    openingTaId: "ta_j9",
+    positionId: null,
+    clientId: bare.id,
+    candidateName: "SAMPLE CANDIDATE NINE",
+    state: "joined",
+    monthlySalary: 100_000,
+    basicSalary: 80_000,
+    allowances: 20_000,
+    package: "",
+    currency: "LKR",
+    offerLetterFileRef: "f_offer",
+    joinDate: now,
+    joinedAt: now,
+    dojHistory: [],
+    feeMonths: 1,
+    feeBasis: "basic",
+    isReplacementOf: null,
+    invoiceId: null,
+    reason: null,
+    noShowChoice: null,
+    ownerId: "m_owner",
+  });
+  const refused = await desk.draftFeeInvoice(placement.id, "m_owner", now);
+  assert.equal(refused.ok, false);
+  assert.match(refused.what, /billing address/);
+
+  repo.patchClient(bare.id, { billingAddress: "2 Test Lane, Kandy" }, "m_owner", "client.detailsSaved");
+  const ok = await desk.draftFeeInvoice(placement.id, "m_owner", now);
+  assert.equal(ok.ok, true);
+  const invoice = repo.all().invoices.find((i) => i.placementId === placement.id);
+  assert.equal(invoice?.amount, 80_000, "fee on basic, not gross");
+  assert.equal(invoice?.dueAt, now + 30 * DAY, "due from the joined day, not the sent day");
 });
