@@ -28,7 +28,7 @@ it; if you ask "where is X stored", Part D; if you ask "when is X built", Part G
 | Team | Binath (TA repo) | Sanjeev (Ops repo); Binath for the TA-side API blocks |
 | Repository | `career141-dev/ta-system` | `career141-dev/ops-system` |
 | Backend | self-hosted Convex `career141-backend-1`, database `convex_self_hosted` | its own self-hosted Convex, database `convex_ops` in the **same Postgres server** |
-| Where | VPS 94.136.189.48, `/root/career141`, `/opt/ta-prod` | same VPS, `/opt/ops-prod`, own ports on 127.0.0.1, own names in the same Caddy |
+| Where | VPS <VPS_IP>, `/root/career141`, `/opt/ta-prod` | same VPS, `/opt/ops-prod`, own ports on 127.0.0.1, own names in the same Caddy |
 | Link | adds a few API endpoints and an events table; nothing existing changes | calls TA's API; reads TA's events; never touches TA's database |
 
 **The rule that shapes everything:** the TA System must keep working exactly as it does.

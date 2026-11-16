@@ -103,7 +103,7 @@ points at the TA System.
 
 Everything here is done by hand, once, and none of it changes anything of
 TA's. The DNS is already live: `ops-preview.career141.com` is an A record to
-94.136.189.48, DNS only.
+<VPS_IP>, DNS only.
 
 ```bash
 # a. The preview's own database in the Postgres that is already running.
@@ -194,7 +194,7 @@ docker logs --tail 100 -f ops-preview-app
 cd /opt/ops-preview && docker compose --env-file .env.preview down
 
 # The Convex dashboard, over SSH rather than on the internet
-ssh -L 6892:127.0.0.1:6892 root@94.136.189.48   # then http://127.0.0.1:6892
+ssh -L 6892:127.0.0.1:6892 root@<VPS_IP>   # then http://127.0.0.1:6892
 ```
 
 **Throw the data away and start again** — the preview's data is invented, so

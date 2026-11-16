@@ -30,7 +30,7 @@ flowchart LR
 
 ## Step 10 · Live server plan (draft, for the owner's approval later)
 
-Same server as TA (VPS `94.136.189.48`), every piece separate:
+Same server as TA (VPS `<VPS_IP>`), every piece separate:
 
 | Piece | Plan | TA's piece (untouched) |
 |---|---|---|

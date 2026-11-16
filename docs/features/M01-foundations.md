@@ -148,7 +148,7 @@ Built with the backend, in this order, in the TA System's look, minimal and with
 
 1. ~~The preview address~~ **Decided 2 Nov: `ops-preview.career141.com`**, https, one
    password at the proxy, and **only the owner** may open it. The owner adds the DNS A record
-   to 94.136.189.48.
+   to <VPS_IP>.
 2. Whether the Ops mailbox `ops@career141.com` exists yet. Until it does, M1's reader runs
    against a test mailbox.
 3. The Ops WhatsApp number is not bought yet, so the WhatsApp sender is built and left off.

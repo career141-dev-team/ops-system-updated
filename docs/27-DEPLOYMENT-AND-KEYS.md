@@ -110,7 +110,7 @@ ever public.
 | `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` | GitHub secrets | the deploy workflow cannot reach the machine |
 | `PRODUCTION_CONVEX_ADMIN_KEY`, `PRODUCTION_SERVER_ACTIONS_KEY` | GitHub secrets | the workflow cannot talk to the backend it just deployed |
 | The `ops-production` GitHub environment, with you as reviewer | GitHub | anything that can deploy, deploys without being asked |
-| A DNS A record for `ops.career141.com` → 94.136.189.48 | Cloudflare, DNS only | no address. (`ops-preview` is already done, 2 November) |
+| A DNS A record for `ops.career141.com` → <VPS_IP> | Cloudflare, DNS only | no address. (`ops-preview` is already done, 2 November) |
 | A Caddy block for it | the server | no certificate, no HTTPS |
 | `OPS_APP_URL` | the Ops Convex deployment | the clock has nowhere to ask |
 | LibreOffice installed on the server | the server | no agreement or invoice PDF — the screens say so plainly rather than failing |
