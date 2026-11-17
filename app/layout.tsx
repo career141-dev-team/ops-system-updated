@@ -138,7 +138,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {/* The tab that names the workspace, on top of the page card (16 Nov, the Figma "Notch tab"). */}
           {/* With AURA open the tab is centred over the page, not over the page and AURA together: it leaves the
               column's width free on its right. The column only shows from lg up, so the room is only kept there. */}
-          <div className={chatOpen ? "lg:mr-[var(--chat-w)]" : undefined}>
+          <div className={chatOpen ? "lg:mr-[calc(var(--chat-w)+24px)]" : undefined}>
             <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
               <WorkspaceNotch />
             </Suspense>
@@ -155,16 +155,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh/0.9-var(--page-top))] w-[var(--chat-w)] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
+              // The same white as the top bar, rounded like the page, and level with it: its top is the page's top and
+              // its foot is the page's foot, with the page's own 24px of air to the window's edge (17 Nov, the owner).
+              <aside className="sticky top-0 z-[1] mr-6 hidden h-[calc(100dvh/0.9-var(--page-top)-24px)] w-[var(--chat-w)] shrink-0 self-start lg:flex">
                 <ChatResize />
-                <div className="flex items-center justify-between gap-3 border-b border-shell-rule px-4 py-3">
-                  <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
-                    <ChatClose />
+                <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-sheet bg-surface shadow-card">
+                  <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+                    <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
+                      <ChatClose />
+                    </div>
                   </div>
+                  <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
                 </div>
-                <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
               </aside>
             )}
           </div>
