@@ -136,10 +136,36 @@ Added 16 Nov (scheduling and follow-ups):
 | Chasing the client's times and dates | `slots.chase` clock started by `requestInterviewSlots`, `chaseForSlots` / `chaseForDate` in `desk.ts` | after two days (setting `interview.slotsChaseDays`) a chase is drafted; `interview.report` now drafts one too, instead of only leaving a task. Drafts only; a client who has answered is not chased |
 | The outbound gate | `doNotContactFrom`, `sentToday` in `src/lib/messages.ts`, `approveOne` | the do-not-contact list is the contacts of leads marked do-not-invite, and the daily cap counts what really went today (Colombo day) - until now both were passed empty, so neither ever blocked |
 
-Still to come in phase 5: the **Teams meeting made from the Ops mailbox**
-(needs `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All` admin consent -
-the link is pasted in by a person until then, and the .ics carries it), and
-reading a client's reply for its times by itself (Phase 9).
+The **Teams meeting for the intro call and the requirement meeting** is built (17 Nov):
+`src/lib/teams.ts`, `src/lib/graphCalendar.ts`, `teamsPartOf` in `app/actions.ts`,
+`MeetingBookingForm`. It needs the `Calendars.ReadWrite` permission with admin consent and
+`switch.teamsEnabled`; until then a pasted link is used. Interviews do not use it yet.
+
+Also built on 17 Nov (supervisor review; each is a decision in 09):
+
+| Thing | Where it is |
+|---|---|
+| The opening is opened after the intro call, no signature needed | `problemWithHandover` in `src/lib/requirements.ts`, `handOverToTa`, `saveRequirement` (later fields queue `/integrations/v1/openings/details`, **an endpoint TA does not have yet**) |
+| The lead's bar: Enquiry, Intro call, Opening, Agreement, Requirement (the last two side by side) | `src/lib/leadJourney.ts` |
+| One meeting as intro call and requirement meeting | `alsoRequirement` on the meeting, the tick on `MeetingBookingForm` |
+| Automatic countersign | `src/lib/countersign.ts`, `countersignAutomatically` and `finishCountersign` in `app/actions.ts`; needs a "director_signature" file and the `pdf-lib` dependency |
+| One search stage and the opening's own bar | `loopSummary`, `app/(positions)/positions/page.tsx` (3 columns), `app/work/page.tsx`, the opening page |
+| Strategies tab, Placements tab, a "Waiting on" list | the opening page; `addStrategy` |
+| Contacts for a client and for a position | `src/lib/contacts.ts`, `app/ui/Contacts.tsx`, `saveContact` |
+| Interview invites: a calendar event (Teams for online, an address for onsite) and both feedbacks side by side | `bookInterview`, `recordClientBooking`, `recordCandidateFeedbackByHand`, the candidate's Interviews tab |
+| Candidates added by hand | `addManualCandidate`, `src/lib/positionCandidates.ts` |
+| The requirement from a Teams transcript | `src/lib/transcript.ts`, `fetchTranscript`, `readRequirementFromCall` |
+
+Not done from that review, each with its reason:
+
+| Thing | Why |
+|---|---|
+| A manual candidate in a CV set, an interview or a placement | every TA write for it would be refused; needs a TA endpoint that can hold a person Ops made |
+| A calendar event cancelled or moved when an interview is rescheduled or cancelled | the event id is saved (`calendarEventId`) but nothing uses it yet |
+| A clock that reads the transcript by itself after the call | it is a button for now |
+| A warning line on an invoice drafted for a client with no signed agreement | the existing fallback (1 month on gross) still applies silently |
+
+Still to come in phase 5: reading a client's reply for its times by itself (Phase 9).
 
 ## Built: phase 6, the placement and the money
 
@@ -332,7 +358,7 @@ Small things still open, each with its reason:
 | Thing | Why it waits |
 |---|---|
 | The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
-| The Teams meeting made from the Ops mailbox | `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All` admin consent nobody has granted (the .ics invite is built; only the automatic link is waiting) |
+| Teams for **interviews** | the intro call and requirement meeting have it (17 Nov) and wait only on `Calendars.ReadWrite` consent and `switch.teamsEnabled`; `bookInterview` still takes a pasted link |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
 | The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |

@@ -2,19 +2,25 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
+  addManualCandidate,
+  addStrategy,
   approvePositionJd,
   openCloseByHand,
+  removeManualCandidate,
+  removeStrategy,
   recordLinkedInPost,
   requestAd,
   savePositionRequirement,
   setPositionTeam,
 } from "@/app/actions";
 import Icon from "@/app/Icon";
+import { Contacts } from "@/app/ui/Contacts";
 import {
   Avatar,
   BackBar,
   FoldRow,
   JourneyBar,
+  type JourneyStep,
   NextStepCard,
   PageBox,
   StatTile,
@@ -26,11 +32,13 @@ import {
   pillSecondary,
 } from "@/app/ui/figma";
 import {
+  agreementForLead,
   clientIn,
   desk,
   issuesNewestFirst,
   liveAdFor,
   liveHoldFor,
+  liveTimers,
   member as memberIn,
   openChecklistFor,
   outboxWaiting,
@@ -39,6 +47,8 @@ import {
 } from "@/data/desk";
 import { weekOf } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
+import { loopSummary } from "@/lib/journey";
+import { clockInWords, timeLeft } from "@/lib/timers";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
 import { candidatesForPosition } from "@/lib/positionCandidates";
@@ -48,17 +58,6 @@ import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
 import { byDay, subjectsOfPosition, timeline } from "@/lib/timeline";
 
-const JOURNEY_STEPS = [
-  "Enquiry",
-  "Agreement",
-  "Requirement",
-  "Search",
-  "With client",
-  "Interviews",
-  "Joining",
-  "Guarantee",
-];
-
 type OpeningSubView =
   | "overview"
   | "jd"
@@ -66,10 +65,11 @@ type OpeningSubView =
   | "candidates"
   | "sets"
   | "interviews"
+  | "placements"
   | "activity";
 
 function resolveSubView(view?: string, legacyTab?: string): OpeningSubView {
-  if (view === "jd" || view === "advertising" || view === "candidates" || view === "sets" || view === "interviews" || view === "activity") {
+  if (view === "jd" || view === "advertising" || view === "candidates" || view === "sets" || view === "interviews" || view === "placements" || view === "activity") {
     return view;
   }
   if (legacyTab === "adverts") return "advertising";
@@ -143,6 +143,7 @@ export default async function PositionPage({
   const guarantee = placement
     ? db.guarantees.find((g) => g.placementId === placement.id) ?? null
     : null;
+  const itsPlacements = db.placements.filter((pl) => pl.openingTaId === position.openingTaId && pl.state !== "cancelled");
 
   const step = positionNextStep(
     position,
@@ -157,13 +158,56 @@ export default async function PositionPage({
 
   const allCandidates = candidatesForPosition(db, position, itsSets);
 
-  // Determine active step on the 8-step JourneyBar
-  let activeJourney = "Search";
-  if (guarantee) activeJourney = "Guarantee";
-  else if (placement) activeJourney = "Joining";
-  else if (liveIv || itsInterviews.length > 0) activeJourney = "Interviews";
-  else if (waitingSet || sentSets.length > 0) activeJourney = "With client";
-  else if (!position.jdApprovedAt && position.stage === "handed_over") activeJourney = "Requirement";
+  // The bar is worked out from what exists (17 Nov), as on the lead page. Search,
+  // sets and interviews loop until the role is filled, so they are one step with
+  // the counts under it.
+  const leadId = requirement?.leadId ?? null;
+  const esa = leadId ? agreementForLead(db, leadId) : null;
+  const agreementSigned = esa?.state === "signed" || esa?.state === "countersigned";
+  const loop = loopSummary({
+    taStatus: position.stage === "closed" ? "closed" : hold || position.stage === "on_hold" ? "on_hold" : "active",
+    sets: itsSets,
+    interviews: itsInterviews,
+  });
+  const guaranteeLive = guarantee?.state === "running" || guarantee?.state === "warned";
+  const journeySteps: JourneyStep[] = [
+    { label: "Enquiry", state: "done", href: leadId ? `/leads/${leadId}` : undefined },
+    {
+      label: "Agreement",
+      state: agreementSigned ? "done" : esa ? "current" : "upcoming",
+      href: leadId ? `/leads/${leadId}?view=agreement` : undefined,
+    },
+    {
+      label: "Requirement",
+      state: position.jdApprovedAt ? "done" : "current",
+      href: `/positions/${position.id}?view=jd`,
+    },
+    {
+      label: "Search & interviews",
+      state: placement ? "done" : position.openingTaId ? "current" : "upcoming",
+      note: position.openingTaId ? loop.line : undefined,
+    },
+    {
+      label: "Joining",
+      state: placement?.joinedAt ? "done" : placement ? "current" : "upcoming",
+    },
+    {
+      label: "Guarantee",
+      state: guarantee ? (guaranteeLive ? "current" : "done") : "upcoming",
+    },
+  ];
+
+  // What is running or open on this opening: reminders, chases, and tasks.
+  const whenDateOf = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const aboutThis = new Set<string>([position.id, ...itsSets.map((c) => c.id), ...itsInterviews.map((iv) => iv.id)]);
+  const waitingOn = [
+    ...liveTimers(db)
+      .filter((t) => aboutThis.has(t.subjectId))
+      .map((t) => ({ key: "t" + t.id, text: clockInWords(t.kind), when: timeLeft(t.dueAt, now).text, at: t.dueAt })),
+    ...db.tasks
+      .filter((t) => t.state === "open" && t.subjectId && aboutThis.has(t.subjectId))
+      .map((t) => ({ key: "k" + t.id, text: t.title, when: "task, due " + whenDateOf(t.dueAt), at: t.dueAt })),
+  ].sort((x, y) => x.at - y.at);
 
   const history = byDay(
     timeline(db, subjectsOfPosition(db, position), (who) => (who ? (memberIn(db, who)?.name ?? null) : null)),
@@ -239,10 +283,11 @@ export default async function PositionPage({
           items={[
             { key: "overview", label: "Overview", href: `/positions/${position.id}?view=overview` },
             { key: "jd", label: "Requirement & JD", href: `/positions/${position.id}?view=jd` },
-            { key: "advertising", label: "Advertising", href: `/positions/${position.id}?view=advertising` },
+            { key: "advertising", label: "Strategies", href: `/positions/${position.id}?view=advertising` },
             { key: "candidates", label: "Candidates", count: allCandidates.length, href: `/positions/${position.id}?view=candidates` },
             { key: "sets", label: "CV sets", count: itsSets.length, href: `/positions/${position.id}?view=sets` },
             { key: "interviews", label: "Interviews", count: itsInterviews.length || undefined, href: `/positions/${position.id}?view=interviews` },
+            { key: "placements", label: "Placements", href: `/positions/${position.id}?view=placements` },
             { key: "activity", label: "Activity", href: `/positions/${position.id}?view=activity` },
           ]}
           active={subView}
@@ -252,7 +297,33 @@ export default async function PositionPage({
       {/* ── SUB-VIEW 1: OVERVIEW (Frames 1:866 & 1:3682) ──────────────── */}
       {subView === "overview" && (
         <div className="flex flex-col gap-6">
-          <JourneyBar steps={JOURNEY_STEPS} active={activeJourney} />
+          <JourneyBar steps={journeySteps} />
+
+          <Contacts
+            scope="position"
+            id={position.id}
+            contacts={position.contacts ?? []}
+            mayManage={mayManage}
+            heading="EXTRA PEOPLE FOR THIS POSITION"
+            hint={
+              "Anyone about this role only, such as the team lead who is hiring. They are written to as well as " +
+              clientName +
+              "'s standard contacts, who are on the client's page."
+            }
+          />
+
+          {waitingOn.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>WAITING ON · REMINDERS, CHASES AND TASKS</span>
+              <ul className="flex flex-col gap-1 text-[14px] text-ink-soft">
+                {waitingOn.slice(0, 8).map((w) => (
+                  <li key={w.key}>
+                    <span className="text-ink">{w.text}</span> · {w.when}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* NextStepCard: Frame 1:866 (when a CV set is with the client) vs Frame 1:3682 (when with the TA) */}
           {waitingSet ? (
@@ -690,6 +761,49 @@ export default async function PositionPage({
       {/* ── SUB-VIEW 3: ADVERTISING (Frame 1:2244) ────────────────────── */}
       {subView === "advertising" && (
         <div className="flex flex-col gap-6">
+          {/* Strategies assigned (17 Nov): what each ops person will try for this role */}
+          <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+            <h2 className="text-[18px] font-medium leading-[26px] text-ink">Strategies assigned</h2>
+            {(position.strategies ?? []).length === 0 ? (
+              <p className="text-[14px] text-ink-soft">None yet. Give an ops person a strategy for this role below.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-rule">
+                {(position.strategies ?? []).map((st) => (
+                  <li key={st.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
+                    <span className="text-ink">
+                      {st.text} <span className="text-ink-soft">· {memberIn(db, st.ownerId)?.name ?? "somebody"}</span>
+                    </span>
+                    {mayManage && (
+                      <form action={removeStrategy}>
+                        <input type="hidden" name="positionId" value={position.id} />
+                        <input type="hidden" name="strategyId" value={st.id} />
+                        <button type="submit" className="text-[13px] text-ink-faint hover:text-danger">
+                          Remove
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {mayManage && (
+              <form action={addStrategy} className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-[1fr_200px_auto]">
+                <input type="hidden" name="positionId" value={position.id} />
+                <input name="text" required placeholder="What will they try?" className={figmaField} />
+                <select name="ownerId" defaultValue={me.id} className={figmaField}>
+                  {db.members.filter((m) => m.active).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className={pillSecondary}>
+                  Add
+                </button>
+              </form>
+            )}
+          </div>
+
           {/* 3-Column Channel Cards (1:2272) */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* Card 1: LinkedIn */}
@@ -893,9 +1007,53 @@ export default async function PositionPage({
 
                   <div className="flex items-center gap-1.5 rounded-full bg-sunk px-3.5 py-1.5 text-[12px] font-medium tracking-[0.4px] text-ink-faint">
                     <Icon name="lock" size={14} />
-                    <span>The TA works this list in the TA System</span>
+                    <span>The TA works this list in the TA System. People added here by hand stay in Ops.</span>
                   </div>
                 </div>
+
+                {mayManage && (
+                  <details className="rounded-[24px] bg-sunk px-6 py-4">
+                    <summary className="cursor-pointer text-[14px] font-medium text-brand hover:underline">
+                      Add a candidate by hand (for when the TA link is down)
+                    </summary>
+                    {(position.manualCandidates ?? []).length > 0 && (
+                      <ul className="mt-3 flex flex-col divide-y divide-rule text-[14px]">
+                        {(position.manualCandidates ?? []).map((m) => (
+                          <li key={m.id} className="flex items-center justify-between gap-2 py-2">
+                            <span className="text-ink">
+                              {m.name} <span className="text-ink-soft">· added by hand, not in TA</span>
+                            </span>
+                            <form action={removeManualCandidate}>
+                              <input type="hidden" name="positionId" value={position.id} />
+                              <input type="hidden" name="candidateId" value={m.id} />
+                              <button type="submit" className="text-[13px] text-ink-faint hover:text-danger">
+                                Remove
+                              </button>
+                            </form>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <form action={addManualCandidate} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input type="hidden" name="positionId" value={position.id} />
+                      <input name="name" required placeholder="Full name" className={figmaField} />
+                      <input name="email" type="email" placeholder="Email" className={figmaField} />
+                      <input name="phone" placeholder="Phone" className={figmaField} />
+                      <select name="cvFileId" className={figmaField} defaultValue="">
+                        <option value="">No CV yet</option>
+                        {db.files.filter((f) => f.kind === "cv").map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input name="note" placeholder="A line about them: current role, years" className={figmaField + " sm:col-span-2"} />
+                      <button type="submit" className={pillSecondary + " self-start"}>
+                        Add them
+                      </button>
+                    </form>
+                  </details>
+                )}
 
                 <div className="flex flex-col divide-y divide-rule">
                   {shownCandidates.map((cand) => (
@@ -918,7 +1076,7 @@ export default async function PositionPage({
                         </span>
                       </div>
                       <span className="shrink-0 rounded-full bg-sunk px-2.5 py-1 text-[14px] font-medium leading-[22px] text-ink">
-                        {cand.fit} fit
+                        {cand.manual ? "by hand" : cand.fit + " fit"}
                       </span>
                       <span
                         className={`w-[160px] shrink-0 text-right text-[14px] leading-[22px] ${
@@ -1031,6 +1189,43 @@ export default async function PositionPage({
                 </Link>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PLACEMENTS: the money side of this opening, read-only links ─── */}
+      {subView === "placements" && (
+        <div className="flex flex-col gap-4">
+          {itsPlacements.length === 0 ? (
+            <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+              Nobody has been placed on this opening yet.
+            </div>
+          ) : (
+            itsPlacements.map((pl) => {
+              const invoices = db.invoices.filter((inv) => inv.placementId === pl.id);
+              const g = db.guarantees.find((row) => row.placementId === pl.id) ?? null;
+              return (
+                <div key={pl.id} className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+                  <Link href={`/placements/${pl.id}`} className="text-[16px] font-medium text-ink hover:text-brand">
+                    {pl.candidateName} · {pl.state}
+                    {pl.joinDate ? " · joining " + whenDateOf(pl.joinDate) : ""}
+                  </Link>
+                  <div className="flex flex-col gap-1 text-[14px] text-ink-soft">
+                    {invoices.map((inv) => (
+                      <Link key={inv.id} href={`/invoices/${inv.id}`} className="hover:text-brand">
+                        Invoice {inv.number} · {inv.state}
+                      </Link>
+                    ))}
+                    {invoices.length === 0 && <span>No invoice yet.</span>}
+                    {g && (
+                      <Link href={`/guarantees/${g.id}`} className="hover:text-brand">
+                        Guarantee · {g.state}
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}

@@ -1,3 +1,4 @@
+import { fakeTa } from "@/lib/ta";
 import type { OpsClientSet, OpsDatabase, OpsPosition } from "@/data/types";
 
 export interface PositionCandidateView {
@@ -5,7 +6,7 @@ export interface PositionCandidateView {
   applicationTaId: string;
   name: string;
   roleSummary: string;
-  source: "LinkedIn" | "TA System database" | "Talent Pulse" | "TopJobs";
+  source: "LinkedIn" | "TA System database" | "Talent Pulse" | "TopJobs" | "Added by hand";
   fit: number;
   stageKey: "new" | "contacting" | "screened" | "dropped";
   statusLabel: string;
@@ -18,6 +19,8 @@ export interface PositionCandidateView {
   fileId: string | null;
   decision: string | null;
   decisionReason: string | null;
+  /** Added by hand in Ops; not in the TA System (17 Nov). */
+  manual?: boolean;
 }
 
 const FALLBACK_TA_PIPELINE: Omit<PositionCandidateView, "setId" | "setName" | "fileId" | "decision" | "decisionReason">[] = [
@@ -161,7 +164,33 @@ export function candidatesForPosition(
     }
   }
 
-  for (const fb of FALLBACK_TA_PIPELINE) {
+  for (const m of position.manualCandidates ?? []) {
+    byId.set("manual:" + m.id, {
+      id: "manual:" + m.id,
+      applicationTaId: "manual:" + m.id,
+      name: m.name,
+      roleSummary: m.note || "Added by hand",
+      source: "Added by hand",
+      fit: 0,
+      stageKey: "new",
+      statusLabel: "Added by hand, not in TA",
+      statusTone: "neutral",
+      noticeWeeks: "",
+      expectedSalary: "",
+      contactSummary: [m.email, m.phone].filter(Boolean).join(" · ") || "No contact details yet",
+      setId: null,
+      setName: null,
+      fileId: m.cvFileId,
+      decision: null,
+      decisionReason: null,
+      manual: true,
+    });
+  }
+
+  // The invented people below stand in for the TA System on a laptop. On the
+  // real desk they would be strangers on a client's opening, so they are shown
+  // only while the stand-in TA System is on.
+  for (const fb of fakeTa() ? FALLBACK_TA_PIPELINE : []) {
     const alreadyByName = Array.from(byId.values()).some(
       (existing) => existing.name.toLowerCase() === fb.name.toLowerCase(),
     );

@@ -369,6 +369,18 @@ export interface OpsMeeting {
   reason: string | null;
   bookedBy: Id;
   heldAt: number | null;
+  /** One meeting that is both the intro call and the requirement meeting (17 Nov). */
+  alsoRequirement?: boolean;
+  /** Teams (17 Nov). Optional: rows booked before it have none of these. */
+  lengthMin?: number;
+  /** Whose Outlook calendar the meeting is in. */
+  organiserId?: Id;
+  /** The client people who get the join link, by drafted email. */
+  attendees?: { name: string; email: string }[];
+  joinUrl?: string | null;
+  graphEventId?: string | null;
+  /** Why no Teams link was made, in a sentence; null when one was. */
+  teamsProblem?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -432,6 +444,8 @@ export interface OpsClient {
   billingAddress: string;
   /** Their WhatsApp group, by its name: the sets and feedback go there. */
   groupName: string;
+  /** The client's standard contacts, who get everything (17 Nov). Optional: older rows have none. */
+  contacts?: { name: string; email: string; phone: string; role: string }[];
   notes: string;
   /** Why they are quiet or closed. */
   reason: string | null;
@@ -591,6 +605,15 @@ export interface OpsPosition {
   pendingCount: number | null;
   depthCheckedAt: number | null;
   handedOverAt: number;
+  /** Strategies given to ops people for this position (17 Nov). Optional: older rows have none. */
+  strategies?: { id: string; text: string; ownerId: Id; at: number }[];
+  /**
+   * Candidates added by hand when the TA link is down or the person is not in TA (17 Nov).
+   * Kept in Ops only and always shown as "added by hand, not in TA".
+   */
+  manualCandidates?: { id: string; name: string; email: string; phone: string; note: string; cvFileId: string | null; addedBy: Id; at: number }[];
+  /** Extra people to write to about this position only, e.g. the hiring team lead (17 Nov). */
+  contacts?: { name: string; email: string; phone: string; role: string }[];
   closedAt: number | null;
   ownerId: Id;
   createdAt: number;
@@ -713,6 +736,8 @@ export interface OpsInterview {
   whereOrLink: string;
   interviewTaId: string | null;
   /** Each message this interview has caused, newest last. */
+  /** The Outlook event made for it, so a change or a cancel can reach it (17 Nov). */
+  calendarEventId?: string | null;
   inviteMessageId: Id | null;
   attendedAt: number | null;
   /** What the client decided after it: next, selected or rejected. */

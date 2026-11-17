@@ -113,17 +113,17 @@ export const STAGE_MEANINGS: Record<PositionStage, string> = {
 /**
  * Why the opening cannot be created in TA yet.
  *
- * The first check is the owner's hard rule: no search before the agreement is
- * signed. The second is this phase's own: TA cannot be handed a requirement
- * that is half written, because the TAs would fill the gaps by guessing.
+ * Changed 17 Nov (supervisor review): the opening is opened right after the
+ * intro call, with the agreement going out at the same time, so a signature no
+ * longer gates it. TA cannot do without the position's name and how many
+ * people; the rest of the requirement is written in later, in the requirement
+ * meeting, and goes to the opening as it is saved.
  */
-export function problemWithHandover(esaState: string | null, fields: RequirementFields): string | null {
-  if (esaState !== "signed" && esaState !== "countersigned") {
-    return esaState === null
-      ? "This client has no agreement on our side, so no opening can be created."
-      : "The agreement is not signed yet, so the search is blocked. Nothing goes to TA until it is.";
-  }
-  return problemWithRequirement(fields);
+export function problemWithHandover(fields: RequirementFields): string | null {
+  const blank = (key: string) => !(fields[key] ?? "").trim();
+  if (blank("title")) return "Write the position's title first: TA cannot open a role with no name.";
+  if (blank("headcount")) return "Say how many people they want. TA cannot open a role without a number.";
+  return null;
 }
 
 /** What the hand-over says on screen once it has happened. */

@@ -44,7 +44,28 @@ export interface DictatedRequirement {
   locations: string;
   headcount: string;
   jdNotes: string;
+  /** Only from a call transcript (17 Nov). */
+  insights?: string;
+  reportsTo?: string;
   notSaid: string[];
+}
+
+/**
+ * The same fields, from a Teams call transcript rather than dictation (17 Nov).
+ * The speaker names say who is who, so only the client's side is taken as the
+ * requirement; the recruiter's questions are context.
+ */
+export function transcriptRequirementPrompt(transcript: string): PromptFor {
+  return {
+    system:
+      HOUSE +
+      " You are turning the transcript of a call between a Career 141 recruiter and a client into the fields of a requirement." +
+      " Take what the client says they need. The recruiter's own words are context, never requirements." +
+      ' Shape: {"title":"","level":"","salary":"","locations":"","headcount":"","jdNotes":"","insights":"","reportsTo":"","notSaid":[]}.' +
+      " jdNotes holds what was said about the role that does not fit another field; insights holds anything useful about the client's situation or how they will decide." +
+      " headcount is a number as text. Put the name of every field you could not fill into notSaid. Never guess.",
+    prompt: "This is the transcript:\n\n" + transcript,
+  };
 }
 
 export function dictateRequirementPrompt(said: string): PromptFor {

@@ -16,6 +16,7 @@ import {
   sortForBoard,
   stageOfLead,
   stageOfPosition,
+  loopSummary,
   type JourneyRow,
 } from "@/lib/journey";
 
@@ -28,9 +29,7 @@ test("the stages are the journey, in order, each saying what it is", () => {
     "intro",
     "agreement",
     "requirement",
-    "with_ta",
-    "with_client",
-    "interviews",
+    "in_search",
     "joining",
     "money",
     "guarantee",
@@ -87,9 +86,10 @@ test("a position's stage is read backwards from the end", () => {
     closed: false,
   };
 
-  assert.equal(stageOfPosition(position, none), "with_ta");
-  assert.equal(stageOfPosition(position, { ...none, setWithClient: true }), "with_client");
-  assert.equal(stageOfPosition(position, { ...none, setWithClient: true, liveInterview: true }), "interviews");
+  // Searching, a set with the client and an interview are one stage now: they loop.
+  assert.equal(stageOfPosition(position, none), "in_search");
+  assert.equal(stageOfPosition(position, { ...none, setWithClient: true }), "in_search");
+  assert.equal(stageOfPosition(position, { ...none, setWithClient: true, liveInterview: true }), "in_search");
 
   // Placed but not joined is its own stage: the joining day is the one that
   // matters, and it is nobody's idea of "interviews".
@@ -103,7 +103,7 @@ test("a position's stage is read backwards from the end", () => {
   // Paid: the ninety days are the only thing left running.
   assert.equal(stageOfPosition(position, { ...joined, invoiceOwing: false, guaranteeRunning: true }), "guarantee");
 
-  // Reading forwards would have put this one back in "with the client",
+  // Reading forwards would have kept this one in the search loop,
   // because an old set is still sitting there unanswered. It is read
   // backwards from the end for exactly that reason.
   assert.equal(stageOfPosition(position, { ...joined, guaranteeRunning: true }), "guarantee");
@@ -118,7 +118,7 @@ test("inside a stage: late first, then whatever has sat longest", () => {
     href: "/positions/" + id,
     title: "A CLIENT · Head of finance",
     under: "Sample Ops lead",
-    stage: "with_client",
+    stage: "in_search",
     waiting: "Waiting on them.",
     since: NOW - DAY,
     ownerId: "m1",
@@ -144,6 +144,35 @@ test("inside a stage: late first, then whatever has sat longest", () => {
     ["y"],
   );
   assert.deepEqual(rowsInStage(mixed, "closed"), []);
+});
+
+test("the loop on an opening is counted, and says what is holding it", () => {
+  const set = (state: string, decisions: (string | null)[]) => ({
+    state,
+    candidates: decisions.map((decision) => ({ decision })),
+  });
+
+  // Just opened: TA is searching and nothing has gone.
+  const fresh = loopSummary({ taStatus: "active", sets: [], interviews: [] });
+  assert.equal(fresh.line, "Search active");
+  assert.equal(fresh.waitingOn, "ta");
+
+  // A set is out and unanswered: the client owes an answer.
+  const waiting = loopSummary({ taStatus: "active", sets: [set("sent", [null, null])], interviews: [] });
+  assert.equal(waiting.waitingOn, "client");
+  assert.equal(waiting.line, "Search active · 1 set");
+
+  // Two sets, five shortlisted, two interviewed, one to go: the interview holds it.
+  const busy = loopSummary({
+    taStatus: "active",
+    sets: [set("sent", ["shortlisted", "shortlisted", "rejected"]), set("sent", ["shortlisted", "shortlisted", "shortlisted"])],
+    interviews: [{ state: "attended" }, { state: "attended" }, { state: "booked" }],
+  });
+  assert.equal(busy.line, "Search active · 2 sets · 5 shortlisted · 2 interviewed · 1 to interview");
+  assert.equal(busy.waitingOn, "interview");
+
+  // On hold is said first, in the same line.
+  assert.match(loopSummary({ taStatus: "on_hold", sets: [], interviews: [] }).line, /^On hold/);
 });
 
 test("how long it has sat, in words a person reads", () => {

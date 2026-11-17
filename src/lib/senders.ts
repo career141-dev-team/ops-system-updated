@@ -128,7 +128,7 @@ export function subjectWithReference(subject: string, subjectType: string | null
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
-async function graphToken(): Promise<string | null> {
+export async function graphToken(): Promise<string | null> {
   const tenant = process.env.MS_TENANT_ID ?? "";
   const id = process.env.MS_CLIENT_ID ?? "";
   const secret = process.env.MS_CLIENT_SECRET ?? "";

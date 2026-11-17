@@ -12,9 +12,12 @@ import {
   positionsNewestFirst,
   runClocks,
 } from "@/data/desk";
+import { loopSummary } from "@/lib/journey";
 import { currentMember } from "@/lib/session";
 
-type BoardStage = "jd" | "search" | "with_client" | "interviews" | "joining";
+// Three columns since the supervisor review (17 Nov): searching, sets with the
+// client and interviews loop until the role is filled, so they share one.
+type BoardStage = "jd" | "search" | "joining";
 
 interface BoardCard {
   id: string;
@@ -22,6 +25,10 @@ interface BoardCard {
   clientName: string;
   title: string;
   stage: BoardStage;
+  /** Which part of the loop holds it now: searching, with the client, or an interview. */
+  part: string;
+  /** The loop in numbers: "Search active · 2 sets · 1 to interview". */
+  loopLine: string | null;
   dotClass: string;
   statusText: string;
   statusDanger?: boolean;
@@ -34,17 +41,16 @@ interface BoardCard {
 
 const COLUMNS: { key: BoardStage; title: string }[] = [
   { key: "jd", title: "Requirement & JD" },
-  { key: "search", title: "Advertising & search" },
-  { key: "with_client", title: "With the client" },
-  { key: "interviews", title: "Interviews" },
+  { key: "search", title: "Search & interviews" },
   { key: "joining", title: "Offer & joining" },
 ];
 
 /**
  * Frame 1:768 — OP · Openings — board by stage.
  *
- * Every position grouped into the 5 operational stages on the Figma board:
- * Requirement & JD, Advertising & search, With the client, Interviews, and Offer & joining.
+ * Every position grouped into 3 columns: Requirement & JD, Search & interviews
+ * (the loop of searching, CV sets and interviews, with a summary on each card),
+ * and Offer & joining.
  */
 export default async function PositionsPage({
   searchParams,
@@ -89,6 +95,7 @@ export default async function PositionsPage({
     const needsJd = !closed && !position.jdApprovedAt;
 
     let stage: BoardStage = "search";
+    let part = "Searching";
     let dotClass = "bg-brand";
     let statusText = "Searching";
     let statusDanger = false;
@@ -106,7 +113,8 @@ export default async function PositionsPage({
             ? "Joining tomorrow"
             : `Joining in ${joinDays} days`;
     } else if (liveIv) {
-      stage = "interviews";
+      stage = "search";
+      part = "Interview";
       dotClass = "bg-info";
       if (liveIv.at) {
         const dt = new Date(liveIv.at + 5.5 * 3_600_000);
@@ -117,7 +125,8 @@ export default async function PositionsPage({
         statusText = `Round ${liveIv.round} · agreeing time`;
       }
     } else if (waitingSet || readySet) {
-      stage = "with_client";
+      stage = "search";
+      part = "With the client";
       const activeSet = waitingSet ?? readySet!;
       const silentDays = activeSet.receivedAt
         ? Math.floor((now - activeSet.receivedAt) / 86_400_000)
@@ -153,6 +162,14 @@ export default async function PositionsPage({
     }
 
     const ownerName = memberIn(db, position.ownerId)?.name ?? "";
+    const loopLine =
+      stage === "search"
+        ? loopSummary({
+            taStatus: closed ? "closed" : onHold ? "on_hold" : "active",
+            sets,
+            interviews: db.interviews.filter((iv) => iv.openingTaId === position.openingTaId),
+          }).line
+        : null;
 
     return {
       id: position.id,
@@ -160,6 +177,8 @@ export default async function PositionsPage({
       clientName,
       title: position.title,
       stage,
+      part: stage === "search" ? part : "",
+      loopLine,
       dotClass,
       statusText,
       statusDanger,
@@ -270,8 +289,8 @@ export default async function PositionsPage({
           )}
         </div>
       ) : (
-        /* 5-Column Stage Kanban Board (1:785) */
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        /* 3-column board: the search loop is one column (17 Nov) */
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => {
             const colCards = filtered.filter((c) => c.stage === col.key);
             return (
@@ -315,6 +334,11 @@ export default async function PositionsPage({
                           {card.statusText}
                         </span>
                       </div>
+                      {card.loopLine && (
+                        <span className="text-[12px] leading-4 text-ink-soft">
+                          {card.part} · {card.loopLine}
+                        </span>
+                      )}
                     </Link>
                   ))
                 )}

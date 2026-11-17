@@ -64,6 +64,9 @@ on the page; start it first.
 | `MS_CLIENT_SECRET` | the app | — and note its expiry date somewhere you will see it |
 | **`Mail.Read`**, application, admin-consented | the app registration | no reply is ever read; the desk goes back to Outlook |
 | **`Mail.Send`**, application, admin-consented | the app registration | every approved message records as *blocked* instead of going |
+| **`Calendars.ReadWrite`**, application, admin-consented | the app registration | no Teams meeting is made; the booking says so and a pasted link is used. Same app and secret as the mail, no new key. Add the ops people's mailboxes to the same access-policy group |
+| **`OnlineMeetingTranscript.Read.All`**, application, admin-consented, **and a Teams application access policy** (`New-CsApplicationAccessPolicy`, `Grant-CsApplicationAccessPolicy`, Teams PowerShell) for the ops organisers | the app registration and the Teams tenant | the "Read the call's transcript" button says why it cannot. Also needs transcription allowed in the Teams meeting policy, and an AI key |
+| **The Director's signature picture** (PNG or JPG), uploaded on the Files screen as "The Director's signature" | the Files screen | a signed agreement is not countersigned automatically; the manual upload is used |
 | **An application access policy** | the tenant | without one, those two permissions reach **every mailbox in the company**, not only ours. Ask for a policy restricting the app to a group holding exactly the boxes below |
 | ~~`ops@career141.com`~~ | **Not needed (6 Nov)** | Every message goes from the person's own address, never a shared one. Point `OPS_COMMON_MAILBOX` at `opsteam@`, which already exists and is already read, and create nothing |
 | `OPS_MAILBOXES` | the app | nothing is polled |
