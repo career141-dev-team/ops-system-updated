@@ -19,6 +19,7 @@
  */
 
 import { DAY, HOUR, colomboHour, inWorkingHours, isWorkingDay, nextNineAm } from "./calendar";
+import { problemWithLength } from "./teams";
 
 export const MEETING_KINDS = ["intro", "requirement"] as const;
 export type MeetingKind = (typeof MEETING_KINDS)[number];
@@ -54,7 +55,14 @@ export interface Booking {
  * are we - but a client who wants 07:30 gets 07:30, so this only refuses the
  * middle of the night.
  */
-export function problemWithBooking(booking: { at: number; taLeadId: string }, now: number): string | null {
+export function problemWithBooking(
+  booking: { at: number; taLeadId: string; lengthMin?: number },
+  now: number,
+): string | null {
+  if (booking.lengthMin !== undefined) {
+    const long = problemWithLength(booking.lengthMin);
+    if (long) return long;
+  }
   if (!Number.isFinite(booking.at) || booking.at === 0) return "Say when the meeting is.";
   if (booking.at < now) return "That time has already passed.";
   if (booking.at > now + 365 * DAY) return "That is more than a year away. Check the date.";

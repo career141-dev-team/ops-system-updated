@@ -25,9 +25,14 @@ export const STAGES: Stage[] = [
   { key: "intro", what: "Intro call", about: "The call that turns an enquiry into a client" },
   { key: "agreement", what: "Agreement", about: "Sent, chased by its own clock, signed and countersigned" },
   { key: "requirement", what: "Requirement", about: "The meeting, and the six fields TA needs" },
-  { key: "with_ta", what: "With the TA System", about: "Theirs to search. Nothing of ours runs until a set is ready" },
-  { key: "with_client", what: "With the client", about: "CVs are with them. The clocks are ours again" },
-  { key: "interviews", what: "Interviews", about: "Times, the invite, who turned up, and what they decided" },
+  // One stage, not three (supervisor review, 17 Nov): searching, sets with the
+  // client and interviews repeat in a loop until the position is filled, and
+  // can run at the same time, so they are one stage with a summary of the loop.
+  {
+    key: "in_search",
+    what: "Search & interviews",
+    about: "Searching, CV sets with the client and interviews - they repeat until the role is filled",
+  },
   { key: "joining", what: "Offer and joining", about: "Placed, not started. The joining day is the one that matters" },
   { key: "money", what: "The money", about: "Invoiced, and chased until it is paid" },
   { key: "guarantee", what: "Guarantee", about: "Ninety days from joining, on a fee that is fully paid" },
@@ -86,9 +91,54 @@ export function stageOfPosition(
   if (parts.invoiceOwing) return "money";
   if (parts.placement && !parts.placement.joinedAt) return "joining";
   if (parts.placement?.joinedAt) return "money";
-  if (parts.liveInterview) return "interviews";
-  if (parts.setWithClient) return "with_client";
-  return "with_ta";
+  return "in_search";
+}
+
+/* ── The loop on one opening: search, sets, interviews ──────────── */
+
+export interface LoopSummary {
+  /** What is holding the loop right now: TA's search, the client's answer, or an interview. */
+  waitingOn: "ta" | "client" | "interview";
+  setsSent: number;
+  shortlisted: number;
+  interviewed: number;
+  toInterview: number;
+  /** One line for a card: "Search active · 2 sets · 5 shortlisted · 2 interviewed · 1 to interview". */
+  line: string;
+}
+
+const LIVE_INTERVIEW = ["slots", "agreed", "booked", "reconfirmed"];
+
+/**
+ * Where an opening's loop stands, in numbers a card can show.
+ *
+ * Search, sets and interviews do not happen in order - a second set can go
+ * while an interview is booked - so this counts each rather than naming one
+ * stage, and says which of the three is holding things up.
+ */
+export function loopSummary(input: {
+  taStatus: "active" | "on_hold" | "closed";
+  sets: { state: string; candidates: { decision?: string | null }[] }[];
+  interviews: { state: string }[];
+}): LoopSummary {
+  const sent = input.sets.filter((set) => set.state === "sent");
+  const setsSent = sent.length;
+  const shortlisted = sent.reduce((n, set) => n + set.candidates.filter((c) => c.decision === "shortlisted").length, 0);
+  const interviewed = input.interviews.filter((iv) => iv.state === "attended").length;
+  const toInterview = input.interviews.filter((iv) => LIVE_INTERVIEW.includes(iv.state)).length;
+
+  const clientOwes =
+    sent.some((set) => set.candidates.some((c) => !c.decision)) ||
+    input.sets.some((set) => set.state === "ready" || set.state === "reviewing");
+  const waitingOn = toInterview > 0 ? "interview" : clientOwes ? "client" : "ta";
+
+  const search = input.taStatus === "on_hold" ? "On hold" : input.taStatus === "closed" ? "Closed" : "Search active";
+  const parts = [search];
+  if (setsSent) parts.push(setsSent + (setsSent === 1 ? " set" : " sets"));
+  if (shortlisted) parts.push(shortlisted + " shortlisted");
+  if (interviewed) parts.push(interviewed + " interviewed");
+  if (toInterview) parts.push(toInterview + " to interview");
+  return { waitingOn, setsSent, shortlisted, interviewed, toInterview, line: parts.join(" · ") };
 }
 
 /* ── A row on the board ─────────────────────────────────────────── */

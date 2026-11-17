@@ -38,7 +38,9 @@ import {
   member as memberIn,
   positionIn,
   referenceForApplication,
+  switchedOn,
 } from "@/data/desk";
+import { teamsFake } from "@/lib/graphCalendar";
 import {
   FORMAT_MEANINGS,
   MAX_SLOT_LOOPS,
@@ -109,6 +111,7 @@ export default async function InterviewPage({
 
   const now = Date.now();
   const db = await desk();
+  const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   const interview = interviewIn(db, id);
   if (!interview) notFound();
   const position = interview.positionId ? positionIn(db, interview.positionId) : null;
@@ -404,6 +407,20 @@ export default async function InterviewPage({
                     The date they booked
                     <input name="at" type="datetime-local" className={figmaField} />
                   </label>
+                  <label className={`min-w-[180px] ${figmaLabel}`}>
+                    What kind of interview
+                    <select name="format" className={figmaField} defaultValue={interview.format}>
+                      {Object.entries(FORMAT_MEANINGS).map(([key, what]) => (
+                        <option key={key} value={key}>
+                          {what}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={`min-w-[260px] ${figmaLabel}`}>
+                    Their link, or the address
+                    <input name="whereOrLink" placeholder="the link they sent, or their office" className={figmaField} />
+                  </label>
                   <button className={pillPrimary}>Record the client&apos;s date</button>
                 </form>
               )}
@@ -502,10 +519,32 @@ export default async function InterviewPage({
                     className={figmaField}
                   />
                 </label>
-                <p className="text-[12px] text-ink-faint">
-                  The link is pasted in by a person for now. Making the Teams meeting from the Ops mailbox needs a
-                  calendar permission the owner has yet to grant, and a made-up link is worse than an asked-for one.
-                </p>
+                {teamsOn ? (
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-[13px] text-ink">
+                      <input type="checkbox" name="makeTeams" defaultChecked />
+                      <span>
+                        Put it in my calendar. Online: make the Teams meeting for me. At their office: a calendar
+                        event with the address. A link pasted above is used instead of making one.
+                      </span>
+                    </label>
+                    <label className={figmaLabel}>
+                      How long
+                      <select name="lengthMin" defaultValue={60} className={figmaField}>
+                        {[30, 45, 60, 90].map((m) => (
+                          <option key={m} value={m}>
+                            {m} minutes
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-ink-faint">
+                    Teams is switched off in Settings, so paste the meeting link. The candidate&rsquo;s own invite
+                    comes from the TA System.
+                  </p>
+                )}
                 <button className={`${pillPrimary} self-start`}>
                   Book it, and draft the invite
                 </button>

@@ -16,7 +16,7 @@ import {
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
-import { recordInternalInterview } from "@/app/actions";
+import { recordCandidateFeedbackByHand, recordInternalInterview } from "@/app/actions";
 import {
   clientIn,
   desk,
@@ -321,22 +321,47 @@ export default async function PositionCandidatePage({
             </div>
           ) : (
             candInterviews.map((iv) => (
-              <Link
-                key={iv.id}
-                href={`/interviews/${iv.id}`}
-                className="flex items-center justify-between rounded-[20px] bg-sunk px-5 py-4 hover:bg-shell"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[16px] font-medium text-ink">
-                    Round {iv.round} · {iv.state}
-                  </span>
-                  <span className="text-[14px] text-ink-soft">
-                    {iv.decision ? `Decision: ${iv.decision}` : "Waiting for round outcome"}
-                    {iv.decisionReason ? ` · “${iv.decisionReason}”` : ""}
-                  </span>
+              <div key={iv.id} className="flex flex-col gap-3 rounded-[20px] bg-sunk px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <Link href={`/interviews/${iv.id}`} className="text-[16px] font-medium text-ink hover:text-brand">
+                    Round {iv.round} · open the interview
+                  </Link>
+                  <StatusChip label={iv.state} tone="info" />
                 </div>
-                <StatusChip label={iv.state} tone="info" />
-              </Link>
+                {/* Both sides, side by side (17 Nov): what the candidate said, and what the client decided */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1 rounded-[16px] bg-surface px-4 py-3">
+                    <span className={figmaLabel}>WHAT {firstName.toUpperCase()} TOLD US</span>
+                    {iv.candidateFeedback ? (
+                      <p className="text-[14px] text-ink">{iv.candidateFeedback}</p>
+                    ) : mayManage ? (
+                      <form action={recordCandidateFeedbackByHand} className="flex flex-col gap-2">
+                        <input type="hidden" name="interviewId" value={iv.id} />
+                        <input type="hidden" name="back" value={`${baseHref}?tab=interviews`} />
+                        <p className="text-[13px] text-ink-soft">
+                          Not in from the TA System. Type it here if you have it: the client&rsquo;s copy is drafted for
+                          you to approve.
+                        </p>
+                        <textarea name="feedback" rows={3} required className={figmaField} />
+                        <button type="submit" className={pillSecondary + " self-start"}>
+                          Save, and draft it for the client
+                        </button>
+                      </form>
+                    ) : (
+                      <p className="text-[14px] text-ink-soft">Not in yet.</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 rounded-[16px] bg-surface px-4 py-3">
+                    <span className={figmaLabel}>WHAT THE CLIENT DECIDED</span>
+                    <p className="text-[14px] text-ink">
+                      {iv.decision
+                        ? (iv.decision === "selected" ? "Selected" : iv.decision === "next" ? "Through to the next round" : "Not shortlisted") +
+                          (iv.decisionReason ? " · “" + iv.decisionReason + "”" : "")
+                        : "Not decided yet."}
+                    </p>
+                  </div>
+                </div>
+              </div>
             ))
           )}
         </div>

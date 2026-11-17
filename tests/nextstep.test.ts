@@ -105,7 +105,11 @@ test("the agreement's own steps, each with whose move it is", () => {
     ...over,
   });
 
-  assert.match(leadNextStep(lead({ clientTaId: "ta_c1" }), held, NOW).waiting, /Start the agreement/);
+  assert.match(leadNextStep(lead({ clientTaId: "ta_c1" }), held, NOW).waiting, /Open the opening.*start the agreement/);
+  assert.match(
+    leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, position: { openingTaId: null, title: "Driver" } }, NOW).waiting,
+    /^Start the agreement/,
+  );
   assert.match(
     leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, esa: esa() }, NOW).waiting,
     /Fill in the agreement/,

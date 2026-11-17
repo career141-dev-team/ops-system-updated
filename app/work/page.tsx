@@ -16,7 +16,7 @@ import {
   runClocks,
 } from "@/data/desk";
 import { REQUIREMENT_FIELDS } from "@/lib/requirements";
-import { STAGES, rowsInStage, sittingFor, stageOfLead, stageOfPosition, type JourneyRow } from "@/lib/journey";
+import { STAGES, loopSummary, rowsInStage, sittingFor, stageOfLead, stageOfPosition, type JourneyRow } from "@/lib/journey";
 import { leadNextStep, positionNextStep, setNextStep } from "@/lib/nextStep";
 import { MIN_CVS } from "@/lib/clientSets";
 import { depthInWords } from "@/lib/depth";
@@ -109,10 +109,20 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       closed: Boolean(closed),
     });
 
+    // The search loop is one stage with a count of what is in it (17 Nov).
+    const loop =
+      stage === "in_search"
+        ? loopSummary({
+            taStatus: closed ? "closed" : hold || position.stage === "on_hold" ? "on_hold" : "active",
+            sets,
+            interviews: db.interviews.filter((row) => row.openingTaId === position.openingTaId),
+          })
+        : null;
+
     // The sentence is the one that thing's own page shows: the set's card
     // while a set is with the client, the position's otherwise.
     const waiting =
-      stage === "with_client" && waitingSet
+      stage === "in_search" && waitingSet
         ? setNextStep(
             waitingSet,
             { minCvs: MIN_CVS, ownershipClosesAt: null, feedback: null, holdState: hold ? hold.state : null },
@@ -133,7 +143,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       id: position.id,
       href: "/positions/" + position.id,
       title: (client?.name ?? position.clientTaId) + " · " + position.title,
-      under: memberIn(db, position.ownerId)?.name ?? "nobody",
+      under: (memberIn(db, position.ownerId)?.name ?? "nobody") + (loop ? " · " + loop.line : ""),
       stage,
       waiting,
       since: position.updatedAt ?? position.createdAt,
@@ -163,7 +173,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       href: "/sets/" + set.id,
       title: set.name,
       under: memberIn(db, set.ownerId)?.name ?? "nobody",
-      stage: set.state === "sent" ? "with_client" : "with_ta",
+      stage: "in_search",
       waiting: step.waiting + " (no position of ours - TA opened this one)",
       since: set.updatedAt ?? set.createdAt,
       ownerId: set.ownerId,
