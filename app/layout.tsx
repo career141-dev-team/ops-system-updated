@@ -20,6 +20,8 @@ import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import WorkspaceNotch from "@/app/WorkspaceNotch";
 import Welcome from "@/app/Welcome";
+import { ChatClose, ChatResize } from "@/app/ChatFrame";
+import { CHAT_WIDTH, chatWidthFrom } from "@/lib/chatWidth";
 import "./globals.css";
 
 // The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
@@ -81,6 +83,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // the page is rendered with it already there rather than appearing after.
   const jar = await cookies();
   const chatOpen = jar.get("ops_chat_open")?.value === "1";
+  // How wide the AURA column is (17 Nov, the owner drags it). One number, kept in a cookie so every page draws the same.
+  const chatWidth = chatWidthFrom(jar.get(CHAT_WIDTH.cookie)?.value);
   // Light unless they chose dark: a cookie, so the page is drawn in it from the first byte (16 Nov).
   const dark = jar.get("ops_theme")?.value === "dark";
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
@@ -105,7 +109,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         is still reported. Our own code sets exactly one thing here, the class
         name, and that cannot drift between the server and the browser.
       */}
-      <body className="min-h-screen" suppressHydrationWarning>
+      <body className="min-h-screen" style={{ "--chat-w": chatWidth + "px" } as React.CSSProperties} suppressHydrationWarning>
         {/* The three-second confirmation. Suspense because it reads the
             address bar, which is not known until the browser has it. */}
         <Suspense fallback={null}>
@@ -132,9 +136,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {/* No min-h-screen here (14 Nov): under the top bar and its tab (--page-top) it made every page
               that much taller than the window, so even an empty page scrolled. */}
           {/* The tab that names the workspace, on top of the page card (16 Nov, the Figma "Notch tab"). */}
-          <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
-            <WorkspaceNotch />
-          </Suspense>
+          {/* With AURA open the tab is centred over the page, not over the page and AURA together: it leaves the
+              column's width free on its right. The column only shows from lg up, so the room is only kept there. */}
+          <div className={chatOpen ? "lg:mr-[var(--chat-w)]" : undefined}>
+            <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
+              <WorkspaceNotch />
+            </Suspense>
+          </div>
           <div className="flex flex-col md:flex-row md:items-stretch">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             {/* On a desktop the page is one fixed box under the top bar (14 Nov, the owner):
@@ -147,10 +155,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh/0.9-var(--page-top))] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
-                <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
+              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh/0.9-var(--page-top))] w-[var(--chat-w)] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
+                <ChatResize />
+                <div className="flex items-center justify-between gap-3 border-b border-shell-rule px-4 py-3">
                   <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
-                  <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
+                    <ChatClose />
+                  </div>
                 </div>
                 <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
               </aside>
