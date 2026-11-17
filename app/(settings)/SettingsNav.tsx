@@ -8,9 +8,8 @@ const LINKS = [
   { label: "Templates and the ESA", href: "/templates" },
   { label: "What needs approval", href: "/ai" },
   { label: "Timers and working days", href: "/settings" },
-  { label: "Channels & files", href: "/files" },
+  { label: "Channels", href: "/files" },
   { label: "Automation health", href: "/health" },
-  { label: "Holidays", href: "/holidays" },
   { label: "Import", href: "/import" },
 ];
 
@@ -18,7 +17,7 @@ export default function SettingsNav() {
   const path = usePathname() ?? "/settings";
 
   return (
-    <aside className="w-full shrink-0 border-b border-rule pb-4 md:w-[250px] md:border-b-0 md:border-r md:pb-0 md:pr-6">
+    <aside className="w-full shrink-0 border-b border-rule pb-4 md:w-[284px] md:border-b-0 md:border-r md:pb-0 md:pr-5">
       <h1 className="mb-4 text-[26px] leading-[34px] text-ink">
         Settings
       </h1>

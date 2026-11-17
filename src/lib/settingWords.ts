@@ -56,8 +56,23 @@ export function settingWords(key: string, value: unknown): Words & { shown: stri
   return { ...w, shown: w.value(value) };
 }
 
-/** The listed settings first, in the order above (the frame's order); the rest after, by key. */
+/** The seven rules the Figma frame shows (249:14114), in its order. The others follow under their own heading. */
+export const FRAME_RULES = [
+  "esa.declineDays",
+  "set.ownershipWorkingDays",
+  "feedback.chaseDays",
+  "invoice.dueDays",
+  "invoice.latePctPerMonth",
+  "guarantee.days",
+  "replacement.workingDays",
+];
+
+export const isFrameRule = (key: string): boolean => FRAME_RULES.includes(key);
+
+/** The frame's rules first, in its order; the rest after, worded ones before unworded, then by key. */
 export const settingRank = (key: string): number => {
+  const frame = FRAME_RULES.indexOf(key);
+  if (frame !== -1) return frame;
   const at = Object.keys(WORDS).indexOf(key);
-  return at === -1 ? 1000 : at;
+  return at === -1 ? 2000 : 100 + at;
 };
