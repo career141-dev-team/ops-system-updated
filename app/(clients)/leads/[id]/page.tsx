@@ -196,13 +196,13 @@ export default async function LeadPage({
       href: `/leads/${lead.id}?view=requirement`,
     },
     {
-      label: "Opening",
+      label: "Search",
       state: position ? "done" : "upcoming",
       href: position ? `/positions/${position.id}` : undefined,
     },
-    { label: "CVs", state: "upcoming" },
+    { label: "With client", state: "upcoming" },
     { label: "Interviews", state: "upcoming" },
-    { label: "Placement", state: "upcoming" },
+    { label: "Joining", state: "upcoming" },
     { label: "Guarantee", state: "upcoming" },
   ];
 
@@ -284,6 +284,13 @@ export default async function LeadPage({
                   className="rounded-lg px-3 py-1.5 text-[13px] text-danger hover:bg-danger-soft"
                 >
                   Industry decline check
+                </Link>
+                {/* The list had a "Who owns what" button; the Figma frame has none (16 Nov), so it lives here and on a client's menu. */}
+                <Link
+                  href="/clients/owners"
+                  className="rounded-lg px-3 py-1.5 text-[13px] text-brand hover:bg-sunk"
+                >
+                  Who owns what
                 </Link>
               </div>
             </details>
