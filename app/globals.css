@@ -74,6 +74,7 @@
   --color-violet-soft: #f0ecfe; /* color/violet-soft */
   --color-info: #167ca9; /* color/info */
   --color-info-soft: #eaf7fe; /* color/info-soft */
+  --color-ok: var(--color-success);
   --color-success: #1e8a4c; /* color/success: "is free", a held interview */
 
   /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).

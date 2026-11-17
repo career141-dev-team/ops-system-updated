@@ -6,7 +6,7 @@ import { useState } from "react";
 import { createLead } from "@/app/actions";
 import Dictate from "@/app/Dictate";
 import Icon from "@/app/Icon";
-import { figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { figmaField, figmaLabel, pillPrimary } from "@/app/ui/figma";
 
 type ExistingCompany = {
   id: string;
@@ -20,22 +20,19 @@ const PATHS = [
   {
     key: "enquiry",
     title: "Enquiry",
-    sub: "They contacted us",
-    flow: "Intro call → agreement → requirement meeting",
+    sub: "A company asked us",
     defaultSource: "website_form",
   },
   {
     key: "direct",
     title: "Direct client",
-    sub: "Director brought them in",
-    flow: "Skip intro call · agreement straight out",
+    sub: "We already work with them",
     defaultSource: "director",
   },
   {
     key: "discovery",
     title: "Client discovery",
-    sub: "We reached out",
-    flow: "Needs intro call before agreement",
+    sub: "A first meeting to explore",
     defaultSource: "linkedin",
   },
 ] as const;
@@ -103,9 +100,6 @@ export default function LeadCaptureForm({
               <span className="text-[16px] font-medium leading-[26px] text-ink">{p.title}</span>
               <span className="text-[14px] font-normal leading-[21px] text-ink-soft">
                 {p.sub}
-              </span>
-              <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                {p.flow}
               </span>
             </button>
           );
@@ -224,8 +218,8 @@ export default function LeadCaptureForm({
                 className={
                   "rounded-full px-3.5 py-2 text-[14px] leading-[21px] transition-colors " +
                   (active
-                    ? "bg-ink font-medium text-ink-inverse"
-                    : "bg-sunk font-normal text-ink-soft hover:text-ink")
+                    ? "bg-sunk font-medium text-ink"
+                    : "font-normal text-ink-soft hover:text-ink")
                 }
               >
                 {s.label}
@@ -240,9 +234,10 @@ export default function LeadCaptureForm({
         <button type="submit" className={pillPrimary}>
           Save lead
         </button>
-        <Link href="/clients" className={pillSecondary}>
+        <Link href="/clients" className="px-4 py-2 text-[16px] font-medium leading-[26px] text-ink-soft hover:text-ink">
           Cancel
         </Link>
+        <span className="text-[14px] leading-[21px] text-ink-soft sm:ml-auto">The ops lead assigns the owner. Banking and finance are flagged when you save.</span>
       </div>
     </form>
   );

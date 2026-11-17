@@ -5,6 +5,8 @@ import { figmaField, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
+import { isInternal, settingRank, settingWords } from "@/lib/settingWords";
+import Icon from "@/app/Icon";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function SettingsPage({
   const mayChange = can(member, "settings.manage");
 
   const db = await desk();
-  const settings = [...db.settings].sort((a, b) => a.key.localeCompare(b.key));
+  const settings = db.settings.filter((s) => !isInternal(s.key)).sort((a, b) => settingRank(a.key) - settingRank(b.key) || a.key.localeCompare(b.key));
   const switches = settings.filter(
     (s) => s.key.startsWith("switch.") || typeof s.value === "boolean",
   );
@@ -28,10 +30,10 @@ export default async function SettingsPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-serif text-[26px] font-medium leading-[1.2] text-ink">
+        <h2 className="text-[26px] leading-[34px] text-ink">
           Timers and working days
         </h2>
-        <p className="mt-1 text-[13.5px] text-ink-soft">
+        <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
           {mayChange
             ? "Every clock in the system runs from these. Only the ops lead can change them, and every change asks why."
             : "Every clock in the system runs from these. Only the ops lead can change them."}
@@ -39,51 +41,51 @@ export default async function SettingsPage({
       </div>
 
       {msg && (
-        <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+        <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
           {msg}
         </div>
       )}
 
-      <section className="divide-y divide-edge">
-        {numbers.map((setting) => (
-          <div
-            key={setting.key}
-            className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0"
-          >
-            <div className="min-w-[200px] flex-1">
-              <div className="text-[15px] font-medium text-ink">{setting.key}</div>
+      <section className="flex flex-col">
+        {numbers.map((setting) => {
+          const words = settingWords(setting.key, setting.value);
+          return (
+            <div key={setting.key} className="border-b border-rule py-4 first:pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-[200px] flex-1">
+                  <div className="text-[16px] leading-[26px] text-ink">{words.label}</div>
+                  {words.about && <div className="text-[14px] leading-[21px] text-ink-faint">{words.about}</div>}
+                </div>
+                {mayChange ? (
+                  // Edit in place (no overlays): the value is the summary, the form opens under it.
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full bg-sunk px-4 py-2 text-[14px] font-medium leading-[21px] text-ink [&::-webkit-details-marker]:hidden">
+                      {words.shown}
+                      <Icon name="pen" size={14} className="text-ink-faint" />
+                    </summary>
+                    <form action={changeSetting} className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                      <input type="hidden" name="key" value={setting.key} />
+                      <input name="value" defaultValue={String(setting.value)} aria-label={words.label} className={figmaField + " w-[120px] bg-sunk"} />
+                      <input name="reason" placeholder="Why?" aria-label="Why change it" className={figmaField + " w-[180px]"} />
+                      <button type="submit" className={pillSecondary}>
+                        Save
+                      </button>
+                    </form>
+                  </details>
+                ) : (
+                  <span className="rounded-full bg-sunk px-4 py-2 text-[14px] font-medium leading-[21px] text-ink">{words.shown}</span>
+                )}
+              </div>
             </div>
-            {mayChange ? (
-              <form action={changeSetting} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="key" value={setting.key} />
-                <input
-                  name="value"
-                  defaultValue={String(setting.value)}
-                  className={figmaField + " w-[120px] bg-sunk"}
-                />
-                <input
-                  name="reason"
-                  placeholder="Why?"
-                  className={figmaField + " w-[180px]"}
-                />
-                <button type="submit" className={pillSecondary}>
-                  Save
-                </button>
-              </form>
-            ) : (
-              <span className="rounded-[10px] bg-sunk px-3.5 py-2 text-[13.5px] font-medium text-ink">
-                {String(setting.value)}
-              </span>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       <div className="pt-2">
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+        <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
           SYSTEM SWITCHES
         </div>
-        <section className="divide-y divide-edge">
+        <section className="divide-y divide-rule">
           {switches.map((setting) => (
             <div
               key={setting.key}

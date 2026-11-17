@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { signOutAction } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { activeMembers, desk } from "@/data/desk";
-import { Avatar, PageBox, pillSecondary } from "@/app/ui/figma";
+import { PageBox, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -18,18 +18,20 @@ export default async function AccountPage() {
   const members = activeMembers(db).filter((m) => m.id !== me.id);
   const coverMember = members[0] ?? null;
 
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-5";
+  const cardShell = "rounded-[24px] bg-sunk p-5";
+  const helpRow = "flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk";
+  const caption = "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
 
   return (
     <PageBox width="880">
       <div className="flex flex-col gap-7">
         <div className="flex items-center gap-5">
-          <Avatar name={me.name} size="48" />
+          <span className="flex size-[70px] shrink-0 items-center justify-center rounded-full bg-brand-tint text-[26px] text-brand">{me.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}</span>
           <div>
-            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
               {me.name}
             </h1>
-            <p className="mt-1 text-[14px] text-ink-soft">
+            <p className="text-[16px] leading-[26px] text-ink-soft">
               {me.role} · {myClients.length} client{myClients.length === 1 ? "" : "s"}
             </p>
           </div>
@@ -37,7 +39,7 @@ export default async function AccountPage() {
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className={cardShell}>
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            <div className={caption}>
               WHILE I&rsquo;M AWAY
             </div>
             <div className="mt-3 flex flex-col gap-2.5 text-[14px]">
@@ -55,7 +57,7 @@ export default async function AccountPage() {
           </div>
 
           <div className={cardShell}>
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            <div className={caption}>
               TELL ME ABOUT
             </div>
             <div className="mt-3 flex flex-col gap-2.5 text-[14px]">
@@ -80,46 +82,46 @@ export default async function AccountPage() {
         </div>
 
         <div>
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          <div className={caption + " mb-2"}>
             HELP
           </div>
-          <div className="rounded-[24px] border border-edge bg-surface p-2">
-            <div className="divide-y divide-edge/60">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <Link
                 href="/reports"
-                className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                className={helpRow}
               >
                 <div className="flex items-center gap-3.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-sunk text-ink-soft">
                     <Icon name="file" size={16} />
                   </span>
-                  <span className="text-[14.5px] text-ink">How the Ops flow works</span>
+                  <span className="text-[16px] leading-[26px] text-ink">How the Ops flow works</span>
                 </div>
                 <Icon name="chevron-right" size={16} className="text-ink-faint" />
               </Link>
 
               <Link
                 href="/ai"
-                className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                className={helpRow}
               >
                 <div className="flex items-center gap-3.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-sunk text-ink-soft">
                     <Icon name="sparkle" size={16} />
                   </span>
-                  <span className="text-[14.5px] text-ink">What AURA can and can&rsquo;t do</span>
+                  <span className="text-[16px] leading-[26px] text-ink">What AURA can and can&rsquo;t do</span>
                 </div>
                 <Icon name="chevron-right" size={16} className="text-ink-faint" />
               </Link>
 
               <Link
                 href="/health"
-                className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                className={helpRow}
               >
                 <div className="flex items-center gap-3.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-sunk text-ink-soft">
                     <Icon name="flag" size={16} />
                   </span>
-                  <span className="text-[14.5px] text-ink">Report a problem</span>
+                  <span className="text-[16px] leading-[26px] text-ink">Report a problem</span>
                 </div>
                 <Icon name="chevron-right" size={16} className="text-ink-faint" />
               </Link>
@@ -127,19 +129,19 @@ export default async function AccountPage() {
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-edge bg-surface p-2">
+        <div>
           <Link
             href="/settings"
-            className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+            className={helpRow}
           >
             <div className="flex items-center gap-3.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sunk text-ink-soft">
+              <span className="flex size-10 items-center justify-center rounded-full bg-sunk text-ink-soft">
                 <Icon name="lock" size={16} />
               </span>
-              <span className="text-[14.5px] text-ink">Settings</span>
+              <span className="text-[16px] leading-[26px] text-ink">Settings</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[12.5px] text-ink-faint">
+              <span className="text-[14px] text-ink-faint">
                 {can(me, "settings.manage") ? "Ops lead access" : "Ops lead only"}
               </span>
               <Icon name="chevron-right" size={16} className="text-ink-faint" />

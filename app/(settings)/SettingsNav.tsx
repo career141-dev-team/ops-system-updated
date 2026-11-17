@@ -18,8 +18,8 @@ export default function SettingsNav() {
   const path = usePathname() ?? "/settings";
 
   return (
-    <aside className="w-full shrink-0 border-b border-edge pb-4 md:w-[250px] md:border-b-0 md:border-r md:pb-0 md:pr-6">
-      <h1 className="mb-4 font-serif text-[26px] font-medium leading-[1.2] text-ink">
+    <aside className="w-full shrink-0 border-b border-rule pb-4 md:w-[250px] md:border-b-0 md:border-r md:pb-0 md:pr-6">
+      <h1 className="mb-4 text-[26px] leading-[34px] text-ink">
         Settings
       </h1>
       <nav className="flex flex-row flex-wrap gap-1 md:flex-col">
@@ -32,7 +32,7 @@ export default function SettingsNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`rounded-[14px] px-3.5 py-2.5 text-[14.5px] transition ${
+              className={`rounded-[14px] px-3.5 py-2.5 text-[16px] transition ${
                 active
                   ? "bg-sunk font-medium text-ink"
                   : "text-ink-soft hover:bg-sunk/60 hover:text-ink"

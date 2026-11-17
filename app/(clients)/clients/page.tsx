@@ -22,6 +22,7 @@ import {
   member as memberIn,
   requirementForLead,
 } from "@/data/desk";
+import { agoShort, agreementEyebrow, dotTone, sourceShort } from "@/lib/clientCards";
 import { whereItStands } from "@/lib/esa";
 import { day } from "@/lib/listing";
 import { KIND_MEANINGS, type MeetingKind, meetingsAhead, whenInWords } from "@/lib/meetings";
@@ -171,47 +172,19 @@ export default async function ClientsPage({
     const meetings = meetingsForLead(db, lead.id);
     const intro = meetings.find((m) => m.kind === "intro");
 
-    let chipLabel = "Enquiry";
-    let chipTone: Tone = "brand";
-    if (lead.industryFlagged && !lead.industryConfirmedBy) {
-      chipLabel = "Decline?";
-      chipTone = "warn";
-    } else if (lead.state === "declined_industry" || lead.state.startsWith("closed")) {
-      chipLabel = "Declined";
-      chipTone = "danger";
-    } else if (esa) {
-      if (esa.state === "signed") {
-        chipLabel = "Countersign";
-        chipTone = "ok";
-      } else if (esa.state === "negotiating") {
-        chipLabel = "Revisions";
-        chipTone = "warn";
-      } else {
-        chipLabel = "Agreement";
-        chipTone = "brand";
-      }
-    } else if (intro) {
-      chipLabel = "Intro call";
-      chipTone = "neutral";
-    }
-
-    const sourceLabel =
-      SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source;
-    const sub = esa
-      ? `ESA v${esa.version} · ${whereItStands({ ...esa, state: esa.state as Parameters<typeof whereItStands>[0]["state"] }, now)}`
-      : `${sourceLabel}${lead.industry ? " · " + lead.industry : ""}${lead.notes ? " · " + lead.notes : ""}`;
-
-    const rightText =
-      lead.industryFlagged && !lead.industryConfirmedBy
-        ? "Today"
-        : esa?.sentAt
-          ? `Day ${Math.max(1, Math.round((now - esa.sentAt) / 86_400_000))} of 14`
-          : day(lead.createdAt);
-
-    const rightLate = Boolean(
-      (lead.industryFlagged && !lead.industryConfirmedBy) ||
-        (esa?.expiresAt && esa.expiresAt < now),
-    );
+    const declined = lead.state === "declined_industry" || lead.state.startsWith("closed");
+    const flagged = Boolean(lead.industryFlagged && !lead.industryConfirmedBy);
+    const late = flagged || Boolean(esa?.expiresAt && esa.expiresAt < now);
+    const booked = Boolean(intro) || lead.state === "requirement" || esa?.state === "negotiating";
+    const tone: Tone = declined ? "danger" : esa?.state === "signed" ? "violet" : dotTone({ late, booked, ours: !booked });
+    const eyebrow = esa ? agreementEyebrow(esa.state) : sourceShort(lead.source);
+    const when = flagged
+      ? "Today"
+      : esa?.sentAt
+        ? `Day ${Math.max(1, Math.round((now - esa.sentAt) / 86_400_000))} of 14`
+        : intro && intro.at > now
+          ? whenInWords(intro.at, now)
+          : agoShort(lead.createdAt, now);
 
     const cardHref =
       esa?.state === "signed"
@@ -224,12 +197,11 @@ export default async function ClientsPage({
       <RecordCard
         key={lead.id}
         href={cardHref}
-        chip={{ label: chipLabel, tone: chipTone }}
-        rightText={rightText}
-        rightTone={rightLate ? "danger" : "faint"}
+        eyebrow={eyebrow}
         title={lead.company}
-        subtitle={sub}
-        footerLeft={step.waiting}
+        statusText={step.where}
+        statusTone={tone}
+        rightMeta={when}
         ownerName={owner}
       />
     );
@@ -248,23 +220,6 @@ export default async function ClientsPage({
       return pos?.clientId === client.id && g.state === "running";
     }).length;
 
-    const chipLabel = activeHold
-      ? `Hold · ${Math.max(1, Math.round((now - (activeHold.heldAt ?? activeHold.proposedAt)) / 86_400_000))}d`
-      : openPositions.length > 0
-        ? `${openPositions.length} ${openPositions.length === 1 ? "opening" : "openings"}`
-        : client.stage.replace(/_/g, " ");
-    const chipTone: Tone = activeHold
-      ? "warn"
-      : openPositions.length > 0
-        ? "ok"
-        : "neutral";
-
-    const rightText = activeHold
-      ? "Review due"
-      : inGuarantee > 0
-        ? `${inGuarantee} in guarantee`
-        : day(client.updatedAt ?? client.createdAt);
-
     const sinceYear = new Date(client.createdAt).getFullYear();
     const lead = client.leadId ? leadIn(db, client.leadId) : null;
     const industry = lead?.industry || client.billingName || "Client";
@@ -273,12 +228,11 @@ export default async function ClientsPage({
       <RecordCard
         key={client.id}
         href={`/clients/${client.id}`}
-        chip={{ label: chipLabel, tone: chipTone }}
-        rightText={rightText}
-        rightTone={activeHold ? "danger" : "faint"}
+        eyebrow={openPositions.length > 0 ? `${openPositions.length} ${openPositions.length === 1 ? "opening" : "openings"}` : inGuarantee > 0 ? `${inGuarantee} in guarantee` : "No openings"}
         title={client.name}
-        subtitle={`${industry} · Client since ${sinceYear}`}
-        footerLeft={step.waiting}
+        statusText={activeHold ? `On hold · ${Math.max(1, Math.round((now - (activeHold.heldAt ?? activeHold.proposedAt)) / 86_400_000))}d` : step.where}
+        statusTone={activeHold ? "warn" : openPositions.length > 0 ? "ok" : "neutral"}
+        rightMeta={`Since ${sinceYear}`}
         ownerName={owner}
       />
     );
@@ -292,10 +246,11 @@ export default async function ClientsPage({
         <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
       )}
 
-      {/* Top filter & action bar (Figma 1:425) */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <ViewPills items={pills} active={filter} />
-
+      {/* Top filter & action bar (Figma 249:11696): the pills, then the find box and Capture lead on the same row */}
+      <ViewPills
+        items={pills}
+        active={filter}
+        rightSlot={
         <div className="flex flex-wrap items-center gap-2.5">
           <form
             action="/clients"
@@ -315,19 +270,13 @@ export default async function ClientsPage({
             </kbd>
           </form>
 
-          <Link
-            href="/clients/owners"
-            className="px-2.5 py-2 text-[14px] font-medium leading-[21px] text-brand hover:underline"
-          >
-            Who owns what
-          </Link>
-
           <Link href="/leads/new" className={pillPrimary}>
             <Icon name="plus" size={16} />
             Capture lead
           </Link>
         </div>
-      </div>
+        }
+      />
 
       {/* Filtered views */}
       {filter === "leads" && (
