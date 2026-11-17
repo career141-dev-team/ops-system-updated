@@ -115,7 +115,7 @@ export function pageAndSectionFor(path: string): { page: NavPage; section: NavSe
 }
 
 /** The pages that are in no entry but still say where you are (16 Nov, the notch above the page). */
-const OTHER_TITLES: Record<string, string> = { "/account": "Account", "/notifications": "Notifications", "/chat": "AURA" };
+const OTHER_TITLES: Record<string, string> = { "/account": "Profile", "/notifications": "Notifications", "/chat": "AURA" };
 
 /**
  * The name on the tab above the page: the entry the path is under, so it always matches the
@@ -131,10 +131,10 @@ export function workspaceTitle(path: string): string | null {
 
 /**
  * Pages whose frames have no tab above the card (16 Nov, Figma 249:13500-14114): search results,
- * the new-lead form, notifications, the profile and Settings. They still say where you are in the
+ * the new-lead form, notifications and Settings (the profile has one, "Profile": 283:3530). They still say where you are in the
  * bar; the tab is only for the workspaces.
  */
-const NO_TAB = ["/find", "/leads/new", "/notifications", "/account", ...(COVERS["/settings"] ?? [])];
+const NO_TAB = ["/find", "/leads/new", "/notifications", ...(COVERS["/settings"] ?? [])];
 
 /** What the tab above the card says, or null where the frame draws none. */
 export function tabFor(path: string): string | null {
