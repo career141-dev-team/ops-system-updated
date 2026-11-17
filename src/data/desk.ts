@@ -3419,6 +3419,9 @@ export async function clientFromLead(
     billingEmail: "",
     billingAddress: "",
     groupName: "",
+    contacts: lead.contactEmail.trim()
+      ? [{ name: lead.contactName.trim() || lead.company, email: lead.contactEmail.trim(), phone: lead.contactPhone.trim(), role: "hr" }]
+      : [],
     notes: "",
     reason: null,
     ownerId: lead.ownerId,

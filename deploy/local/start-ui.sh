@@ -10,6 +10,7 @@ export OPS_DEV_SIGNIN=on
 # The TA side of the API does not exist yet, so a stand-in answers with
 # recorded sample data. Every screen that uses it says so.
 export OPS_TA_FAKE=on
+export OPS_TEAMS_FAKE=on
 # The clocks, the waiting writes and the events can be asked for by hand.
 export OPS_CLOCK_KEY="${OPS_CLOCK_KEY:-local-ui-only-clock-key}"
 export OPS_WEB_LEAD_KEY="${OPS_WEB_LEAD_KEY:-local-ui-only-lead-key}"

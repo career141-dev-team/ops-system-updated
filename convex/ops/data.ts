@@ -345,6 +345,13 @@ export const addMeeting = internalMutation({
     reason: v.union(v.string(), v.null()),
     bookedBy: v.string(),
     heldAt: v.union(v.number(), v.null()),
+    alsoRequirement: v.optional(v.boolean()),
+    lengthMin: v.optional(v.number()),
+    organiserId: v.optional(v.string()),
+    attendees: v.optional(v.array(v.object({ name: v.string(), email: v.string() }))),
+    joinUrl: v.optional(v.union(v.string(), v.null())),
+    graphEventId: v.optional(v.union(v.string(), v.null())),
+    teamsProblem: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -434,6 +441,9 @@ export const addClient = internalMutation({
     billingEmail: v.string(),
     billingAddress: v.string(),
     groupName: v.string(),
+    contacts: v.optional(
+      v.array(v.object({ name: v.string(), email: v.string(), phone: v.string(), role: v.string() })),
+    ),
     notes: v.string(),
     reason: v.union(v.string(), v.null()),
     ownerId: v.string(),
@@ -1088,6 +1098,7 @@ export const addInterview = internalMutation({
     whereOrLink: v.string(),
     interviewTaId: v.union(v.string(), v.null()),
     inviteMessageId: v.union(v.string(), v.null()),
+    calendarEventId: v.optional(v.union(v.string(), v.null())),
     attendedAt: v.union(v.number(), v.null()),
     decision: v.union(v.string(), v.null()),
     decisionReason: v.union(v.string(), v.null()),

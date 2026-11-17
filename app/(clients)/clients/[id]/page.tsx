@@ -11,6 +11,7 @@ import {
 } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
+import { Contacts } from "@/app/ui/Contacts";
 import {
   Avatar,
   BackBar,
@@ -687,6 +688,17 @@ export default async function ClientPage({
             </FoldRow>
           </div>
         </>
+      )}
+
+      {activeView === "contacts" && (
+        <Contacts
+          scope="client"
+          id={client.id}
+          contacts={client.contacts ?? []}
+          mayManage={mayManage}
+          heading="PEOPLE WE WRITE TO"
+          hint="Their standard contacts get everything: CV sets, interview times, meeting invites. A person marked hr receives the CV sets. A position can name extra people on its own page."
+        />
       )}
 
       {/* =====================================================================

@@ -25,7 +25,9 @@ const types = readFileSync(join(process.cwd(), "src", "data", "types.ts"), "utf8
 // slotAnswers (16 Nov): older interviews have none, and the page reads it as "not told", never as free.
 // direction, to, attachments (16 Nov): mail read before Sent Items and file names were kept has none.
 // reschedules (16 Nov): an interview that never moved has no history, and the page reads that as none.
-const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers", "direction", "to", "attachments", "reschedules"];
+const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers", "direction", "to", "attachments", "reschedules",
+  // Teams (17 Nov): a meeting booked before it has none of these, and the page reads that as "no link".
+  "alsoRequirement", "strategies", "contacts", "manualCandidates", "calendarEventId", "lengthMin", "organiserId", "attendees", "joinUrl", "graphEventId", "teamsProblem"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

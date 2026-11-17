@@ -9,6 +9,7 @@ import {
   decideLeadIndustry,
   declineAgreement,
   dictateRequirement,
+  readRequirementFromCall,
   draftNextChase,
   markMeetingHeld,
   markMeetingNotHeld,
@@ -49,6 +50,7 @@ import {
   member as memberIn,
   numberOf,
   requirementForLead,
+  switchedOn,
 } from "@/data/desk";
 import { currentTemplate } from "@/lib/files";
 import { REFUND_PCT } from "@/lib/guarantee";
@@ -70,6 +72,9 @@ import {
   type MeetingKind,
   type MeetingState,
 } from "@/lib/meetings";
+import { leadJourney } from "@/lib/leadJourney";
+import { teamsFake } from "@/lib/graphCalendar";
+import { MeetingBookingForm } from "./MeetingBookingForm";
 import { leadNextStep } from "@/lib/nextStep";
 import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
@@ -116,6 +121,7 @@ export default async function LeadPage({
   const introMeetings = meetings.filter((m) => m.kind === "intro");
   const requirementMeeting = meetings.find((m) => m.kind === "requirement") ?? null;
 
+  const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   const taSide = await taPeople();
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
 
@@ -161,47 +167,60 @@ export default async function LeadPage({
           ? "decline"
           : "lead";
 
-  // Build 8-step JourneyBar
+  // Progress comes from what has happened (src/lib/leadJourney.ts), never from the
+  // tab being viewed; the tab only marks "you are here".
+  const requirementMeetingHeld = meetings.some(
+    (m) => (m.kind === "requirement" || m.alsoRequirement) && m.state === "held",
+  );
+  const progress = leadJourney({
+    closed,
+    leadState: lead.state,
+    clientTaId: lead.clientTaId,
+    industryFlagged: lead.industryFlagged,
+    industryConfirmedBy: lead.industryConfirmedBy,
+    skipsIntro: lead.source === "director",
+    introBooked: meetings.some((m) => m.kind === "intro" && m.state === "booked"),
+    introHeld: meetings.some((m) => m.kind === "intro" && m.state === "held"),
+    positionExists: !!position,
+    esaState: esa?.state ?? null,
+    requirementStarted:
+      Object.values(requirement?.fields ?? {}).some((v) => (v ?? "").trim()) ||
+      meetings.some((m) => m.kind === "requirement" && m.state === "booked") ||
+      requirementMeetingHeld,
+    requirementDone: !!requirement && requirementBlanks.length === 0,
+  });
   const journeySteps: JourneyStep[] = [
     {
       label: "Enquiry",
-      state:
-        activeView === "decline" || (lead.state === "new" && activeView === "lead")
-          ? "current"
-          : "done",
+      state: progress[0],
+      viewing: activeView === "lead" || activeView === "decline",
       href: `/leads/${lead.id}`,
+    },
+    { label: "Intro call", state: progress[1], href: `/leads/${lead.id}` },
+    {
+      label: "Opening",
+      state: progress[2],
+      href: position ? `/positions/${position.id}` : undefined,
     },
     {
       label: "Agreement",
-      state:
-        activeView === "agreement"
-          ? "current"
-          : agreementDone
-            ? "done"
-            : lead.state === "waiting_agreement" || lead.state === "intro_call"
-              ? "current"
-              : "upcoming",
+      state: progress[3],
+      viewing: activeView === "agreement",
       href: `/leads/${lead.id}?view=agreement`,
     },
     {
       label: "Requirement",
-      state:
-        activeView === "requirement"
-          ? "current"
-          : position
-            ? "done"
-            : lead.state === "requirement"
-              ? "current"
-              : "upcoming",
+      state: progress[4],
+      viewing: activeView === "requirement",
       href: `/leads/${lead.id}?view=requirement`,
     },
+    // The search, the sets and the interviews loop until the position is filled:
+    // one step here, with the loop itself on the opening.
     {
-      label: "Opening",
-      state: position ? "done" : "upcoming",
+      label: "Search & interviews",
+      state: position?.openingTaId ? "current" : "upcoming",
       href: position ? `/positions/${position.id}` : undefined,
     },
-    { label: "CVs", state: "upcoming" },
-    { label: "Interviews", state: "upcoming" },
     { label: "Placement", state: "upcoming" },
     { label: "Guarantee", state: "upcoming" },
   ];
@@ -339,6 +358,12 @@ export default async function LeadPage({
         )}
 
         <JourneyBar steps={journeySteps} />
+        {position && !agreementDone && !closed && (
+          <p className="text-[13px] text-warn">
+            Working without a signed agreement since {whenDate(position.handedOverAt ?? now)}
+            {esa ? ": it is out and being chased." : ": the agreement has not been started yet."}
+          </p>
+        )}
       </div>
 
       {msg && (
@@ -771,6 +796,26 @@ export default async function LeadPage({
                     Edit requirement fields or dictate brief
                   </summary>
 
+                  {aiOn &&
+                    meetings
+                      .filter((m) => m.state === "held" && m.graphEventId)
+                      .map((m) => (
+                        <form
+                          key={m.id}
+                          action={readRequirementFromCall}
+                          className="mt-3 flex flex-wrap items-center gap-2 rounded-[16px] bg-surface p-3"
+                        >
+                          <input type="hidden" name="meetingId" value={m.id} />
+                          <span className="text-[13px] text-ink-soft">
+                            The {KIND_MEANINGS[m.kind as MeetingKind]?.toLowerCase() ?? m.kind} on {whenLocal(m.at)} was on Teams.
+                            If somebody started transcription in it:
+                          </span>
+                          <button type="submit" className={pillSecondary}>
+                            Read the call&rsquo;s transcript into the fields
+                          </button>
+                        </form>
+                      ))}
+
                   {!aiOn && (
                     <div className="mt-2">
                       <AiOffer
@@ -886,55 +931,16 @@ export default async function LeadPage({
                       ? "Rebook requirement meeting"
                       : "Book the requirement meeting"}
                   </summary>
-                  <form
+                  <MeetingBookingForm
                     action={bookRequirementMeeting}
-                    className="mt-3 flex flex-col gap-3"
-                  >
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <label className="flex flex-col gap-1">
-                      <span className={figmaLabel}>Meeting link or address (goes in the drafted invite)</span>
-                      <input
-                        name="link"
-                        placeholder="https://teams.microsoft.com/..."
-                        className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                      />
-                    </label>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="flex flex-col gap-1">
-                        <span className={figmaLabel}>When (Colombo time)</span>
-                        <input
-                          type="datetime-local"
-                          name="at"
-                          required
-                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className={figmaLabel}>Which TA lead is joining</span>
-                        {taPeopleList.length > 0 ? (
-                          <select
-                            name="taLeadId"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          >
-                            {taPeopleList.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.fullName}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            name="taLeadId"
-                            placeholder="TA lead name"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                        )}
-                      </label>
-                    </div>
-                    <button type="submit" className={pillSecondary + " self-start"}>
-                      Book the requirement meeting
-                    </button>
-                  </form>
+                    leadId={lead.id}
+                    contact={{ name: lead.contactName, email: lead.contactEmail }}
+                    taPeople={taPeopleList}
+                    members={db.members}
+                    organiserId={lead.ownerId}
+                    teamsOn={teamsOn}
+                    submitLabel="Book the requirement meeting"
+                  />
                 </details>
               )}
             </div>
@@ -1212,6 +1218,24 @@ export default async function LeadPage({
                         tone={meeting.state === "held" ? "ok" : "neutral"}
                       />
                     </div>
+                    {meeting.state === "booked" && (meeting.joinUrl || meeting.teamsProblem) && (
+                      <p className="text-[13px] text-ink-soft">
+                        {meeting.joinUrl ? (
+                          <>
+                            Join link:{" "}
+                            <a href={meeting.joinUrl} className="text-brand hover:underline">
+                              {meeting.joinUrl}
+                            </a>
+                            {meeting.graphEventId && meeting.organiserId
+                              ? " · in " + nameOf(meeting.organiserId) + "'s Outlook calendar"
+                              : ""}
+                          </>
+                        ) : null}
+                        {meeting.teamsProblem ? (
+                          <span className="text-warn"> No Teams link was made: {meeting.teamsProblem}</span>
+                        ) : null}
+                      </p>
+                    )}
                     {meeting.brief && (
                       <p className="text-[14px] text-ink-soft">
                         What they said: <span className="text-ink">{meeting.brief}</span>
@@ -1281,52 +1305,18 @@ export default async function LeadPage({
                 ))}
 
                 {mayManage && !nextBooked && (
-                  <form action={bookIntroCall} className="flex flex-col gap-3">
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <label className="flex flex-col gap-1">
-                      <span className={figmaLabel}>Meeting link or address (goes in the drafted invite)</span>
-                      <input
-                        name="link"
-                        placeholder="https://teams.microsoft.com/..."
-                        className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                      />
-                    </label>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="flex flex-col gap-1">
-                        <span className={figmaLabel}>When (Colombo time)</span>
-                        <input
-                          type="datetime-local"
-                          name="at"
-                          required
-                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className={figmaLabel}>Which TA lead is joining</span>
-                        {taPeopleList.length > 0 ? (
-                          <select
-                            name="taLeadId"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          >
-                            {taPeopleList.map((person) => (
-                              <option key={person.id} value={person.id}>
-                                {person.fullName}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            name="taLeadId"
-                            placeholder="TA lead name"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                        )}
-                      </label>
-                    </div>
-                    <button type="submit" className={pillPrimary + " self-start"}>
-                      {meetings.length ? "Book it again" : "Book the intro call"}
-                    </button>
-                  </form>
+                  <MeetingBookingForm
+                    action={bookIntroCall}
+                    leadId={lead.id}
+                    contact={{ name: lead.contactName, email: lead.contactEmail }}
+                    taPeople={taPeopleList}
+                    members={db.members}
+                    organiserId={lead.ownerId}
+                    teamsOn={teamsOn}
+                    submitLabel={meetings.length ? "Book it again" : "Book the intro call"}
+                    primary
+                    offerAlsoRequirement
+                  />
                 )}
               </div>
             </FoldRow>
@@ -1374,7 +1364,7 @@ export default async function LeadPage({
                   ? `Handed over to TA · ${position.title}`
                   : requirement
                     ? "Brief captured · ready to open position"
-                    : "Unlocks once the agreement is signed and countersigned"
+                    : "Opened after the intro call; settle conditions and the brief here"
               }
               defaultOpen={step.at === "requirement"}
             >
@@ -1382,7 +1372,7 @@ export default async function LeadPage({
                 <p className="text-[14px] text-ink-soft">
                   {agreementDone
                     ? "The agreement is signed. Capture the requirement brief and hand over the position to TA."
-                    : "Nothing starts here until the agreement is signed — that is the rule that stops us working without terms."}
+                    : "The opening does not wait for the signature. Open it after the intro call, then write the rest of the requirement in here as it is agreed."}
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5">
                   <Link

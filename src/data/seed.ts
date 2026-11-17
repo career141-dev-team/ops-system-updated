@@ -84,6 +84,12 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "switch.timersEnabled", value: true, updatedBy: null, updatedAt: null },
       { key: "switch.taReadsEnabled", value: false, updatedBy: null, updatedAt: null },
       { key: "switch.taWritesEnabled", value: false, updatedBy: null, updatedAt: null },
+      // Teams meetings made in the organiser's Outlook (17 Nov). Off until the
+      // Calendars.ReadWrite permission is granted and one test booking works.
+      { key: "switch.teamsEnabled", value: false, updatedBy: null, updatedAt: null },
+      // Reading a Teams call's transcript to propose the requirement (17 Nov).
+      // Off until the transcript permission and the Teams access policy are in.
+      { key: "switch.transcriptsEnabled", value: false, updatedBy: null, updatedAt: null },
     ],
     /*
      * The wording we start with. Phase 1 seeds only our own notices and one

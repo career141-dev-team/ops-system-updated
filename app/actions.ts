@@ -200,6 +200,7 @@ import {
   type Summary,
   askPrompt,
   dictateRequirementPrompt,
+  transcriptRequirementPrompt,
   improveDraftPrompt,
   inboundReadPrompt,
   notSaidInWords,
@@ -235,6 +236,7 @@ import {
   type InterviewState,
   MAX_SLOT_LOOPS,
   canMoveTo as canMoveInterviewTo,
+  FORMAT_MEANINGS,
   interviewersFrom,
   parseSlots,
   problemWithAttendance,
@@ -267,7 +269,18 @@ import {
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
-import { clients as taClients, preparedCv } from "@/lib/ta";
+import { clients as taClients, people as taPeople, preparedCv } from "@/lib/ta";
+import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, teamsFake } from "@/lib/graphCalendar";
+import { trimForAi, vttToText } from "@/lib/transcript";
+import { stampCountersignature } from "@/lib/countersign";
+import { type ContactRow, contactsFor, problemWithContact, setRecipients } from "@/lib/contacts";
+import {
+  type Attendee,
+  DEFAULT_LENGTH,
+  attendeesFrom,
+  problemWithAttendees,
+  problemWithLength,
+} from "@/lib/teams";
 import {
   type EsaFields,
   type EsaState,
@@ -1204,6 +1217,59 @@ export async function closeLead(formData: FormData): Promise<void> {
 }
 
 /**
+ * Reads the Teams part of a booking form and, when asked, makes the meeting in
+ * the organiser's Outlook calendar (17 Nov).
+ *
+ * Never blocks the booking: when Microsoft cannot make the link the meeting
+ * still stands, `problem` says why in a sentence, and a pasted link is used.
+ * Clients are not put on the Outlook event (Exchange would email them
+ * unapproved); they get the link in the drafted invite.
+ */
+async function teamsPartOf(
+  formData: FormData,
+  member: OpsMember,
+  lead: { company: string },
+  kind: "intro" | "requirement",
+  at: number,
+  taLeadId: string,
+): Promise<{
+  lengthMin: number;
+  organiserId: string;
+  attendees: Attendee[];
+  link: string;
+  graphEventId: string | null;
+  problem: string | null;
+  refusal: string | null;
+}> {
+  const db = await desk();
+  const pasted = String(formData.get("link") ?? "").trim();
+  const lengthMin = Number(formData.get("lengthMin") ?? DEFAULT_LENGTH) || DEFAULT_LENGTH;
+  const organiser = db.members.find((m) => m.id === String(formData.get("organiserId") ?? "")) ?? member;
+  const attendees = attendeesFrom(formData.getAll("attendeeName").map(String), formData.getAll("attendeeEmail").map(String));
+  const none = { lengthMin, organiserId: organiser.id, attendees, link: pasted, graphEventId: null, problem: null, refusal: null };
+
+  const badLength = problemWithLength(lengthMin);
+  const badPeople = attendees.length || !pasted ? problemWithAttendees(attendees) : null;
+  if (badLength || badPeople) return { ...none, refusal: badLength ?? badPeople };
+  if (formData.get("makeTeams") !== "on" || pasted) return none; // a pasted link wins
+
+  if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
+    return { ...none, problem: "Teams is switched off in Settings (switch.teamsEnabled), so paste a link." };
+  }
+  const people = await taPeople();
+  const taLead = people.ok ? people.data.find((p) => p.id === taLeadId) : null;
+  const made = await createTeamsEvent(organiser.email, {
+    company: lead.company,
+    kind,
+    at,
+    lengthMin,
+    internalAttendees: taLead ? [{ name: taLead.fullName, email: taLead.email }] : [],
+  });
+  if (!made.ok) return { ...none, problem: made.reason };
+  return { ...none, link: made.joinUrl, graphEventId: made.eventId };
+}
+
+/**
  * Books the intro call (15, Phase 2 step 7).
  *
  * The TA lead is on every intro call, which is the owner's rule, so the
@@ -1232,6 +1298,8 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
 
   const problem = problemWithBooking({ at, taLeadId }, now);
   if (problem) back(problem);
+  const teams = await teamsPartOf(formData, member, lead as NonNullable<typeof lead>, "intro", at, taLeadId);
+  if (teams.refusal) back(teams.refusal);
 
   // The count of attempts belongs to the lead, not to one booking: a new
   // booking carries it forward, or three attempts would never be reached and a
@@ -1252,6 +1320,13 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
     reason: null,
     bookedBy: member.id,
     heldAt: null,
+    alsoRequirement: formData.get("alsoRequirement") === "on",
+    lengthMin: teams.lengthMin,
+    organiserId: teams.organiserId,
+    attendees: teams.attendees,
+    joinUrl: teams.link || null,
+    graphEventId: teams.graphEventId,
+    teamsProblem: teams.problem,
   });
 
   for (const reminder of remindersFor(at, now)) {
@@ -1272,13 +1347,16 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
     member,
     lead as NonNullable<typeof lead>,
     { id: meeting.id, kind: "intro", at },
-    String(formData.get("link") ?? "").trim(),
+    teams.link,
+    teams.attendees,
   );
   revalidatePath(here);
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   back(
     "Booked, with a reminder the day before and an hour before." +
-      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
+      (teams.problem ? " No Teams link was made: " + teams.problem : "") +
+      (invite ? " The invite, with the link, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
       (warning ? " " + warning : ""),
   );
 }
@@ -1403,6 +1481,13 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
 
   const outcome = afterNotHeld(row.rebookCount, clientReplied);
   const now = Date.now();
+  // The Outlook event goes too, so nobody turns up to a meeting that was dropped.
+  let calendarNote = "";
+  if (row.graphEventId) {
+    const organiser = db.members.find((m) => m.id === row.organiserId);
+    const cancelled = organiser ? await cancelTeamsEvent(organiser.email, row.graphEventId) : null;
+    if (cancelled && !cancelled.ok) calendarNote = " The Outlook meeting could not be cancelled: " + cancelled.reason;
+  }
   await patchMeeting(
     meetingId,
     { state: "not_held", rebookCount: outcome.rebookCount, reason: why },
@@ -1422,7 +1507,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
     );
     revalidatePath(here);
     revalidatePath("/leads");
-    back(outcome.because);
+    back(outcome.because + calendarNote);
   }
 
   await createTask({
@@ -1436,7 +1521,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
     link: "/leads/" + row.leadId,
   });
   revalidatePath(here);
-  back(outcome.because);
+  back(outcome.because + calendarNote);
 }
 
 /* \u2500\u2500 The client agreement (15, Phase 2 steps 9 to 18) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
@@ -1848,6 +1933,29 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is signed.");
 
   const company = String(row.fields.companyName ?? "a client");
+
+  // 17 Nov: the Director's signature is stamped on at once, nothing waits for a
+  // person to countersign, and a person only reviews and sends the email.
+  const auto = fileId ? await countersignAutomatically(db, member, esaId, fileId) : null;
+  if (auto?.ok) {
+    const fresh = agreementIn(await desk(), esaId) as NonNullable<ReturnType<typeof agreementIn>>;
+    const messageId = await finishCountersign(db, member, fresh, auto.fileId);
+    await createTask({
+      kind: "check",
+      title: "Review and send the countersigned agreement: " + company,
+      body: "The client has signed and the Director's signature is on it. Read their copy and approve it to send it back.",
+      assigneeId: member.id,
+      dueAt: now,
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/messages/" + messageId,
+    });
+    revalidatePath(here);
+    redirect(
+      "/messages/" + messageId + "?msg=" + encodeURIComponent("Signed, and countersigned with the Director's signature. Read their copy and approve it to send it back."),
+    );
+  }
+
   for (const person of db.members.filter((m) => m.active && ["ops_lead", "director_ops", "ta_lead_ro"].includes(m.role))) {
     await createTask({
       kind: "check",
@@ -1873,7 +1981,10 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   });
 
   revalidatePath(here);
-  back("Signed. Everyone has been told, and the Director has a day to countersign.");
+  back(
+    "Signed. Everyone has been told, and the Director has a day to countersign." +
+      (auto && !auto.ok ? " " + auto.reason : ""),
+  );
 }
 
 /** The Director countersigned; the client gets their copy back (step 18). */
@@ -1893,6 +2004,25 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
   if (!fileId) back("Upload the countersigned copy first, on the Files screen.");
   if (!canMoveTo(row.state as EsaState, "countersigned")) back("That agreement is not waiting to be countersigned.");
 
+  const messageId = await finishCountersign(db, member, row, fileId as string);
+  revalidatePath(here);
+  redirect(
+    "/messages/" + messageId + "?msg=" + encodeURIComponent("Countersigned. Their copy is drafted — approve it to send it back."),
+  );
+}
+
+/**
+ * Everything that follows a countersign, whoever made the countersigned copy:
+ * the agreement's state, the client record, and the cover email as a draft.
+ * Shared by the manual upload above and the automatic stamp below.
+ */
+async function finishCountersign(
+  db: Awaited<ReturnType<typeof desk>>,
+  member: OpsMember,
+  row: NonNullable<ReturnType<typeof agreementIn>>,
+  fileId: string,
+): Promise<string> {
+  const esaId = row.id;
   const now = Date.now();
   await patchAgreement(
     esaId,
@@ -1922,12 +2052,58 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
     templateKey: "esa.countersigned.cover",
     subjectType: "esa",
     subjectId: esaId,
+    attachmentFileIds: [fileId],
   });
+  return message.id;
+}
 
-  revalidatePath(here);
-  redirect(
-    "/messages/" + message.id + "?msg=" + encodeURIComponent("Countersigned. Their copy is drafted — approve it to send it back."),
-  );
+/**
+ * Stamps the Director's stored signature on the client's signed copy and keeps
+ * the result as the countersigned file (17 Nov). Returns the new file's id, or
+ * a sentence saying why it could not, so the page can fall back to the manual
+ * upload instead of failing.
+ */
+async function countersignAutomatically(
+  db: Awaited<ReturnType<typeof desk>>,
+  member: OpsMember,
+  esaId: string,
+  signedFileId: string,
+): Promise<{ ok: true; fileId: string } | { ok: false; reason: string }> {
+  const signatureFile = [...db.files]
+    .filter((f) => f.kind === "director_signature")
+    .sort((a, b) => b.uploadedAt - a.uploadedAt)[0];
+  if (!signatureFile) {
+    return { ok: false, reason: "No signature picture for the Director is on the Files screen yet, so it was not countersigned for them." };
+  }
+  const signed = fileIn(db, signedFileId);
+  if (!signed || !/\.pdf$/i.test(signed.name)) {
+    return { ok: false, reason: "The signed copy is not a PDF, so it cannot be stamped." };
+  }
+  const [signedBytes, signatureBytes] = await Promise.all([readBytes(signed.key), readBytes(signatureFile.key)]);
+  if (!signedBytes || !signatureBytes) return { ok: false, reason: "The signed copy or the signature could not be read from storage." };
+
+  const stamped = await stampCountersignature(signedBytes, signatureBytes, {
+    name: "Director of Operations",
+    when: colomboDateInWords(Date.now()),
+  });
+  if (!stamped.ok) return stamped;
+
+  const name = signed.name.replace(/\.pdf$/i, "") + " (countersigned).pdf";
+  const key = keyFor("esa_countersigned", "esa", esaId, name);
+  await putBytes(key, stamped.bytes, "application/pdf");
+  const file = await addFile({
+    kind: "esa_countersigned",
+    key,
+    name,
+    size: stamped.bytes.byteLength,
+    mime: "application/pdf",
+    sha256: sha256(stamped.bytes),
+    subjectType: "esa",
+    subjectId: esaId,
+    madeFrom: signed.id,
+    uploadedBy: member.id,
+  });
+  return { ok: true, fileId: file.id };
 }
 
 /** Declined, by them or by us. The search is blocked and everyone is told (step 17). */
@@ -2042,8 +2218,10 @@ async function draftMeetingInvite(
   lead: { company: string; contactName: string; contactEmail: string },
   meeting: { id: string; kind: string; at: number },
   link: string,
+  attendees: Attendee[] = [],
 ): Promise<string | null> {
-  const to = interviewersFrom(lead.contactEmail);
+  // The people the booking named; the lead's one contact when it named none.
+  const to = attendees.length ? attendees.map((a) => a.email) : interviewersFrom(lead.contactEmail);
   if (!to.length) return null;
   const what = meeting.kind === "intro" ? "introductory call" : "requirement meeting";
   const fileId = await keepInvite(
@@ -2072,7 +2250,7 @@ async function draftMeetingInvite(
       " is on " +
       colomboWhen(meeting.at) +
       "." +
-      (link ? "\n\n" + link : "") +
+      (link ? "\n\nJoin on Microsoft Teams:\n" + link : "") +
       "\n\nThe calendar invite is attached.\n\nKind regards\n" +
       member.name,
     templateKey: null,
@@ -2335,9 +2513,13 @@ export async function sendClientSet(formData: FormData): Promise<void> {
 
   const answer = await taClients(row.clientTaId ? row.name.split(" > ")[0] : "");
   const theirs = answer.ok ? answer.data.find((c) => c.id === row.clientTaId) : undefined;
-  const to = (theirs?.contacts ?? [])
-    .filter((c) => (c.role ?? "").toLowerCase() === "hr" && c.email.trim())
-    .map((c) => c.email.trim());
+  // The position's own people and the client's standard contacts (17 Nov); TA's
+  // HR contacts only when Ops has none of its own.
+  const to = setRecipients({
+    position: positionForSet(db, row)?.contacts,
+    client: row.clientId ? clientIn(db, row.clientId)?.contacts : null,
+    ta: theirs?.contacts,
+  });
 
   const problem = problemWithSending(
     row.candidates,
@@ -2872,15 +3054,12 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
   if (!lead) back("That lead is gone.");
   const row = lead as NonNullable<typeof lead>;
 
-  const esa = agreementForLead(db, leadId);
-  if (esa?.state !== "signed" && esa?.state !== "countersigned") {
-    back("No requirement meeting until the agreement is signed: that is where the search begins.");
-  }
-
   const at = Date.parse(String(formData.get("at") ?? "") + ":00+05:30");
   const taLeadId = String(formData.get("taLeadId") ?? "");
   const problem = problemWithBooking({ at, taLeadId }, Date.now());
   if (problem) back(problem);
+  const teams = await teamsPartOf(formData, member, row, "requirement", at, taLeadId);
+  if (teams.refusal) back(teams.refusal);
 
   const meeting = await addMeeting({
     leadId,
@@ -2895,6 +3074,12 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     reason: null,
     bookedBy: member.id,
     heldAt: null,
+    lengthMin: teams.lengthMin,
+    organiserId: teams.organiserId,
+    attendees: teams.attendees,
+    joinUrl: teams.link || null,
+    graphEventId: teams.graphEventId,
+    teamsProblem: teams.problem,
   });
 
   for (const reminder of remindersFor(at, Date.now())) {
@@ -2923,12 +3108,15 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     member,
     row,
     { id: meeting.id, kind: "requirement", at },
-    String(formData.get("link") ?? "").trim(),
+    teams.link,
+    teams.attendees,
   );
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   revalidatePath(here);
   back(
     "Booked, with a reminder the day before and an hour before." +
+      (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
+      (teams.problem ? " No Teams link was made: " + teams.problem : "") +
       (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
       (warning ? " " + warning : ""),
   );
@@ -2961,10 +3149,33 @@ export async function saveRequirement(formData: FormData): Promise<void> {
 
   const already = requirementForLead(db, leadId);
   const client = db.clients.find((c) => c.leadId === leadId) ?? null;
-  const held = meetingsForLead(db, leadId).find((m) => m.kind === "requirement" && m.state === "held") ?? null;
+  // A requirement meeting, or an intro call that was also one (17 Nov).
+  const held =
+    meetingsForLead(db, leadId).find(
+      (m) => (m.kind === "requirement" || m.alsoRequirement) && m.state === "held",
+    ) ?? null;
 
   if (already) {
     await patchRequirement(already.id, { fields }, member.id, "requirement.saved", null);
+    // The opening was opened early, so what is written in now has to reach it.
+    // TA has no endpoint for this yet (an additive one is a ta-system PR): until
+    // there is, the write waits in the outbox and nothing is lost.
+    const opened = db.positions.find((p) => p.requirementId === already.id);
+    if (opened) {
+      await queueTaWrite(
+        "/integrations/v1/openings/details",
+        {
+          opsPositionId: opened.id,
+          openingId: opened.openingTaId,
+          brief: briefText(fields),
+          level: fields.level ?? "",
+          locations: fields.locations ?? "",
+          package: fields.salary ?? "",
+          headcount: Number(fields.headcount ?? 1) || 1,
+        },
+        { type: "position", id: opened.id },
+      );
+    }
   } else {
     await addRequirement({
       leadId,
@@ -3084,8 +3295,12 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   const req = requirement as NonNullable<typeof requirement>;
   if (req.openedAt) back("This requirement has already gone to the TA System.");
 
+  // The opening goes out after the intro call (or a meeting that was both
+  // calls), with the agreement alongside - not after it is signed.
   const esa = agreementForLead(db, leadId);
-  const problem = problemWithHandover(esa?.state ?? null, req.fields);
+  const talked = meetingsForLead(db, leadId).some((m) => m.state === "held");
+  if (!talked && !esa) back("Hold the intro call first: the opening is opened after it.");
+  const problem = problemWithHandover(req.fields);
   if (problem) back(problem);
 
   const client = db.clients.find((c) => c.leadId === leadId) ?? null;
@@ -3141,6 +3356,168 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   back(
     "Handed over. The opening is queued for the TA System; it appears on the position the moment TA confirms it, and the brief goes exactly as written.",
   );
+}
+
+/**
+ * Adds a candidate by hand to a position (17 Nov, supervisor review), for when
+ * the TA link is down or the person is not in the TA System. They stay in Ops
+ * only and are always shown as "added by hand, not in TA". Nothing is sent to
+ * TA for them, and they cannot be put in a CV set until TA can hold them.
+ */
+export async function addManualCandidate(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId + "?view=candidates";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  if (name.length < 2) back("Write the candidate's name.");
+  if (!email && !phone) back("Give an email or a phone number, so somebody can reach them.");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) back("That is not an email address.");
+  const cv = String(formData.get("cvFileId") ?? "").trim() || null;
+  if (cv && !fileIn(db, cv)) back("That CV is not on the Files screen.");
+  const have = row.manualCandidates ?? [];
+  if (have.some((c) => c.name.toLowerCase() === name.toLowerCase() && c.email.toLowerCase() === email.toLowerCase())) {
+    back("They are already on this opening.");
+  }
+
+  const manualCandidates = [
+    ...have,
+    { id: "mc_" + Date.now().toString(36), name, email, phone, note, cvFileId: cv, addedBy: member.id, at: Date.now() },
+  ];
+  await patchPosition(positionId, { manualCandidates }, member.id, "position.candidateAddedByHand", name);
+  revalidatePath("/positions/" + positionId);
+  back(name + " added, marked as added by hand and not in the TA System.");
+}
+
+export async function removeManualCandidate(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId + "?view=candidates";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const position = positionIn(await desk(), positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  const id = String(formData.get("candidateId") ?? "");
+  const manualCandidates = (row.manualCandidates ?? []).filter((c) => c.id !== id);
+  await patchPosition(positionId, { manualCandidates }, member.id, "position.candidateRemovedByHand", id);
+  revalidatePath("/positions/" + positionId);
+  back("Removed.");
+}
+
+/**
+ * Gives an ops person a strategy for this position (17 Nov, supervisor review):
+ * a line saying what they will try, and whose it is. Several can run at once.
+ */
+export async function addStrategy(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId + "?view=advertising";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const text = String(formData.get("text") ?? "").trim();
+  if (text.length < 4) back("Write the strategy in a few words, so whoever has it knows what to do.");
+  const ownerId = String(formData.get("ownerId") ?? "") || member.id;
+  if (!db.members.some((m) => m.id === ownerId)) back("Pick who the strategy is given to.");
+
+  const strategies = [...(row.strategies ?? []), { id: "st_" + Date.now().toString(36), text, ownerId, at: Date.now() }];
+  await patchPosition(positionId, { strategies }, member.id, "position.strategyAdded", text);
+  revalidatePath("/positions/" + positionId);
+  back("Strategy added.");
+}
+
+export async function removeStrategy(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId + "?view=advertising";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const position = positionIn(await desk(), positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  const strategyId = String(formData.get("strategyId") ?? "");
+  const strategies = (row.strategies ?? []).filter((s) => s.id !== strategyId);
+  await patchPosition(positionId, { strategies }, member.id, "position.strategyRemoved", null);
+  revalidatePath("/positions/" + positionId);
+  back("Strategy removed.");
+}
+
+/**
+ * Adds a person to a client's standard contacts, or to one position's own list
+ * (17 Nov). The same address is never kept twice.
+ */
+export async function saveContact(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const scope = String(formData.get("scope") ?? "") === "position" ? "position" : "client";
+  const id = String(formData.get("id") ?? "");
+  const here = scope === "position" ? "/positions/" + id : "/clients/" + id;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const holder = scope === "position" ? positionIn(db, id) : clientIn(db, id);
+  if (!holder) redirect("/" + scope + "s?msg=" + encodeURIComponent("That " + scope + " is gone."));
+
+  const person = {
+    name: String(formData.get("name") ?? "").trim(),
+    email: String(formData.get("email") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    role: String(formData.get("role") ?? "").trim().toLowerCase() || "hr",
+  };
+  const problem = problemWithContact(person);
+  if (problem) back(problem);
+  const have = (holder as { contacts?: typeof person[] }).contacts ?? [];
+  if (have.some((c) => c.email.toLowerCase() === person.email.toLowerCase())) back("That address is already on the list.");
+
+  const contacts = [...have, person];
+  if (scope === "position") await patchPosition(id, { contacts }, member.id, "position.contactAdded", person.email);
+  else await patchClient(id, { contacts }, member.id, "client.contactAdded", person.email);
+  revalidatePath(here);
+  back(person.name + " added.");
+}
+
+export async function removeContact(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const scope = String(formData.get("scope") ?? "") === "position" ? "position" : "client";
+  const id = String(formData.get("id") ?? "");
+  const here = scope === "position" ? "/positions/" + id : "/clients/" + id;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const holder = scope === "position" ? positionIn(db, id) : clientIn(db, id);
+  if (!holder) redirect("/" + scope + "s?msg=" + encodeURIComponent("That " + scope + " is gone."));
+  const email = String(formData.get("email") ?? "").toLowerCase();
+  const contacts = ((holder as { contacts?: ContactRow[] }).contacts ?? []).filter(
+    (c) => c.email.toLowerCase() !== email,
+  );
+  if (scope === "position") await patchPosition(id, { contacts }, member.id, "position.contactRemoved", email);
+  else await patchClient(id, { contacts }, member.id, "client.contactRemoved", email);
+  revalidatePath(here);
+  back("Removed.");
 }
 
 /** The TA lead picks the primary TA and the 100% day; Ops records it (step 5). */
@@ -3585,10 +3962,17 @@ export async function requestInterviewSlots(formData: FormData): Promise<void> {
   const problem = problemWithNewSlots(row.slotLoops, numberOf(db, "interview.maxSlotLoops", MAX_SLOT_LOOPS));
   if (problem) back(problem);
 
-  const to = interviewersFrom(String(formData.get("to") ?? "")).length
-    ? interviewersFrom(String(formData.get("to") ?? ""))
-    : row.interviewers;
-  if (!to.length) back("Who do we ask? One address a line.");
+  const typed = interviewersFrom(String(formData.get("to") ?? ""));
+  const interviewPosition = row.positionId ? positionIn(db, row.positionId) : null;
+  const to = typed.length
+    ? typed
+    : row.interviewers.length
+      ? row.interviewers
+      : contactsFor({
+          position: interviewPosition?.contacts,
+          client: interviewPosition?.clientId ? clientIn(db, interviewPosition.clientId)?.contacts : null,
+        }).map((c) => c.email);
+  if (!to.length) back("Who do we ask? One address a line, or add the client's contacts on their page.");
 
   const wording = templateFor(db, "interview.slots_request");
   const fill = (text: string) =>
@@ -3740,10 +4124,49 @@ export async function recordClientBooking(formData: FormData): Promise<void> {
   if (!Number.isFinite(at)) back("Give the day and time they booked.");
   if (at < Date.now()) back("That time has gone.");
 
-  await patchInterview(interviewId, { at, state: "agreed" }, member.id, "interview.clientBooked", null);
+  // 17 Nov: when the client schedules it, they send their own invite, so all we
+  // keep is what kind of interview it is and where. Nothing is put in a calendar.
+  const typedFormat = String(formData.get("format") ?? "");
+  const typedWhere = String(formData.get("whereOrLink") ?? "").trim();
+  await patchInterview(
+    interviewId,
+    {
+      at,
+      state: "agreed",
+      ...(typedFormat in FORMAT_MEANINGS ? { format: typedFormat } : {}),
+      ...(typedWhere ? { whereOrLink: typedWhere } : {}),
+    },
+    member.id,
+    "interview.clientBooked",
+    null,
+  );
   await cancelClocksFor(db, "interview", interviewId, member.id, "They told us the date.", ["interview.report", "slots.chase"]);
+
+  // Two people have to be told, and neither is told by itself.
+  await createTask({
+    kind: "call",
+    title: "Confirm the time with the client: " + row.candidateName,
+    body: "They booked it themselves for " + colomboWhen(at) + ". Confirm with their people that it stands, then book it here so the reminders run.",
+    assigneeId: member.id,
+    dueAt: Date.now() + DAY,
+    subjectType: "interview",
+    subjectId: interviewId,
+    link: here,
+  });
+  const taPerson = (row.positionId ? positionIn(db, row.positionId)?.primaryTaId : null) ?? null;
+  if (taPerson) {
+    await queueTaWrite(
+      "/integrations/v1/notify",
+      {
+        toUserId: taPerson,
+        title: "Client booked an interview: " + row.candidateName,
+        body: "It is on " + colomboWhen(at) + ". Please confirm the time with the candidate.",
+      },
+      { type: "interview", id: interviewId },
+    );
+  }
   revalidatePath(here);
-  back("Noted. Now book it on our side so the reminders run.");
+  back("Noted. Now book it on our side so the reminders run. A task is set to confirm it with the client" + (taPerson ? ", and the TA is asked to confirm with the candidate." : "."));
 }
 
 /**
@@ -3767,12 +4190,57 @@ export async function bookInterview(formData: FormData): Promise<void> {
   if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
   const row = interview as NonNullable<typeof interview>;
 
+  const format = String(formData.get("format") ?? "");
+  let whereOrLink = String(formData.get("whereOrLink") ?? "").trim();
+
+  // 17 Nov: when we are the ones scheduling, the meeting is made in the ops
+  // person's own calendar - a Teams meeting for an online interview, a plain
+  // event with the address for one at their office. A pasted link still wins,
+  // and a Microsoft failure never stops the booking.
+  let calendarEventId: string | null = null;
+  let calendarNote = "";
+  const wantsCalendar =
+    formData.get("makeTeams") === "on" && Number.isFinite(row.at ?? NaN) && (format === "online" || format === "onsite");
+  if (wantsCalendar && !(format === "online" && whereOrLink)) {
+    // Check everything else first, so a refused booking leaves no orphan event
+    // in somebody's calendar. The link does not exist yet, so a stand-in is used.
+    const early = problemWithInterviewBooking({
+      at: row.at ?? NaN,
+      round: row.round,
+      format,
+      interviewers: String(formData.get("interviewers") ?? ""),
+      whereOrLink: whereOrLink || (format === "online" ? "pending" : ""),
+    });
+    if (early) back(early);
+    if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
+      calendarNote = " Teams is switched off in Settings, so nothing was put in a calendar.";
+    } else {
+      const clientName = (row.clientId ? clientIn(db, row.clientId)?.name : null) ?? "the client";
+      const made = await createTeamsEvent(member.email, {
+        company: clientName,
+        kind: "interview",
+        subject: "Interview: " + row.candidateName + ", round " + row.round,
+        at: row.at as number,
+        lengthMin: Number(formData.get("lengthMin") ?? 60) || 60,
+        online: format === "online",
+        location: format === "onsite" ? whereOrLink : undefined,
+        internalAttendees: [],
+      });
+      if (made.ok) {
+        calendarEventId = made.eventId;
+        if (format === "online") whereOrLink = made.joinUrl;
+      } else {
+        calendarNote = " No calendar event was made: " + made.reason;
+      }
+    }
+  }
+
   const wanted = {
     at: row.at ?? NaN,
     round: row.round,
-    format: String(formData.get("format") ?? ""),
+    format,
     interviewers: String(formData.get("interviewers") ?? ""),
-    whereOrLink: String(formData.get("whereOrLink") ?? "").trim(),
+    whereOrLink,
   };
   const problem = problemWithInterviewBooking(wanted);
   if (problem) back(problem);
@@ -3814,6 +4282,7 @@ export async function bookInterview(formData: FormData): Promise<void> {
       interviewers,
       whereOrLink: wanted.whereOrLink,
       inviteMessageId: message.id,
+      calendarEventId,
     },
     member.id,
     "interview.booked",
@@ -3842,9 +4311,36 @@ export async function bookInterview(formData: FormData): Promise<void> {
       message.id +
       "?msg=" +
       encodeURIComponent(
-        "Booked. The invite to the client's people is drafted, the TA System has been told, and the reminders are set.",
+        "Booked. The invite to the client's people is drafted, the TA System has been told, and the reminders are set." +
+          (calendarEventId ? " It is in your calendar." : "") +
+          calendarNote,
       ),
   );
+}
+
+/**
+ * Types in what the candidate told us, when the TA System's own feedback did
+ * not arrive (17 Nov). It follows the same road as TA's: the client's copy is
+ * drafted for a person to approve, and nothing goes by itself.
+ */
+export async function recordCandidateFeedbackByHand(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const here = backTo(formData, "/interviews/" + interviewId);
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const interview = interviewIn(db, interviewId);
+  if (!interview) redirect("/interviews?msg=" + encodeURIComponent("That interview is gone."));
+  const row = interview as NonNullable<typeof interview>;
+  if (row.candidateFeedback) back("The candidate's feedback is already recorded.");
+
+  const said = String(formData.get("feedback") ?? "").trim();
+  if (said.length < 10) back("Write what the candidate said, in a sentence or two.");
+  const done = await draftCandidateFeedback(interviewId, said);
+  revalidatePath("/interviews/" + interviewId);
+  back(done.ok ? "Saved. The message to the client is drafted; read it and approve it." : done.what);
 }
 
 /** Mark whether it happened (step 14). */
@@ -5536,6 +6032,83 @@ export async function dictateRequirement(formData: FormData): Promise<void> {
       encodeURIComponent(
         "Filled in from what you said. Read every field before you save it." +
           (notSaidInWords(got.notSaid ?? "" ? got.notSaid : []) ? " " + notSaidInWords(got.notSaid) : ""),
+      ),
+  );
+}
+
+/**
+ * The requirement from a Teams call's transcript (17 Nov, supervisor review).
+ *
+ * Reads the transcript Microsoft kept of a held meeting, keeps it as a file,
+ * and has the model propose the requirement fields from what the client said.
+ * Nothing is saved: the fields are filled in on the screen for a person to
+ * check, exactly as with dictation. A meeting has a transcript only if somebody
+ * started transcription in it.
+ */
+export async function readRequirementFromCall(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const meetingId = String(formData.get("meetingId") ?? "");
+  const db = await desk();
+  const meeting = meetingIn(db, meetingId);
+  const leadId = meeting?.leadId ?? "";
+  const here = "/leads/" + leadId + "?view=requirement";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
+  const row = meeting as NonNullable<typeof meeting>;
+
+  if (!teamsFake() && !switchedOn(db, "switch.transcriptsEnabled")) {
+    back("Reading call transcripts is switched off in Settings (switch.transcriptsEnabled).");
+  }
+  const organiser = db.members.find((m) => m.id === row.organiserId);
+  if (!row.joinUrl || !organiser || !row.graphEventId) {
+    back("This meeting was not made by Ops, so there is no Teams meeting to read a transcript from.");
+  }
+  const got = await fetchTranscript((organiser as NonNullable<typeof organiser>).email, row.joinUrl as string);
+  if (!got.ok) back(got.reason);
+  const text = vttToText((got as { ok: true; vtt: string }).vtt);
+  if (text.length < 40) back("The transcript is empty. Was transcription started in the meeting?");
+
+  // Kept as the source of what was proposed: a requirement can be asked about a year on.
+  const bytes = new TextEncoder().encode((got as { ok: true; vtt: string }).vtt);
+  const name = "transcript-" + colomboDate(row.at) + ".vtt";
+  const key = keyFor("meeting_transcript", "meeting", row.id, name);
+  await putBytes(key, bytes, "text/vtt");
+  await addFile({
+    kind: "meeting_transcript",
+    key,
+    name,
+    size: bytes.byteLength,
+    mime: "text/vtt",
+    sha256: sha256(bytes),
+    subjectType: "meeting",
+    subjectId: row.id,
+    madeFrom: null,
+    uploadedBy: member.id,
+  });
+
+  const answer = await runAi<DictatedRequirement>(
+    "dictate.fields",
+    transcriptRequirementPrompt(trimForAi(text)),
+    member.id,
+    { type: "lead", id: leadId },
+    ["the call transcript"],
+  );
+  if (!answer.proposal.ok || !answer.proposal.data) {
+    back(answer.problem ?? "Nothing came back. The transcript is kept; type the fields in instead.");
+  }
+  const proposed = answer.proposal.data as DictatedRequirement;
+  redirect(
+    here +
+      "&runId=" +
+      encodeURIComponent(answer.runId ?? "") +
+      "&proposed=" +
+      encodeURIComponent(JSON.stringify(proposed)) +
+      "&msg=" +
+      encodeURIComponent(
+        "Filled in from the call's transcript. Read every field before you save it." +
+          (proposed.notSaid?.length ? " " + notSaidInWords(proposed.notSaid) : ""),
       ),
   );
 }

@@ -63,21 +63,16 @@ test("the brief reads as the desk writes one, with the client's own words kept",
   assert.doesNotMatch(bare, /From the meeting:/);
 });
 
-test("no opening before the agreement is signed, and none from a thin requirement", () => {
-  // The owner's rule: the search is blocked until they have signed.
-  assert.match(problemWithHandover("sent", filled()) ?? "", /not signed yet/i);
-  assert.match(problemWithHandover("sent", filled()) ?? "", /blocked/i);
-  assert.match(problemWithHandover("chasing", filled()) ?? "", /not signed yet/i);
-  assert.match(problemWithHandover("declined", filled()) ?? "", /not signed yet/i);
-  assert.match(problemWithHandover(null, filled()) ?? "", /no agreement on our side/i);
-
-  // Signed is enough: the Director's countersignature follows, and the search
-  // starts when the client has signed.
-  assert.equal(problemWithHandover("signed", filled()), null);
-  assert.equal(problemWithHandover("countersigned", filled()), null);
-
-  // Signed, but the requirement is half written: still refused, and it says which.
-  assert.match(problemWithHandover("signed", { ...filled(), jdNotes: "" }) ?? "", /still blank: the brief/i);
+test("the opening needs a name and a number, and no longer waits for a signature", () => {
+  // 17 Nov (supervisor review): the opening is opened right after the intro
+  // call, with the agreement going out alongside; the rest of the requirement
+  // is written in later and goes to the opening as it is saved.
+  assert.equal(problemWithHandover({ title: "Driver", headcount: "2" }), null);
+  assert.match(problemWithHandover({ headcount: "2" }) ?? "", /title/i);
+  assert.match(problemWithHandover({ title: "Driver" }) ?? "", /how many/i);
+  assert.match(problemWithHandover({ title: "  ", headcount: "2" }) ?? "", /title/i);
+  // A full requirement is fine too, of course.
+  assert.equal(problemWithHandover(filled()), null);
 });
 
 test("a role we cannot fill needs a reason and a date to ask again", () => {

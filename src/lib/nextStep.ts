@@ -162,8 +162,10 @@ export function leadNextStep(
   if (!esa) {
     return {
       at: "agreement",
-      waiting: "Start the agreement. It goes out within two hours of the call, which is the promise.",
-      where: "The call is held; no agreement yet",
+      waiting: position
+        ? "Start the agreement. It goes out within two hours of the call, which is the promise."
+        : "Open the opening in the TA System (the title and how many are enough) and start the agreement. Neither waits for a signature. It goes out within two hours of the call, which is the promise.",
+      where: position ? "The call is held; opening made, no agreement yet" : "The call is held; no opening and no agreement yet",
       clock: null,
     };
   }
@@ -191,7 +193,7 @@ export function leadNextStep(
   if (esa.state === "changes") {
     return {
       at: "agreement",
-      waiting: "They want changes. Agree the terms, write them into the fields, then send the next version.",
+      waiting: "They want changes. Agree the terms, write them into the fields, then send the next version. A requirement meeting is the place to settle them.",
       where: "In negotiation, version " + esa.version,
       clock: esa.expiresAt ? "The two weeks keep running: it declines " + inDays(esa.expiresAt, now) + "." : null,
     };

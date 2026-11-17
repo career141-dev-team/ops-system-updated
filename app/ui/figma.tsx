@@ -36,7 +36,12 @@ export type JourneyStepName = (typeof JOURNEY_STEPS)[number];
 
 export type JourneyStepItem = {
   label: string;
-  state: "done" | "current" | "upcoming";
+  /** "skipped": not finished, but a later step has started - it stays visible and clickable. */
+  state: "done" | "current" | "upcoming" | "skipped";
+  /** The page being looked at; shown in bold, separate from progress. */
+  viewing?: boolean;
+  /** A short line under the label, e.g. the counts of a loop. */
+  note?: string;
   href?: string;
 };
 
@@ -380,7 +385,12 @@ export function JourneyBar({
       {resolvedSteps.map((step, idx) => {
         const isDone = step.state === "done";
         const isCurrent = step.state === "current";
-        const circle = isDone ? (
+        const isSkipped = step.state === "skipped";
+        const circle = isSkipped ? (
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-warn bg-warn-soft text-[13px] font-bold leading-none text-warn">
+            !
+          </span>
+        ) : isDone ? (
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-ink-inverse">
             <Icon name="check" size={14} />
           </span>
@@ -395,14 +405,20 @@ export function JourneyBar({
           <span
             className={
               "w-[92px] text-center font-medium sm:w-[112px] " +
-              (isCurrent
+              (isCurrent || step.viewing
                 ? "text-[14px] leading-[21px] text-ink"
-                : isDone
-                  ? "text-[12px] leading-4 tracking-[0.4px] text-ink-soft"
-                  : "text-[12px] leading-4 tracking-[0.4px] text-ink-faint")
+                : isSkipped
+                  ? "text-[12px] leading-4 tracking-[0.4px] text-warn"
+                  : isDone
+                    ? "text-[12px] leading-4 tracking-[0.4px] text-ink-soft"
+                    : "text-[12px] leading-4 tracking-[0.4px] text-ink-faint")
             }
           >
             {step.label}
+            {isSkipped && <span className="sr-only"> (skipped)</span>}
+            {step.note && (
+              <span className="mt-0.5 block text-[11px] font-normal leading-[14px] text-ink-faint">{step.note}</span>
+            )}
           </span>
         );
         const content = (
