@@ -21,20 +21,11 @@ built Worker at about 2.1 MiB compressed (the free plan allows 3).
    Cloudflare's GitHub app see `career141-dev-team/ops-system-updated`.
 2. Choose the branch (`main` once this is merged).
 3. **Build command:** `npx opennextjs-cloudflare build`. **Deploy command:** `npx wrangler deploy`. Leave the root as it is.
-4. **Settings > Variables and secrets** on the Worker (not in the repo), all of them invented:
-
-   | Name | Value |
-   |---|---|
-   | `OPS_STORE` | `json` |
-   | `OPS_DATA_DIR` | `/tmp/ops-data` |
-   | `OPS_DEV_SIGNIN` | `on` |
-   | `OPS_TA_FAKE` | `on` |
-   | `OPS_TEAMS_FAKE` | `on` |
-   | `OPS_SESSION_SECRET` | a long random string |
-   | `OPS_CLOCK_KEY` | a random string |
-   | `OPS_WEB_LEAD_KEY` | a random string |
-
-   Never set `CONVEX_*`, `MS_*` or R2 variables here.
+4. **Nothing to type in.** The demo's settings (`OPS_STORE`, `OPS_DATA_DIR`, `OPS_DEV_SIGNIN`, `OPS_TA_FAKE`,
+   `OPS_TEAMS_FAKE`) are in `wrangler.jsonc` under `vars`. None of them is a secret, and the sign-in page shows the four
+   invented people to pick from. For real sign-in later, add `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`,
+   `OPS_APP_URL` and `OPS_SESSION_SECRET` as **secrets** in the dashboard (Settings > Variables and secrets): with those
+   present the app switches the "pick your name" door off by itself. Never set `CONVEX_*` or R2 variables on the demo.
 5. **Protect it before you share it.** `OPS_DEV_SIGNIN=on` is "pick your name, no password": anyone with the link is
    the Ops lead. In the Worker's **Settings > Domains & Routes**, switch on **Cloudflare Access** so only people you
    name can open it.
@@ -43,6 +34,5 @@ built Worker at about 2.1 MiB compressed (the free plan allows 3).
 
 ```sh
 npm ci
-cp the eight values above into a file called .dev.vars   # git-ignored
-npm run cf:preview                                        # builds, then serves http://localhost:8787
+npm run cf:preview     # builds, then serves http://localhost:8787 with the same settings
 ```

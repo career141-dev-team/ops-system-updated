@@ -8,5 +8,17 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // The demo's settings, written here so nothing has to be typed into the dashboard to see the screens (17 Nov, the owner:
+  // "only the UI and the UI flow for now"). None of them is a secret. When real sign-in is added later, set MS_TENANT_ID,
+  // MS_CLIENT_ID, MS_CLIENT_SECRET, OPS_APP_URL and OPS_SESSION_SECRET as secrets in the dashboard: with those present the
+  // app switches the "pick your name" door off by itself (src/lib/session.ts), whatever OPS_DEV_SIGNIN says.
+  "vars": {
+    "OPS_STORE": "json",
+    "OPS_DATA_DIR": "/tmp/ops-data",
+    "OPS_DEV_SIGNIN": "on",
+    "OPS_TA_FAKE": "on",
+    "OPS_TEAMS_FAKE": "on"
+  }
 }
