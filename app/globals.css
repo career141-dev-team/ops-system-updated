@@ -325,7 +325,60 @@ body {
   animation: slide-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
+/* The bar under the notch heading: it draws left to right as a page arrives, then fades (17 Nov). */
+@keyframes notch-sweep {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  55% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+.notch-bar {
+  transform-origin: left;
+  animation: notch-sweep 1000ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* Signing in (17 Nov): the top bar settles from above and the page rises into place, once. `body.welcome` is put
+   there by <Welcome> for a second after a sign-in. */
+@keyframes welcome-bar {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes welcome-page {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+body.welcome [data-welcome="bar"] {
+  animation: welcome-bar 520ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+body.welcome [data-welcome="page"] {
+  animation: welcome-page 760ms cubic-bezier(0.23, 1, 0.32, 1) 140ms both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .notch-bar,
+  body.welcome [data-welcome] {
+    animation: none;
+  }
   .chat-in,
   .chat-skeleton,
   .rise,

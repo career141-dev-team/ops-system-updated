@@ -103,6 +103,12 @@ export async function startSession(memberId: string): Promise<void> {
     path: "/",
     maxAge: SESSION_DAYS * 24 * 60 * 60,
   });
+  welcome(jar);
+}
+
+/** A thirty-second note, readable by the page, that somebody has just signed in: it plays the welcome once. */
+function welcome(jar: Awaited<ReturnType<typeof cookies>>): void {
+  jar.set("ops_welcome", "1", { sameSite: "lax", path: "/", maxAge: 30 });
 }
 
 /** The development door. Refused outright when it is not allowed. */
@@ -114,6 +120,7 @@ export async function signInAs(memberId: string): Promise<void> {
   // hidden for a while - every long walk ended on /sign-in with nothing of
   // ours having signed anybody out, and an hour went on the wrong suspect.
   jar.set(DEV, memberId, { httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_DAYS * 24 * 60 * 60 });
+  welcome(jar);
 }
 
 export async function signOut(): Promise<void> {

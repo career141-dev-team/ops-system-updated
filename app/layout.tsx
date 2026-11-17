@@ -19,6 +19,7 @@ import { currentMember, realMember } from "@/lib/session";
 import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import WorkspaceNotch from "@/app/WorkspaceNotch";
+import Welcome from "@/app/Welcome";
 import "./globals.css";
 
 // The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
@@ -112,6 +113,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </Suspense>
         {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
         <Keys />
+        {/* The welcome after signing in: a class on the body for a second, then gone. */}
+        <Welcome />
         {member ? (
           <>
           <TopBar
@@ -137,7 +140,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* On a desktop the page is one fixed box under the top bar (14 Nov, the owner):
                 the window never scrolls, the page's own box does, and only when what is in it
                 is taller than the box. A phone scrolls the window as before. */}
-            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh/0.9-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
+            <main data-welcome="page" className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh/0.9-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
               {children}
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
