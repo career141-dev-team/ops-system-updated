@@ -5,6 +5,7 @@ import { desk, filesNewestFirst } from "@/data/desk";
 import { fileStoreInWords, readBytes, usingR2 } from "@/data/fileStore";
 import { holesInDocx } from "@/lib/docxFill";
 import { checkTemplate } from "@/lib/esa";
+import { checkInvoiceTemplate } from "@/lib/invoiceDoc";
 import { FILE_KINDS, KIND_MEANINGS, MAX_FILE_BYTES, canBecomePdf, currentTemplate, sizeInWords } from "@/lib/files";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -43,6 +44,20 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
     }
   }
   const check = holes ? checkTemplate(holes) : null;
+
+  // The invoice template, checked the same way (owner, 17 Nov).
+  const invoiceTemplates = files.filter((f) => f.kind === "invoice_template" && f.subjectType === null);
+  const invoiceCurrent = currentTemplate(files, "invoice_template");
+  let invoiceHoles: string[] | null = null;
+  if (invoiceCurrent) {
+    try {
+      const bytes = await readBytes(invoiceCurrent.key);
+      invoiceHoles = bytes ? await holesInDocx(Buffer.from(bytes)) : null;
+    } catch {
+      invoiceHoles = null;
+    }
+  }
+  const invoiceCheck = invoiceHoles ? checkInvoiceTemplate(invoiceHoles) : null;
   const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
 
   return (
@@ -129,6 +144,48 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                       <p className="mt-1">
                         Required fields the template never prints: {check.unused.map((f) => f.label.toLowerCase()).join(", ")}.
                       </p>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+        <h2 className="text-[14.5px] font-medium">The invoice template</h2>
+        {invoiceTemplates.length === 0 ? (
+          <p className="mt-2 text-[13px] text-ink-soft">
+            None yet. Keep the invoice as a Word file above, as &ldquo;Invoice template&rdquo; with nothing it belongs to. Write each
+            changing value as {"{{amount}}"}, {"{{candidateName}}"} and so on; your bank details stay as plain text in it. The newest upload is the one in use.
+          </p>
+        ) : (
+          <>
+            {invoiceTemplates.map((file, i) => (
+              <div key={file.id} className="flex flex-wrap items-baseline gap-x-3 border-t border-rule py-2 first:border-t-0">
+                <a href={"/api/files/" + file.id} className="text-[13.5px] text-brand hover:underline">
+                  {file.name}
+                </a>
+                <span className="text-[12px] text-ink-faint">
+                  {new Date(file.uploadedAt).toISOString().slice(0, 16).replace("T", " ")}
+                </span>
+                {i === 0 && <span className="text-[12px] font-medium text-ok">in use</span>}
+              </div>
+            ))}
+            <div className="mt-2 border-t border-rule pt-2 text-[13px]">
+              {invoiceHoles === null ? (
+                <p className="text-ink-soft">The template in use could not be read as a Word file, so it cannot be checked.</p>
+              ) : invoiceCheck && invoiceCheck.unknown.length === 0 && invoiceCheck.unused.length === 0 ? (
+                <p className="text-ok">Every blank in it is something we fill, and it prints what a bill must say.</p>
+              ) : (
+                invoiceCheck && (
+                  <>
+                    {invoiceCheck.unknown.length > 0 && (
+                      <p>Blanks nothing fills (a send will refuse): {invoiceCheck.unknown.map((h) => "{{" + h + "}}").join(", ")}.</p>
+                    )}
+                    {invoiceCheck.unused.length > 0 && (
+                      <p className="mt-1">A bill must say, and the template never prints: {invoiceCheck.unused.map((h) => "{{" + h + "}}").join(", ")}.</p>
                     )}
                   </>
                 )

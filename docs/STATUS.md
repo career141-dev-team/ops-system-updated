@@ -44,9 +44,22 @@ code is invented.
 | Is this company already ours? | `duplicateMatch` in `src/lib/leads.ts` | exact match linked, near match only offered |
 | The banking and finance rule | `flagIndustry` in `src/lib/leads.ts` | reads the company and what they say they do, **never what they want to hire** |
 | The intro call, its reminders and rebooks | `src/lib/meetings.ts` | three attempts with no reply closes the lead, with a reason |
+| Auto-sent Teams meeting invites (17 Nov) | `canAutoSendInvite` in `src/lib/teams.ts`, `sendBookingInvite` in `app/actions.ts`, `MeetingBookingForm.tsx` | sends on booking when a join link exists and *"Email the invite to them now"* is ticked, through the same `approveOne` outbound gate (`OPS_SEND`, `OPS_OUTBOUND_LOCK`, test mode); refuses a stand-in `teams.example` link when outreach is live; outcome shown on the lead page |
 | The agreement: fields from the real template | `src/lib/esa.ts` (`ESA_FIELDS`) | every hole in the template is a required field |
 | Filling the template, and the PDF | `src/lib/docxFill.ts` → `docxToPdf` | a hole with no value stops the send; a hole Word split over runs is gathered first (16 Nov) |
 | Template versions, check and preview (16 Nov) | `currentTemplate` in `src/lib/files.ts`, `checkTemplate` in `src/lib/esa.ts`, the "agreement template" card on `app/(settings)/files/page.tsx`, `previewAgreement` + `fillAgreementDraft` in `app/actions.ts`, "Make a filled draft" on `app/(clients)/leads/[id]/page.tsx` | newest upload is in use; blanks nothing fills and required fields never printed are listed; a preview makes the files, no message |
+| The agreement's details on the intro call, the cover email with the client's terms, and Open in a new tab (17 Nov) | `AgreementFieldsForm` on `app/(clients)/leads/[id]` (intro and agreement steps, one form), `saveAgreementFields` (starts the agreement if there is none), `coverDraft` in `src/lib/esa.ts`, `esa.cover` in `src/data/seed.ts`, `app/ui/AgreementVersions.tsx`, `app/api/files/[id]/view`, `src/lib/docxHtml.ts` | the cover email uses every agreement field and refuses an empty hole; the filled Word draft opens as a page in a new tab (a PDF opens as it is); the template is `docs/templates/ESA-TEMPLATE.docx`, from the owner's Valtrix draft |
+| The agreement's details, typed once on the intro call (17 Nov) | `AgreementFieldsForm` in `app/(clients)/leads/[id]/`, `saveAgreementFields` in `app/actions.ts` (starts the agreement if there is none) | the same form on the intro call and on the Agreement step; blank required fields save and block the send |
+| The cover email carries this client's terms (17 Nov) | `coverDraft` in `src/lib/esa.ts`, the `esa.cover` template in `src/data/seed.ts` | the owner's Valtrix email; fee, payment days and guarantee come from the agreement; an empty hole stops the send before any file is made |
+| Open the agreement in a new tab (17 Nov) | `agreementVersions` in `src/lib/esa.ts`, `app/ui/AgreementVersions.tsx` (lead and client), `/api/files/[id]/view`, `src/lib/docxHtml.ts` | a PDF opens as it is; a Word file is read as a page, which is what a laptop without LibreOffice shows |
+| One version per draft, and a PDF to read (17 Nov; upload `docs/templates/ESA-TEMPLATE.docx` on Files on each server) | `nextDraftVersion` in `src/lib/esa.ts`, "Save and make the draft" in `AgreementFieldsForm`, `src/lib/docxPdf.ts`, `/api/files/[id]/view` | each draft is the next version and earlier ones stay listed; with no LibreOffice the draft opens as a plain reading PDF that is never stored or sent |
+| The lead's bar rings the step you are on (17 Nov) | `barStates` in `src/lib/leadJourney.ts`, `app/(clients)/leads/[id]/page.tsx` | an earlier step still open shows the warning "!"; the opening is refused until the intro call is held, a draft agreement no longer stands in for it |
+| The intro call ends with the ESA sent (17 Nov) | the intro step of `app/(clients)/leads/[id]/page.tsx`: held, then 1 details, 2 the ESA shown on the page (`DraftDocument` in `app/ui/AgreementVersions.tsx`), 3 its email, 4 Send the ESA; `leadJourney` counts the call done only when held and sent | the Agreement step is for what comes back (signed, or changes); the opening waits for the signed agreement and a complete requirement (17 Nov evening), unless marked "open it now" |
+| Buttons answer in place (17 Nov) | `app/ui/SubmitButton.tsx` (`SubmitButton`, `Answer`), `leadBack` in `app/actions.ts` | a spinner while it works; the result is written beside the button and the page scrolls to it; lead page only so far |
+| Finished steps are read-only (17 Nov evening) | `requirementLocked` in `src/lib/requirements.ts`, `saveRequirement` refuses, `FieldList` in `app/ui/`, the agreement, requirement, enquiry and decline steps of `app/(clients)/leads/[id]/page.tsx` | working = editable, done = shown and locked; the requirement header now reads the real fields |
+| People on an opening (17 Nov evening) | `setOpeningPeople` in `app/actions.ts`, `src/lib/openingTeam.ts`, the "People on this opening" fold of `app/(positions)/positions/[id]/page.tsx` | several at once, more later, removable; queued to TA as `memberIds`, **which TA does not read yet** |
+| Candidates by level (17 Nov evening) | `candidateLevel`, `taApplicationsFor` in `src/lib/positionCandidates.ts`, the Candidates tab and the bar links of the position page | found, internal shortlist, external shortlist, interviews, joining, guarantee, out; TA's pipeline merged in when connected |
+| The invoice for each placed job, drawn to the owner's design (17 Nov evening) | `drawInvoicePdf` in `src/lib/invoicePdf.ts`, `invoiceSheet` in `src/lib/invoiceDoc.ts`, `fillInvoiceDocument`, `previewInvoice`, `saveBankDetails`, `draftInvoiceForPlacement` in `app/actions.ts`, "Bank details on invoices" on the Settings screen, the invoice page and the Invoices list | a real PDF with no LibreOffice; versions; refused until the bank details are set; an uploaded Word template still overrides it; the job named on each row; "Draft the invoice" on a joined placement with none |
 | The chase: email, WhatsApp, email, WhatsApp, email, call | `CHASE_PLAN`, `chaseTheAgreement` in `src/data/desk.ts` | the clock drafts it; a person approves it; a reply stops it |
 | They want changes | `recordChangesWanted` in `app/actions.ts` | chasing stops, the version moves on, the two weeks keep running |
 | Signed, countersigned, declined | `app/actions.ts` | settling an agreement stops every clock on it |
@@ -65,6 +78,7 @@ code is invented.
 | TA confirming the opening | `takeOpeningCreated` in `src/data/desk.ts` | from TA's own event; a TA opening one by hand for our client becomes a position with "link a requirement" |
 | What TA says afterwards | `takeOpeningUpdate` | the JD approved, the working stage, the closing |
 | The primary TA and the 100% day | `setPositionTeam`, screens `app/(positions)/positions` | the TA lead decides; Ops records it and tells TA |
+| Sourcing strategies on an opening (17 Nov) | `TA_STRATEGIES`, `problemWithStrategy` in `src/lib/strategies.ts`, `addStrategy` in `app/actions.ts`, `app/(positions)/positions/[id]/page.tsx` | 19 standard TA strategies selectable from a list with an optional note, assignable to either an Ops team member or a TA person on the job |
 
 | The LinkedIn post recorded | `recordLinkedInPost`, `src/lib/adverts.ts` | only a real LinkedIn post address is taken (a wrong link looks done), the share tail is cut, and TA is told because that is what unlocks Live |
 | Talent Pulse, every Tuesday | `compileTalentPulse` in `src/data/desk.ts`, screen `app/(positions)/talent-pulse` | compiled by a clock that sets the next Tuesday itself; each role needs its TA's line and its own apply address, and an issue with a line missing is refused |
@@ -145,15 +159,16 @@ Also built on 17 Nov (supervisor review; each is a decision in 09):
 
 | Thing | Where it is |
 |---|---|
-| The opening is opened after the intro call, no signature needed | `problemWithHandover` in `src/lib/requirements.ts`, `handOverToTa`, `saveRequirement` (later fields queue `/integrations/v1/openings/details`, **an endpoint TA does not have yet**) |
-| The lead's bar: Enquiry, Intro call, Opening, Agreement, Requirement (the last two side by side) | `src/lib/leadJourney.ts` |
+| The opening is created last: after the client has signed and the requirement is complete (17 Nov evening), unless the lead was marked "open it now" | `problemWithOpening` in `src/lib/requirements.ts`, `handOverToTa` and `openEarly` in `app/actions.ts`, the Opening step of `app/(clients)/leads/[id]/page.tsx` (later fields queue `/integrations/v1/openings/details`, **an endpoint TA does not have yet**) |
+| The lead's bar: Enquiry, Intro call, Agreement, Requirement (side by side), Opening | `src/lib/leadJourney.ts` |
 | One meeting as intro call and requirement meeting | `alsoRequirement` on the meeting, the tick on `MeetingBookingForm` |
 | Automatic countersign | `src/lib/countersign.ts`, `countersignAutomatically` and `finishCountersign` in `app/actions.ts`; needs a "director_signature" file and the `pdf-lib` dependency |
-| One search stage and the opening's own bar | `loopSummary`, `app/(positions)/positions/page.tsx` (3 columns), `app/work/page.tsx`, the opening page |
+| One search stage and the opening's own bar | `loopSummary`, `app/(positions)/positions/page.tsx` (three groups, not a board), `app/work/page.tsx`, the opening page |
 | Strategies tab, Placements tab, a "Waiting on" list | the opening page; `addStrategy` |
 | Contacts for a client and for a position | `src/lib/contacts.ts`, `app/ui/Contacts.tsx`, `saveContact` |
 | Interview invites: a calendar event (Teams for online, an address for onsite) and both feedbacks side by side | `bookInterview`, `recordClientBooking`, `recordCandidateFeedbackByHand`, the candidate's Interviews tab |
 | Candidates added by hand | `addManualCandidate`, `src/lib/positionCandidates.ts` |
+| Pretend to be the TA System (`/dev/ta`) | development only, never against the real TA: opens when `OPS_DEV_SIGNIN` and `OPS_TA_FAKE` are both on (`sh deploy/local/start-ui.sh`). Buttons make TA create an opening, send a set of five CVs, send interview events, place a candidate and say they joined, through the same handlers as real events (`devTa*` in `app/actions.ts`) |
 | The requirement from a Teams transcript | `src/lib/transcript.ts`, `fetchTranscript`, `readRequirementFromCall` |
 
 Not done from that review, each with its reason:
@@ -187,7 +202,7 @@ part that pays for everything.
 | The invoice document | `sendInvoice`, `invoiceHoles` | the uploaded invoice template is filled, made a PDF and attached to the draft; a hole nothing fills refuses it by name (16 Nov) |
 | Sending it | `sendInvoice` | to the billing address on the client's record, as a draft accounts approves; the clock that chases it starts from the due date, and TA is told the invoice state |
 | Money in | `recordPayment` | part payments allowed, more than the balance refused (a digit too many is the usual mistake); paid in full tells accounts and the ops owner and stops every chase |
-| Late | `chaseThePayment`, `lateCharge` | **1% a month, compounded**, as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
+| Late | `chaseThePayment`, `lateCharge` | **5% a month, compounded** (clause 5.5, 17 Nov; was 1%), as the agreement words it - and **nothing at all** on an invoice disputed in good faith; the chase is drafted, approved, sent, and the next one is a month later |
 | Writing it off | `writeOffInvoice` | not before ninety days unless the Director of Operations decides; the guarantee is void and the position closes |
 | Screens | `app/(money)/placements`, `app/(money)/invoices` | joining, joined, never happened; and late, waiting for accounts, out, settled |
 
@@ -359,6 +374,7 @@ Small things still open, each with its reason:
 |---|---|
 | The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
 | Teams for **interviews** | the intro call and requirement meeting have it (17 Nov) and wait only on `Calendars.ReadWrite` consent and `switch.teamsEnabled`; `bookInterview` still takes a pasted link |
+| Reschedule / not-held emails for intro & requirement meetings | `markMeetingNotHeld` already cancels the Outlook event; reschedule/not-held notification emails to the client are not built yet |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
 | The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |

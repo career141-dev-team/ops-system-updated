@@ -3,8 +3,9 @@
  *
  * One fault on the owner's board is the reason this phase exists, in his own
  * words: "the requirement was in the TA lead's head". So the tests here are
- * about two refusals - no opening before the agreement is signed, and no
- * opening from a half-written requirement - and about the brief that TA reads.
+ * about two refusals - no opening before the client has signed, and no
+ * opening from a half-written requirement (both lifted for a lead opened early
+ * on purpose) - and about the brief that TA reads.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -15,9 +16,12 @@ import {
   briefText,
   handoverInWords,
   missingFields,
+  problemWithEarlyOpening,
   problemWithHandover,
+  problemWithOpening,
   problemWithImpractical,
   problemWithRequirement,
+  requirementLocked,
 } from "@/lib/requirements";
 
 const filled = (): Record<string, string> => ({
@@ -63,10 +67,8 @@ test("the brief reads as the desk writes one, with the client's own words kept",
   assert.doesNotMatch(bare, /From the meeting:/);
 });
 
-test("the opening needs a name and a number, and no longer waits for a signature", () => {
-  // 17 Nov (supervisor review): the opening is opened right after the intro
-  // call, with the agreement going out alongside; the rest of the requirement
-  // is written in later and goes to the opening as it is saved.
+test("TA always needs the role's name and number", () => {
+  // Whether the agreement and the rest of the requirement come first is `problemWithOpening`, below.
   assert.equal(problemWithHandover({ title: "Driver", headcount: "2" }), null);
   assert.match(problemWithHandover({ headcount: "2" }) ?? "", /title/i);
   assert.match(problemWithHandover({ title: "Driver" }) ?? "", /how many/i);
@@ -178,4 +180,40 @@ test("TA's own event is what gives a position its opening id", async () => {
   // An opening nobody in Ops holds is ignored rather than invented.
   await desk.takeOpeningUpdate("opening.closed", { openingId: "ta_nobody" }, now);
   assert.equal(repo.all().positions.length, 2);
+});
+
+test("the opening waits for the client's signature and a complete requirement (owner, 17 Nov evening)", () => {
+  const ready = { esaState: "signed", requirementBlanks: [] as string[], openEarly: false, fields: filled() };
+  assert.equal(problemWithOpening(ready), null);
+  assert.equal(problemWithOpening({ ...ready, esaState: "countersigned" }), null, "the Director's countersignature need not be there");
+
+  for (const esaState of [null, "draft", "sent", "chasing", "negotiating"]) {
+    assert.match(problemWithOpening({ ...ready, esaState }) ?? "", /has not signed the agreement/, String(esaState));
+  }
+  const blank = problemWithOpening({ ...ready, requirementBlanks: ["salary", "locations"] }) ?? "";
+  assert.match(blank, /requirement still has blanks: salary, locations/);
+  // Both missing: both are said, and the way out is named.
+  const both = problemWithOpening({ ...ready, esaState: "sent", requirementBlanks: ["salary"] }) ?? "";
+  assert.match(both, /not signed.*; and the requirement/);
+  assert.match(both, /Open it now, without waiting/);
+});
+
+test("a lead opened early needs only the role's name and number", () => {
+  const early = { esaState: null, requirementBlanks: ["salary", "locations", "reports to"], openEarly: true };
+  assert.equal(problemWithOpening({ ...early, fields: { title: "Driver", headcount: "2" } }), null);
+  assert.match(problemWithOpening({ ...early, fields: { headcount: "2" } }) ?? "", /title/);
+  assert.match(problemWithOpening({ ...early, fields: { title: "Driver" } }) ?? "", /how many/i);
+});
+
+test("opening early needs a reason in words", () => {
+  assert.match(problemWithEarlyOpening("") ?? "", /Say why/);
+  assert.match(problemWithEarlyOpening("trusted") ?? "", /Say why/);
+  assert.equal(problemWithEarlyOpening("A long-standing client; the Director agreed it by phone."), null);
+});
+
+test("a requirement with every required field written is finished and locked", () => {
+  assert.equal(requirementLocked(filled()), true);
+  assert.equal(requirementLocked({}), false, "nothing written yet");
+  assert.equal(requirementLocked({ ...filled(), salary: "  " }), false, "one required field blank keeps it open");
+  assert.equal(requirementLocked({ ...filled(), insights: "", reportsTo: "" }), true, "the optional fields do not matter");
 });

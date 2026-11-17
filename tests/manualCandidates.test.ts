@@ -13,7 +13,7 @@ const position = {
     { id: "mc1", name: "Nimal Silva", email: "nimal@example.test", phone: "", note: "Driver, 6 yrs", cvFileId: null, addedBy: "m1", at: 1 },
   ],
 } as unknown as OpsPosition;
-const db = { requirements: [] } as unknown as OpsDatabase;
+const db = { requirements: [], interviews: [], placements: [] } as unknown as OpsDatabase;
 
 test("a person added by hand shows on the list, marked, with no fit score invented", () => {
   delete process.env.OPS_TA_FAKE;

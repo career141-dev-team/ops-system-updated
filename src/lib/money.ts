@@ -14,14 +14,15 @@
  *   - **The fee is the agreement's, not today's opinion.** The rule is copied
  *     onto the placement when it is made, so an agreement changed next year
  *     does not change an invoice already sent.
- *   - **Late is 1% a month, compounded**, and nothing is charged on an
- *     invoice the client disputes in good faith. That is the agreement, which
- *     the owner made the truth on 3 November.
+ *   - **Late is 5% a month, compounded**, and nothing is charged on an
+ *     invoice the client disputes in good faith. That is clause 5.5 of the
+ *     current agreement (17 November); it was 1% from 3 November, from an
+ *     older draft.
  *
  * Nothing here touches a database or sends anything.
  */
 
-import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
+import { COLOMBO_OFFSET_MS, DAY, colomboDate } from "@/lib/calendar";
 
 export type PlacementState = "placed" | "joined" | "no_show" | "cancelled";
 
@@ -45,8 +46,8 @@ export const INVOICE_MEANINGS: Record<InvoiceState, string> = {
 /** Days after the first working day that a fee invoice is due. */
 export const DUE_DAYS = 30;
 
-/** The agreement's late charge: 1% a month, compounded. */
-export const LATE_PCT_PER_MONTH = 1;
+/** The agreement's late charge (clause 5.5, 17 Nov): 5% a month, compounded. */
+export const LATE_PCT_PER_MONTH = 5;
 
 /** Unpaid this long and somebody has to decide to write it off. */
 export const WRITE_OFF_DAYS = 90;
@@ -164,11 +165,11 @@ export function monthsLate(dueAt: number, now = Date.now()): number {
 }
 
 /**
- * The late charge, as the agreement words it: 1% a month, compounded.
+ * The late charge, as the agreement words it: 5% a month, compounded.
  *
  * Compounded means the charge is on the running total, not on the original
  * amount - which is what "compounded" means and what our board had wrong as a
- * simple 5% until the document was read (3 Nov).
+ * simple rate until the document was read (3 Nov).
  *
  * A disputed invoice carries no charge at all, also from the agreement.
  */
@@ -209,6 +210,22 @@ export function problemWithPayment(amount: number, balance: number): string | nu
     return "That is more than the " + money(balance) + " still owed. Check the amount, or record it as two payments.";
   }
   return null;
+}
+
+/**
+ * The day the money arrived, from the date on the payment form (17 Nov). The forms always sent it and
+ * the action ignored it, so every payment read as "today". Blank means today; a date in the future is
+ * a typing slip and is refused; a past day is taken at midday in Colombo.
+ */
+export function paymentDate(input: string, now: number): { at: number; problem: string | null } {
+  const text = input.trim();
+  if (!text) return { at: now, problem: null };
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text) || Number.isNaN(Date.parse(text))) {
+    return { at: now, problem: "Pick the day the money arrived." };
+  }
+  const today = colomboDate(now);
+  if (text > today) return { at: now, problem: "That day has not come yet. Pick the day the money arrived." };
+  return { at: text === today ? now : Date.parse(text + "T12:00:00+05:30"), problem: null };
 }
 
 export function problemWithWriteOff(dueAt: number, reason: string, now = Date.now(), after = WRITE_OFF_DAYS): string | null {

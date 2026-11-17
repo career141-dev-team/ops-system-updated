@@ -5,6 +5,7 @@ import {
   cancelPlacement,
   changeJoinDate,
   correctSalarySplit,
+  draftInvoiceForPlacement,
   markJoined,
   markNoShow,
   recordNoShowChoice,
@@ -46,6 +47,7 @@ import {
   moneyWhole,
 } from "@/lib/money";
 import { placementNextStep } from "@/lib/nextStep";
+import { SubmitButton } from "@/app/ui/SubmitButton";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -90,12 +92,12 @@ export default async function PlacementPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; view?: string }>;
+  searchParams: Promise<{ msg?: string; view?: string; at?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { id } = await params;
-  const { msg, view } = await searchParams;
+  const { msg, view, at } = await searchParams;
 
   const now = Date.now();
   const db = await desk();
@@ -233,7 +235,7 @@ export default async function PlacementPage({
         <ViewPills items={subViews} active={activeView} />
       ) : null}
 
-      {msg && (
+      {msg && !at && (
         <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
           {msg}
         </p>
@@ -558,6 +560,18 @@ export default async function PlacementPage({
               </span>
               <Icon name="chevron-right" size={18} className="text-ink-faint" />
             </Link>
+
+            {!invoice && placement.state === "joined" && !placement.isReplacementOf && (mayManage || can(me, "money.manage")) && (
+              <form action={draftInvoiceForPlacement} className="flex flex-col gap-1.5 px-2 pb-1">
+                <input type="hidden" name="placementId" value={placement.id} />
+                <SubmitButton id="draft-invoice" className={pillSecondary + " self-start"}>
+                  Draft the invoice
+                </SubmitButton>
+                <p className="text-[12.5px] text-ink-soft">
+                  They joined and there is no invoice yet. If the client&rsquo;s billing details or the package are missing, it says which.
+                </p>
+              </form>
+            )}
 
             {/* Item 2: 90-day guarantee (1:2919) */}
             <Link

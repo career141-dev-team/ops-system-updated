@@ -105,7 +105,8 @@ test("the agreement's own steps, each with whose move it is", () => {
     ...over,
   });
 
-  assert.match(leadNextStep(lead({ clientTaId: "ta_c1" }), held, NOW).waiting, /Open the opening.*start the agreement/);
+  // The opening comes last (owner, 17 Nov evening): after the call, the agreement goes first.
+  assert.match(leadNextStep(lead({ clientTaId: "ta_c1" }), held, NOW).waiting, /^Start the agreement.*signed and the requirement is complete/);
   assert.match(
     leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, position: { openingTaId: null, title: "Driver" } }, NOW).waiting,
     /^Start the agreement/,
@@ -135,10 +136,12 @@ test("the agreement's own steps, each with whose move it is", () => {
     leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, esa: esa({ state: "changes", version: 2 }) }, NOW).waiting,
     /want changes/,
   );
+  // Signed by the client is what the opening waits for: the ladder moves on to the requirement
+  // while the Director countersigns in the background.
   assert.match(
     leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, esa: esa({ state: "signed", signedAt: NOW - DAY }) }, NOW)
       .waiting,
-    /Director countersigns/,
+    /requirement meeting/,
   );
 });
 
@@ -622,7 +625,7 @@ test("an invoice card leads with the rule that costs money", () => {
 
   const owed = invoiceNextStep(invoice(), iParts, NOW);
   assert.match(owed.waiting, /LKR 450,000 is owed, due in 20 days/);
-  assert.match(owed.clock ?? "", /1% a month is added, compounded/);
+  assert.match(owed.clock ?? "", /the late charge is added each month, compounded/);
 
   const late = invoiceNextStep(
     invoice({ dueAt: NOW - 12 * DAY }),

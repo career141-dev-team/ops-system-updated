@@ -5,7 +5,7 @@ import { outboundLocked, outreachInWords, outreachLiveInEnv, sendingEnabled } fr
 import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
 import { desk, liveTimers, switchedOn } from "@/data/desk";
 import { usingConvex } from "@/data/convexClient";
-import { currentMember } from "@/lib/session";
+import { currentMember, devSignInAllowed } from "@/lib/session";
 import { people, readsEnabled, writesEnabled } from "@/lib/ta";
 
 /**
@@ -47,6 +47,18 @@ export default async function HealthPage() {
         <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
           <p>Sending: {sendingEnabled() ? "on" : "switched off"}</p>
           <p>Outreach to real clients: {outreachInWords(outreachLiveInEnv(), switchedOn(db, "switch.outreachLive"))}</p>
+          <p>
+            Dev sender:{" "}
+            {devSignInAllowed()
+              ? (process.env.OPS_DEV_SENDER_EMAIL ?? "").trim() || "not set (uses the signed-in member's address)"
+              : "inactive (not in dev sign-in)"}
+          </p>
+          <p>
+            Microsoft credentials:{" "}
+            {process.env.MS_TENANT_ID && process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET
+              ? "present"
+              : "missing"}
+          </p>
           <p>Reading the mailboxes: {readerEnabled() ? "on" : "switched off"}</p>
           <p className="text-ink-soft">
             {mailboxesInWords()}

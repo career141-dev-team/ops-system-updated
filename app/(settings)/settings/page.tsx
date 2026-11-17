@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { changeSetting } from "@/app/actions";
-import { desk } from "@/data/desk";
+import { changeSetting, saveBankDetails } from "@/app/actions";
+import { desk, textOf } from "@/data/desk";
 import { figmaField, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -107,6 +107,40 @@ export default async function SettingsPage({
           </section>
         </div>
       )}
+
+      {/* The owner's bank details, printed on every invoice (17 Nov). Kept here, not in the code. */}
+      <div className="pt-2">
+        <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+          BANK DETAILS ON INVOICES
+        </div>
+        {mayChange ? (
+          <form action={saveBankDetails} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["bank", "Bank", "bank.name"],
+                ["accountName", "Account name", "bank.accountName"],
+                ["accountNo", "Account number", "bank.accountNo"],
+                ["branch", "Branch", "bank.branch"],
+                ["swift", "SWIFT code", "bank.swift"],
+              ] as const
+            ).map(([name, label, key]) => (
+              <label key={name} className="flex flex-col gap-1 text-[13px] text-ink-soft">
+                {label}
+                <input name={name} defaultValue={textOf(db, key, "")} className={figmaField + " bg-sunk"} />
+              </label>
+            ))}
+            <div className="sm:col-span-2">
+              <button type="submit" className={pillSecondary}>
+                Save the bank details
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-[14px] text-ink-soft">
+            {textOf(db, "bank.name", "") ? textOf(db, "bank.name", "") + " · " + textOf(db, "bank.accountNo", "") : "Not set yet. Only the ops lead can set them."}
+          </p>
+        )}
+      </div>
 
       <div className="pt-2">
         <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">

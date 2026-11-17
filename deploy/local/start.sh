@@ -32,6 +32,10 @@ export CONVEX_SELF_HOSTED_ADMIN_KEY="$LOCAL_ADMIN_KEY"
 export OPS_SESSION_SECRET="$LOCAL_SESSION_SECRET"
 export OPS_STORE=convex
 export OPS_DEV_SIGNIN=on
+# The TA System and Teams are stand-ins on a laptop (17 Nov): the pretend-TA panel at
+# /dev/ta needs the first, and no real meeting is ever made without the second.
+export OPS_TA_FAKE=on
+export OPS_TEAMS_FAKE=on
 
 # The backend starts empty. Without this it has no functions, so the first
 # read fails and every screen is an error (found 6 Nov writing docs/26). It is

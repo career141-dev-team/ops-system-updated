@@ -5,12 +5,17 @@ import test from "node:test";
 import { problemWithBooking } from "@/lib/meetings";
 import {
   attendeesFrom,
+  canAutoSendInvite,
   eventFor,
+  isStandInTeamsLink,
   problemWithAttendees,
   problemWithLength,
   readEvent,
   sayGraphFailure,
 } from "@/lib/teams";
+import { addMeeting, desk, draftMessage, settleMessage } from "@/data/desk";
+import { doNotContactFrom, gate, sentToday } from "@/lib/messages";
+import { sendEmail, sendingEnabled } from "@/lib/senders";
 
 // 20 Nov 2026, 10:30 in Colombo = 05:00 UTC.
 const AT = Date.UTC(2026, 10, 20, 5, 0);
@@ -85,4 +90,126 @@ test("an interview at their office is a plain calendar event with the address, n
   // No link is expected back for an event that is not online.
   assert.deepEqual(readEvent({ id: "AAMk2" }, false), { eventId: "AAMk2", joinUrl: "" });
   assert.equal(readEvent({ id: "AAMk2" }), null);
+});
+
+test("isStandInTeamsLink detects teams.example stand-in links and leaves real links alone", () => {
+  assert.equal(isStandInTeamsLink("https://teams.example/fake/123"), true);
+  assert.equal(isStandInTeamsLink("http://TEAMS.EXAMPLE/fake"), true);
+  assert.equal(isStandInTeamsLink("https://teams.microsoft.com/l/meetup-join/x"), false);
+  assert.equal(isStandInTeamsLink(""), false);
+});
+
+test("canAutoSendInvite checks every condition and refuses a fake link when outreach is live", () => {
+  const base = {
+    hasLink: true,
+    linkIsStandIn: false,
+    recipients: ["client@company.com"],
+    sendNow: true,
+    outreachLive: false,
+  };
+  assert.deepEqual(canAutoSendInvite(base), { ok: true });
+
+  const unticked = canAutoSendInvite({ ...base, sendNow: false });
+  assert.equal(unticked.ok, false);
+  if (!unticked.ok) assert.match(unticked.reason, /To approve/);
+
+  const noLink = canAutoSendInvite({ ...base, hasLink: false });
+  assert.equal(noLink.ok, false);
+  if (!noLink.ok) assert.match(noLink.reason, /no meeting link/);
+
+  const noRecipients = canAutoSendInvite({ ...base, recipients: [] });
+  assert.equal(noRecipients.ok, false);
+  if (!noRecipients.ok) assert.match(noRecipients.reason, /no client email/);
+
+  // Stand-in link is allowed in test mode, refused when outreach is live.
+  assert.deepEqual(canAutoSendInvite({ ...base, linkIsStandIn: true, outreachLive: false }), { ok: true });
+  const fakeLive = canAutoSendInvite({ ...base, linkIsStandIn: true, outreachLive: true });
+  assert.equal(fakeLive.ok, false);
+  if (!fakeLive.ok) assert.match(fakeLive.reason, /teams\.example/);
+});
+
+test("a booking on the JSON store with sending off keeps the booking and records the invite as blocked", async () => {
+  const prevSend = process.env.OPS_SEND;
+  delete process.env.OPS_SEND;
+  try {
+    const before = await desk();
+    const owner = before.members[0];
+    const lead = before.leads.find((l) => !l.doNotInvite) ?? before.leads[0];
+    const meeting = await addMeeting({
+      leadId: lead.id,
+      kind: "intro",
+      at: AT,
+      state: "booked",
+      taLeadId: "ta1",
+      rebookCount: 0,
+      brief: "",
+      role: "",
+      packageSaid: "",
+      reason: null,
+      bookedBy: owner.id,
+      heldAt: null,
+      joinUrl: "https://teams.microsoft.com/l/meetup-join/real-1",
+    });
+    const check = canAutoSendInvite({
+      hasLink: true,
+      linkIsStandIn: false,
+      recipients: ["nadia@autosend.example"],
+      sendNow: true,
+      outreachLive: false,
+    });
+    assert.equal(check.ok, true);
+
+    const msg = await draftMessage({
+      channel: "email",
+      to: ["nadia@autosend.example"],
+      subject: "Our introductory call",
+      body: "Join here",
+      templateKey: null,
+      attachmentFileIds: [],
+      subjectType: "meeting",
+      subjectId: meeting.id,
+    });
+
+    const fresh = await desk();
+    const verdict = gate(
+      { ...msg, state: "approved" },
+      {
+        outreachLive: false,
+        testRecipient: "test@example.test",
+        doNotContact: doNotContactFrom(fresh.leads),
+        sentToClientToday: sentToday(fresh.messages, msg.to),
+        dailyCapPerClient: 4,
+      },
+    );
+    assert.equal(verdict.ok, true);
+    if (!verdict.ok) return;
+
+    const outcome = await sendEmail({
+      from: owner.email,
+      to: verdict.to,
+      subject: msg.subject,
+      body: msg.body,
+    });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, "Sending is switched off (OPS_SEND).");
+
+    const note = ["Sent automatically on booking.", verdict.note, outcome.reason].filter(Boolean).join(" ");
+    await settleMessage(
+      msg.id,
+      owner.id,
+      sendingEnabled() ? "failed" : "blocked",
+      verdict.to,
+      note,
+      outcome.providerMessageId,
+    );
+
+    const after = await desk();
+    const savedMeeting = after.meetings.find((m) => m.id === meeting.id);
+    const savedMsg = after.messages.find((m) => m.id === msg.id);
+    assert.equal(savedMeeting?.state, "booked");
+    assert.equal(savedMsg?.state, "blocked");
+    assert.match(savedMsg?.note ?? "", /Sending is switched off \(OPS_SEND\)/);
+  } finally {
+    if (prevSend !== undefined) process.env.OPS_SEND = prevSend;
+  }
 });

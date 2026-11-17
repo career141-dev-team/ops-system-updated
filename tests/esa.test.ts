@@ -12,7 +12,11 @@ import {
   type EsaState,
   canMoveTo,
   chaseStep,
+  agreementVersions,
   checkTemplate,
+  coverDraft,
+  coverEmail,
+  nextDraftVersion,
   defaultFields,
   expiresAt,
   missingFields,
@@ -46,11 +50,12 @@ const filled = (): EsaFields => ({
 test("a blank required field blocks the draft, and is named", () => {
   assert.equal(problemWithDraft(filled()), null);
 
-  // The registration number is in the first clause of the real template, so a
-  // blank one makes the document wrong, not merely incomplete (3 Nov).
-  const noReg = { ...filled(), registrationNo: "  " };
-  assert.deepEqual(missingFields(noReg).map((f) => f.key), ["registrationNo"]);
-  assert.match(problemWithDraft(noReg) ?? "", /still blank: company registration no/i);
+  // The owner's real ESA (the Valtrix draft, 17 Nov) never prints the client's
+  // registration number, so a blank one no longer blocks; the address does.
+  assert.equal(problemWithDraft({ ...filled(), registrationNo: "  " }), null);
+  const noAddress = { ...filled(), companyAddress: "  " };
+  assert.deepEqual(missingFields(noAddress).map((f) => f.key), ["companyAddress"]);
+  assert.match(problemWithDraft(noAddress) ?? "", /still blank: registered address/i);
 
   const empty = problemWithDraft({});
   assert.match(empty ?? "", /company, as it signs/i);
@@ -335,7 +340,62 @@ test("a negotiation stops the chasing, and only the chasing", async () => {
 test("the template check names holes nothing fills and required fields the template never prints", () => {
   const check = checkTemplate(["companyName", "effectiveDate", "mysteryHole"]);
   assert.deepEqual(check.unknown, ["mysteryHole"], "effectiveDate is filled by the system, so it is not unknown");
-  assert(check.unused.some((f) => f.key === "registrationNo"));
+  assert(check.unused.some((f) => f.key === "companyAddress"));
+  assert(!check.unused.some((f) => f.key === "registrationNo"), "an optional field may be left out of the template");
   assert(!check.unused.some((f) => f.key === "companyName"));
   assert(!check.unused.some((f) => f.key === "notes"), "an optional field may be left out of the template");
+  assert(!check.unused.some((f) => f.key === "signatoryEmail" || f.key === "signatoryPhone"), "the send and the chase need them; the ESA never prints them");
+});
+
+test("the cover email carries this client's terms and refuses an empty hole", () => {
+  const wording = {
+    subject: "{{client}} · Executive Search Agreement",
+    body: "Dear {{contact}},\n\nSee Clause 5.1: {{feeMonths}} month(s) {{feeBasis}} salary, within {{paymentDays}} days. Guarantee {{guaranteeDays}} days.",
+  };
+  const done = coverDraft(wording, { ...filled(), companyName: "Smith & Co", signatoryName: "Ms. Migara" });
+  assert(!("problem" in done));
+  if ("problem" in done) return;
+  assert.equal(done.subject, "Smith & Co · Executive Search Agreement");
+  assert.match(done.body, /Dear Ms\. Migara,/);
+  assert.match(done.body, /1 month\(s\) gross salary, within 30 days\. Guarantee 90 days\./);
+
+  const hole = coverDraft({ subject: "x", body: "Pay {{paymentDays}} and {{mysteryHole}}" }, filled());
+  assert("problem" in hole && /mysteryHole/.test(hole.problem));
+  const blank = coverDraft(wording, { ...filled(), paymentDays: " " });
+  assert("problem" in blank && /paymentDays/.test(blank.problem), "a blank term is a hole, not an empty sentence");
+});
+
+test("the versions list: newest first, the PDF stands for a version that has both", () => {
+  const f = (id: string, name: string, at: number) => ({ id, name, mime: "x", uploadedAt: at, kind: "esa_draft" });
+  const rows = agreementVersions([
+    f("a", "Agreement - Valtrix - v1.docx", 1),
+    f("b", "Agreement - Valtrix - v1.pdf", 2),
+    f("c", "Agreement - Valtrix - v2.docx", 3),
+    { ...f("d", "Agreement - Valtrix - v9.pdf", 4), kind: "esa_signed" },
+    f("e", "cover letter.docx", 5),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.version, r.file.id]), [[2, "c"], [1, "b"]]);
+});
+
+test("the cover email is the person's own wording once they edit it, and never with a hole left", () => {
+  const wording = { subject: "{{client}} agreement", body: "Dear {{contact}}, fee {{feeMonths}} month." };
+  const standard = coverEmail(wording, filled());
+  assert("subject" in standard && /1 month/.test(standard.body));
+
+  const edited = coverEmail(wording, { ...filled(), coverSubject: "Our ESA", coverBody: "Hello, my own words." });
+  assert.deepEqual(edited, { subject: "Our ESA", body: "Hello, my own words." });
+
+  const half = coverEmail(wording, { ...filled(), coverSubject: "Our ESA", coverBody: "Dear {{contact}}," });
+  assert("problem" in half, "a hole typed back in is refused");
+
+  const blank = coverEmail(wording, { ...filled(), coverSubject: "  ", coverBody: "x" });
+  assert("subject" in blank && blank.subject.includes("SAMPLE CLIENT"), "an empty edit falls back to the standard wording");
+});
+
+test("every drafted copy is the next version, so a second draft never writes over the first", () => {
+  const f = (name: string, kind = "esa_draft") => ({ id: name, name, mime: "x", uploadedAt: 1, kind });
+  assert.equal(nextDraftVersion([]), 1);
+  assert.equal(nextDraftVersion([f("Agreement - A - v1.docx"), f("Agreement - A - v1.pdf")]), 2);
+  assert.equal(nextDraftVersion([f("Agreement - A - v1.docx"), f("Agreement - A - v2.docx")]), 3);
+  assert.equal(nextDraftVersion([f("Agreement - A - v7.pdf", "esa_signed")]), 1, "a signed copy is not a draft");
 });

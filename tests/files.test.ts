@@ -105,3 +105,10 @@ test("the template in use is the newest one that belongs to nothing", () => {
   assert.equal(currentTemplate(files, "esa_draft")?.id, "new", "not the first, not a filled draft");
   assert.equal(currentTemplate(files, "offer_letter"), null);
 });
+
+test("Open: a PDF shows as it is, a Word file is read as a page, the rest downloads", async () => {
+  const { viewHref } = await import("@/lib/files");
+  assert.equal(viewHref({ id: "f1", name: "a.pdf", mime: "application/pdf" }), "/api/files/f1?inline=1");
+  assert.equal(viewHref({ id: "f2", name: "a.docx", mime: mimeFor("a.docx") }), "/api/files/f2/view");
+  assert.equal(viewHref({ id: "f3", name: "a.xlsx", mime: mimeFor("a.xlsx") }), "/api/files/f3");
+});

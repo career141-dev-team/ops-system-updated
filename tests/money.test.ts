@@ -29,6 +29,7 @@ import {
   monthsLate,
   nineAmOn,
   paidSoFar,
+  paymentDate,
   placementInWords,
   problemWithDojChange,
   problemWithNoShow,
@@ -110,12 +111,14 @@ test("due thirty days from the first working day, not from the invoice", () => {
   assert.equal(monthsLate(joined, joined + 65 * DAY), 2);
 });
 
-test("late is 1% a month compounded, and nothing at all when disputed", () => {
-  assert.equal(LATE_PCT_PER_MONTH, 1);
-  // Compounded: the second month's 1% is on the first month's total.
-  assert.equal(lateCharge(100_000, 1), 1000);
-  assert.equal(lateCharge(100_000, 2), 2010);
-  assert.equal(lateCharge(100_000, 3), 3030.1);
+test("late is 5% a month compounded, and nothing at all when disputed", () => {
+  assert.equal(LATE_PCT_PER_MONTH, 5);
+  // Compounded: the second month's 5% is on the first month's total.
+  assert.equal(lateCharge(100_000, 1), 5000);
+  assert.equal(lateCharge(100_000, 2), 10_250);
+  assert.equal(lateCharge(100_000, 3), 15_762.5);
+  // The number is a setting.
+  assert.equal(lateCharge(100_000, 2, 1), 2010);
   // Simple, if the owner ever switches it back.
   assert.equal(lateCharge(100_000, 2, 1, false), 2000);
   // The agreement's own exception.
@@ -386,13 +389,13 @@ test("the chase recomputes the charge, asks accounts, and sets the next month", 
   assert.equal(chased.ok, true);
   const saved = repo.invoiceIn(invoice.id);
   assert.equal(saved?.lateMonths, 2);
-  // Two months, compounded, on 450,000.
-  assert.equal(saved?.lateCharge, 9045);
+  // Two months at 5%, compounded, on 450,000.
+  assert.equal(saved?.lateCharge, 46_125);
 
   const draft = repo.all().messages.find((m) => m.templateKey === "invoice.chase");
   assert.deepEqual(draft?.to, ["finance@example.test"]);
   assert.equal(draft?.state, "draft", "nothing reaches a client unapproved");
-  assert.match(draft?.body ?? "", /459,045\.00/, "the amount owed includes the charge");
+  assert.match(draft?.body ?? "", /496,125\.00/, "the amount owed includes the charge");
 
   // The next chase is a month away, and goes on until it is paid.
   const next = repo.liveTimers().find((t) => t.kind === "invoice.chase");
@@ -496,4 +499,16 @@ test("a tile's amount: whole rupees, and compact totals", () => {
   assert.equal(moneyCompact(2_000_000), "LKR 2m");
   assert.equal(moneyCompact(640_000), "LKR 640k");
   assert.equal(moneyCompact(0), "LKR 0");
+});
+
+test("the day the money arrived comes from the form: blank is today, a past day is kept, a future day is refused", () => {
+  const now = Date.parse("2026-11-17T10:00:00+05:30");
+  assert.deepEqual(paymentDate("", now), { at: now, problem: null });
+  assert.deepEqual(paymentDate("2026-11-17", now), { at: now, problem: null }, "today is now, never a later midday");
+  const past = paymentDate("2026-11-10", now);
+  assert.equal(past.problem, null);
+  assert.equal(past.at, Date.parse("2026-11-10T12:00:00+05:30"));
+  assert.match(paymentDate("2026-11-18", now).problem ?? "", /not come yet/);
+  assert.match(paymentDate("17/11/2026", now).problem ?? "", /Pick the day/);
+  assert.match(paymentDate("2026-13-45", now).problem ?? "", /Pick the day/);
 });

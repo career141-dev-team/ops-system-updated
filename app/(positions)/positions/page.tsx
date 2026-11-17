@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
 import { PageBox, ViewPills, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import {
+  agreementForLead,
   clientIn,
   desk,
   liveHoldFor,
@@ -15,8 +16,9 @@ import {
 import { loopSummary } from "@/lib/journey";
 import { currentMember } from "@/lib/session";
 
-// Three columns since the supervisor review (17 Nov): searching, sets with the
-// client and interviews loop until the role is filled, so they share one.
+// Three groups (owner, 17 Nov evening; no Kanban board): an opening stays under Requirement & JD until the
+// requirement is approved (and its agreement signed); then Search & interviews, where it stays while sets and
+// interviews loop; and only once somebody is placed, Offer & joining.
 type BoardStage = "jd" | "search" | "joining";
 
 interface BoardCard {
@@ -39,18 +41,15 @@ interface BoardCard {
   searchWords: string;
 }
 
-const COLUMNS: { key: BoardStage; title: string }[] = [
-  { key: "jd", title: "Requirement & JD" },
-  { key: "search", title: "Search & interviews" },
-  { key: "joining", title: "Offer & joining" },
+const GROUPS: { key: BoardStage; title: string; about: string }[] = [
+  { key: "jd", title: "Requirement & JD", about: "Waiting for the client to approve the requirement and the JD, and the agreement to be signed" },
+  { key: "search", title: "Search & interviews", about: "Searching, CV sets with the client and interviews, until somebody is placed" },
+  { key: "joining", title: "Offer & joining", about: "Somebody is placed: the offer, and the day they join" },
 ];
 
 /**
- * Frame 1:768 — OP · Openings — board by stage.
- *
- * Every position grouped into 3 columns: Requirement & JD, Search & interviews
- * (the loop of searching, CV sets and interviews, with a summary on each card),
- * and Offer & joining.
+ * OP · Openings, in groups (owner, 17 Nov evening): every opening listed under Requirement & JD,
+ * Search & interviews (with a summary of the loop on each) or Offer & joining.
  */
 export default async function PositionsPage({
   searchParams,
@@ -93,6 +92,10 @@ export default async function PositionsPage({
     const onHold = Boolean(hold) || position.stage === "on_hold";
     const needsTa = !closed && (!position.primaryTaId || !position.openingTaId || queued.has(position.id));
     const needsJd = !closed && !position.jdApprovedAt;
+    // An agreement that is out but not signed holds the opening under Requirement & JD (one that was never started does not).
+    const leadId = position.requirementId ? (db.requirements.find((r) => r.id === position.requirementId)?.leadId ?? null) : null;
+    const esa = leadId ? agreementForLead(db, leadId) : null;
+    const agreementPending = !!esa && esa.state !== "signed" && esa.state !== "countersigned";
 
     let stage: BoardStage = "search";
     let part = "Searching";
@@ -112,6 +115,11 @@ export default async function PositionsPage({
           : joinDays === 1
             ? "Joining tomorrow"
             : `Joining in ${joinDays} days`;
+    } else if (!closed && (!position.jdApprovedAt || agreementPending)) {
+      // Until the client approves the requirement (and has signed), it stays here, whatever else has started.
+      stage = "jd";
+      dotClass = "bg-warning";
+      statusText = !position.jdApprovedAt ? "JD to approve" : "Waiting for the signed agreement";
     } else if (liveIv) {
       stage = "search";
       part = "Interview";
@@ -142,10 +150,6 @@ export default async function PositionsPage({
             ? `${activeSet.name} · Day ${Math.max(1, silentDays + 1)} of 7`
             : `${activeSet.name} ready to send`;
       }
-    } else if (!position.jdApprovedAt && position.stage === "handed_over") {
-      stage = "jd";
-      dotClass = "bg-warning";
-      statusText = "JD to approve";
     } else {
       stage = "search";
       if (!position.primaryTaId) {
@@ -289,60 +293,52 @@ export default async function PositionsPage({
           )}
         </div>
       ) : (
-        /* 3-column board: the search loop is one column (17 Nov) */
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {COLUMNS.map((col) => {
-            const colCards = filtered.filter((c) => c.stage === col.key);
+        /* The openings in three groups, one under the other (owner, 17 Nov evening): easier to read than a board. */
+        <div className="flex flex-col gap-7">
+          {GROUPS.map((group) => {
+            const rows = filtered.filter((c) => c.stage === group.key);
             return (
-              <div
-                key={col.key}
-                className="flex min-h-[380px] flex-col gap-2.5 rounded-[24px] bg-sunk px-3.5 pb-3.5 pt-[18px]"
-              >
-                <div className="flex items-center justify-between px-1 pb-1.5">
-                  <span className="text-[14px] font-medium leading-[22px] text-ink">
-                    {col.title}
-                  </span>
-                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                    {colCards.length}
-                  </span>
+              <section key={group.key} className="flex flex-col gap-2.5">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-1">
+                  <h2 className="text-[18px] font-medium leading-[26px] text-ink">{group.title}</h2>
+                  <span className="text-[13px] font-medium text-ink-faint">{rows.length}</span>
+                  <span className="text-[13px] text-ink-soft">{group.about}</span>
                 </div>
 
-                {colCards.length === 0 ? (
-                  <div className="flex flex-1 items-center justify-center rounded-[16px] border border-dashed border-rule px-3 py-8 text-center text-[12px] text-ink-faint">
-                    Nothing in {col.title.toLowerCase()}
+                {rows.length === 0 ? (
+                  <div className="rounded-[16px] border border-dashed border-rule px-4 py-5 text-[13px] text-ink-faint">
+                    Nothing in {group.title.toLowerCase()}
                   </div>
                 ) : (
-                  colCards.map((card) => (
-                    <Link
-                      key={card.id}
-                      href={card.href}
-                      className="flex flex-col gap-1 rounded-[16px] bg-surface p-4 shadow-card transition-shadow hover:shadow-float"
-                    >
-                      <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                        {card.clientName}
-                      </span>
-                      <span className="text-[16px] font-medium leading-[26px] text-ink">
-                        {card.title}
-                      </span>
-                      <div className="flex items-center gap-1.5 pt-1.5">
-                        <span className={`size-[7px] shrink-0 rounded-full ${card.dotClass}`} aria-hidden="true" />
-                        <span
-                          className={`text-[12px] font-medium leading-4 tracking-[0.4px] ${
-                            card.statusDanger ? "text-danger" : "text-ink-soft"
-                          }`}
-                        >
-                          {card.statusText}
-                        </span>
-                      </div>
-                      {card.loopLine && (
-                        <span className="text-[12px] leading-4 text-ink-soft">
-                          {card.part} · {card.loopLine}
-                        </span>
-                      )}
-                    </Link>
-                  ))
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {rows.map((card) => (
+                      <Link
+                        key={card.id}
+                        href={card.href}
+                        className="flex flex-col gap-1 rounded-[20px] bg-surface p-4 shadow-card transition-shadow hover:shadow-float"
+                      >
+                        <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">{card.clientName}</span>
+                        <span className="text-[16px] font-medium leading-[26px] text-ink">{card.title}</span>
+                        <div className="flex items-center gap-1.5 pt-1.5">
+                          <span className={`size-[7px] shrink-0 rounded-full ${card.dotClass}`} aria-hidden="true" />
+                          <span
+                            className={`text-[12px] font-medium leading-4 tracking-[0.4px] ${
+                              card.statusDanger ? "text-danger" : "text-ink-soft"
+                            }`}
+                          >
+                            {card.statusText}
+                          </span>
+                        </div>
+                        {card.loopLine && (
+                          <span className="text-[12px] leading-4 text-ink-soft">
+                            {card.part} · {card.loopLine}
+                          </span>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
                 )}
-              </div>
+              </section>
             );
           })}
         </div>
