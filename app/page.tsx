@@ -174,14 +174,13 @@ export default async function MyWorkPage({
   return (
     // A column on a desktop, so on Today the greeting, Up next and AURA stay put and only the list scrolls (14 Nov).
     <div className={"relative rounded-sheet bg-surface px-4 pb-10 pt-8 shadow-card max-md:overflow-hidden md:flex md:flex-col md:px-10 " + (view === "approve" ? "md:pt-[60px]" : "")}>
-      {/* The aurora: a soft light behind the greeting, drawn in CSS, not an image. Today only. */}
+      {/* The aurora: the glow behind the greeting, drawn in CSS, not an image. Today only. The Figma frame (249:8477) draws
+          one ellipse, violet to blue to teal to green, blurred 70px at 22%; the owner asked for the same colours with more
+          glow (17 Nov), so it is the same ellipse and the same blur at about twice the strength. */}
       {view === "today" && <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-70 blur-[60px] dark:opacity-20"
-        style={{
-          background:
-            "radial-gradient(closest-side at 35% 45%, rgba(196,181,253,0.55), transparent 70%), radial-gradient(closest-side at 65% 55%, rgba(153,246,228,0.55), transparent 70%), radial-gradient(closest-side at 80% 40%, rgba(187,247,208,0.5), transparent 70%)",
-        }}
+        className="pointer-events-none absolute left-1/2 top-[60px] h-[420px] w-[900px] max-w-full -translate-x-1/2 rounded-full opacity-[0.5] blur-[70px] dark:opacity-[0.3]"
+        style={{ background: "linear-gradient(90deg, #8b5cff 0%, #3d6bff 45%, #21d4c4 75%, #8cf559 100%)" }}
       />}
 
       <div className={"relative mx-auto flex w-full flex-col md:min-h-0 md:flex-1 " + (view === "approve" ? "max-w-[920px]" : "max-w-[820px]")}>
@@ -279,8 +278,10 @@ export default async function MyWorkPage({
             {others.length > 0 && (
               // The one part of Today that scrolls, and only when the rows outgrow the space left.
               // It takes the space left between Up next and AURA; AURA stays at the foot of the box.
-              <section className="mt-6 flex flex-col gap-1 md:min-h-0 md:overflow-y-auto">
-                <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 py-1">
+              // A box of its own (17 Nov, the owner): the sticky header used to be a dark strip over the glow with the rows
+              // loose beneath it. Now the header and the rows share one card, and the gap above it shows the glow.
+              <section className="mt-6 flex flex-col gap-1 rounded-[28px] bg-surface px-3 pb-3 shadow-float md:min-h-0 md:overflow-y-auto">
+                <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 pb-1 pt-3">
                   <p className={caption + " flex-1"}>{params.all ? "Everything today" : "Then"}</p>
                   {params.all ? (
                     <Link href={href("today")} className={caption + " hover:text-ink"}>Show fewer</Link>

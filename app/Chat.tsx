@@ -197,7 +197,15 @@ function Said({ children, tone = "", label = "AURA" }: { children: React.ReactNo
   return (
     <div className="chat-in mb-4 pr-4">
       <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">{label}</p>
-      <div className={"mt-1 text-[13.5px] leading-relaxed " + tone}>{children}</div>
+      {/* In the light theme AURA's words sit in a grey bubble in black (17 Nov, the owner); in the dark theme they stay plain. */}
+      <div
+        className={
+          "mt-1 w-fit max-w-full rounded-2xl rounded-tl-md bg-sunk px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink dark:w-auto dark:rounded-none dark:bg-transparent dark:p-0 " +
+          tone
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -336,7 +344,7 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
     setValue(s.value);
   };
   return (
-    <Said tone={row.state === "refused" && !button ? "text-danger" : ""}>
+    <Said tone={row.state === "refused" && !button ? "dark:text-danger" : ""}>
       <p className="whitespace-pre-wrap">{first}</p>
       {waiting && <p className="mt-1 text-[11.5px] text-ink-faint">Type the answer below, or &ldquo;never mind&rdquo;.</p>}
       {!button && <Cites cites={cites} />}

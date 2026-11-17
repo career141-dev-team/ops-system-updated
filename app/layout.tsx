@@ -19,6 +19,9 @@ import { currentMember, realMember } from "@/lib/session";
 import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import WorkspaceNotch from "@/app/WorkspaceNotch";
+import Welcome from "@/app/Welcome";
+import { ChatClose, ChatResize } from "@/app/ChatFrame";
+import { CHAT_WIDTH, chatWidthFrom } from "@/lib/chatWidth";
 import "./globals.css";
 
 // The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
@@ -80,6 +83,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // the page is rendered with it already there rather than appearing after.
   const jar = await cookies();
   const chatOpen = jar.get("ops_chat_open")?.value === "1";
+  // How wide the AURA column is (17 Nov, the owner drags it). One number, kept in a cookie so every page draws the same.
+  const chatWidth = chatWidthFrom(jar.get(CHAT_WIDTH.cookie)?.value);
   // Light unless they chose dark: a cookie, so the page is drawn in it from the first byte (16 Nov).
   const dark = jar.get("ops_theme")?.value === "dark";
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
@@ -104,7 +109,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         is still reported. Our own code sets exactly one thing here, the class
         name, and that cannot drift between the server and the browser.
       */}
-      <body className="min-h-screen" suppressHydrationWarning>
+      <body className="min-h-screen" style={{ "--chat-w": chatWidth + "px" } as React.CSSProperties} suppressHydrationWarning>
         {/* The three-second confirmation. Suspense because it reads the
             address bar, which is not known until the browser has it. */}
         <Suspense fallback={null}>
@@ -112,6 +117,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </Suspense>
         {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
         <Keys />
+        {/* The welcome after signing in: a class on the body for a second, then gone. */}
+        <Welcome />
         {member ? (
           <>
           <TopBar
@@ -129,27 +136,39 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {/* No min-h-screen here (14 Nov): under the top bar and its tab (--page-top) it made every page
               that much taller than the window, so even an empty page scrolled. */}
           {/* The tab that names the workspace, on top of the page card (16 Nov, the Figma "Notch tab"). */}
-          <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
-            <WorkspaceNotch />
-          </Suspense>
+          {/* With AURA open the tab is centred over the page, not over the page and AURA together: it leaves the
+              column's width free on its right. The column only shows from lg up, so the room is only kept there. */}
+          <div className={chatOpen ? "lg:mr-[calc(var(--chat-w)+24px)]" : undefined}>
+            <Suspense fallback={<div className="hidden h-8 md:block" aria-hidden="true" />}>
+              <WorkspaceNotch />
+            </Suspense>
+          </div>
           <div className="flex flex-col md:flex-row md:items-stretch">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. */}
             {/* On a desktop the page is one fixed box under the top bar (14 Nov, the owner):
                 the window never scrolls, the page's own box does, and only when what is in it
                 is taller than the box. A phone scrolls the window as before. */}
-            <main className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh/0.9-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
+            <main data-welcome="page" className="min-w-0 flex-1 px-4 py-4 pb-20 md:flex md:h-[calc(100dvh/0.9-var(--page-top))] md:flex-col md:overflow-hidden md:px-6 md:pb-6 md:pt-0 md:[&>*]:min-h-0 md:[&>*]:flex-1 md:[&>*]:overflow-y-auto">
               {children}
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
                 over; it never floats over it (the owner's rule). On a phone it is
                 its own page from the bottom bar. */}
             {chatOpen && db && (
-              <aside className="sticky top-0 z-[1] hidden h-[calc(100dvh/0.9-var(--page-top))] w-[384px] shrink-0 flex-col self-start border-l border-shell-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[-18px_0_40px_-28px_var(--color-aside-shadow)] lg:flex">
-                <div className="flex items-baseline justify-between border-b border-shell-rule px-4 py-3">
-                  <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
-                  <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
+              // The same white as the top bar, rounded like the page, and level with it: its top is the page's top and
+              // its foot is the page's foot, with the page's own 24px of air to the window's edge (17 Nov, the owner).
+              <aside className="sticky top-0 z-[1] mr-6 hidden h-[calc(100dvh/0.9-var(--page-top)-24px)] w-[var(--chat-w)] shrink-0 self-start lg:flex">
+                <ChatResize />
+                <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-sheet bg-surface shadow-card">
+                  <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+                    <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
+                      <ChatClose />
+                    </div>
+                  </div>
+                  <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
                 </div>
-                <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
               </aside>
             )}
           </div>

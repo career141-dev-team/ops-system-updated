@@ -23,7 +23,13 @@ export default function WorkspaceNotch() {
         <svg viewBox="0 0 260 44" className="absolute inset-0 size-full rotate-180 fill-paper" aria-hidden="true">
           <path d="M0 44C22 44 30 40 36 30L46 12C52 3 58 0 72 0H188C202 0 208 3 214 12L224 30C230 40 238 44 260 44Z" />
         </svg>
-        <p className="relative pt-1.5 text-center text-[16px] font-medium leading-[26px] text-ink">{title}</p>
+        <p className="relative pt-1.5 text-center text-[16px] font-medium leading-[26px] text-ink">
+          <span className="relative inline-block">
+            {title}
+            {/* A bar runs under the heading each time a page arrives (17 Nov, the owner); the key makes it start again. */}
+            <span key={path} aria-hidden="true" className="notch-bar absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full bg-gradient-to-r from-brand to-success" />
+          </span>
+        </p>
       </div>
     </div>
   );
