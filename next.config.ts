@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
   },
+
+  experimental: {
+    agentUpgrade: "security",
+  },
 };
 
 export default nextConfig;
