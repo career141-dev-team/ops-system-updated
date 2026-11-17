@@ -8,11 +8,13 @@ import {
   clientIn,
   desk,
   interviewsNewestFirst,
+  leadIn,
   positionIn,
   positionsNewestFirst,
   runClocks,
 } from "@/data/desk";
 import { boardStatus, interviewInWords, weekDays, type BoardStatus } from "@/lib/interviews";
+import { KIND_MEANINGS, type MeetingKind } from "@/lib/meetings";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -71,11 +73,57 @@ export default async function InterviewsPage({
     };
   });
 
+  // The team's calendar (17 Nov): every meeting we schedule sits on this board, not only
+  // interviews. An intro call or a requirement meeting with a lead is a card on its day,
+  // with the same time and the same look, and opens the lead at that step.
+  type Card = {
+    key: string;
+    href: string;
+    when: number;
+    timeStr: string;
+    title: string;
+    sub: string;
+    tone: BoardStatus["tone"];
+    label: string;
+  };
+  const hhmm = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(11, 16);
+  const interviewCards: Card[] = items
+    .filter((i) => i.when !== null)
+    .map((i) => ({
+      key: i.iv.id,
+      href: `/interviews/${i.iv.id}`,
+      when: i.when as number,
+      timeStr: i.timeStr,
+      title: i.iv.candidateName,
+      sub: i.clientName,
+      tone: i.status.tone,
+      label: i.status.label,
+    }));
+  const meetingCards: Card[] = db.meetings
+    .filter((m) => m.state === "booked" || m.state === "held")
+    .map((m) => {
+      const lead = leadIn(db, m.leadId);
+      const isRequirement = m.kind === "requirement" || m.alsoRequirement;
+      return {
+        key: m.id,
+        href: `/leads/${m.leadId}?step=${m.kind === "requirement" ? "requirement" : "intro"}`,
+        when: m.at,
+        timeStr: hhmm(m.at),
+        title:
+          (KIND_MEANINGS[m.kind as MeetingKind] ?? m.kind) +
+          (m.kind === "intro" && isRequirement ? " + requirement" : ""),
+        sub: lead?.company ?? "A lead",
+        tone: m.state === "held" ? ("ok" as const) : ("info" as const),
+        label: m.state === "held" ? "Held" : m.joinUrl ? "Booked · Teams" : "Booked",
+      };
+    });
+  const calendar = [...interviewCards, ...meetingCards];
+
   const week = weekDays(now, weekOffset);
   const firstMs = week.days[0].startMs;
   const fridayEnd = week.days[4].endMs;
-  const onBoard = items.filter((i) => i.when !== null && i.when >= firstMs && i.when < fridayEnd);
-  const weekend = items.filter((i) => i.when !== null && i.when >= fridayEnd && i.when < week.endMs);
+  const onBoard = calendar.filter((c) => c.when >= firstMs && c.when < fridayEnd);
+  const weekend = calendar.filter((c) => c.when >= fridayEnd && c.when < week.endMs);
 
   const queue = (key: string) => items.filter((i) => (key === "needs_time" ? i.status.needsTime : key === "needs_feedback" ? i.status.needsFeedback : i.status.toRebook));
   const counts = { needs_time: queue("needs_time").length, needs_feedback: queue("needs_feedback").length, rebook: queue("rebook").length };
@@ -158,7 +206,7 @@ export default async function InterviewsPage({
         <>
           <div className="grid grid-cols-1 gap-3.5 md:min-h-[360px] md:flex-1 md:grid-cols-5 md:gap-6">
             {week.days.map((day) => {
-              const here = onBoard.filter((i) => i.when! >= day.startMs && i.when! < day.endMs).sort((a, b) => a.when! - b.when!);
+              const here = onBoard.filter((c) => c.when >= day.startMs && c.when < day.endMs).sort((a, b) => a.when - b.when);
               return (
                 <div
                   key={day.name}
@@ -172,21 +220,21 @@ export default async function InterviewsPage({
                   {here.length === 0 ? (
                     <p className="px-1 text-[14px] leading-[21px] text-ink-faint">Nothing booked</p>
                   ) : (
-                    here.map(({ iv, clientName, timeStr, status }) => (
+                    here.map(({ key, href: cardHref, timeStr, title, sub, tone, label }) => (
                       <Link
-                        key={iv.id}
-                        href={`/interviews/${iv.id}`}
+                        key={key}
+                        href={cardHref}
                         className={
                           "flex flex-col gap-[3px] rounded-2xl border-[1.5px] bg-surface px-4 py-3.5 shadow-card transition-shadow hover:shadow-float " +
                           (day.isToday ? "border-brand/25" : "border-black/[0.06]")
                         }
                       >
                         <span className="text-[14px] font-medium leading-[21px] text-ink-soft">{timeStr}</span>
-                        <span className="text-[16px] font-medium leading-[26px] text-ink">{iv.candidateName}</span>
-                        <span className="text-[14px] leading-[21px] text-ink-faint">{clientName}</span>
+                        <span className="text-[16px] font-medium leading-[26px] text-ink">{title}</span>
+                        <span className="text-[14px] leading-[21px] text-ink-faint">{sub}</span>
                         <span className="flex items-center gap-1.5 pt-1.5">
-                          <span aria-hidden="true" className={"size-[7px] shrink-0 rounded-full " + DOT[status.tone]} />
-                          <span className="text-[14px] leading-[21px] text-ink-soft">{status.label}</span>
+                          <span aria-hidden="true" className={"size-[7px] shrink-0 rounded-full " + DOT[tone]} />
+                          <span className="text-[14px] leading-[21px] text-ink-soft">{label}</span>
                         </span>
                       </Link>
                     ))
@@ -200,11 +248,11 @@ export default async function InterviewsPage({
           {weekend.length > 0 && (
             <p className="text-[14px] leading-[21px] text-ink-faint">
               On the weekend:{" "}
-              {weekend.map(({ iv, timeStr }, i) => (
-                <span key={iv.id}>
+              {weekend.map(({ key, href: cardHref, title, timeStr, sub }, i) => (
+                <span key={key}>
                   {i > 0 && ", "}
-                  <Link href={`/interviews/${iv.id}`} className="text-ink-soft hover:text-ink hover:underline">
-                    {iv.candidateName} {timeStr}
+                  <Link href={cardHref} className="text-ink-soft hover:text-ink hover:underline">
+                    {title} ({sub}) {timeStr}
                   </Link>
                 </span>
               ))}

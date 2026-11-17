@@ -67,16 +67,17 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "invoice.series", value: "C141", updatedBy: null, updatedAt: null },
       { key: "invoice.writeOffDays", value: 90, updatedBy: null, updatedAt: null },
       // From the agreement itself, which the owner said is the truth (3 Nov):
-      // 1% a month, compounded, and nothing on an invoice disputed in good
-      // faith. The board had said 5% simple; the document wins.
-      { key: "invoice.latePctPerMonth", value: 1, updatedBy: null, updatedAt: null },
+      // compounded, and nothing on an invoice disputed in good faith. The rate
+      // is clause 5.5 of the current ESA: 5% a month (17 Nov; an older draft
+      // said 1%).
+      { key: "invoice.latePctPerMonth", value: 5, updatedBy: null, updatedAt: null },
       { key: "invoice.lateCompounded", value: true, updatedBy: null, updatedAt: null },
       { key: "guarantee.days", value: 90, updatedBy: null, updatedAt: null },
       { key: "guarantee.warnDay", value: 75, updatedBy: null, updatedAt: null },
       { key: "replacement.workingDays", value: 60, updatedBy: null, updatedAt: null },
-      // The agreement says 50% (their reviewer struck 25 and wrote 50, 10 Sep),
-      // and the owner said to go with the document (3 Nov).
-      { key: "refund.pct", value: 50, updatedBy: null, updatedAt: null },
+      // Clause 6.6 of the current ESA says 25% (17 Nov). An older draft said 50
+      // (their reviewer wrote 50, 10 Sep); the owner chose the current document.
+      { key: "refund.pct", value: 25, updatedBy: null, updatedAt: null },
       { key: "escalation.leadAfterHours", value: 24, updatedBy: null, updatedAt: null },
       { key: "escalation.directorAfterHours", value: 72, updatedBy: null, updatedAt: null },
       { key: "message.dailyCapPerClient", value: 4, updatedBy: null, updatedAt: null },
@@ -217,12 +218,26 @@ export function seed(now = Date.now()): OpsDatabase {
         key: "esa.cover",
         channel: "email",
         name: "Agreement, cover email",
-        subject: "{{client}} \u00b7 our agreement",
+        subject: "{{client}} \u00b7 Executive Search Agreement",
+        // The owner's own cover (17 Nov, the Valtrix draft), with this client's terms beside each clause.
         body: `Dear {{contact}},
 
-Thank you for your time today. Our agreement is attached.
+It is a pleasure to welcome your talent request to Career141 Executive Search. With over 20 years of expertise in Executive Search, Career141 has partnered with organizations across 25+ countries and 15+ industries, shaping leadership teams and driving transformative talent strategies. We are delighted to now extend this legacy of trust and global reach to support {{client}}.
 
-Once it is signed and back with us we will start the search straight away.
+Please find enclosed the draft Executive Search Agreement (ESA) for your review and confirmation. Once signed, this will enable us to activate your account and commence the search.
+
+Below are the important clauses of the ESA for your review and knowledge of our process.
+
+See Clause 1.3 - Response Time
+See Clause 4.2 - Non-Disclosure of Shared Information
+See Clause 5.1 - Consultancy Fee and Payment Terms: {{feeMonths}} month(s) {{feeBasis}} salary of the placed candidate, payable within {{paymentDays}} days of the first working day
+See Clause 6.1 - Guarantee and Replacement Clause: one replacement within {{guaranteeDays}} days of the first working day
+
+For the ESA to be valid, we kindly request the inclusion of the company seal, address, and date in the signed agreement. As this is the initial draft, please also let us know if there are any changes to the authorized signatory. If so, we will be pleased to share a revised version reflecting the correct name and designation.
+
+Should you have any questions or require clarification on any aspect of the ESA, please feel free to reach out. Our team will be happy to assist you.
+
+We look forward to formally onboarding {{client}} within the next five working days or sooner, should it be convenient.
 
 Kind regards
 Career 141`,
@@ -500,7 +515,7 @@ Career 141`,
 
 Invoice {{invoiceNumber}} is {{daysLate}} days past its due date, and {{amount}} is outstanding.
 
-Our agreement adds 1% a month, compounded, to a late invoice. If anything on it is in question, tell us and nothing is charged while we sort it out.
+Our agreement adds 5% a month, compounded, to a late invoice (clause 5.5). If anything on it is in question, tell us and nothing is charged while we sort it out.
 
 Kind regards,
 {{opsPerson}}

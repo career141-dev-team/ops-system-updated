@@ -13,11 +13,11 @@ import {
   draftNextChase,
   markMeetingHeld,
   markMeetingNotHeld,
+  openEarly,
   previewAgreement,
   recordAgreementCountersigned,
   recordAgreementSigned,
   recordChangesWanted,
-  saveAgreementFields,
   saveRequirement,
   sendAgreement,
   startAgreement,
@@ -51,17 +51,22 @@ import {
   numberOf,
   requirementForLead,
   switchedOn,
+  templateFor,
 } from "@/data/desk";
-import { currentTemplate } from "@/lib/files";
+import { currentTemplate, safeName } from "@/lib/files";
 import { REFUND_PCT } from "@/lib/guarantee";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { type DictatedRequirement } from "@/lib/aiTasks";
 import {
-  ESA_FIELDS,
   type EsaState,
   STATE_MEANINGS as ESA_STATES,
   chaseStep,
+  ESA_FIELDS,
+  agreementVersions,
+  coverEmail,
   missingFields,
+  nextDraftVersion,
+  startingFields,
   whereItStands,
 } from "@/lib/esa";
 import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
@@ -72,11 +77,29 @@ import {
   type MeetingKind,
   type MeetingState,
 } from "@/lib/meetings";
-import { leadJourney } from "@/lib/leadJourney";
+import {
+  LEAD_STEPS,
+  LEAD_STEP_LABELS,
+  type LeadStep,
+  askedStep,
+  barStates,
+  leadJourney,
+  stepAfter,
+  stepBefore,
+  stepToShow,
+  tailJourney,
+} from "@/lib/leadJourney";
 import { teamsFake } from "@/lib/graphCalendar";
+import { KeepFields } from "@/app/ui/KeepFields";
+import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
+import { FieldList } from "@/app/ui/FieldList";
+import { MeetingOutcome } from "@/app/ui/MeetingOutcome";
+import { Answer, SubmitButton } from "@/app/ui/SubmitButton";
+import { AgreementFieldsForm } from "./AgreementFieldsForm";
+import { CoverEmailPreview } from "./CoverEmailPreview";
 import { MeetingBookingForm } from "./MeetingBookingForm";
 import { leadNextStep } from "@/lib/nextStep";
-import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf } from "@/lib/requirements";
+import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { fakeTa, people as taPeople } from "@/lib/ta";
@@ -88,17 +111,41 @@ import { fakeTa, people as taPeople } from "@/lib/ta";
  *   - Frame 1:666  — CL · Agreement — Orion Pharmaceuticals (countersign / agreement view, ?view=agreement)
  *   - Frame 1:2050 — CL · Requirement meeting — Delmege Interiors (open the position, ?view=requirement)
  */
+function renderInviteOutcome(inv: { state: string; to: string[]; note: string | null } | undefined) {
+  if (!inv) return null;
+  if (inv.state === "sent") {
+    return (
+      <p className="text-[13px] text-ink-soft">
+        Invite sent to {inv.to.join(", ")}
+        {inv.note ? ` — ${inv.note}` : ""}
+      </p>
+    );
+  }
+  if (inv.state === "draft") {
+    return (
+      <p className="text-[13px] text-ink-soft">
+        Invite waiting in To approve (for {inv.to.join(", ")}).
+      </p>
+    );
+  }
+  return (
+    <p className="text-[13px] text-warn">
+      Invite not sent ({inv.state}): {inv.note ?? "no reason recorded."}
+    </p>
+  );
+}
+
 export default async function LeadPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; proposed?: string; runId?: string; view?: string }>;
+  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg, proposed: proposedJson, view } = await searchParams;
+  const { msg, at, proposed: proposedJson, view, step: stepParam } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
@@ -132,6 +179,18 @@ export default async function LeadPage({
     new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
   const esa = agreementForLead(db, lead.id);
+  // What a new agreement would start from, so the intro call's form opens filled in.
+  const startAgreementFields = startingFields(
+    {
+      guaranteeDays: numberOf(db, "guarantee.days", 90),
+      paymentDays: numberOf(db, "invoice.dueDays", 30),
+      replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
+      refundPct: numberOf(db, "refund.pct", REFUND_PCT),
+    },
+    lead,
+  );
+  const introHeldOrSkipped = lead.source === "director" || meetings.some((m) => m.kind === "intro" && m.state === "held");
+  const coverPreview = esa ? coverEmail(templateFor(db, "esa.cover"), esa.fields) : null;
   const esaMissing = esa ? missingFields(esa.fields) : [];
   const esaTemplate = currentTemplate(db.files, "esa_draft");
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
@@ -139,6 +198,13 @@ export default async function LeadPage({
 
   const requirement = requirementForLead(db, lead.id);
   const requirementBlanks = requirement ? requirementBlanksOf(requirement.fields) : [];
+  // The opening waits for the client's signed copy and a complete requirement (owner, 17 Nov evening),
+  // unless this lead was marked "open it now" for a client we trust.
+  // A finished step is shown, not edited (owner, 17 Nov evening).
+  const requirementDone = !!requirement && requirementLocked(requirement.fields);
+  const openedEarly = !!lead.openEarlyAt;
+  const openingReady = introHeldOrSkipped && agreementDone && !!requirement && requirementBlanks.length === 0;
+  const roleKnown = !!(requirement?.fields.title ?? "").trim() && !!(requirement?.fields.headcount ?? "").trim();
   const position = requirement
     ? (db.positions.find((p) => p.requirementId === requirement.id) ?? null)
     : null;
@@ -146,8 +212,13 @@ export default async function LeadPage({
   const signedFiles = db.files.filter((f) => f.kind === "esa_signed");
   const countersignedFiles = db.files.filter((f) => f.kind === "esa_countersigned");
   const draftFiles = esa
-    ? db.files.filter((f) => f.subjectType === "esa" && f.subjectId === esa.id)
+    ? db.files.filter(
+        (f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId,
+      )
     : [];
+  const newestDraft = esa ? (agreementVersions(draftFiles)[0] ?? null) : null;
+  // The cover email that went (or is waiting to go) with the ESA, for the record on the intro step.
+  const sentEmail = esa?.sentMessageId ? (db.messages.find((m) => m.id === esa.sentMessageId) ?? null) : null;
 
   const step = leadNextStep(lead, {
     meetings,
@@ -157,18 +228,8 @@ export default async function LeadPage({
     requiredFields: REQUIREMENT_FIELDS.filter((f) => f.required).map((f) => f.key),
   });
 
-  // Determine which view is shown
-  const activeView: "lead" | "decline" | "agreement" | "requirement" =
-    view === "agreement"
-      ? "agreement"
-      : view === "requirement"
-        ? "requirement"
-        : view === "decline" || (lead.industryFlagged && !lead.industryConfirmedBy && !closed)
-          ? "decline"
-          : "lead";
-
   // Progress comes from what has happened (src/lib/leadJourney.ts), never from the
-  // tab being viewed; the tab only marks "you are here".
+  // step being viewed; the step only marks "you are here".
   const requirementMeetingHeld = meetings.some(
     (m) => (m.kind === "requirement" || m.alsoRequirement) && m.state === "held",
   );
@@ -182,6 +243,7 @@ export default async function LeadPage({
     introBooked: meetings.some((m) => m.kind === "intro" && m.state === "booked"),
     introHeld: meetings.some((m) => m.kind === "intro" && m.state === "held"),
     positionExists: !!position,
+    openEarly: !!lead.openEarlyAt,
     esaState: esa?.state ?? null,
     requirementStarted:
       Object.values(requirement?.fields ?? {}).some((v) => (v ?? "").trim()) ||
@@ -189,40 +251,60 @@ export default async function LeadPage({
       requirementMeetingHeld,
     requirementDone: !!requirement && requirementBlanks.length === 0,
   });
+
+  // One step at a time (17 Nov): the step a link asks for, or the first not finished.
+  const shown = stepToShow(askedStep(stepParam, view), progress);
+  const flagged = lead.industryFlagged && !lead.industryConfirmedBy && !closed;
+  const activeView: "enquiry" | "decline" | "intro" | "opening" | "agreement" | "requirement" =
+    shown === "enquiry" ? (flagged || view === "decline" ? "decline" : "enquiry") : shown;
+  const stepHref = (to: LeadStep) => `/leads/${lead.id}?step=${to}`;
+  const before = stepBefore(shown);
+  const after = stepAfter(shown);
+  const shownDone = progress[LEAD_STEPS.indexOf(shown)] === "done";
+  // The global "up next" card shows only on the step it is about.
+  const upNextOn: LeadStep | null =
+    step.at === "duplicate" || step.at === "industry" || step.at === "closed"
+      ? "enquiry"
+      : step.at === "intro"
+        ? "intro"
+        : step.at === "opening"
+          ? "opening"
+          : null;
+
+  const placed = position ? db.placements.find((p) => p.positionId === position.id && p.state !== "cancelled") ?? null : null;
+  const guaranteeOf = placed ? db.guarantees.find((g) => g.placementId === placed.id) ?? null : null;
+  const tail = tailJourney({
+    openingConfirmed: !!position?.openingTaId,
+    placed: !!placed,
+    joined: !!placed?.joinedAt,
+    guarantee: guaranteeOf?.state ?? null,
+  });
+
+  // The bar rings the step the page is on and warns on any earlier one still open (17 Nov).
+  const bar = barStates(progress, LEAD_STEPS.indexOf(shown));
   const journeySteps: JourneyStep[] = [
-    {
-      label: "Enquiry",
-      state: progress[0],
-      viewing: activeView === "lead" || activeView === "decline",
-      href: `/leads/${lead.id}`,
-    },
-    { label: "Intro call", state: progress[1], href: `/leads/${lead.id}` },
-    {
-      label: "Opening",
-      state: progress[2],
-      href: position ? `/positions/${position.id}` : undefined,
-    },
-    {
-      label: "Agreement",
-      state: progress[3],
-      viewing: activeView === "agreement",
-      href: `/leads/${lead.id}?view=agreement`,
-    },
+    { label: "Enquiry", state: bar[0], viewing: shown === "enquiry", href: stepHref("enquiry") },
+    { label: "Intro call", state: bar[1], viewing: shown === "intro", href: stepHref("intro") },
+    // The small line says why a step is not green yet: an agreement is done when it is signed,
+    // a requirement when every required field is filled.
+    { label: "Agreement", state: bar[2], viewing: shown === "agreement", href: stepHref("agreement"), note: esa && !agreementDone ? esa.state : undefined },
     {
       label: "Requirement",
-      state: progress[4],
-      viewing: activeView === "requirement",
-      href: `/leads/${lead.id}?view=requirement`,
+      state: bar[3],
+      viewing: shown === "requirement",
+      href: stepHref("requirement"),
+      note: requirement && requirementBlanks.length ? requirementBlanks.length + " blank" : undefined,
     },
+    { label: "Opening", state: bar[4], viewing: shown === "opening", href: stepHref("opening") },
     // The search, the sets and the interviews loop until the position is filled:
     // one step here, with the loop itself on the opening.
     {
       label: "Search & interviews",
-      state: position?.openingTaId ? "current" : "upcoming",
+      state: tail[0],
       href: position ? `/positions/${position.id}` : undefined,
     },
-    { label: "Joining", state: "upcoming" },
-    { label: "Guarantee", state: "upcoming" },
+    { label: "Joining", state: tail[1], href: placed ? `/placements/${placed.id}` : undefined },
+    { label: "Guarantee", state: tail[2], href: guaranteeOf ? `/guarantees/${guaranteeOf.id}` : undefined },
   ];
 
   const sourceText =
@@ -263,7 +345,7 @@ export default async function LeadPage({
               <StatusChip
                 label={
                   requirementMeeting?.state === "held"
-                    ? "Held today · 28 min"
+                    ? "Held " + whenDate(requirementMeeting.heldAt ?? requirementMeeting.at) + (requirementMeeting.lengthMin ? " · " + requirementMeeting.lengthMin + " min" : "")
                     : requirementMeeting
                       ? "Booked · " + whenDate(requirementMeeting.at)
                       : "Ready for brief"
@@ -341,12 +423,12 @@ export default async function LeadPage({
               Requirement meeting
             </h1>
             <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
-              {requirement?.fields.roleTitle || lead.notes || "Role brief"} ·{" "}
-              {requirement?.fields.workLocation || "Colombo"} ·{" "}
+              {requirement?.fields.title || lead.notes || "Role brief"} ·{" "}
+              {requirement?.fields.locations || "Location to confirm"} ·{" "}
               {requirement?.fields.headcount
                 ? `${requirement.fields.headcount} opening`
                 : "1 opening"}{" "}
-              · {requirement?.fields.salaryPackage || "Package to confirm"}
+              · {requirement?.fields.salary || "Package to confirm"}
             </p>
           </div>
         ) : (
@@ -373,7 +455,7 @@ export default async function LeadPage({
         )}
       </div>
 
-      {msg && (
+      {msg && !at && (
         <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
       )}
 
@@ -402,7 +484,7 @@ export default async function LeadPage({
             <NextStepCard
               title="Upload the countersigned copy"
               clock={{ label: "Due today", tone: "warn", icon: "clock" }}
-              body={`${esa.fields.signatoryName || lead.contactName || "The client"} signed and returned the agreement${esa.signedAt ? " on " + whenDate(esa.signedAt) : ""}, with the company seal. Once the Director countersigns, upload it here — the client gets their copy and the requirement meeting opens.`}
+              body={`${esa.fields.signatoryName || lead.contactName || "The client"} signed and returned the agreement${esa.signedAt ? " on " + whenDate(esa.signedAt) : ""}, with the company seal. Once the Director countersigns, upload it here — the client gets their copy. The opening is made when the requirement is complete too.`}
               byItself="Stopped automatically when their signed copy arrived: the 5-step chase and the 14-day close timer."
             >
               {mayManage && (
@@ -437,9 +519,9 @@ export default async function LeadPage({
             </NextStepCard>
           ) : esa.state === "countersigned" ? (
             <NextStepCard
-              title="Agreement countersigned — open the requirement meeting"
+              title="Agreement countersigned — finish the requirement"
               clock={{ label: "Countersigned", tone: "ok", icon: "check" }}
-              body="Both sides have signed the Employment Services Agreement and the client record is active. Proceed to the requirement meeting to capture the brief and hand over the position to TA."
+              body="Both sides have signed the Employment Services Agreement and the client record is active. Finish the requirement; then the opening can be created and handed to TA."
             >
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <Link
@@ -480,37 +562,49 @@ export default async function LeadPage({
                 </div>
               )}
             </NextStepCard>
+          ) : esa.state === "draft" ? (
+            <NextStepCard
+              title="The ESA has not been sent yet"
+              clock={{ label: "Within 2h of intro call", tone: "warn", icon: "clock" }}
+              body="It goes at the end of the intro call: the details from the call, the ESA as the client will get it, and its email, then Send. This step is for what comes back: the signed copy, or changes they want."
+            >
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <Link href={stepHref("intro") + "#esa-document"} className={pillPrimary}>
+                  Go to the intro call to send it
+                </Link>
+              </div>
+            </NextStepCard>
           ) : (
             <NextStepCard
-              title={
-                esa.state === "negotiating"
-                  ? `Agree the changes and send version ${esa.version + 1}`
-                  : "Check the terms and send the agreement"
-              }
+              title={`Agree the changes and send version ${esa.version + 1}`}
               clock={{ label: "Within 2h of intro call", tone: "warn", icon: "clock" }}
               body={
                 esaMissing.length > 0
                   ? `Still blank: ${esaMissing.map((f) => f.label.toLowerCase()).join(", ")}. Fill the terms below before sending — a draft never goes out with placeholders.`
-                  : "All required agreement fields are filled in. Generate the PDF and draft the cover email for approval."
+                  : "Change the details below, look at the new draft and its email, then send the next version."
               }
-              byItself="Sending starts the 5-step chase and the 14-day close timer."
+              byItself="Sending starts the 5-step chase and the 14-day close timer again."
             >
               {mayManage && (
-                <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                  <form action={sendAgreement}>
-                    <input type="hidden" name="esaId" value={esa.id} />
-                    <button type="submit" className={pillPrimary}>
-                      {esa.state === "negotiating"
-                        ? `Draft cover email & send v${esa.version + 1}`
-                        : "Draft the cover email and send"}
-                    </button>
-                  </form>
-                  <a href="#terms-card" className={pillSecondary}>
-                    Edit terms
-                  </a>
-                </div>
+                <form action={sendAgreement} className="pt-1">
+                  <input type="hidden" name="esaId" value={esa.id} />
+                  <SubmitButton id="send-esa-again" className={pillPrimary}>
+                    {`Send version ${esa.version + 1}`}
+                  </SubmitButton>
+                </form>
               )}
             </NextStepCard>
+          )}
+
+          {mayManage && esa && esa.state === "negotiating" && (
+            <CoverEmailPreview
+              esaId={esa.id}
+              to={String(esa.fields.signatoryEmail ?? "").trim()}
+              attachment={"Agreement - " + safeName(String(esa.fields.companyName ?? "client")) + " - v" + nextDraftVersion(draftFiles) + ".pdf"}
+              email={coverPreview!}
+              edited={!!(esa.fields.coverSubject && esa.fields.coverBody)}
+              returnTo="agreement"
+            />
           )}
 
           {/* Two-column TERMS + VERSIONS cards (Figma 1:699) */}
@@ -525,13 +619,14 @@ export default async function LeadPage({
                 <div className="flex items-center justify-between py-2.5 text-[14px]">
                   <span className="text-ink-soft">Fee</span>
                   <span className="font-medium text-ink">
-                    {esa?.fields.feeClause || "8.33% (one month’s gross) · min LKR 50,000"}
+                    {esa?.fields.feeMonths || "1"} month(s) {esa?.fields.feeBasis || "gross"} salary · paid within{" "}
+                    {esa?.fields.paymentDays || "30"} days
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
                   <span className="text-ink-soft">Guarantee</span>
                   <span className="font-medium text-ink">
-                    {esa?.fields.guaranteeDays || "90"} days (standard)
+                    {esa?.fields.guaranteeDays || "90"} days
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
@@ -547,50 +642,33 @@ export default async function LeadPage({
                 </div>
               </div>
 
-              {esa && mayManage && (
+              {esa && agreementDone && (
+                <div className="flex flex-col gap-3 border-t border-rule pt-3">
+                  <span className={figmaLabel}>THE AGREEMENT DETAILS</span>
+                  <FieldList items={ESA_FIELDS.map((f) => ({ label: f.label, value: esa.fields[f.key] }))} />
+                </div>
+              )}
+
+              {esa && mayManage && !agreementDone && (
                 <details
-                  open={esa.state === "draft" || esa.state === "negotiating"}
+                  open={esa.state === "negotiating"}
                   className="border-t border-rule pt-3"
                 >
                   <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
                     Edit agreement fields
                   </summary>
-                  <form action={saveAgreementFields} className="mt-3 flex flex-col gap-3">
-                    <input type="hidden" name="esaId" value={esa.id} />
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {ESA_FIELDS.map((field) => (
-                        <label
-                          key={field.key}
-                          className={
-                            "flex flex-col gap-1 " +
-                            (field.key === "notes" ? "sm:col-span-2" : "")
-                          }
-                        >
-                          <span className={figmaLabel}>
-                            {field.label}
-                            {field.required ? "" : " (optional)"}
-                          </span>
-                          <input
-                            name={"field." + field.key}
-                            defaultValue={esa.fields[field.key] ?? ""}
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    {!esaTemplate && (
-                      <p className="text-[12.5px] text-ink-soft">
-                        Note: Upload the master Word template on{" "}
-                        <Link href="/files" className="text-brand underline">
-                          Files
-                        </Link>{" "}
-                        as &ldquo;Agreement, drafted&rdquo; before generating the PDF.
-                      </p>
-                    )}
-                    <button type="submit" className={pillSecondary + " self-start"}>
-                      Save the fields
-                    </button>
-                  </form>
+                  <div className="mt-3">
+                    <AgreementFieldsForm leadId={lead.id} esa={esa} returnTo="agreement" />
+                  </div>
+                  {!esaTemplate && (
+                    <p className="mt-2 text-[12.5px] text-ink-soft">
+                      Note: Upload the master Word template on{" "}
+                      <Link href="/files" className="text-brand underline">
+                        Files
+                      </Link>{" "}
+                      as &ldquo;Agreement, drafted&rdquo; before generating the PDF.
+                    </p>
+                  )}
                   {esaTemplate && (
                     <form action={previewAgreement} className="mt-3 flex flex-col gap-2">
                       <input type="hidden" name="esaId" value={esa.id} />
@@ -601,17 +679,6 @@ export default async function LeadPage({
                         Fills the template with the saved fields, the way the send would. Nothing is sent.
                       </p>
                     </form>
-                  )}
-                  {draftFiles.length > 0 && (
-                    <div className="mt-3 flex flex-col gap-1 text-[13px]">
-                      {[...draftFiles]
-                        .sort((a, b) => b.uploadedAt - a.uploadedAt)
-                        .map((f) => (
-                          <Link key={f.id} href={`/api/files/${f.id}`} className="text-brand hover:underline">
-                            Download filled draft: {f.name}
-                          </Link>
-                        ))}
-                    </div>
                   )}
                 </details>
               )}
@@ -624,43 +691,14 @@ export default async function LeadPage({
             >
               <span className={figmaLabel}>VERSIONS</span>
               <div className="flex flex-col">
-                <div className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
-                  <span className="font-medium text-ink">
-                    v{esa?.version ?? 1}
-                    {esa?.state === "signed" || esa?.state === "countersigned"
-                      ? " · signed"
-                      : ""}
-                  </span>
-                  <span className="text-ink-soft">
-                    {esa?.sentAt ? `Sent ${whenDate(esa.sentAt)}` : "Draft"}
-                    {esa?.signedAt ? ` · signed ${whenDate(esa.signedAt)} · sealed` : ""}
-                  </span>
-                  {esa?.signedFileId || esa?.draftFileId || draftFiles[0] ? (
-                    <Link
-                      href={`/api/files/${esa?.signedFileId ?? esa?.draftFileId ?? draftFiles[0]?.id}`}
-                      className="font-medium text-brand hover:underline"
-                    >
-                      Open PDF
-                    </Link>
-                  ) : (
-                    <Link href="/files" className="font-medium text-brand hover:underline">
-                      Files
-                    </Link>
-                  )}
-                </div>
-
-                {esa && esa.version > 1 && (
-                  <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
-                    <span className="font-medium text-ink">v1</span>
-                    <span className="text-ink-soft">
-                      {esa.reason || "Client asked to revise payment window"}
-                    </span>
-                  </div>
+                {esa ? (
+                  <AgreementVersions esa={esa} files={draftFiles} />
+                ) : (
+                  <p className="text-[14px] text-ink-soft">Nothing drafted yet.</p>
                 )}
-
                 {esa?.reason && (
                   <div className="flex items-center justify-between border-t border-rule py-2.5 text-[14px]">
-                    <span className="font-medium text-ink">Negotiation meeting</span>
+                    <span className="font-medium text-ink">Changes asked for</span>
                     <span className="text-ink-soft">{esa.reason}</span>
                   </div>
                 )}
@@ -753,24 +791,6 @@ export default async function LeadPage({
          ===================================================================== */}
       {activeView === "requirement" && (
         <>
-          <NextStepCard
-            eyebrow="DECISION"
-            title="Can we fill this role as asked?"
-            clock={{ label: "Decide today", tone: "warn", icon: "clock" }}
-            body="Check the package and skills against the market before we commit the team. If yes, pick the Primary TA and the 100% target date — the opening is created in the TA System from what you captured below."
-          >
-            {mayManage ? (
-              <RequirementDecisionClient
-                leadId={lead.id}
-                taPeople={taPeopleList}
-                defaultDate={defaultTargetDate}
-                rebookHref="#book-requirement-meeting"
-              />
-            ) : (
-              <p className="text-[14px] text-ink-faint">{refusal("client.manage")}</p>
-            )}
-          </NextStepCard>
-
           {/* Two-column WHAT WE HEARD + WHAT HAPPENS NEXT (Figma 1:2112) */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Left card: WHAT WE HEARD (Figma 1:2113) */}
@@ -794,7 +814,14 @@ export default async function LeadPage({
                 </p>
               )}
 
-              {mayManage && (
+              {requirementDone && requirement && (
+                <div className="flex flex-col gap-3 border-t border-rule pt-3">
+                  <span className={figmaLabel}>THE REQUIREMENT, AS AGREED</span>
+                  <FieldList items={REQUIREMENT_FIELDS.map((f) => ({ label: f.label, value: requirement.fields[f.key] }))} />
+                </div>
+              )}
+
+              {mayManage && !requirementDone && (
                 <details
                   open={!requirement || requirementBlanks.length > 0}
                   className="border-t border-rule pt-3"
@@ -856,6 +883,7 @@ export default async function LeadPage({
                   )}
 
                   <form action={saveRequirement} className="mt-3 flex flex-col gap-3">
+                    <KeepFields id="requirement-fields" />
                     <input type="hidden" name="leadId" value={lead.id} />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {REQUIREMENT_FIELDS.map((f) => (
@@ -931,7 +959,33 @@ export default async function LeadPage({
                 </div>
               )}
 
-              {mayManage && (
+              {requirementMeeting && (
+                <div className="flex flex-col gap-1 border-t border-rule pt-3 text-[13px] text-ink-soft">
+                  <p>
+                    <span className="font-medium text-ink">Requirement meeting:</span>{" "}
+                    {whenDate(requirementMeeting.at)} · {requirementMeeting.state}
+                  </p>
+                  {requirementMeeting.joinUrl && (
+                    <p>
+                      Join link:{" "}
+                      <a href={requirementMeeting.joinUrl} className="text-brand hover:underline">
+                        {requirementMeeting.joinUrl}
+                      </a>
+                    </p>
+                  )}
+                  {requirementMeeting.teamsProblem && (
+                    <p className="text-warn">No Teams link was made: {requirementMeeting.teamsProblem}</p>
+                  )}
+                  {(() => {
+                    const inv = db.messages.find(
+                      (m) => m.subjectType === "meeting" && m.subjectId === requirementMeeting.id,
+                    );
+                    return renderInviteOutcome(inv);
+                  })()}
+                </div>
+              )}
+
+              {mayManage && !requirementDone && (
                 <details open={!requirementMeeting} className="border-t border-rule pt-3">
                   <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
                     {requirementMeeting
@@ -966,7 +1020,14 @@ export default async function LeadPage({
             body={`${lead.company} is in banking and financial services${lead.industryBecause ? ` (${lead.industryBecause})` : ""}. Under our rules, we decline finance-industry leads — even when the role itself is not in finance. Confirm to send a polite decline and close the lead.`}
             byItself="Checked against the TA System: not an existing client. Flagged by the industry check when the form arrived."
           >
-            {mayManage && (
+            {!flagged && (
+              <p className="pt-1 text-[14px] text-ink">
+                Decided
+                {lead.industryConfirmedBy ? " by " + nameOf(lead.industryConfirmedBy) : ""}:{" "}
+                {lead.state === "declined_industry" ? "declined, because of the industry." : "not finance, so it carried on."}
+              </p>
+            )}
+            {mayManage && flagged && (
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <form action={decideLeadIndustry}>
                   <input type="hidden" name="leadId" value={lead.id} />
@@ -1027,9 +1088,9 @@ export default async function LeadPage({
       {/* =====================================================================
           VIEW 4: DEFAULT LEAD VIEW (Figma Frame 1:484 — CL · Lead — Lankaweave Textiles)
          ===================================================================== */}
-      {activeView === "lead" && (
+      {(activeView === "enquiry" || activeView === "intro" || activeView === "opening") && (
         <>
-          {/* Hero Next Step Card (Figma 1:510) */}
+          {upNextOn === shown && (
           <NextStepCard
             title={
               esa && (esa.state === "sent" || esa.state === "chasing")
@@ -1136,15 +1197,11 @@ export default async function LeadPage({
               </div>
             )}
           </NextStepCard>
+          )}
 
-          {/* 4 Collapsible Fold Rows (Figma 1:531) */}
-          <div className="flex flex-col gap-2.5">
-            {/* Fold 1: Enquiry */}
-            <FoldRow
-              title="Enquiry"
-              summary={`${sourceText} · ${whenDate(lead.createdAt)} · ${lead.clientTaId ? "In TA System (" + lead.clientTaId + ")" : "Not in TA System"} · ${lead.industryFlagged && !lead.industryConfirmedBy ? "Flagged for industry" : "Industry OK"}`}
-              defaultOpen={step.at === "duplicate"}
-            >
+          {activeView === "enquiry" && (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>THE ENQUIRY · {sourceText} · {whenDate(lead.createdAt)}</span>
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 gap-3 text-[14px] sm:grid-cols-2">
                   <div>
@@ -1170,7 +1227,7 @@ export default async function LeadPage({
                   )}
                 </div>
 
-                {mayManage && (
+                {mayManage && step.at !== "duplicate" && progress[0] !== "done" && (
                   <div className="flex flex-wrap items-center gap-3 border-t border-rule pt-3">
                     <form action={checkLeadDuplicate}>
                       <input type="hidden" name="leadId" value={lead.id} />
@@ -1186,25 +1243,14 @@ export default async function LeadPage({
                   </div>
                 )}
               </div>
-            </FoldRow>
+            </div>
+          )}
 
-            {/* Fold 2: Intro call */}
-            <FoldRow
-              title="Intro call"
-              summary={
-                introMeetings.length > 0
-                  ? introMeetings
-                      .map(
-                        (m) =>
-                          `${MEETING_STATES[m.state as MeetingState] ?? m.state} ${whenDate(m.at)}${m.brief ? ` — “${m.brief.slice(0, 64)}”` : ""}`,
-                      )
-                      .join(" · ")
-                  : "Not booked yet · TA lead joins every intro call"
-              }
-              defaultOpen={step.at === "intro"}
-            >
+          {activeView === "intro" && (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>THE INTRO CALL · THE TA LEAD JOINS EVERY ONE</span>
               <div className="flex flex-col gap-4">
-                {meetings.map((meeting) => (
+                {meetings.filter((m) => m.kind === "intro").map((meeting) => (
                   <div
                     key={meeting.id}
                     className="flex flex-col gap-2 border-b border-rule pb-3 last:border-b-0"
@@ -1243,6 +1289,23 @@ export default async function LeadPage({
                         ) : null}
                       </p>
                     )}
+                    {meeting.state === "booked" &&
+                      renderInviteOutcome(
+                        db.messages.find(
+                          (m) => m.subjectType === "meeting" && m.subjectId === meeting.id,
+                        ),
+                      )}
+                    {meeting.state !== "booked" && (meeting.lengthMin || meeting.organiserId || meeting.attendees?.length) && (
+                      <p className="text-[13px] text-ink-soft">
+                        {[
+                          meeting.lengthMin ? meeting.lengthMin + " minutes" : null,
+                          meeting.organiserId ? "in " + nameOf(meeting.organiserId) + "'s calendar" : null,
+                          meeting.attendees?.length ? "link to " + meeting.attendees.map((a) => a.name || a.email).join(", ") : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
                     {meeting.brief && (
                       <p className="text-[14px] text-ink-soft">
                         What they said: <span className="text-ink">{meeting.brief}</span>
@@ -1256,8 +1319,11 @@ export default async function LeadPage({
                     )}
 
                     {mayManage && meeting.state === "booked" && (
-                      <div className="mt-2 grid grid-cols-1 gap-4 border-t border-rule pt-3 lg:grid-cols-2">
+                      <MeetingOutcome
+                        meetingId={meeting.id}
+                        held={
                         <form action={markMeetingHeld} className="flex flex-col gap-2.5">
+                          <KeepFields id="meeting-held" />
                           <input type="hidden" name="meetingId" value={meeting.id} />
                           <span className={figmaLabel}>
                             It happened — what did they say?
@@ -1281,16 +1347,18 @@ export default async function LeadPage({
                               className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
                             />
                           </div>
-                          <button type="submit" className={pillPrimary + " self-start"}>
+                          <SubmitButton id={"held-" + meeting.id} answerAt="call-held" className={pillPrimary + " self-start"}>
                             It was held
-                          </button>
+                          </SubmitButton>
                         </form>
-
+                        }
+                        notHeld={
                         <form
                           action={markMeetingNotHeld}
                           className="flex flex-col gap-2.5"
                         >
                           <input type="hidden" name="meetingId" value={meeting.id} />
+                          <KeepFields id="meeting-not-held" />
                           <span className={figmaLabel}>It did not happen — why?</span>
                           <input
                             name="reason"
@@ -1302,16 +1370,17 @@ export default async function LeadPage({
                             <input type="checkbox" name="clientReplied" />
                             <span>The client is still answering us</span>
                           </label>
-                          <button type="submit" className={pillSecondary + " self-start"}>
+                          <SubmitButton id={"not-held-" + meeting.id} className={pillSecondary + " self-start"}>
                             It was not held
-                          </button>
+                          </SubmitButton>
                         </form>
-                      </div>
+                        }
+                      />
                     )}
                   </div>
                 ))}
 
-                {mayManage && !nextBooked && (
+                {mayManage && !nextBooked && !meetings.some((m) => m.kind === "intro" && m.state === "held") && (
                   <MeetingBookingForm
                     action={bookIntroCall}
                     leadId={lead.id}
@@ -1326,80 +1395,285 @@ export default async function LeadPage({
                   />
                 )}
               </div>
-            </FoldRow>
+            </div>
+          )}
 
-            {/* Fold 3: Agreement */}
-            <FoldRow
-              title="Agreement"
-              summary={
-                esa
-                  ? `ESA v${esa.version} · ${whereItStands({ ...esa, state: esa.state as EsaState }, now)}`
-                  : "Not started yet · due within 2 hours of the intro call"
-              }
-              defaultOpen={step.at === "agreement"}
-            >
-              <div className="flex flex-col gap-3">
-                <p className="text-[14px] text-ink-soft">
-                  {esa
-                    ? `${ESA_STATES[esa.state as EsaState] ?? esa.state} · version ${esa.version}.`
-                    : "Start the Employment Services Agreement to fill the client’s terms and send the PDF."}
-                </p>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <Link
-                    href={`/leads/${lead.id}?view=agreement`}
-                    className={pillPrimary}
-                  >
-                    Open full agreement view
-                  </Link>
-                  {!esa && mayManage && (
-                    <form action={startAgreement}>
-                      <input type="hidden" name="leadId" value={lead.id} />
-                      <button type="submit" className={pillSecondary}>
-                        Start the agreement
-                      </button>
-                    </form>
-                  )}
-                </div>
+          {/* The end of the intro call (owner, 17 Nov): once it was held, the agreement's details,
+              the ESA itself, the email that carries it, and Send. Then the opening. */}
+          {activeView === "intro" && mayManage && !introHeldOrSkipped && (
+            <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink-soft">
+              Once the call is marked as held, the agreement&rsquo;s details, the ESA and its email appear here.
+            </p>
+          )}
+
+          {activeView === "intro" && mayManage && introHeldOrSkipped && (!esa || esa.state === "draft") && (
+            <>
+              <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+                <span className={figmaLabel}>1 · THE AGREEMENT DETAILS, FROM THE CALL</span>
+                <Answer id="call-held" />
+                <AgreementFieldsForm leadId={lead.id} esa={esa ?? { id: "", fields: startAgreementFields }} returnTo="intro" />
               </div>
-            </FoldRow>
 
-            {/* Fold 4: Requirement meeting */}
-            <FoldRow
-              title="Requirement meeting"
-              summary={
-                position
-                  ? `Handed over to TA · ${position.title}`
-                  : requirement
-                    ? "Brief captured · ready to open position"
-                    : "Opened after the intro call; settle conditions and the brief here"
-              }
-              defaultOpen={step.at === "requirement"}
-            >
-              <div className="flex flex-col gap-3">
-                <p className="text-[14px] text-ink-soft">
-                  {agreementDone
-                    ? "The agreement is signed. Capture the requirement brief and hand over the position to TA."
-                    : "The opening does not wait for the signature. Open it after the intro call, then write the rest of the requirement in here as it is agreed."}
+              <div id="esa-document" className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+                <span className={figmaLabel}>2 · THE ESA, AS THE CLIENT WILL GET IT</span>
+                {!esaTemplate ? (
+                  <p className="text-[14px] text-ink-soft">
+                    Upload the ESA template on{" "}
+                    <Link href="/files" className="text-brand underline">
+                      Files
+                    </Link>{" "}
+                    as &ldquo;Agreement, drafted&rdquo;, and the draft can be made.
+                  </p>
+                ) : esa && newestDraft ? (
+                  <DraftDocument file={newestDraft.file} version={newestDraft.version} />
+                ) : (
+                  <p className="text-[14px] text-ink-soft">
+                    {esaMissing.length > 0 && esa
+                      ? "Still blank: " + esaMissing.map((f) => f.label.toLowerCase()).join(", ") + ". Fill them in and press Save and make the draft."
+                      : "Press Save and make the draft above, and the ESA shows here."}
+                  </p>
+                )}
+                {esa && <AgreementVersions esa={esa} files={draftFiles} />}
+                <p className="text-[12.5px] text-ink-soft">
+                  Something to change? Edit the details above and press Save and make the draft. It becomes the next version.
                 </p>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <Link
-                    href={`/leads/${lead.id}?view=requirement`}
-                    className={agreementDone ? pillPrimary : pillSecondary}
-                  >
-                    Open requirement meeting view
-                  </Link>
-                  {position && (
-                    <Link
-                      href={`/positions/${position.id}`}
-                      className={pillSecondary}
-                    >
-                      View opening
+              </div>
+
+              {esa && (
+                <>
+                  <CoverEmailPreview
+                    esaId={esa.id}
+                    to={String(esa.fields.signatoryEmail ?? "").trim()}
+                    attachment={"Agreement - " + safeName(String(esa.fields.companyName ?? "client")) + " - v" + nextDraftVersion(draftFiles) + ".pdf"}
+                    email={coverPreview!}
+                    edited={!!(esa.fields.coverSubject && esa.fields.coverBody)}
+                    returnTo="intro"
+                    step="3"
+                  />
+                  <form action={sendAgreement} className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+                    <span className={figmaLabel}>4 · SEND THE ESA</span>
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <input type="hidden" name="returnTo" value="intro" />
+                    <p className="text-[14px] text-ink-soft">
+                      Makes the final PDF from these details and drafts the email above with it attached, for you to approve. The chase and the two weeks start when it goes.
+                    </p>
+                    <SubmitButton id="send-esa" className={pillPrimary + " self-start"}>
+                      Send the ESA
+                    </SubmitButton>
+                  </form>
+                </>
+              )}
+            </>
+          )}
+
+          {activeView === "intro" && esa && esa.state !== "draft" && (
+            <div className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>THE ESA</span>
+              <p className="text-[14px] text-ink">
+                {esa.sentAt ? "Sent " + whenDate(esa.sentAt) + " (version " + esa.version + "). " : ""}
+                {ESA_STATES[esa.state as EsaState] ?? esa.state}.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <Link href={stepHref("agreement")} className={pillPrimary}>
+                  Next: the agreement and the requirement
+                </Link>
+                <Link href={stepHref("requirement")} className={pillSecondary}>
+                  The requirement
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {activeView === "intro" && esa && esa.state !== "draft" && (
+            <>
+              <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+                <span className={figmaLabel}>THE AGREEMENT DETAILS, AS SENT</span>
+                <FieldList items={ESA_FIELDS.map((f) => ({ label: f.label, value: esa.fields[f.key] }))} />
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+                <span className={figmaLabel}>THE ESA, AS THE CLIENT GOT IT</span>
+                {newestDraft && <DraftDocument file={newestDraft.file} version={newestDraft.version} />}
+                <AgreementVersions esa={esa} files={draftFiles} />
+              </div>
+
+              {sentEmail && (
+                <div className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+                  <span className={figmaLabel}>THE EMAIL THAT WENT WITH IT</span>
+                  <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 text-[14px]">
+                    <dt className="text-ink-soft">To</dt>
+                    <dd className="text-ink">{sentEmail.to.join(", ")}</dd>
+                    <dt className="text-ink-soft">Subject</dt>
+                    <dd className="text-ink">{sentEmail.subject}</dd>
+                    <dt className="text-ink-soft">Status</dt>
+                    <dd className="text-ink">
+                      {sentEmail.sentAt ? "Sent " + whenLocal(sentEmail.sentAt) : "Drafted, waiting for a person to approve it"}
+                    </dd>
+                  </dl>
+                  <p className="whitespace-pre-wrap rounded-[10px] bg-surface px-3 py-2 font-mono text-[13.5px] leading-[1.55] text-ink">
+                    {sentEmail.body}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeView === "opening" && (
+            <>
+          {!position && !introHeldOrSkipped && (
+            <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
+              The intro call is not marked as held yet, so the opening cannot be opened.{" "}
+              <Link href={stepHref("intro")} className="font-medium underline">
+                Go to the intro call
+              </Link>
+            </p>
+          )}
+          {!position && introHeldOrSkipped && !openingReady && !openedEarly && (
+            <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>THE OPENING WAITS FOR TWO THINGS</span>
+              <ul className="flex flex-col gap-1.5 text-[14px]">
+                <li className={agreementDone ? "text-ink-soft" : "text-ink"}>
+                  {agreementDone ? "Done: " : "Waiting: "}the client&rsquo;s signed agreement.{" "}
+                  {!agreementDone && (
+                    <Link href={stepHref("agreement")} className="font-medium text-brand underline">
+                      The agreement
                     </Link>
                   )}
-                </div>
-              </div>
-            </FoldRow>
+                </li>
+                <li className={requirement && requirementBlanks.length === 0 ? "text-ink-soft" : "text-ink"}>
+                  {requirement && requirementBlanks.length === 0 ? "Done: " : "Waiting: "}the requirement, complete
+                  {requirement && requirementBlanks.length > 0 ? " (" + requirementBlanks.length + " blank)" : ""}.{" "}
+                  {!(requirement && requirementBlanks.length === 0) && (
+                    <Link href={stepHref("requirement")} className="font-medium text-brand underline">
+                      The requirement
+                    </Link>
+                  )}
+                </li>
+              </ul>
+              {mayManage && (
+                <form action={openEarly} className="flex flex-col gap-2 border-t border-rule pt-3">
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <span className={figmaLabel}>A CLIENT WE TRUST? OPEN IT NOW, WITHOUT WAITING</span>
+                  <input
+                    name="reason"
+                    placeholder="Why this client can be opened for without waiting, and who agreed (kept with the lead)"
+                    className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                  />
+                  <SubmitButton id="open-early" className={pillSecondary + " self-start"}>
+                    Open it now, without waiting
+                  </SubmitButton>
+                </form>
+              )}
+            </div>
+          )}
+          {!position && openedEarly && (
+            <div className="flex flex-col gap-2 rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
+              <p>
+                Trusted: marked to open without waiting, by {nameOf(lead.openEarlyBy ?? null)} on {whenDate(lead.openEarlyAt ?? now)}:{" "}
+                {lead.openEarlyReason}
+              </p>
+              {mayManage && (
+                <form action={openEarly}>
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <input type="hidden" name="undo" value="1" />
+                  <SubmitButton id="undo-open-early" className={pillSecondary + " self-start"}>
+                    Take it back
+                  </SubmitButton>
+                </form>
+              )}
+            </div>
+          )}
+          {position ? (
+            <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>THE OPENING</span>
+              <p className="text-[18px] text-ink">{position.title}</p>
+              <p className="text-[14px] text-ink-soft">
+                {position.openingTaId
+                  ? "Open in the TA System as " + position.openingTaId + "."
+                  : "Handed over. It appears here the moment the TA System creates it."}
+              </p>
+              <Link href={`/positions/${position.id}`} className={pillPrimary + " self-start"}>
+                Open the position
+              </Link>
+            </div>
+          ) : !introHeldOrSkipped || !(openingReady || openedEarly) ? null : (
+            <>
+              {mayManage && !roleKnown && (
+                <form action={saveRequirement} className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
+                  <KeepFields id="opening-role" />
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <input type="hidden" name="step" value="opening" />
+                  <span className={figmaLabel}>THE ROLE: A NAME AND A NUMBER ARE ENOUGH TO OPEN IT</span>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px_auto]">
+                    <input
+                      name="field.title"
+                      required
+                      defaultValue={requirement?.fields.title ?? ""}
+                      placeholder="Position title"
+                      className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                    />
+                    <input
+                      name="field.headcount"
+                      required
+                      inputMode="numeric"
+                      defaultValue={requirement?.fields.headcount ?? ""}
+                      placeholder="How many"
+                      className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                    />
+                    <SubmitButton id="save-role" className={pillSecondary}>
+                      Save the role
+                    </SubmitButton>
+                  </div>
+                </form>
+              )}
+          <NextStepCard
+            eyebrow="DECISION"
+            title="Can we fill this role as asked?"
+            clock={{ label: "Decide today", tone: "warn", icon: "clock" }}
+            body="Check the package and skills against the market before we commit the team. If yes, pick the Primary TA and the 100% target date — the opening is created in the TA System from the role you saved above."
+          >
+            {mayManage ? (
+              <RequirementDecisionClient
+                leadId={lead.id}
+                taPeople={taPeopleList}
+                defaultDate={defaultTargetDate}
+                rebookHref={stepHref("requirement") + "#book-requirement-meeting"}
+              />
+            ) : (
+              <p className="text-[14px] text-ink-faint">{refusal("client.manage")}</p>
+            )}
+          </NextStepCard>
 
+            </>
+          )}
+            </>
+          )}
+        </>
+      )}
+
+      {activeView !== "decline" && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-5">
+            {before ? (
+              <Link href={stepHref(before)} className={pillSecondary}>
+                ← Back to {LEAD_STEP_LABELS[before].toLowerCase()}
+              </Link>
+            ) : (
+              <span />
+            )}
+            {after ? (
+              <Link href={stepHref(after)} className={shownDone ? pillPrimary : pillSecondary}>
+                {shownDone ? "Next: " : "Skip to "}
+                {LEAD_STEP_LABELS[after].toLowerCase()} →
+              </Link>
+            ) : position ? (
+              <Link href={`/positions/${position.id}`} className={pillPrimary}>
+                Next: the opening →
+              </Link>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2.5">
             {/* Fold 5: Close lead & audit */}
             <FoldRow
               title="Close this lead or view history"

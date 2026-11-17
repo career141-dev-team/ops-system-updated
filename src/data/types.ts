@@ -335,6 +335,10 @@ export interface OpsLead {
   reason: string | null;
   /** Declined for the industry means never invited back. */
   doNotInvite: boolean;
+  /** "Open it now, without waiting" (17 Nov): who chose it, when, and why. Optional: older rows have none. */
+  openEarlyBy?: Id | null;
+  openEarlyAt?: number | null;
+  openEarlyReason?: string | null;
   /** The TA client this is, once we know it is a company we already have. */
   clientTaId: Id | null;
   ownerId: Id;
@@ -612,6 +616,8 @@ export interface OpsPosition {
    * Kept in Ops only and always shown as "added by hand, not in TA".
    */
   manualCandidates?: { id: string; name: string; email: string; phone: string; note: string; cvFileId: string | null; addedBy: Id; at: number }[];
+  /** TA people on this opening besides the Primary TA (17 Nov). Optional: older rows have none. */
+  team?: { taId: string; addedBy: Id; addedAt: number }[];
   /** Extra people to write to about this position only, e.g. the hiring team lead (17 Nov). */
   contacts?: { name: string; email: string; phone: string; role: string }[];
   closedAt: number | null;

@@ -14,6 +14,8 @@
  * Nothing here touches a database or sends anything.
  */
 
+import { fill } from "@/lib/templates";
+
 export type EsaState =
   | "draft"
   | "sent"
@@ -73,20 +75,21 @@ export interface EsaField {
  */
 export const ESA_FIELDS: EsaField[] = [
   { key: "companyName", label: "Company, as it signs", required: true, why: "The party to the agreement." },
-  { key: "registrationNo", label: "Company registration no.", required: true, why: "Named in the first clause." },
+  // Optional since 17 Nov: the owner's ESA (the Valtrix draft) never prints the client's number.
+  { key: "registrationNo", label: "Company registration no.", required: false, why: "Not in the document; kept for the record." },
   { key: "companyAddress", label: "Registered address", required: true, why: "The document needs one." },
   { key: "clientBusiness", label: "What their business is", required: true, why: "“involved in the business of …”, in their words." },
   { key: "signatoryName", label: "Who signs for them", required: true, why: "The person we chase." },
-  { key: "signatoryEmail", label: "Their email", required: true, why: "Where it is sent and chased." },
+  { key: "signatoryEmail", label: "Their email", required: true, why: "Where the agreement is sent and chased; not printed in it." },
   { key: "signatoryTitle", label: "Their title", required: true, why: "A hole in the agreement: it signs under their designation." },
-  { key: "signatoryPhone", label: "Their number", required: true, why: "A hole in the agreement, on the signature page, and the WhatsApp chase needs it." },
+  { key: "signatoryPhone", label: "Their number", required: true, why: "The WhatsApp chase needs it; the agreement does not print it." },
   { key: "taxNo", label: "Tax number (VAT/TIN)", required: false, why: "Not in the document; kept for the invoice." },
   { key: "feeMonths", label: "Fee: months of salary", required: true, why: "One month is standard." },
   { key: "feeBasis", label: "Fee on gross or basic", required: true, why: "Basic only for selected clients." },
   { key: "guaranteeDays", label: "Guarantee, in days", required: true, why: "90 days from joining." },
   { key: "paymentDays", label: "Payment, in days", required: true, why: "30 days from the first working day." },
   { key: "replacementWorkingDays", label: "Replacement, working days", required: true, why: "60 working days." },
-  { key: "refundPct", label: "Refund, per cent", required: true, why: "50% in the agreement, and only by decision." },
+  { key: "refundPct", label: "Refund, per cent", required: true, why: "25% in the agreement (clause 6.6), and only by decision." },
   { key: "notes", label: "Anything agreed on the call", required: false, why: "Kept with the version." },
 ];
 
@@ -123,6 +126,26 @@ export function defaultFields(settings: {
     paymentDays: String(settings.paymentDays),
     replacementWorkingDays: String(settings.replacementWorkingDays),
     refundPct: String(settings.refundPct),
+  };
+}
+
+/**
+ * What a new agreement starts from (17 Nov): the settings' numbers and what the
+ * lead already says. Shared by the action that starts it and the intro call's
+ * form, so the form opens with the same values the agreement would get.
+ */
+export function startingFields(
+  settings: Parameters<typeof defaultFields>[0],
+  lead: { company: string; contactName: string; contactEmail: string; contactPhone: string; industry: string },
+): EsaFields {
+  return {
+    ...defaultFields(settings),
+    companyName: lead.company,
+    signatoryName: lead.contactName,
+    signatoryEmail: lead.contactEmail,
+    signatoryPhone: lead.contactPhone,
+    // A starting point for "involved in the business of ..."; the ops person edits it.
+    clientBusiness: lead.industry,
   };
 }
 
@@ -240,6 +263,44 @@ export function chaseDraft(
 }
 
 /**
+ * The cover email that carries the agreement (17 Nov).
+ *
+ * The owner's cover names this client's fee, payment days and guarantee next
+ * to the clause numbers, so it may use any agreement field, plus {{client}}
+ * and {{contact}}. A hole left empty stops the send, as in the document.
+ */
+export function coverDraft(
+  wording: { subject: string | null; body: string | null } | null,
+  fields: EsaFields,
+): { subject: string; body: string } | { problem: string } {
+  const out = fill(
+    {
+      subject: wording?.subject || "{{client}} · our agreement",
+      body: wording?.body || "Dear {{contact}},\n\nOur agreement is attached.\n\nKind regards,\nCareer 141",
+    },
+    { ...fields, client: fields.companyName ?? "", contact: fields.signatoryName ?? "" },
+  );
+  if (out.missing.length) return { problem: "The cover email has holes nothing fills: " + out.missing.join(", ") + ". Fill them in, or fix the template." };
+  return { subject: out.subject, body: out.body };
+}
+
+/**
+ * The cover email as it will go (17 Nov): the person's own wording when they edited it
+ * (kept in the agreement's fields), else the template filled from the agreement. The
+ * screen's preview and the send both ask this, so they are always the same words.
+ */
+export function coverEmail(
+  wording: { subject: string | null; body: string | null } | null,
+  fields: EsaFields,
+): { subject: string; body: string } | { problem: string } {
+  const subject = (fields.coverSubject ?? "").trim();
+  const body = (fields.coverBody ?? "").trim();
+  if (!subject || !body) return coverDraft(wording, fields);
+  if (/\{\{/.test(subject + body)) return { problem: "The cover email still has a {{hole}} in it. Fill it in, or reset to the standard wording." };
+  return { subject, body };
+}
+
+/**
  * The client wants changes (15, Phase 2 step 16).
  *
  * What they want has to be written down, because the next version is drafted
@@ -254,6 +315,9 @@ export function problemWithChanges(what: string): string | null {
 /** Holes the template may have that are not agreement fields: the system fills them. */
 const SYSTEM_HOLES = ["effectiveDate"];
 
+/** Fields the owner's ESA never prints but the send and the chase need (17 Nov): where it goes, and the WhatsApp number. */
+const NOT_PRINTED = ["signatoryEmail", "signatoryPhone"];
+
 /**
  * What is wrong between a template's holes and the fields we collect (16 Nov).
  *
@@ -265,6 +329,37 @@ export function checkTemplate(holes: string[]): { unknown: string[]; unused: Esa
   const known = new Set([...ESA_FIELDS.map((f) => f.key), ...SYSTEM_HOLES]);
   return {
     unknown: holes.filter((h) => !known.has(h)),
-    unused: ESA_FIELDS.filter((f) => f.required && !holes.includes(f.key)),
+    unused: ESA_FIELDS.filter((f) => f.required && !holes.includes(f.key) && !NOT_PRINTED.includes(f.key)),
   };
+}
+
+export interface VersionRow {
+  version: number;
+  file: { id: string; name: string; mime: string; uploadedAt: number };
+}
+
+/**
+ * The agreement's drafted versions, newest first (17 Nov): one row each, read
+ * from the file names ("Agreement - Client - v2.pdf"). The PDF is the row when
+ * both were made, because a PDF opens as it is and a Word file is only read.
+ */
+export function agreementVersions(files: { id: string; name: string; mime: string; uploadedAt: number; kind: string }[]): VersionRow[] {
+  const best = new Map<number, VersionRow>();
+  for (const f of files) {
+    if (f.kind !== "esa_draft") continue;
+    const m = /- v(\d+)\.(pdf|docx)$/i.exec(f.name);
+    if (!m) continue;
+    const v = Number(m[1]);
+    const have = best.get(v);
+    if (!have || (m[2].toLowerCase() === "pdf" && !have.file.name.toLowerCase().endsWith(".pdf"))) best.set(v, { version: v, file: f });
+  }
+  return [...best.values()].sort((a, b) => b.version - a.version);
+}
+
+/**
+ * The number the next drafted copy gets (17 Nov): one past the highest already made, so a
+ * second draft after an edit is a new version, not the first one written over.
+ */
+export function nextDraftVersion(files: Parameters<typeof agreementVersions>[0]): number {
+  return Math.max(0, ...agreementVersions(files).map((r) => r.version)) + 1;
 }

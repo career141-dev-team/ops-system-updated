@@ -619,7 +619,7 @@ export const AGENT_ACTIONS: AgentAction[] = [
   },
   {
     name: "decide_refund",
-    says: "The Director decides the 50% refund",
+    says: "The Director decides the refund",
     action: "decideRefund",
     needs: "refund.decide",
     money: true,

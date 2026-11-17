@@ -86,6 +86,7 @@ import {
   cancelMeetingClocks,
   createTask,
   desk,
+  draftFeeInvoice,
   draftsWaiting,
   leadIn,
   meetingIn,
@@ -103,6 +104,11 @@ import {
   markInboundActioned,
   readTheMailboxes,
   takeInbound,
+  takeClientSetReadyWith,
+  takeInterviewEvent,
+  takeOpeningCreated,
+  takePlacementFrom,
+  takePlacementOutcome,
   finishTask as finishTaskWrite,
   numberOf,
   recordReply as recordReplyWrite,
@@ -111,6 +117,7 @@ import {
   saveTemplate,
   settleMessage,
   templateFor,
+  textOf,
   startTimer,
   switchedOn,
 } from "@/data/desk";
@@ -145,11 +152,17 @@ import {
   problemWithLinkedIn,
   tidyLinkedIn,
 } from "@/lib/adverts";
+import { problemWithTeam, withPeople } from "@/lib/openingTeam";
+import { invoiceSheet, nextInvoiceVersion } from "@/lib/invoiceDoc";
+import { drawInvoicePdf, problemWithBank } from "@/lib/invoicePdf";
 import {
   briefText,
-  problemWithHandover,
+  missingFields as requirementMissing,
+  problemWithEarlyOpening,
   problemWithImpractical,
+  problemWithOpening,
   problemWithRequirement,
+  requirementLocked,
 } from "@/lib/requirements";
 import {
   HOLD_REVIEW_DAYS,
@@ -229,6 +242,7 @@ import {
   problemWithNoShow,
   problemWithSalarySplit,
   problemWithNoShowChoice,
+  paymentDate,
   problemWithPayment,
   problemWithWriteOff,
 } from "@/lib/money";
@@ -270,7 +284,7 @@ import {
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
-import { clients as taClients, people as taPeople, preparedCv } from "@/lib/ta";
+import { clients as taClients, fakeTa, people as taPeople, preparedCv } from "@/lib/ta";
 import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, teamsFake } from "@/lib/graphCalendar";
 import { trimForAi, vttToText } from "@/lib/transcript";
 import { stampCountersignature } from "@/lib/countersign";
@@ -279,17 +293,23 @@ import {
   type Attendee,
   DEFAULT_LENGTH,
   attendeesFrom,
+  canAutoSendInvite,
+  isStandInTeamsLink,
   problemWithAttendees,
   problemWithLength,
 } from "@/lib/teams";
+import { tryBuildStrategyAdditions } from "@/lib/strategies";
 import {
   type EsaFields,
   type EsaState,
   canMoveTo,
   chaseStep,
+  coverEmail,
   defaultFields,
   expiresAt as esaExpiresAt,
   nextChaseAt,
+  nextDraftVersion,
+  startingFields,
   ESA_FIELDS,
   problemWithChanges,
   problemWithDraft,
@@ -322,6 +342,23 @@ import { previewRoleFrom } from "@/lib/roles";
  * What the screens can do. Every one of them checks the role first, and every
  * refusal is a sentence a person can act on rather than a code.
  */
+
+
+/**
+ * The way back to a lead step after a button (17 Nov). With the button's own id (`at`,
+ * a hidden field), the page comes back scrolled to that button with the answer beside
+ * it, instead of at the top with a banner (app/ui/SubmitButton.tsx).
+ */
+function leadBack(here: string, step: string, msg: string, formData: FormData): string {
+  return answerBack(here + "?step=" + step, msg, formData);
+}
+
+/** The same for a page that has no steps (a placement, an invoice): the answer comes back beside the button. */
+function answerBack(url: string, msg: string, formData: FormData): string {
+  const at = String(formData.get("at") ?? "");
+  const ok = /^[a-z0-9-]{1,64}$/.test(at);
+  return url + (url.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg) + (ok ? "&at=" + at + "#" + at : "");
+}
 
 export async function startTestClock(): Promise<void> {
   const member = await currentMember();
@@ -406,6 +443,177 @@ export async function readMailNow(): Promise<void> {
   const said = r.ok ? counted : (r.reason ?? "The mailboxes could not be read.") + " " + counted;
   revalidatePath("/mail");
   redirect("/mail?msg=" + encodeURIComponent(said));
+}
+
+/* ── The stand-in TA System panel (/dev/ta, 17 Nov) ─────────────────────────
+ *
+ * Several steps of the flow wait for the TA System to say something: that an
+ * opening exists, that a set of CVs is ready, what a candidate said after an
+ * interview, that somebody was placed or joined. Until the real API answers,
+ * these buttons say it with invented data, through the very same handlers the
+ * real events go through. Refused unless the development sign-in AND the
+ * stand-in TA System are both on, so they can never run against the real one.
+ */
+function devTaOnly(): void {
+  if (!devSignInAllowed() || !fakeTa()) {
+    redirect("/?msg=" + encodeURIComponent("The stand-in TA System panel is for development only."));
+  }
+}
+
+function devTaBack(message: string): never {
+  revalidatePath("/dev/ta");
+  redirect("/dev/ta?msg=" + encodeURIComponent(message));
+}
+
+/** TA creates the opening Ops handed over (the oldest one waiting for this client). */
+export async function devTaCreateOpening(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const db = await desk();
+  const position = positionIn(db, String(formData.get("positionId") ?? ""));
+  if (!position || position.openingTaId) devTaBack("That opening is not waiting for TA.");
+  const waiting = position as NonNullable<typeof position>;
+  const made = await takeOpeningCreated({
+    openingId: "ta_dev_" + waiting.id.replace(/^pos_/, ""),
+    clientId: waiting.clientTaId,
+    title: waiting.title,
+    primaryRecruiterId: "ta_u2",
+  });
+  revalidatePath("/positions");
+  devTaBack(made ? "TA created the opening (invented id " + made.openingTaId + ")." : "Nothing was waiting for that client.");
+}
+
+/** TA says a set of five CVs is ready. */
+export async function devTaSendSet(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const db = await desk();
+  const position = positionIn(db, String(formData.get("positionId") ?? ""));
+  if (!position?.openingTaId) devTaBack("The opening has to exist in TA first.");
+  const row = position as NonNullable<typeof position>;
+  const opening = row.openingTaId as string;
+  const setNumber = db.clientSets.filter((c) => c.openingTaId === opening).length + 1;
+  const base = opening.replace(/^ta_dev_/, "");
+  const names = ["ONE", "TWO", "THREE", "FOUR", "FIVE"];
+  const made = await takeClientSetReadyWith(
+    opening,
+    setNumber,
+    {
+      id: "ta_round_" + base + "_" + setNumber,
+      setNumber,
+      openingId: opening,
+      applicationIds: names.map((n) => "ta_dev_" + base + "_s" + setNumber + n.toLowerCase()),
+      applications: names.map((n) => ({
+        id: "ta_dev_" + base + "_s" + setNumber + n.toLowerCase(),
+        name: "SAMPLE CANDIDATE " + n + " (SET " + setNumber + ")",
+        preparedCv: true,
+      })),
+      dispatch: "ready",
+      status: "ready",
+      sentAt: null,
+      receivedAt: null,
+    },
+    {
+      id: opening,
+      title: row.title,
+      clientId: row.clientTaId,
+      status: "open",
+      primaryRecruiterId: "ta_u2",
+      taLeadId: "ta_u1",
+      headcount: 1,
+      assignedAt: row.handedOverAt,
+    },
+  );
+  revalidatePath("/sets");
+  devTaBack(made ? "TA says set " + setNumber + " is ready: five invented candidates, each with a sample CV." : "That set was already there.");
+}
+
+/** What TA tells Ops about an interview. */
+export async function devTaInterviewEvent(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const db = await desk();
+  const interview = interviewIn(db, String(formData.get("interviewId") ?? ""));
+  if (!interview) devTaBack("That interview is gone.");
+  const row = interview as NonNullable<typeof interview>;
+  const type = String(formData.get("type") ?? "");
+  const samples: Record<string, Record<string, unknown>> = {
+    "interview.confirmed": {},
+    "interview.feedback": {
+      feedback: "Keen on the role and the team. Asked about growth and the reporting line. Notice period is one month and the salary ask is in range. (Invented, for testing.)",
+    },
+    "interview.outcome": { outcome: "attended" },
+    "interview.outcome:no_show": { outcome: "no_show" },
+    "interview.candidate_out": { reason: "They accepted another offer. (Invented, for testing.)" },
+  };
+  const key = String(formData.get("sample") ?? type);
+  if (!(key in samples)) devTaBack("That is not an event the stand-in can send.");
+  await takeInterviewEvent(type, { applicationId: row.applicationTaId, ...samples[key] });
+  revalidatePath("/interviews/" + row.id);
+  devTaBack("TA sent " + type + " for " + row.candidateName + ".");
+}
+
+/** TA places a candidate: the day the money starts. */
+export async function devTaPlace(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const db = await desk();
+  const position = positionIn(db, String(formData.get("positionId") ?? ""));
+  if (!position?.openingTaId) devTaBack("The opening has to exist in TA first.");
+  const row = position as NonNullable<typeof position>;
+  const applicationId = String(formData.get("applicationId") ?? "");
+  if (!applicationId) devTaBack("Pick who is placed.");
+  const name =
+    db.clientSets.flatMap((c) => c.candidates).find((c) => c.applicationTaId === applicationId)?.name ?? "SAMPLE CANDIDATE";
+  const placementId = "ta_pl_dev_" + Date.now().toString(36);
+  const made = await takePlacementFrom(placementId, {
+    id: placementId,
+    applicationId,
+    openingId: row.openingTaId as string,
+    clientId: row.clientTaId,
+    candidateName: name,
+    placedSalary: 450_000,
+    currency: "LKR",
+    salaryBasis: "gross",
+    package: "LKR 450,000 a month, plus fuel and a phone allowance. (Invented, for testing.)",
+    offerLetterFileId: "ta_file_offer_1",
+    joinDateMs: Date.now() + 14 * 86_400_000,
+    joinConfirmedAt: null,
+    fellThroughAt: null,
+    fellThroughReason: null,
+  });
+  revalidatePath("/placements");
+  devTaBack(made ? name + " is placed. Joining in a fortnight." : "Nothing was made.");
+}
+
+/** TA says they joined, or never turned up. */
+export async function devTaJoined(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const db = await desk();
+  const placement = db.placements.find((p) => p.id === String(formData.get("placementId") ?? ""));
+  if (!placement) devTaBack("That placement is gone.");
+  const row = placement as NonNullable<typeof placement>;
+  const noShow = formData.get("outcome") === "no_show";
+  await takePlacementOutcome(noShow ? "placement.no_show" : "placement.joined", { placementId: row.placementTaId });
+  revalidatePath("/placements");
+  if (noShow) devTaBack(row.candidateName + " did not turn up.");
+  // Say what really happened: an invoice is not drafted for a client with no
+  // billing details on their record (the rule), and that is worth seeing here.
+  const after = await desk();
+  const invoice = after.invoices.find((i) => i.placementId === row.id);
+  const guarantee = after.guarantees.find((g) => g.placementId === row.id);
+  devTaBack(
+    row.candidateName +
+      " joined. " +
+      (invoice ? "Invoice " + invoice.number + " is drafted. " : "No invoice yet: the client needs billing details on their record first. ") +
+      (guarantee ? "The guarantee is running." : "No guarantee started."),
+  );
 }
 
 /**
@@ -605,6 +813,18 @@ export async function saveDraft(formData: FormData): Promise<void> {
 }
 
 /**
+ * Use `OPS_DEV_SENDER_EMAIL` only when dev sign-in is active, so a laptop can
+ * send from one real Microsoft 365 mailbox instead of `@example.test` (17 Nov).
+ */
+function senderAddressFor(fallbackEmail: string): string {
+  if (devSignInAllowed()) {
+    const devSender = (process.env.OPS_DEV_SENDER_EMAIL ?? "").trim();
+    if (devSender) return devSender;
+  }
+  return fallbackEmail;
+}
+
+/**
  * One draft through the gate and out, and the sentence that says what
  * happened (7 Nov, UX order 2).
  *
@@ -616,7 +836,12 @@ export async function saveDraft(formData: FormData): Promise<void> {
  * It returns the sentence instead of redirecting, because the caller knows
  * where the person is standing.
  */
-async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessage): Promise<string> {
+async function approveOne(
+  member: OpsMember,
+  db: OpsDatabase,
+  message: OpsMessage,
+  options?: { from?: string; notePrefix?: string },
+): Promise<string> {
   // Read the sent messages fresh: approving every routine notice at once
   // calls this in a loop, and a snapshot from before the loop would never
   // count the ones that just went (16 Nov, plan B3).
@@ -637,11 +862,12 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
   );
 
   if (!verdict.ok) {
-    await settleMessage(message.id, member.id, verdict.state, message.to, verdict.note);
-    return verdict.note;
+    const said = [options?.notePrefix, verdict.note].filter(Boolean).join(" ") || verdict.note;
+    await settleMessage(message.id, member.id, verdict.state, message.to, said);
+    return said;
   }
 
-  // The gate said yes. Now it actually goes, from this person's own mailbox,
+  // The gate said yes. Now it actually goes, from the sender's mailbox,
   // and whatever the sender says is recorded as it is - including "we do not
   // know whether it went", which is a real answer and not a failure to hide.
   const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId);
@@ -651,7 +877,7 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
       : message.channel === "whatsapp"
         ? await sendWhatsApp({ to: verdict.to[0], body: message.body, templateKey: message.templateKey })
         : await sendEmail({
-            from: member.email,
+            from: options?.from ?? senderAddressFor(member.email),
             to: verdict.to,
             subject,
             body: message.body,
@@ -663,7 +889,7 @@ async function approveOne(member: OpsMember, db: OpsDatabase, message: OpsMessag
           });
 
   // Test mode's note matters as much as the sender's, so both are kept.
-  const said = [verdict.note, outcome.reason].filter(Boolean).join(" ") || null;
+  const said = [options?.notePrefix, verdict.note, outcome.reason].filter(Boolean).join(" ") || null;
   await settleMessage(
     message.id,
     member.id,
@@ -1114,7 +1340,7 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const lead = leadIn(await desk(), leadId);
@@ -1162,7 +1388,12 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
         found.near.map((c) => c.name).join(" · "),
     );
   }
-  back("Nobody like that in the TA System, so this is a new client.");
+  // No match is an answer, and it has to be written down: with the lead left as
+  // "new" the enquiry could never finish and nothing after it could start.
+  const fresh = routeLead({ industryFlagged: false, industryConfirmed: false, existing: null });
+  await patchLead(leadId, { state: fresh.state }, member.id, "lead.checkedNewClient", fresh.because);
+  revalidatePath(here);
+  back("Nobody like that in the TA System, so this is a new client. " + fresh.because);
 }
 
 /**
@@ -1178,7 +1409,7 @@ export async function decideLeadIndustry(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const confirmed = String(formData.get("decision") ?? "") === "confirm";
@@ -1304,7 +1535,7 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -1372,13 +1603,21 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
     teams.link,
     teams.attendees,
   );
+  const inviteSentence = await sendBookingInvite(
+    member,
+    db,
+    teams.organiserId,
+    invite,
+    teams.link,
+    formData.get("sendNow") === "on",
+  );
   revalidatePath(here);
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   back(
-    "Booked, with a reminder the day before and an hour before." +
+    "Booked, with a reminder the day before and an hour before. It is on the Interviews calendar." +
       (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
       (teams.problem ? " No Teams link was made: " + teams.problem : "") +
-      (invite ? " The invite, with the link, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      inviteSentence +
       (warning ? " " + warning : ""),
   );
 }
@@ -1399,7 +1638,7 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   const db = await desk();
   const meeting = meetingIn(db, meetingId);
   const here = "/leads/" + (meeting?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
 
@@ -1492,7 +1731,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
   const db = await desk();
   const meeting = meetingIn(db, meetingId);
   const here = "/leads/" + (meeting?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
 
@@ -1548,43 +1787,9 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
 
 /* \u2500\u2500 The client agreement (15, Phase 2 steps 9 to 18) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
 
-/**
- * Starts the agreement for a lead.
- *
- * The numbers come from the settings, not from the code, so a client on a
- * different guarantee is a settings change. What we know about the company
- * from the lead is filled in, and the rest is the ops owner's to complete.
- */
-export async function startAgreement(formData: FormData): Promise<void> {
-  const member = await currentMember();
-  if (!member) redirect("/sign-in");
-  const leadId = String(formData.get("leadId") ?? "");
-  const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
-  if (!can(member, "client.manage")) back(refusal("client.manage"));
-
-  const db = await desk();
-  const lead = leadIn(db, leadId);
-  if (!lead) back("That lead is gone.");
-  const row = lead as NonNullable<typeof lead>;
-  if (agreementForLead(db, leadId)) back("There is already an agreement for this client.");
-
-  const fields: EsaFields = {
-    ...defaultFields({
-      guaranteeDays: numberOf(db, "guarantee.days", 90),
-      paymentDays: numberOf(db, "invoice.dueDays", 30),
-      replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
-      // The agreement says 50 (REFUND_PCT); a fallback of 25 once put the wrong
-      // number into new agreements (16 Nov).
-      refundPct: numberOf(db, "refund.pct", REFUND_PCT),
-    }),
-    companyName: row.company,
-    signatoryName: row.contactName,
-    signatoryEmail: row.contactEmail,
-  };
-
-  await addAgreement({
-    leadId,
+function blankAgreement(row: NonNullable<ReturnType<typeof leadIn>>, fields: EsaFields) {
+  return {
+    leadId: row.id,
     clientTaId: row.clientTaId,
     state: "draft",
     version: 1,
@@ -1600,33 +1805,96 @@ export async function startAgreement(formData: FormData): Promise<void> {
     countersignedFileId: null,
     reason: null,
     ownerId: row.ownerId,
-  });
+  };
+}
+
+function newAgreementFields(db: Awaited<ReturnType<typeof desk>>, row: NonNullable<ReturnType<typeof leadIn>>): EsaFields {
+  return startingFields(
+    {
+      guaranteeDays: numberOf(db, "guarantee.days", 90),
+      paymentDays: numberOf(db, "invoice.dueDays", 30),
+      replacementWorkingDays: numberOf(db, "replacement.workingDays", 60),
+      // The ESA says 25 (clause 6.6, REFUND_PCT); a wrong fallback once put the
+      // wrong number into new agreements (16 Nov).
+      refundPct: numberOf(db, "refund.pct", REFUND_PCT),
+    },
+    row,
+  );
+}
+
+/**
+ * Starts the agreement for a lead.
+ *
+ * The numbers come from the settings, not from the code, so a client on a
+ * different guarantee is a settings change. What we know about the company
+ * from the lead is filled in, and the rest is the ops owner's to complete.
+ */
+export async function startAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  if (agreementForLead(db, leadId)) back("There is already an agreement for this client.");
+
+  await addAgreement(blankAgreement(row, newAgreementFields(db, row)));
   revalidatePath(here);
   back("Started. Fill in what is blank; it cannot be sent until the required fields are in.");
 }
 
-/** Saves the fields. Blank required ones are allowed here and block the send. */
+/**
+ * Saves the fields. Blank required ones are allowed here and block the send.
+ *
+ * Also the intro call's form (17 Nov): with no agreement yet, it starts one from
+ * the lead and saves into it, so the details are typed once, where the ops
+ * person learns them. `returnTo` is the page they were on.
+ */
 export async function saveAgreementFields(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const esaId = String(formData.get("esaId") ?? "");
   const db = await desk();
-  const esa = agreementIn(db, esaId);
-  const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const esaId = String(formData.get("esaId") ?? "");
+  const lead = leadIn(db, String(formData.get("leadId") ?? ""));
+  const esa = esaId ? agreementIn(db, esaId) : lead ? agreementForLead(db, lead.id) : null;
+  const leadId = esa?.leadId ?? lead?.id ?? "";
+  const step = formData.get("returnTo") === "intro" ? "intro" : "agreement";
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, step, msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
-  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  if (!esa && !lead) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  // A sent agreement is changed by a new version, not by editing what the client has.
+  if (esa && !["draft", "negotiating"].includes(esa.state)) back("This agreement has gone out. Ask for changes to send a new version.");
 
-  const row = esa as NonNullable<typeof esa>;
-  const fields: EsaFields = { ...row.fields };
+  const fields: EsaFields = { ...(esa?.fields ?? newAgreementFields(db, lead as NonNullable<typeof lead>)) };
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value);
   }
 
-  await patchAgreement(esaId, { fields }, member.id, "esa.fieldsSaved", null);
+  if (esa) await patchAgreement(esa.id, { fields }, member.id, "esa.fieldsSaved", null);
+  else await addAgreement(blankAgreement(lead as NonNullable<typeof lead>, fields));
   revalidatePath(here);
   const problem = problemWithDraft(fields);
-  back(problem ? "Saved. " + problem : "Saved. Everything required is in; it can go.");
+  if (problem) back("Saved. " + problem);
+
+  // "Save and make the draft": one click from an edited detail to the next version (17 Nov).
+  if (formData.get("makeDraft")) {
+    const fresh = await desk();
+    const saved = agreementForLead(fresh, leadId);
+    if (saved) {
+      const made = await fillAgreementDraft(fresh, saved, member.id, Date.now());
+      revalidatePath(here);
+      if ("error" in made) back("Saved. " + made.error);
+      const done = made as Exclude<typeof made, { error: string }>;
+      back("Saved, and version " + done.version + " is drafted. Open it below. Nothing was sent.");
+    }
+  }
+  back("Saved. Everything required is in; it can go.");
 }
 
 /**
@@ -1641,10 +1909,11 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
 async function fillAgreementDraft(
   db: Awaited<ReturnType<typeof desk>>,
   esa: NonNullable<ReturnType<typeof agreementIn>>,
-  version: number,
   memberId: Id,
   now: number,
-): Promise<{ error: string } | { wordFile: OpsFile; pdfFile: OpsFile | null; pdfReason: string }> {
+): Promise<{ error: string } | { version: number; wordFile: OpsFile; pdfFile: OpsFile | null; pdfReason: string }> {
+  // Every draft is the next version; the earlier ones stay listed (17 Nov).
+  const version = nextDraftVersion(db.files.filter((f) => f.subjectType === "esa" && f.subjectId === esa.id));
   // The owner's template, uploaded on the files screen as kind "Agreement,
   // drafted". Without it there is no document to attach, and a cover email
   // with nothing attached is worse than no email.
@@ -1678,7 +1947,7 @@ async function fillAgreementDraft(
   });
 
   const pdf = await docxToPdf(fill.bytes!, base + ".docx");
-  if (!pdf.ok) return { wordFile, pdfFile: null, pdfReason: pdf.reason ?? "" };
+  if (!pdf.ok) return { version, wordFile, pdfFile: null, pdfReason: pdf.reason ?? "" };
   const pdfKey = keyFor("esa_draft", "esa", esa.id, base + ".pdf", now);
   await putBytes(pdfKey, pdf.bytes!, "application/pdf");
   const pdfFile = await addFile({
@@ -1693,13 +1962,46 @@ async function fillAgreementDraft(
     madeFrom: wordFile.id,
     uploadedBy: memberId,
   });
-  return { wordFile, pdfFile, pdfReason: "" };
+  return { version, wordFile, pdfFile, pdfReason: "" };
+}
+
+/**
+ * Saves the cover email the person edited, or puts the standard wording back.
+ * Kept with the agreement's fields, so the intro call and the send see the same text.
+ */
+export async function saveCoverEmail(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const db = await desk();
+  const esa = agreementIn(db, String(formData.get("esaId") ?? ""));
+  const step = formData.get("returnTo") === "intro" ? "intro" : "agreement";
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(leadBack(here, step, msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+  if (!["draft", "negotiating"].includes(row.state)) back("This agreement has gone out. Ask for changes to send a new version.");
+
+  const fields: EsaFields = { ...row.fields };
+  if (formData.get("reset")) {
+    delete fields.coverSubject;
+    delete fields.coverBody;
+  } else {
+    fields.coverSubject = String(formData.get("subject") ?? "").trim();
+    fields.coverBody = String(formData.get("body") ?? "").trim();
+    if (!fields.coverSubject || !fields.coverBody) back("The email needs a subject and some words. Use reset to get the standard wording back.");
+    const problem = coverEmail(templateFor(db, "esa.cover"), fields);
+    if ("problem" in problem) back(problem.problem);
+  }
+  await patchAgreement(row.id, { fields }, member.id, "esa.coverSaved", null);
+  revalidatePath(here);
+  back(formData.get("reset") ? "The standard cover email is back." : "Saved. This is the email that will go.");
 }
 
 /**
  * A look at the agreement before it is sent (16 Nov): fills it exactly as the
  * send would, keeps the files, and makes no message. The drafts show on the
- * lead as "Download filled draft".
+ * lead under Versions, each with Open in a new tab.
  */
 export async function previewAgreement(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -1708,21 +2010,22 @@ export async function previewAgreement(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const step = formData.get("returnTo") === "intro" ? "intro" : "agreement";
+  const back = (msg: string) => redirect(leadBack(here, step, msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
 
   const problem = problemWithDraft(row.fields);
   if (problem) back(problem);
-  const draft = await fillAgreementDraft(db, row, row.state === "negotiating" ? row.version + 1 : row.version, member.id, Date.now());
+  const draft = await fillAgreementDraft(db, row, member.id, Date.now());
   if ("error" in draft) back(draft.error);
   const made = draft as Exclude<typeof draft, { error: string }>;
   revalidatePath(here);
   back(
     made.pdfFile
-      ? "A filled draft is ready to download below. Nothing was sent."
-      : "The Word draft is ready to download below. No PDF this time: " + made.pdfReason + " Nothing was sent.",
+      ? "A filled draft is ready to open below, in Versions. Nothing was sent."
+      : "The Word draft is ready to open below, in Versions. No PDF this time: " + made.pdfReason + " Nothing was sent.",
   );
 }
 
@@ -1745,7 +2048,7 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, formData.get("returnTo") === "intro" ? "intro" : "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
@@ -1755,17 +2058,19 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   // again: the version number moves, the chase starts from the beginning, and
   // the clocks of the version before it stop (3 Nov).
   const again = row.state === "negotiating";
-  // Worked out before the patch: `row` is the record the patch writes to, so
-  // reading row.version after it has moved said "version 3" on a version 2
-  // (3 Nov, found by walking it).
-  const version = again ? row.version + 1 : row.version;
   const problem = problemWithDraft(row.fields);
   if (problem) back(problem);
+  // Checked before any file is made, so a broken cover leaves nothing behind.
+  const cover = coverEmail(templateFor(db, "esa.cover"), row.fields);
+  if ("problem" in cover) back(cover.problem);
+  const coverText = cover as { subject: string; body: string };
 
   const now = Date.now();
-  const draft = await fillAgreementDraft(db, row, version, member.id, now);
+  const draft = await fillAgreementDraft(db, row, member.id, now);
   if ("error" in draft) back(draft.error);
   const made = draft as Exclude<typeof draft, { error: string }>;
+  // The number of the file that goes: one past the last drafted, so earlier previews stay as they were.
+  const version = made.version;
 
   // A client gets the PDF, never the Word file: a Word file can be edited by
   // whoever receives it. No LibreOffice means no agreement goes out from here,
@@ -1773,17 +2078,13 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   if (!made.pdfFile) back("The agreement was filled in but no PDF could be made. " + made.pdfReason);
   const pdfFile = made.pdfFile!;
 
-  const cover = templateFor(db, "esa.cover");
   const to = String(row.fields.signatoryEmail ?? "").trim();
   const message = await draftMessage({
     channel: "email",
     to: [to],
     attachmentFileIds: [pdfFile.id],
-    subject: cover?.subject?.replace("{{client}}", row.fields.companyName ?? "") || "Our agreement",
-    body:
-      (cover?.body ?? "Dear {{contact}},\n\nOur agreement is attached.\n\nKind regards,\nCareer 141")
-        .replace("{{contact}}", row.fields.signatoryName ?? "")
-        .replace("{{client}}", row.fields.companyName ?? ""),
+    subject: coverText.subject,
+    body: coverText.body,
     templateKey: "esa.cover",
     subjectType: "esa",
     subjectId: esaId,
@@ -1864,7 +2165,7 @@ export async function recordChangesWanted(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
@@ -1911,7 +2212,7 @@ export async function draftNextChase(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
 
@@ -1938,7 +2239,7 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
@@ -2017,7 +2318,7 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
@@ -2136,7 +2437,7 @@ export async function declineAgreement(formData: FormData): Promise<void> {
   const db = await desk();
   const esa = agreementIn(db, esaId);
   const here = "/leads/" + (esa?.leadId ?? "");
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
@@ -2281,6 +2582,39 @@ async function draftMeetingInvite(
     subjectId: meeting.id,
   });
   return message.id;
+}
+
+/**
+ * Auto-send a booked meeting's drafted invite through the same outbound gate as
+ * a manual approval, from the organiser's mailbox (or dev sender override).
+ * Never throws or rolls back the booking if the gate blocks or Microsoft refuses.
+ */
+async function sendBookingInvite(
+  member: OpsMember,
+  db: OpsDatabase,
+  organiserId: string,
+  inviteId: string | null,
+  link: string,
+  sendNow: boolean,
+): Promise<string> {
+  if (!inviteId) return " Add the contact's email to get an invite drafted.";
+  const fresh = await desk();
+  const msg = fresh.messages.find((m) => m.id === inviteId);
+  if (!msg) return " The invite is drafted in To approve.";
+  const check = canAutoSendInvite({
+    hasLink: Boolean(link),
+    linkIsStandIn: isStandInTeamsLink(link),
+    recipients: msg.to,
+    sendNow,
+    outreachLive: switchedOn(db, "switch.outreachLive") && outreachLiveInEnv(),
+  });
+  if (!check.ok) return " " + check.reason;
+  const organiser = fresh.members.find((m) => m.id === organiserId) ?? member;
+  const outcome = await approveOne(member, fresh, msg, {
+    from: senderAddressFor(organiser.email),
+    notePrefix: "Sent automatically on booking.",
+  });
+  return " " + outcome;
 }
 
 /* ── The client record (15, Phase 2 step 19) ─────────────────── */
@@ -3068,7 +3402,7 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "requirement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -3133,13 +3467,21 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     teams.link,
     teams.attendees,
   );
+  const inviteSentence = await sendBookingInvite(
+    member,
+    db,
+    teams.organiserId,
+    invite,
+    teams.link,
+    formData.get("sendNow") === "on",
+  );
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
   revalidatePath(here);
   back(
-    "Booked, with a reminder the day before and an hour before." +
+    "Booked, with a reminder the day before and an hour before. It is on the Interviews calendar." +
       (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
       (teams.problem ? " No Teams link was made: " + teams.problem : "") +
-      (invite ? " The invite, with a calendar file, is drafted in To approve." : " Add the contact's email to get an invite drafted.") +
+      inviteSentence +
       (warning ? " " + warning : ""),
   );
 }
@@ -3156,7 +3498,8 @@ export async function saveRequirement(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const stepAfter = String(formData.get("step") ?? "").trim() || "requirement";
+  const back = (msg: string) => redirect(leadBack(here, stepAfter, msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -3164,12 +3507,17 @@ export async function saveRequirement(formData: FormData): Promise<void> {
   if (!lead) back("That lead is gone.");
   const row = lead as NonNullable<typeof lead>;
 
-  const fields: Record<string, string> = {};
+  const already = requirementForLead(db, leadId);
+  // A finished requirement is shown, not edited (owner, 17 Nov evening); the screen has no form for it,
+  // and this is the refusal for anything posted anyway.
+  if (already && requirementLocked(already.fields)) back("The requirement is complete and locked. It is shown as agreed; a change goes through the client.");
+  // Fields the form did not send stay as they were: the opening step sends only
+  // the title and the headcount, and must not wipe the rest of the brief.
+  const fields: Record<string, string> = { ...(already?.fields ?? {}) };
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value).trim();
   }
 
-  const already = requirementForLead(db, leadId);
   const client = db.clients.find((c) => c.leadId === leadId) ?? null;
   // A requirement meeting, or an intro call that was also one (17 Nov).
   const held =
@@ -3230,7 +3578,7 @@ export async function markRoleImpractical(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "opening", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -3292,11 +3640,48 @@ export async function markRoleImpractical(formData: FormData): Promise<void> {
 }
 
 /**
+ * "Open it now, without waiting" (owner, 17 Nov evening): for a client we trust, one lead
+ * is allowed an opening before the agreement is signed and the requirement is complete.
+ * It needs a reason, which is kept with the lead and shown on it. It can be taken back
+ * while no opening exists.
+ */
+export async function openEarly(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "opening", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const lead = leadIn(db, leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  const requirement = requirementForLead(db, leadId);
+  if (requirement?.openedAt) back("The opening already exists.");
+
+  if (formData.get("undo")) {
+    await patchLead(leadId, { openEarlyBy: null, openEarlyAt: null, openEarlyReason: null }, member.id, "lead.openedEarlyUndone", null);
+    revalidatePath(here);
+    back("Taken back. The opening waits for the signed agreement and the requirement again.");
+  }
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithEarlyOpening(reason);
+  if (problem) back(problem);
+  if (row.state.startsWith("closed") || row.state === "declined_industry") back("This lead is closed.");
+
+  await patchLead(leadId, { openEarlyBy: member.id, openEarlyAt: Date.now(), openEarlyReason: reason }, member.id, "lead.openedEarly", reason);
+  revalidatePath(here);
+  back("Done. The opening can be created now: write the role's name and how many, then open it.");
+}
+
+/**
  * Hand the requirement to the TA System (step 6).
  *
- * Two refusals first, and they are the point of the whole phase: no opening
- * before the agreement is signed, and no opening from a half-written
- * requirement. Then the write is **queued** - Ops never creates an opening
+ * The opening is created only when the client has signed and the requirement is
+ * complete, unless this lead was marked "open it now" (`openEarly`); see
+ * `problemWithOpening`. Then the write is **queued** - Ops never creates an opening
  * itself and never invents TA's id for it. TA's own `opening.created` event
  * fills the id in, which is also how a TA creating one by hand is noticed.
  */
@@ -3305,7 +3690,7 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "opening", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -3317,12 +3702,20 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   const req = requirement as NonNullable<typeof requirement>;
   if (req.openedAt) back("This requirement has already gone to the TA System.");
 
-  // The opening goes out after the intro call (or a meeting that was both
-  // calls), with the agreement alongside - not after it is signed.
+  // After the intro call, and (owner, 17 Nov evening) once the client has signed and the
+  // requirement is complete, unless this lead was marked "open it now".
   const esa = agreementForLead(db, leadId);
   const talked = meetingsForLead(db, leadId).some((m) => m.state === "held");
-  if (!talked && !esa) back("Hold the intro call first: the opening is opened after it.");
-  const problem = problemWithHandover(req.fields);
+  // A draft made from the intro call's own form (17 Nov) is not an agreement that has gone out:
+  // it must not stand in for the call, or the opening opens before the call is held.
+  const goneOut = !!esa && esa.state !== "draft";
+  if (!talked && !goneOut && lead && lead.source !== "director") back("Hold the intro call first: the opening is opened after it.");
+  const problem = problemWithOpening({
+    esaState: esa?.state ?? null,
+    requirementBlanks: requirementMissing(req.fields).map((f) => f.label.toLowerCase()),
+    openEarly: !!row.openEarlyAt,
+    fields: req.fields,
+  });
   if (problem) back(problem);
 
   const client = db.clients.find((c) => c.leadId === leadId) ?? null;
@@ -3440,8 +3833,8 @@ export async function removeManualCandidate(formData: FormData): Promise<void> {
 }
 
 /**
- * Gives an ops person a strategy for this position (17 Nov, supervisor review):
- * a line saying what they will try, and whose it is. Several can run at once.
+ * Gives Ops members or TA people on the job one or more strategies from the TA
+ * list (17 Nov). Supports both multi-select (`pick`) and single-select (`strategy`).
  */
 export async function addStrategy(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -3456,15 +3849,52 @@ export async function addStrategy(formData: FormData): Promise<void> {
   if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
   const row = position as NonNullable<typeof position>;
 
-  const text = String(formData.get("text") ?? "").trim();
-  if (text.length < 4) back("Write the strategy in a few words, so whoever has it knows what to do.");
-  const ownerId = String(formData.get("ownerId") ?? "") || member.id;
-  if (!db.members.some((m) => m.id === ownerId)) back("Pick who the strategy is given to.");
+  const picked = formData.getAll("pick").map((v) => String(v).trim()).filter(Boolean);
+  const picks =
+    picked.length > 0
+      ? picked.map((strategy) => ({
+          strategy,
+          ownerId: String(formData.get("owner." + strategy) ?? "") || member.id,
+          note: String(formData.get("note." + strategy) ?? "").trim(),
+        }))
+      : (() => {
+          const single = String(formData.get("strategy") ?? formData.get("text") ?? "").trim();
+          return single
+            ? [
+                {
+                  strategy: single,
+                  ownerId: String(formData.get("ownerId") ?? "") || member.id,
+                  note: String(formData.get("note") ?? "").trim(),
+                },
+              ]
+            : [];
+        })();
 
-  const strategies = [...(row.strategies ?? []), { id: "st_" + Date.now().toString(36), text, ownerId, at: Date.now() }];
-  await patchPosition(positionId, { strategies }, member.id, "position.strategyAdded", text);
+  const taSide = await taPeople();
+  const validTaIds = taSide.ok ? taSide.data.filter((p) => p.isActive).map((p) => p.id) : [];
+
+  const result = tryBuildStrategyAdditions(
+    picks,
+    db.members.filter((m) => m.active).map((m) => m.id),
+    validTaIds,
+    row.strategies ?? [],
+    Date.now(),
+  );
+  if (!result.ok) {
+    back(result.reason);
+    return;
+  }
+
+  const strategies = [...(row.strategies ?? []), ...result.added];
+  await patchPosition(
+    positionId,
+    { strategies },
+    member.id,
+    "position.strategyAdded",
+    result.added.map((s) => s.text).join(", "),
+  );
   revalidatePath("/positions/" + positionId);
-  back("Strategy added.");
+  back(result.added.length === 1 ? "Strategy added." : result.added.length + " strategies added.");
 }
 
 export async function removeStrategy(formData: FormData): Promise<void> {
@@ -3571,7 +4001,7 @@ export async function setPositionTeam(formData: FormData): Promise<void> {
   if (row.openingTaId) {
     await queueTaWrite(
       "/integrations/v1/openings/" + row.openingTaId + "/team",
-      { primaryRecruiterId: primaryTaId, hundredPercentDay },
+      { primaryRecruiterId: primaryTaId, memberIds: (row.team ?? []).map((t) => t.taId), hundredPercentDay },
       { type: "position", id: positionId },
     );
   }
@@ -3581,6 +4011,50 @@ export async function setPositionTeam(formData: FormData): Promise<void> {
       ? "Recorded, and the TA System will be told."
       : "Recorded. It goes to the TA System with the opening once TA confirms it.",
   );
+}
+
+/**
+ * The TA lead adds people to the opening, or takes them off (owner, 17 Nov evening). Several can be
+ * added at once, and more later. Ops keeps the list and sends it, with the Primary TA, to the TA System.
+ * TA does not read `memberIds` yet: that is an additive change in the TA repository, so until it is
+ * made the write waits in the outbox and Ops' own list is the record.
+ */
+export async function setOpeningPeople(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = "/positions/" + positionId + "?view=overview";
+  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+
+  const current = row.team ?? [];
+  const picked = formData.getAll("taId").map((v) => String(v));
+  let next = current;
+  if (formData.get("op") === "remove") {
+    next = current.filter((t) => !picked.includes(t.taId));
+  } else {
+    if (!picked.length) back("Pick at least one person to add.");
+    const ids = withPeople(current.map((t) => t.taId), picked, row.primaryTaId);
+    next = ids.map((id) => current.find((t) => t.taId === id) ?? { taId: id, addedBy: member.id, addedAt: Date.now() });
+  }
+  const problem = problemWithTeam(row.primaryTaId, next.map((t) => t.taId));
+  if (problem) back(problem);
+
+  await patchPosition(positionId, { team: next }, member.id, "position.peopleChanged", null);
+  if (row.openingTaId) {
+    await queueTaWrite(
+      "/integrations/v1/openings/" + row.openingTaId + "/team",
+      { primaryRecruiterId: row.primaryTaId, memberIds: next.map((t) => t.taId), hundredPercentDay: row.hundredPercentDay },
+      { type: "position", id: positionId },
+    );
+  }
+  revalidatePath("/positions/" + positionId);
+  back(row.openingTaId ? "Saved, and the TA System will be told." : "Saved. It goes to the TA System with the opening once TA confirms it.");
 }
 
 /** Update or create the requirement fields directly from the position's Requirement & JD sub-view. */
@@ -5040,6 +5514,163 @@ export async function cancelPlacement(formData: FormData): Promise<void> {
 }
 
 /**
+ * The invoice as a document (owner, 17 Nov): the owner's Word invoice with its holes filled from the invoice,
+ * its placement and the client's billing record, stored as Word and (when LibreOffice is there) as PDF. Each
+ * make is the next version. One function for the preview and the send, so they cannot differ. A hole nothing
+ * fills stops it and is named. `none` when no template has been uploaded.
+ */
+async function fillInvoiceDocument(
+  db: Awaited<ReturnType<typeof desk>>,
+  row: NonNullable<ReturnType<typeof invoiceIn>>,
+  memberId: Id,
+  now: number,
+): Promise<{ error: string } | { version: number; wordFile: OpsFile | null; pdfFile: OpsFile | null; pdfReason: string }> {
+  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  const input = {
+    number: row.number,
+    amount: row.amount,
+    lateCharge: row.lateCharge,
+    currency: row.currency,
+    dueAt: row.dueAt,
+    reason: row.reason,
+    againstNumber: row.againstInvoiceId ? (invoiceIn(db, row.againstInvoiceId)?.number ?? null) : null,
+    now,
+    client: client ?? { billingName: "" },
+    placement,
+    about: row.about,
+    kind: row.kind,
+    positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
+  };
+  const version = nextInvoiceVersion(db.files.filter((f) => f.subjectType === "invoice" && f.subjectId === row.id));
+  const base = safeName((row.kind === "credit_note" ? "Credit note " : "Invoice ") + row.number) + " - v" + version;
+  const store = async (name: string, bytes: Uint8Array, mime: string, madeFrom: Id | null) => {
+    const key = keyFor("invoice", "invoice", row.id, name, now);
+    await putBytes(key, bytes, mime);
+    return addFile({
+      kind: "invoice",
+      key,
+      name,
+      size: bytes.byteLength,
+      mime,
+      sha256: sha256(bytes),
+      subjectType: "invoice",
+      subjectId: row.id,
+      madeFrom,
+      uploadedBy: memberId,
+    });
+  };
+
+  // An invoice template uploaded as a Word file still wins (the owner's own layout, filled and turned into a
+  // PDF by LibreOffice on the server). Without one, the invoice is drawn in code to the owner's design.
+  const docTemplate = currentTemplate(db.files, row.kind === "credit_note" ? "credit_note_template" : "invoice_template");
+  if (docTemplate) {
+    const templateBytes = await readBytes(docTemplate.key);
+    if (!templateBytes) return { error: "The invoice template is registered but its bytes are gone. Upload it again on the Files screen." };
+    const filled = await fillDocx(Buffer.from(templateBytes), invoiceHoles(input));
+    const holeProblem = problemWithInvoiceFill(filled.missing);
+    if (holeProblem) return { error: holeProblem };
+    const wordFile = await store(base + ".docx", filled.bytes!, mimeFor(base + ".docx"), docTemplate.id);
+    const pdf = await docxToPdf(filled.bytes!, base + ".docx");
+    if (!pdf.ok) return { version, wordFile, pdfFile: null, pdfReason: pdf.reason ?? "" };
+    const pdfFile = await store(base + ".pdf", pdf.bytes!, "application/pdf", wordFile.id);
+    return { version, wordFile, pdfFile, pdfReason: "" };
+  }
+
+  const bank = bankDetails(db);
+  const bankProblem = problemWithBank(bank);
+  if (bankProblem) return { error: bankProblem };
+  const drawn = await drawInvoicePdf(invoiceSheet(input, bank));
+  const pdfFile = await store(base + ".pdf", drawn, "application/pdf", null);
+  return { version, wordFile: null, pdfFile, pdfReason: "" };
+}
+
+/** The owner's bank details for the invoice, as kept in Settings (never in the code). */
+function bankDetails(db: Awaited<ReturnType<typeof desk>>) {
+  return {
+    bank: textOf(db, "bank.name", ""),
+    accountName: textOf(db, "bank.accountName", ""),
+    accountNo: textOf(db, "bank.accountNo", ""),
+    branch: textOf(db, "bank.branch", ""),
+    swift: textOf(db, "bank.swift", ""),
+  };
+}
+
+/** The bank details for the invoice, typed once on the Settings screen (owner, 17 Nov). */
+export async function saveBankDetails(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect(answerBack("/settings", msg, formData));
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+  const bank = {
+    bank: String(formData.get("bank") ?? "").trim(),
+    accountName: String(formData.get("accountName") ?? "").trim(),
+    accountNo: String(formData.get("accountNo") ?? "").trim(),
+    branch: String(formData.get("branch") ?? "").trim(),
+    swift: String(formData.get("swift") ?? "").trim(),
+  };
+  const problem = problemWithBank(bank);
+  if (problem) back(problem);
+  await setSetting("bank.name", bank.bank, member.id, "Bank details for invoices");
+  await setSetting("bank.accountName", bank.accountName, member.id, "Bank details for invoices");
+  await setSetting("bank.accountNo", bank.accountNo, member.id, "Bank details for invoices");
+  await setSetting("bank.branch", bank.branch, member.id, "Bank details for invoices");
+  await setSetting("bank.swift", bank.swift, member.id, "Bank details for invoices");
+  revalidatePath("/settings");
+  back("Saved. Every new invoice carries these.");
+}
+
+/**
+ * A look at the invoice before it is sent (owner, 17 Nov): fills it exactly as the send would and keeps the
+ * files, with no message and no change of state. Each press is the next version; change the record it comes
+ * from (the client's billing details, the placement's salary split) and make it again.
+ */
+export async function previewInvoice(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const here = "/invoices/" + invoiceId;
+  const back = (msg: string) => redirect(answerBack(here, msg, formData));
+  if (!can(member, "money.manage")) back(refusal("money.manage"));
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (row.state !== "draft") back("That invoice has gone: its document is the one that was sent.");
+
+  const made = await fillInvoiceDocument(db, row, member.id, Date.now());
+  if ("error" in made) back(made.error);
+  else {
+    revalidatePath(here);
+    back(
+      made.pdfFile
+        ? "Version " + made.version + " of the invoice is ready below. Nothing was sent."
+        : "Version " + made.version + " is ready below as a reading copy. No PDF this time: " + made.pdfReason + " Nothing was sent.",
+    );
+  }
+}
+
+/**
+ * Draft the fee invoice for a joined placement that has none (owner, 17 Nov). It is drafted by itself the day
+ * they join, but a draft that was refused then (no billing address on the client, no package) used to stay
+ * refused for good, because nothing asked again. The answer says what is still missing.
+ */
+export async function draftInvoiceForPlacement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(answerBack(here, msg, formData));
+  if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
+
+  const result = await draftFeeInvoice(placementId, member.id);
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (!result.ok) back(result.what);
+  redirect("/invoices/" + result.invoiceId + "?msg=" + encodeURIComponent("The invoice is drafted. Look at it, then send it."));
+}
+
+/**
  * Send the invoice (step 10).
  *
  * Accounts' own job, so it needs `money.manage`. With an invoice template
@@ -5103,51 +5734,16 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       .replace(/\{\{sentDate\}\}/g, row.setId ? (clientSetIn(db, row.setId)?.sentAt ? colomboDateInWords(clientSetIn(db, row.setId)!.sentAt!) : "the day we sent it") : "")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
-  // The invoice document (16 Nov): when the owner has uploaded a template, fill
-  // it, make the PDF and attach that. Without one the lines stay in the email
-  // body, as before - we never draw an invoice of our own.
+  // The invoice document (16 Nov): when the owner has uploaded a template, fill it, make the PDF and
+  // attach that. Without one the lines stay in the email body, as before - we never draw an invoice of our
+  // own. The same function makes the preview on the invoice page, so what was looked at is what goes.
   const now = Date.now();
-  const templateKind = row.kind === "credit_note" ? "credit_note_template" : "invoice_template";
-  const docTemplate = db.files.find((f) => f.kind === templateKind && f.subjectType === null);
   const attachmentFileIds: string[] = [];
-  if (docTemplate) {
-    const templateBytes = await readBytes(docTemplate.key);
-    if (!templateBytes) back("The invoice template is registered but its bytes are gone. Upload it again on the Files screen.");
-    const holes = invoiceHoles({
-      number: row.number,
-      amount: row.amount,
-      lateCharge: row.lateCharge,
-      currency: row.currency,
-      dueAt: row.dueAt,
-      reason: row.reason,
-      againstNumber: row.againstInvoiceId ? (invoiceIn(db, row.againstInvoiceId)?.number ?? null) : null,
-      now,
-      client: client!,
-      placement,
-      about: row.about,
-      positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
-    });
-    const filled = await fillDocx(Buffer.from(templateBytes!), holes);
-    const holeProblem = problemWithInvoiceFill(filled.missing);
-    if (holeProblem) back(holeProblem);
-    const base = safeName((row.kind === "credit_note" ? "Credit note " : "Invoice ") + row.number);
-    const pdf = await docxToPdf(filled.bytes!, base + ".docx");
-    if (!pdf.ok) back("The invoice was filled in but no PDF could be made. " + (pdf.reason ?? ""));
-    const pdfKey = keyFor("invoice", "invoice", invoiceId, base + ".pdf", now);
-    await putBytes(pdfKey, pdf.bytes!, "application/pdf");
-    const pdfFile = await addFile({
-      kind: "invoice",
-      key: pdfKey,
-      name: base + ".pdf",
-      size: pdf.bytes!.byteLength,
-      mime: "application/pdf",
-      sha256: sha256(pdf.bytes!),
-      subjectType: "invoice",
-      subjectId: invoiceId,
-      madeFrom: docTemplate.id,
-      uploadedBy: member.id,
-    });
-    attachmentFileIds.push(pdfFile.id);
+  const made = await fillInvoiceDocument(db, row, member.id, now);
+  if ("error" in made) back(made.error);
+  else {
+    if (!made.pdfFile) back("The invoice was filled in but no PDF could be made. " + made.pdfReason);
+    attachmentFileIds.push(made.pdfFile!.id);
   }
 
   const message = await draftMessage({
@@ -5211,13 +5807,17 @@ export async function recordPayment(formData: FormData): Promise<void> {
 
   const amount = Number(formData.get("amount") ?? 0);
   const method = String(formData.get("method") ?? "").trim() || "bank transfer";
-  const note = String(formData.get("note") ?? "").trim();
+  // The bank reference and the day it arrived come from the form (they used to be dropped).
+  const reference = String(formData.get("reference") ?? "").trim();
+  const noteText = String(formData.get("note") ?? "").trim();
+  const note = [reference ? "Ref " + reference : "", noteText].filter(Boolean).join(" · ");
   const owed = balanceOf(row);
   const problem = problemWithPayment(amount, owed);
   if (problem) back(problem);
-
   const now = Date.now();
-  const payments = [...row.payments, { amount, paidAt: now, method, by: member.id, note: note || null }];
+  const received = paymentDate(String(formData.get("receivedAt") ?? ""), now);
+  if (received.problem) back(received.problem);
+  const payments = [...row.payments, { amount, paidAt: received.at, method, by: member.id, note: note || null }];
   const left = Math.round((row.amount + row.lateCharge - payments.reduce((s, p) => s + p.amount, 0)) * 100) / 100;
   const settled = left <= 0.5;
 
@@ -5226,7 +5826,7 @@ export async function recordPayment(formData: FormData): Promise<void> {
     {
       payments,
       state: settled ? "paid" : "partly_paid",
-      paidAt: settled ? now : null,
+      paidAt: settled ? received.at : null,
     },
     member.id,
     settled ? "invoice.paid" : "invoice.partlyPaid",
@@ -6025,7 +6625,7 @@ export async function dictateRequirement(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(leadBack(here, "requirement", msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const said = String(formData.get("said") ?? "").trim();
@@ -6046,7 +6646,7 @@ export async function dictateRequirement(formData: FormData): Promise<void> {
   // person corrects them before anything is saved.
   redirect(
     here +
-      "?runId=" +
+      "?step=requirement&runId=" +
       encodeURIComponent(answer.runId ?? "") +
       "&proposed=" +
       encodeURIComponent(JSON.stringify(got)) +

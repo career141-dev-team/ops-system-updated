@@ -302,6 +302,12 @@ export default async function InvoicesPage({
                             ? `${money(bal, inv.currency)} owed`
                             : invoiceInWords(inv);
 
+                // Which job it is for (owner, 17 Nov): the position and the candidate placed, for a fee invoice.
+                const jobPlacement = inv.placementId ? placementIn(db, inv.placementId) : null;
+                const jobLine = jobPlacement
+                  ? [positionIn(db, jobPlacement.positionId ?? "")?.title, jobPlacement.candidateName].filter(Boolean).join(" · ")
+                  : inv.about;
+
                 return (
                   <Link
                     key={inv.id}
@@ -317,7 +323,7 @@ export default async function InvoicesPage({
                           {client?.name ?? "Client"} · {inv.number}
                         </div>
                         <div className="truncate text-[14px] leading-[21px] text-ink-faint">
-                          {inv.about}
+                          {jobLine}
                           {inv.dueAt ? ` · due ${day(inv.dueAt)}` : ""}
                           {paid > 0 && inv.state !== "paid"
                             ? ` · ${money(paid, inv.currency)} paid`

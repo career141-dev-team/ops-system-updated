@@ -28,7 +28,7 @@ import { day } from "@/lib/listing";
 import { KIND_MEANINGS, type MeetingKind, meetingsAhead, whenInWords } from "@/lib/meetings";
 import { clientNextStep, leadNextStep } from "@/lib/nextStep";
 import { REQUIREMENT_FIELDS } from "@/lib/requirements";
-import { SOURCE_MEANINGS } from "@/lib/leads";
+import { SOURCE_MEANINGS, leadSection } from "@/lib/leads";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -90,32 +90,15 @@ export default async function ClientsPage({
     });
 
   // Categorise leads & clients to match Figma 1:422 sections
-  const newLeads = allLeads.filter(
-    (l) =>
-      (l.state === "new" || l.state === "intro_call") &&
-      !agreementForLead(db, l.id) &&
-      matchesQuery(l.company, l.industry, l.contactName, l.contactEmail, l.notes),
-  );
-
-  const agreementLeads = allLeads.filter((l) => {
-    const esa = agreementForLead(db, l.id);
-    const inProgress =
-      l.state === "waiting_agreement" ||
-      l.state === "requirement" ||
-      Boolean(esa && ["draft", "sent", "chasing", "negotiating", "signed"].includes(esa.state));
-    return (
-      inProgress &&
-      !l.state.startsWith("closed") &&
-      l.state !== "declined_industry" &&
-      matchesQuery(l.company, l.industry, l.contactName, l.contactEmail)
-    );
-  });
-
-  const declinedLeads = allLeads.filter(
-    (l) =>
-      (l.state.startsWith("closed") || l.state === "declined_industry") &&
-      matchesQuery(l.company, l.industry, l.reason, l.contactName),
-  );
+  // One rule decides where a lead is shown (src/lib/leads.ts, leadSection), so the
+  // count and every list agree. A lead with its opening made is still in its
+  // agreement and requirement, so it sits with "Agreement in progress".
+  const sectionOf = (l: (typeof allLeads)[number]) => leadSection(l.state, agreementForLead(db, l.id)?.state ?? null);
+  const leadMatches = (l: (typeof allLeads)[number]) =>
+    matchesQuery(l.company, l.industry, l.contactName, l.contactEmail, l.notes, l.reason);
+  const newLeads = allLeads.filter((l) => sectionOf(l) === "new" && leadMatches(l));
+  const agreementLeads = allLeads.filter((l) => ["agreement", "opening"].includes(sectionOf(l)) && leadMatches(l));
+  const declinedLeads = allLeads.filter((l) => sectionOf(l) === "closed" && leadMatches(l));
 
   const activeClientRows = allClients.filter(
     (c) =>
@@ -130,9 +113,7 @@ export default async function ClientsPage({
       matchesQuery(c.name, c.billingName, c.reason),
   );
 
-  const totalOpenLeads = allLeads.filter(
-    (l) => !l.state.startsWith("closed") && l.state !== "declined_industry",
-  ).length;
+  const totalOpenLeads = newLeads.length + agreementLeads.length;
   const totalClients = allClients.filter((c) => c.stage !== "closed").length;
   const totalOnHold = Math.max(onHoldClients.length, allHolds.length);
   const totalDeclined = declinedLeads.length;
@@ -177,7 +158,8 @@ export default async function ClientsPage({
     const late = flagged || Boolean(esa?.expiresAt && esa.expiresAt < now);
     const booked = Boolean(intro) || lead.state === "requirement" || esa?.state === "negotiating";
     const tone: Tone = declined ? "danger" : esa?.state === "signed" ? "violet" : dotTone({ late, booked, ours: !booked });
-    const eyebrow = esa ? agreementEyebrow(esa.state) : sourceShort(lead.source);
+    // A lead marked "open it now, without waiting" (a trusted client) says so on its card.
+    const eyebrow = (esa ? agreementEyebrow(esa.state) : sourceShort(lead.source)) + (lead.openEarlyAt ? " · opened early" : "");
     const when = flagged
       ? "Today"
       : esa?.sentAt
@@ -217,7 +199,7 @@ export default async function ClientsPage({
     const inGuarantee = db.guarantees.filter((g) => {
       const pl = db.placements.find((p) => p.id === g.placementId);
       const pos = pl ? db.positions.find((p) => p.openingTaId === pl.openingTaId) : null;
-      return pos?.clientId === client.id && g.state === "running";
+      return pos?.clientId === client.id && (g.state === "running" || g.state === "warned");
     }).length;
 
     const sinceYear = new Date(client.createdAt).getFullYear();

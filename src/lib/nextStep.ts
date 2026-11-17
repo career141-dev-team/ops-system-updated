@@ -162,10 +162,9 @@ export function leadNextStep(
   if (!esa) {
     return {
       at: "agreement",
-      waiting: position
-        ? "Start the agreement. It goes out within two hours of the call, which is the promise."
-        : "Open the opening in the TA System (the title and how many are enough) and start the agreement. Neither waits for a signature. It goes out within two hours of the call, which is the promise.",
-      where: position ? "The call is held; opening made, no agreement yet" : "The call is held; no opening and no agreement yet",
+      waiting:
+        "Start the agreement. It goes out within two hours of the call, which is the promise. The opening is made once it is signed and the requirement is complete.",
+      where: position ? "The call is held; opening made early, no agreement yet" : "The call is held; no agreement yet",
       clock: null,
     };
   }
@@ -198,14 +197,8 @@ export function leadNextStep(
       clock: esa.expiresAt ? "The two weeks keep running: it declines " + inDays(esa.expiresAt, now) + "." : null,
     };
   }
-  if (esa.state === "signed") {
-    return {
-      at: "agreement",
-      waiting: "They have signed. The Director countersigns, and then the client record is made.",
-      where: "Signed " + inDays(esa.signedAt, now) + ", waiting on the Director",
-      clock: "One reminder goes to the Director tomorrow.",
-    };
-  }
+  // Signed by the client is what the opening waits for (owner, 17 Nov evening); the Director's
+  // countersignature goes on in the background, so the ladder moves on to the requirement.
   if (esa.state === "declined" || esa.state === "expired") {
     return {
       at: "closed",
@@ -222,14 +215,14 @@ export function leadNextStep(
       return {
         at: "requirement",
         waiting: "The requirement meeting is " + inDays(next.at, now) + ". Mark whether it happened.",
-        where: "Agreement countersigned; waiting on the meeting",
+        where: "Agreement signed; waiting on the meeting",
         clock: "A reminder goes the day before.",
       };
     }
     return {
       at: "requirement",
-      waiting: "Book the requirement meeting. No position is opened before it happens.",
-      where: "Agreement countersigned",
+      waiting: "Book the requirement meeting. The opening is made once the requirement is complete.",
+      where: "Agreement signed",
       clock: null,
     };
   }
@@ -250,7 +243,7 @@ export function leadNextStep(
   }
   if (!position) {
     return {
-      at: "requirement",
+      at: "opening",
       waiting: "Hand it to the TA System. The opening is created on their side, not ours.",
       where: "The requirement is written down in full",
       clock: null,
@@ -258,14 +251,14 @@ export function leadNextStep(
   }
   if (!position.openingTaId) {
     return {
-      at: "requirement",
+      at: "opening",
       waiting: "Nothing: the TA System is creating the opening. It confirms with its own event.",
       where: "Handed over, waiting on TA",
       clock: "Their event will fill in the opening, and a task will say so.",
     };
   }
   return {
-    at: "requirement",
+    at: "opening",
     waiting: "Nothing here: the search is the TA System's now. The position is where to look.",
     where: "Opening " + position.openingTaId + " · " + position.title,
     clock: null,
@@ -893,7 +886,7 @@ export interface InvoiceLikeForStep {
  * An invoice's own next step.
  *
  * The card says the rule, not just the number, because these are the rules a
- * wrong screen costs real money for: 1% a month compounded, nothing at all on
+ * wrong screen costs real money for: a monthly late charge compounded, nothing at all on
  * an invoice disputed in good faith, and no write-off inside ninety days
  * unless the Director decides it.
  */
@@ -963,7 +956,7 @@ export function invoiceNextStep(
       at: "payment",
       where: invoice.state === "partly_paid" ? "Part paid" : "Sent " + inDays(invoice.sentAt, now),
       waiting: parts.owedSaid + " is owed, due " + inDays(invoice.dueAt, now) + ". Record anything that comes in.",
-      clock: "After the due day it is chased, and 1% a month is added, compounded.",
+      clock: "After the due day it is chased, and the late charge is added each month, compounded.",
     };
   }
 
@@ -976,7 +969,7 @@ export function invoiceNextStep(
       (parts.lateChargeSaid ? ", with " + parts.lateChargeSaid + " added so far" : "") +
       ". Chase it, or record what they have paid.",
     clock:
-      "1% a month, compounded, while it stands. Writing it off waits " +
+      "The late charge compounds monthly while it stands. Writing it off waits " +
       parts.writeOffAfterDays +
       " days from the due day, unless the Director decides sooner - and the guarantee goes with it.",
   };

@@ -11,8 +11,9 @@
  *   - **Replacement first.** A leaver reopens the same position; sixty
  *     working days to finalise a replacement; a refund only by decision, and
  *     the decision is the Director of Operations'.
- *   - **50%, not 25%.** The agreement says 50% and the owner said on 3
- *     November to go with the document.
+ *   - **25%.** Clause 6.6 of the owner's ESA says 25% (the Valtrix draft, 17
+ *     November). It was 50 from 3 November, when an older draft said so; the
+ *     owner chose to follow the current document.
  *   - **A replacement starts a new guarantee**, with no new invoice.
  *
  * Nothing here touches a database or sends anything.
@@ -24,8 +25,8 @@ export const GUARANTEE_DAYS = 90;
 export const WARN_DAY = 75;
 export const REPLACEMENT_WORKING_DAYS = 60;
 
-/** The agreement's refund, which our board had as 25% until it was read. */
-export const REFUND_PCT = 50;
+/** The agreement's refund: clause 6.6 of the ESA (17 Nov). */
+export const REFUND_PCT = 25;
 
 export type GuaranteeState =
   | "running"
