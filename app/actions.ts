@@ -433,16 +433,24 @@ export async function pretendMailArrives(formData: FormData): Promise<void> {
   );
 }
 
+/** Back to the inbox view the person was on (17 Nov: the three-pane inbox), ready for "msg=". Only ever an inbox path. */
+function mailBack(formData: FormData): string {
+  const asked = String(formData.get("back") ?? "");
+  const here = asked.startsWith("/mail") && !asked.startsWith("//") ? asked : "/mail";
+  return here + (here.includes("?") ? "&" : "?");
+}
+
 export async function fileThisMail(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const inboundId = String(formData.get("inboundId") ?? "");
   const pair = String(formData.get("subject") ?? "");
-  if (!pair.includes("|")) redirect("/mail?msg=" + encodeURIComponent("Choose what it belongs to first."));
+  const here = mailBack(formData);
+  if (!pair.includes("|")) redirect(here + "msg=" + encodeURIComponent("Choose what it belongs to first."));
   const [subjectType, subjectId] = pair.split("|");
   const stopped = await fileInbound(inboundId, subjectType, subjectId, member.id);
   revalidatePath("/mail");
-  redirect("/mail?msg=" + encodeURIComponent(stopped ? "Filed. " + stopped + " chases stopped." : "Filed."));
+  redirect(here + "msg=" + encodeURIComponent(stopped ? "Filed. " + stopped + " chases stopped." : "Filed."));
 }
 
 /* ── The mailbox: answering, and writing (24, section 7) ────────── */
@@ -541,7 +549,7 @@ export async function markMailDone(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   await markInboundActioned(String(formData.get("inboundId") ?? ""), member.id);
   revalidatePath("/mail");
-  redirect("/mail?msg=" + encodeURIComponent("Marked as dealt with."));
+  redirect(mailBack(formData) + "msg=" + encodeURIComponent("Archived: marked as dealt with."));
 }
 
 /**
