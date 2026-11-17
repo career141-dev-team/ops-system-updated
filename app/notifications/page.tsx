@@ -35,6 +35,12 @@ function hrefForSubject(subjectType: string, subjectId: string): string {
   }
 }
 
+/** "client.created" as "Client created": the action's own code is for the audit, not for a person. */
+const sentence = (code: string) => {
+  const words = code.replace(/[._]/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
 function iconForKind(kind: string): IconName {
   if (kind.includes("reply") || kind.includes("message")) return "mail";
   if (kind.includes("interview")) return "calendar";
@@ -66,8 +72,8 @@ export default async function NotificationsPage({
       .filter((t) => t.state === "running" && t.dueAt <= now)
       .map((t) => ({
         id: `timer:${t.id}`,
-        title: t.kind.replace(/\./g, " "),
-        subtitle: `Clock due · ${t.subjectType}`,
+        title: sentence(t.kind),
+        subtitle: "A clock came due",
         href: hrefForSubject(t.subjectType, t.subjectId),
         at: t.dueAt,
         urgent: true,
@@ -82,8 +88,8 @@ export default async function NotificationsPage({
         const actor = e.actorId ? memberIn(db, e.actorId) : null;
         return {
           id: `audit:${e.id}`,
-          title: e.reason || e.action.replace(/\./g, " "),
-          subtitle: `${e.action}${actor ? ` · ${actor.name}` : ""}`,
+          title: e.reason || sentence(e.action),
+          subtitle: actor ? actor.name : "The system",
           href: hrefForSubject(e.subjectType, e.subjectId),
           at: e.at,
           urgent: false,
@@ -103,106 +109,52 @@ export default async function NotificationsPage({
     return day(at);
   };
 
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
+  const row = (item: (typeof items)[number]) => (
+    <Link
+      key={item.id}
+      href={item.href}
+      className={`flex items-center justify-between gap-4 rounded-[16px] px-3 py-3 transition-colors hover:bg-sunk ${item.unread ? "bg-brand-tint" : ""}`}
+    >
+      <div className="flex min-w-0 items-center gap-3.5">
+        <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${item.unread ? "bg-surface text-ink" : "bg-sunk text-ink-soft"}`}>
+          <Icon name={item.icon} size={16} />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-[16px] leading-[26px] text-ink">{item.title}</div>
+          <div className="truncate text-[14px] leading-[21px] text-ink-faint">{item.subtitle}</div>
+        </div>
+      </div>
+      <span className={`shrink-0 text-[14px] leading-[21px] ${item.urgent ? "text-danger" : "text-ink-faint"}`}>{formatClockTime(item.at)}</span>
+    </Link>
+  );
+  const caption = "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
 
   return (
     <PageBox width="880">
       <div className="flex flex-col gap-6">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
-              Notifications
-            </h1>
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">Notifications</h1>
             <Link href="/notifications?read=all" className={pillGhost}>
               Mark all read
             </Link>
           </div>
-          <p className="mt-1 text-[13.5px] text-ink-soft">
-            Each one opens the thing it is about. Back brings you here.
-          </p>
+          <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">Each one opens the thing it is about. Back brings you here.</p>
         </div>
 
-        <div>
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-            TODAY
-          </div>
-          <div className={cardShell}>
-            {todayItems.length === 0 ? (
-              <div className="px-4 py-6 text-[13.5px] text-ink-soft">Nothing new today.</div>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {todayItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className={`flex items-center justify-between gap-4 rounded-[16px] px-4 py-4 transition hover:bg-sunk/60 ${
-                      item.unread ? "bg-bg-brand/60" : ""
-                    }`}
-                  >
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                          item.unread ? "bg-surface text-brand" : "bg-sunk text-ink-soft"
-                        }`}
-                      >
-                        <Icon name={item.icon} size={16} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-ink">
-                          {item.title}
-                        </div>
-                        <div className="truncate text-[12px] text-ink-soft">{item.subtitle}</div>
-                      </div>
-                    </div>
-                    <span
-                      className={`shrink-0 text-[12.5px] font-medium ${
-                        item.urgent ? "text-danger" : "text-ink-faint"
-                      }`}
-                    >
-                      {formatClockTime(item.at)}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="flex flex-col gap-2">
+          <div className={caption}>Today</div>
+          {todayItems.length === 0 ? (
+            <div className="px-3 py-4 text-[14px] text-ink-soft">Nothing new today.</div>
+          ) : (
+            <div className="flex flex-col gap-1">{todayItems.map(row)}</div>
+          )}
         </div>
 
         {earlierItems.length > 0 && (
-          <div>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-              EARLIER
-            </div>
-            <div className={cardShell}>
-              <div className="flex flex-col gap-2.5">
-                {earlierItems.slice(0, 15).map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-4 transition hover:bg-sunk/60"
-                  >
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
-                        <Icon name={item.icon} size={16} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-ink">
-                          {item.title}
-                        </div>
-                        <div className="truncate text-[12px] text-ink-soft">{item.subtitle}</div>
-                      </div>
-                    </div>
-                    <span
-                      className={`shrink-0 text-[12.5px] ${
-                        item.urgent ? "font-medium text-danger" : "text-ink-faint"
-                      }`}
-                    >
-                      {formatClockTime(item.at)}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+          <div className="flex flex-col gap-2">
+            <div className={caption}>Earlier</div>
+            <div className="flex flex-col gap-1">{earlierItems.slice(0, 15).map(row)}</div>
           </div>
         )}
       </div>

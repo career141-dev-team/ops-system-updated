@@ -12,7 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor, workspaceTitle } from "@/lib/nav";
+import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor, tabFor, workspaceTitle } from "@/lib/nav";
 
 const APP = join(process.cwd(), "app");
 
@@ -80,4 +80,15 @@ test("the tab above the page names the entry the bar marks, or the page itself",
   assert.equal(workspaceTitle("/chat"), "AURA");
   assert.equal(workspaceTitle("/sign-in"), null);
   for (const section of NAV) for (const page of section.pages) assert.equal(workspaceTitle(page.href), page.what === "Reports" ? "Report" : page.what, "the frames call it Report");
+});
+
+test("the tab is only drawn where a frame has one", () => {
+  assert.equal(tabFor("/clients/abc"), "Clients");
+  assert.equal(tabFor("/leads/new"), null);
+  assert.equal(tabFor("/notifications"), null);
+  assert.equal(tabFor("/account"), null);
+  assert.equal(tabFor("/settings"), null);
+  assert.equal(tabFor("/templates"), null, "a Settings face");
+  assert.equal(tabFor("/find"), null);
+  assert.equal(tabFor("/leads/ld1"), "Clients", "a lead is still a Clients page");
 });
