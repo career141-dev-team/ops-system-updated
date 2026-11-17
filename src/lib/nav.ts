@@ -122,6 +122,8 @@ const OTHER_TITLES: Record<string, string> = { "/account": "Profile", "/notifica
  * highlighted pill in the bar, or - for a page in none - its own name. Null when there is none.
  */
 export function workspaceTitle(path: string): string | null {
+  // The new-lead form is under Clients but its tab says "Lead" (16 Nov, the owner's screenshot).
+  if (path === "/leads/new") return "Lead";
   const own = pageAndSectionFor(path)?.page.what;
   // The frames call the Reports tab "Report" (249:10250).
   if (own) return own === "Reports" ? "Report" : own;
@@ -131,10 +133,10 @@ export function workspaceTitle(path: string): string | null {
 
 /**
  * Pages whose frames have no tab above the card (16 Nov, Figma 249:13500-14114): search results,
- * the new-lead form, notifications and Settings (the profile has one, "Profile": 283:3530). They still say where you are in the
+ * notifications and Settings (the profile has one, "Profile": 283:3530). They still say where you are in the
  * bar; the tab is only for the workspaces.
  */
-const NO_TAB = ["/find", "/leads/new", "/notifications", ...(COVERS["/settings"] ?? [])];
+const NO_TAB = ["/find", "/notifications", ...(COVERS["/settings"] ?? [])];
 
 /** What the tab above the card says, or null where the frame draws none. */
 export function tabFor(path: string): string | null {

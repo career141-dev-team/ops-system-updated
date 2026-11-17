@@ -84,7 +84,7 @@ test("the tab above the page names the entry the bar marks, or the page itself",
 
 test("the tab is only drawn where a frame has one", () => {
   assert.equal(tabFor("/clients/abc"), "Clients");
-  assert.equal(tabFor("/leads/new"), null);
+  assert.equal(tabFor("/leads/new"), "Lead", "the form says Lead, though it is a Clients page");
   assert.equal(tabFor("/notifications"), null);
   assert.equal(tabFor("/account"), "Profile");
   assert.equal(tabFor("/settings"), null);
