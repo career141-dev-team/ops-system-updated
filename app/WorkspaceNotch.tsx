@@ -13,8 +13,9 @@ export default function WorkspaceNotch() {
   const path = usePathname() ?? "/";
   // My Work's Today and Messages have no tab in the frames (249:8477, 249:9038); To approve has.
   const view = useSearchParams().get("view");
-  const bare = path === "/" && view !== "approve";
-  const title = bare ? null : tabFor(path);
+  // Today has no tab; To approve and Messages do (Figma 391:7384 names its tab "Messages").
+  const bare = path === "/" && view !== "approve" && view !== "messages";
+  const title = bare ? null : path === "/" && view === "messages" ? "Messages" : tabFor(path);
   // A strip as tall as the gap under the bar; the tab hangs from its foot, into the card.
   if (!title) return <div className="hidden h-8 md:block" aria-hidden="true" />;
   return (

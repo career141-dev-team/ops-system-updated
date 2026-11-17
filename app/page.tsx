@@ -162,7 +162,7 @@ export default async function MyWorkPage({
         member={member}
         wholeDesk={wholeDesk}
         now={now}
-        nav={viewNav("justify-start")}
+        nav={viewNav("justify-end")}
         selected={params.t}
         msg={params.msg}
         aiOn={aiOn}
