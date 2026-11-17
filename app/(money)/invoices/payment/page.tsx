@@ -53,7 +53,7 @@ export default async function LogPaymentPage({
         <BackBar href="/invoices" label="Finance" />
 
         <div>
-          <h1 className="font-serif text-[28px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+          <h1 className="text-[40px] font-light leading-[50px] text-ink">
             Log a payment
           </h1>
           <p className="mt-1.5 text-[14px] text-ink-soft">
@@ -62,22 +62,22 @@ export default async function LogPaymentPage({
         </div>
 
         {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
             {sp.msg}
           </div>
         )}
 
         {!selected ? (
-          <div className="rounded-[24px] border border-edge bg-surface p-5">
-            <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          <div className="rounded-[24px] border border-rule bg-surface p-5">
+            <div className="mb-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
               Choose an open invoice
             </div>
             {openInvoices.length === 0 ? (
-              <p className="text-[13.5px] text-ink-soft">
+              <p className="text-[14px] text-ink-soft">
                 There are no open invoices waiting for payment.
               </p>
             ) : (
-              <div className="divide-y divide-edge/60">
+              <div className="divide-y divide-rule">
                 {openInvoices.map((inv) => {
                   const client = inv.clientId ? clientIn(db, inv.clientId) : null;
                   const bal = balanceOf(inv);
@@ -114,29 +114,29 @@ export default async function LogPaymentPage({
             const bal = balanceOf(selected);
             return (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-[24px] border-2 border-brand bg-bg-brand p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-[24px] border-[1.5px] border-success bg-brand-tint p-4">
                   <div className="flex items-center gap-3.5">
                     <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-brand">
                       <Icon name="wallet" size={18} />
                     </span>
                     <div>
-                      <div className="text-[15px] font-medium text-ink">
+                      <div className="text-[16px] font-medium leading-[26px] text-ink">
                         {selected.number} · {client?.name ?? "Client"}
                       </div>
-                      <div className="text-[13px] text-ink-soft">
+                      <div className="text-[14px] leading-[21px] text-ink-faint">
                         {money(bal, selected.currency)}
                         {selected.dueAt ? ` · due ${day(selected.dueAt)}` : ""}
                       </div>
                     </div>
                   </div>
                   {openInvoices.length > 1 && (
-                    <Link href="/invoices/payment" className={pillSecondary}>
+                    <Link href="/invoices/payment" className="px-3 text-[14px] leading-[21px] text-ink underline">
                       Change
                     </Link>
                   )}
                 </div>
 
-                <div className="rounded-[24px] border border-edge bg-surface p-6">
+                <div>
                   <form action={recordPayment} className="flex flex-col gap-5">
                     <input type="hidden" name="invoiceId" value={selected.id} />
                     <input type="hidden" name="back" value={`/invoices/${selected.id}`} />
@@ -181,14 +181,14 @@ export default async function LogPaymentPage({
                         ].map((opt, idx) => (
                           <label
                             key={opt.value}
-                            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-edge bg-sunk/60 px-4 py-2 text-[13px] font-medium text-ink has-[:checked]:border-brand has-[:checked]:bg-bg-brand"
+                            className="inline-flex cursor-pointer items-center rounded-full px-4 py-2 text-[14px] leading-[21px] text-ink-soft has-[:checked]:bg-sunk has-[:checked]:font-medium has-[:checked]:text-ink"
                           >
                             <input
                               type="radio"
                               name="method"
                               value={opt.value}
                               defaultChecked={idx === 0}
-                              className="accent-brand"
+                              className="sr-only"
                             />
                             <span>{opt.label}</span>
                           </label>
@@ -209,7 +209,8 @@ export default async function LogPaymentPage({
                       />
                     </div>
 
-                    <div className="rounded-[16px] bg-ok-soft px-4 py-3 text-[13px] text-ink">
+                    <div className="flex items-center gap-2.5 rounded-[16px] bg-brand-soft px-4 py-3 text-[14px] leading-[21px] text-ink">
+                      <Icon name="check" size={16} className="shrink-0 text-success" />
                       Saving this payment updates {selected.number} immediately and records it in the
                       invoice history.
                     </div>
@@ -218,7 +219,7 @@ export default async function LogPaymentPage({
                       <button type="submit" className={pillPrimary}>
                         Save payment
                       </button>
-                      <Link href="/invoices" className={pillSecondary}>
+                      <Link href="/invoices" className="px-4 py-2 text-[16px] leading-[26px] text-ink-soft hover:text-ink">
                         Cancel
                       </Link>
                     </div>

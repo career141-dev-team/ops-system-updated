@@ -19,7 +19,7 @@ import {
 } from "@/app/ui/figma";
 import { day } from "@/lib/listing";
 import { invoiceDrift } from "@/lib/exports";
-import { balanceOf, invoiceInWords, money, paidSoFar } from "@/lib/money";
+import { balanceOf, invoiceInWords, money, moneyCompact, paidSoFar } from "@/lib/money";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -135,37 +135,13 @@ export default async function InvoicesPage({
     { key: "surcharges", label: "Surcharges", href: "/invoices?view=surcharges" },
   ];
 
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-2";
+  const cardShell = "flex flex-col gap-2";
 
   return (
     <PageBox width="1160">
       <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-              Finance
-            </p>
-            <h1 className="mt-1 font-serif text-[28px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
-              Invoices &amp; money
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {canMoney && (
-              <Link href="/invoices/payment" className={pillSecondary}>
-                Log a payment
-              </Link>
-            )}
-            <a href="/api/exports/invoices.csv" className={pillGhost}>
-              Invoices CSV
-            </a>
-            <a href="/api/exports/payments.csv" className={pillGhost}>
-              Payments CSV
-            </a>
-          </div>
-        </div>
-
         {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
             {sp.msg}
           </div>
         )}
@@ -173,35 +149,47 @@ export default async function InvoicesPage({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatTile
             size="lg"
-            value={money(totalOwed, "LKR")}
+            outline
+            value={moneyCompact(totalOwed, "LKR")}
             label="owed to us"
             caption={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
           />
           <StatTile
             size="lg"
+            outline
+            highlight={totalLate > 0 ? "danger" : undefined}
             tone={totalLate > 0 ? "danger" : "default"}
-            value={money(totalLate, "LKR")}
+            value={moneyCompact(totalLate, "LKR")}
             label="late"
             caption={lateCount > 0 ? `${lateCount} past due date` : "none overdue"}
           />
           <StatTile
             size="lg"
-            value={money(collectedMonth, "LKR")}
+            outline
+            value={moneyCompact(collectedMonth, "LKR")}
             label={`collected in ${monthLabel}`}
             caption={`${monthPayments} payment${monthPayments === 1 ? "" : "s"} logged`}
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <ViewPills items={tabs} active={view} />
-        </div>
+        <ViewPills
+          items={tabs}
+          active={view}
+          rightSlot={
+            canMoney ? (
+              <Link href="/invoices/payment" className={pillSecondary}>
+                Log a payment
+              </Link>
+            ) : undefined
+          }
+        />
 
         {view === "surcharges" && unreportedTimers.length > 0 && (
           <div className={cardShell}>
-            <div className="px-4 pb-2 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            <div className="px-4 pb-2 pt-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
               Unreported hire checks ({unreportedTimers.length})
             </div>
-            <div className="divide-y divide-edge/60">
+            <div className="flex flex-col gap-2">
               {unreportedTimers.map((t) => {
                 const set = db.clientSets.find((s) => s.id === t.subjectId);
                 const client = set?.clientId ? clientIn(db, set.clientId) : null;
@@ -209,23 +197,23 @@ export default async function InvoicesPage({
                   <Link
                     key={t.id}
                     href={`/invoices/unreported?setId=${encodeURIComponent(t.subjectId)}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
                   >
                     <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
                         <Icon name="flag" size={16} />
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-ink">
+                        <div className="truncate text-[16px] leading-[26px] text-ink">
                           {client?.name ?? "Client"} · {set?.role ?? "Unreported hire"}
                         </div>
-                        <div className="truncate text-[12px] text-ink-soft">
+                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
                           3-month check flagged a possible unreported hire
                         </div>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
-                      <span className="text-[12.5px] font-medium text-danger">Needs review</span>
+                      <span className="text-[14px] text-danger">Needs review</span>
                       <Icon name="chevron-right" size={16} className="text-ink-faint" />
                     </div>
                   </Link>
@@ -237,10 +225,10 @@ export default async function InvoicesPage({
 
         {view === "refunds" && refundGuarantees.length > 0 && (
           <div className={cardShell}>
-            <div className="px-4 pb-2 pt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            <div className="px-4 pb-2 pt-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
               Guarantee refunds ({refundGuarantees.length})
             </div>
-            <div className="divide-y divide-edge/60">
+            <div className="flex flex-col gap-2">
               {refundGuarantees.map((g) => {
                 const placement = placementIn(db, g.placementId);
                 const client = placement?.clientId ? clientIn(db, placement.clientId) : null;
@@ -251,17 +239,17 @@ export default async function InvoicesPage({
                   <Link
                     key={g.id}
                     href={`/guarantees/${g.id}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
                   >
                     <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
                         <Icon name="shield" size={16} />
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-ink">
+                        <div className="truncate text-[16px] leading-[26px] text-ink">
                           {client?.name ?? "Client"} · {g.candidateName}
                         </div>
-                        <div className="truncate text-[12px] text-ink-soft">
+                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
                           {posTitle ?? "Placement"} ·{" "}
                           {g.refundAmount != null ? money(g.refundAmount, "LKR") : "Refund case"}
                         </div>
@@ -269,7 +257,7 @@ export default async function InvoicesPage({
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <span
-                        className={`text-[12.5px] font-medium ${g.state === "refunded" ? "text-ok" : "text-warn"
+                        className={`text-[14px] font-medium ${g.state === "refunded" ? "text-ok" : "text-warn"
                           }`}
                       >
                         {g.state === "refunded" ? "Refunded" : "Refund pending"}
@@ -283,13 +271,13 @@ export default async function InvoicesPage({
           </div>
         )}
 
-        <div className={cardShell}>
+        <div>
           {visibleInvoices.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[13.5px] text-ink-soft">
+            <div className="rounded-[20px] bg-sunk px-5 py-6 text-[14px] text-ink-soft">
               Nothing in this view right now.
             </div>
           ) : (
-            <div className="divide-y divide-edge/60">
+            <div className="flex flex-col gap-2">
               {visibleInvoices.map((inv) => {
                 const client = inv.clientId ? clientIn(db, inv.clientId) : null;
                 const owner = memberIn(db, inv.ownerId);
@@ -318,17 +306,17 @@ export default async function InvoicesPage({
                   <Link
                     key={inv.id}
                     href={`/invoices/${inv.id}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
                   >
                     <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
                         <Icon name={inv.kind === "surcharge" ? "flag" : "wallet"} size={16} />
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-ink">
+                        <div className="truncate text-[16px] leading-[26px] text-ink">
                           {client?.name ?? "Client"} · {inv.number}
                         </div>
-                        <div className="truncate text-[12px] text-ink-soft">
+                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
                           {inv.about}
                           {inv.dueAt ? ` · due ${day(inv.dueAt)}` : ""}
                           {paid > 0 && inv.state !== "paid"
@@ -340,7 +328,7 @@ export default async function InvoicesPage({
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <span
-                        className={`text-[12.5px] font-medium ${statusTone(inv.state, overdue)}`}
+                        className={`text-[14px] ${statusTone(inv.state, overdue)}`}
                       >
                         {rightText}
                       </span>
@@ -351,6 +339,16 @@ export default async function InvoicesPage({
               })}
             </div>
           )}
+        </div>
+
+        {/* The two exports had a home in the page's old header; the frame has none, so they sit here. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <a href="/api/exports/invoices.csv" className={pillGhost}>
+            Invoices CSV
+          </a>
+          <a href="/api/exports/payments.csv" className={pillGhost}>
+            Payments CSV
+          </a>
         </div>
       </div>
     </PageBox>

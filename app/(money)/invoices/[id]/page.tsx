@@ -110,7 +110,7 @@ export default async function InvoiceDetailPage({
     .filter((e) => e.subjectType === "invoice" && e.subjectId === inv.id)
     .sort((a, b) => b.at - a.at);
 
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-5";
+  const cardShell = "rounded-[24px] border border-rule bg-surface p-5";
 
   return (
     <PageBox width="1080">
@@ -119,7 +119,7 @@ export default async function InvoiceDetailPage({
 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+            <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
               Invoice {inv.number} ·{" "}
               {placementRole
                 ? `${placementRole} placement`
@@ -129,7 +129,7 @@ export default async function InvoiceDetailPage({
                     ? "credit note"
                     : inv.about}
             </p>
-            <h1 className="mt-1 font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+            <h1 className="mt-1 text-[40px] font-light leading-[50px] text-ink">
               {client?.name ?? "Client"}
             </h1>
           </div>
@@ -151,7 +151,7 @@ export default async function InvoiceDetailPage({
         <JourneyBar active="Guarantee" />
 
         {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
             {sp.msg}
           </div>
         )}
@@ -227,7 +227,7 @@ export default async function InvoiceDetailPage({
             <FoldRow title="Guarantee & placement" summary={placementRole ?? ""}>
               <div className={cardShell}>
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="text-[13.5px] text-ink-soft">
+                  <div className="text-[14px] text-ink-soft">
                     {placement && (
                       <p>
                         Placement: <strong className="text-ink">{placement.candidateName}</strong>{" "}
@@ -273,7 +273,7 @@ export default async function InvoiceDetailPage({
                   ? "Sending fills your Word template and attaches it as a PDF. The lines below are the same figures."
                   : "No invoice template is uploaded yet, so the lines below go in the body of the email. Upload one on the Files screen as an invoice template and the PDF is attached instead."}
               </p>
-              <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-[1.6] text-ink">
+              <pre className="whitespace-pre-wrap font-sans text-[14px] leading-[1.6] text-ink">
                 {linesText}
               </pre>
               {inv.state === "draft" && canMoney && (
@@ -299,7 +299,7 @@ export default async function InvoiceDetailPage({
           >
             <div className={cardShell}>
               {inv.payments.length > 0 && (
-                <div className="mb-5 divide-y divide-edge/60 text-[13px]">
+                <div className="mb-5 divide-y divide-rule text-[13px]">
                   {inv.payments.map((p, idx) => (
                     <div key={idx} className="flex items-center justify-between gap-4 py-2.5">
                       <div>
@@ -493,7 +493,7 @@ export default async function InvoiceDetailPage({
               {history.length === 0 ? (
                 <p className="text-[13px] text-ink-soft">No recorded events yet.</p>
               ) : (
-                <div className="divide-y divide-edge/60 text-[13px]">
+                <div className="divide-y divide-rule text-[13px]">
                   {history.map((e) => {
                     const actor = e.actorId ? memberIn(db, e.actorId) : null;
                     return (
