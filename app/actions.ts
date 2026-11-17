@@ -266,6 +266,7 @@ import {
   nameKey,
   neverInviteBack,
   problemWithClosing,
+  directClientRouting,
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
@@ -1041,8 +1042,14 @@ export async function createLead(formData: FormData): Promise<void> {
   const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
+  // "Direct client" (Figma 331:2976): the company is one of our own clients, picked from the list. The name
+  // comes from our record, not from the form, so a typed or altered name can never make a second client.
+  const directId = String(formData.get("clientId") ?? "").trim();
+  const direct = directId ? clientIn(await desk(), directId) : null;
+  if (directId && !direct) back("That client is gone. Pick one from the list again.");
+
   const input = {
-    company: String(formData.get("company") ?? "").trim(),
+    company: direct ? direct.name : String(formData.get("company") ?? "").trim(),
     contactName: String(formData.get("contactName") ?? "").trim(),
     contactEmail: String(formData.get("contactEmail") ?? "").trim(),
     contactPhone: String(formData.get("contactPhone") ?? "").trim(),
@@ -1070,10 +1077,25 @@ export async function createLead(formData: FormData): Promise<void> {
     doNotInvite: false,
     clientTaId: null,
     // One ops person owns each client, and the person taking the lead owns it
-    // until the ops lead moves it (owner's rule).
-    ownerId: member.id,
+    // until the ops lead moves it (owner's rule). A direct client's lead goes to its own owner.
+    ownerId: direct ? direct.ownerId : member.id,
     createdBy: member.id,
   });
+
+  if (direct) {
+    const routed = directClientRouting(direct);
+    await patchLead(
+      lead.id,
+      { clientTaId: direct.taClientId, state: routed.state },
+      member.id,
+      "lead.linkedToClient",
+      "Direct client: " + routed.because,
+    );
+    await clientFromLead(await desk(), { ...lead, clientTaId: direct.taClientId }, direct.stage, member.id);
+    revalidatePath("/leads");
+    revalidatePath("/clients");
+    redirect("/leads/" + lead.id + "?msg=" + encodeURIComponent("Saved. " + routed.because));
+  }
 
   revalidatePath("/leads");
   revalidatePath("/clients");

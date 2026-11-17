@@ -122,3 +122,13 @@ test("nothing closes without a reason, and a declined industry is never invited 
   assert.equal(neverInviteBack("declined_industry"), true);
   assert.equal(neverInviteBack("closed_silent"), false);
 });
+
+import { directClientRouting } from "@/lib/leads";
+test("a direct client lead goes where an exact match would", () => {
+  const signed = directClientRouting({ id: "c1", name: "Delmege Interiors", nameKey: "delmege", stage: "active", taClientId: "ta1" });
+  assert.equal(signed.state, "requirement", "an active client has a signed agreement: no intro call, no agreement to chase");
+  assert.equal(signed.existing.id, "ta1");
+  const notYet = directClientRouting({ id: "c2", name: "Orion", nameKey: "orion", stage: "lead", taClientId: null });
+  assert.equal(notYet.state, "waiting_agreement");
+  assert.equal(notYet.existing.id, "c2", "with no TA client yet, our own record stands in");
+});
