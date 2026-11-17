@@ -111,6 +111,9 @@ export default async function SetPage({
       : null;
   const hold = liveHoldFor(db, set.openingTaId);
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  // "Monday 10 Nov", and "10:58": how the frame writes when a set was sent and received (249:14480).
+  const whenDay = (at: number) => new Date(at + 5.5 * 3_600_000).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
+  const whenTime = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(11, 16);
   const whenDate = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
   const step = setNextStep(
@@ -150,21 +153,15 @@ export default async function SetPage({
           <div className="flex flex-col gap-1">
             <span className="text-[14px] leading-[22px] text-ink-faint">
               {set.state === "sent"
-                ? `Sent ${set.sentAt ? whenLocal(set.sentAt) : "recently"} · received ${
-                    set.receivedAt ? whenLocal(set.receivedAt) : "not recorded"
+                ? `Sent ${set.sentAt ? whenDay(set.sentAt) : "recently"} · received ${
+                    set.receivedAt ? whenTime(set.receivedAt) : "not recorded"
                   }`
-                : `${STATE_MEANINGS[set.state as SetState] ?? set.state} · ${whereItStands(set, now)}`}
+                : whereItStands(set, now)}
             </span>
             <h1 className="text-[40px] font-light leading-[50px] text-ink">
               CV set {set.setNumber}
             </h1>
-            <span className="text-[13px] text-ink-soft">{set.name}</span>
           </div>
-
-          <StatusChip
-            label={set.state === "sent" ? "With client" : set.state}
-            tone={set.state === "sent" ? "brand" : "warn"}
-          />
         </div>
       </div>
 
@@ -172,7 +169,7 @@ export default async function SetPage({
       <JourneyBar steps={JOURNEY_STEPS} active="With client" />
 
       {/* 7-Segment Ownership Bar (1:1032) */}
-      <div className="flex flex-wrap items-center gap-3 rounded-[16px] bg-sunk px-[18px] py-3.5">
+      <div className="flex flex-wrap items-center gap-3 px-1">
         <SegmentedBar total={7} filled={elapsedDays} />
         <span className="text-[14px] leading-[22px] text-ink">
           {set.receivedAt
