@@ -47,7 +47,8 @@ const WORDS: Record<string, Words> = {
 };
 
 /** Machine state kept beside the settings. Not a thing a person sets, so not shown. */
-export const INTERNAL = ["ta.", "clock."];
+export // bank.* are the owner's bank details for the invoice: kept by their own form on this screen, not listed as rules.
+const INTERNAL = ["ta.", "clock.", "bank."];
 
 export const isInternal = (key: string): boolean => INTERNAL.some((p) => key.startsWith(p));
 

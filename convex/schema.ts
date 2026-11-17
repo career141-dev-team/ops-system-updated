@@ -173,6 +173,9 @@ export default defineSchema({
     state: v.string(),
     reason: v.union(v.string(), v.null()),
     doNotInvite: v.boolean(),
+    openEarlyBy: v.optional(v.union(v.string(), v.null())),
+    openEarlyAt: v.optional(v.union(v.number(), v.null())),
+    openEarlyReason: v.optional(v.union(v.string(), v.null())),
     clientTaId: v.union(v.string(), v.null()),
     ownerId: v.string(),
     createdBy: v.union(v.string(), v.null()),
@@ -320,6 +323,7 @@ export default defineSchema({
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
     contacts: v.optional(v.array(v.object({ name: v.string(), email: v.string(), phone: v.string(), role: v.string() }))),
+    team: v.optional(v.array(v.object({ taId: v.string(), addedBy: v.string(), addedAt: v.number() }))),
     manualCandidates: v.optional(
       v.array(
         v.object({

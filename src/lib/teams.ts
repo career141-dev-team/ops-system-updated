@@ -108,3 +108,40 @@ export function sayGraphFailure(status: number, organiserEmail: string): string 
   if (status === 429) return "Microsoft asked us to slow down. Try again in a minute.";
   return "Microsoft could not make the meeting (" + status + ").";
 }
+
+/** True when the link is the fake stand-in made by `OPS_TEAMS_FAKE=on`. */
+export function isStandInTeamsLink(link: string): boolean {
+  return /^https?:\/\/teams\.example(\/|$)/i.test(link.trim());
+}
+
+export interface AutoSendCheck {
+  hasLink: boolean;
+  linkIsStandIn: boolean;
+  recipients: string[];
+  sendNow: boolean;
+  outreachLive: boolean;
+}
+
+/**
+ * Whether a meeting invite may be sent automatically on booking (17 Nov).
+ *
+ * Deliberate exception to "a person approves every client message": when a
+ * meeting is booked with a join link and the booker leaves "send now" ticked,
+ * the invite goes straight through the outbound gate with no extra click.
+ * A stand-in link (`teams.example`) is never sent to a real client.
+ */
+export function canAutoSendInvite(input: AutoSendCheck): { ok: true } | { ok: false; reason: string } {
+  if (!input.sendNow) {
+    return { ok: false, reason: "You unticked sending now, so the invite is waiting in To approve." };
+  }
+  if (!input.hasLink) {
+    return { ok: false, reason: "There is no meeting link yet, so the invite is waiting in To approve." };
+  }
+  if (input.recipients.length === 0) {
+    return { ok: false, reason: "There is no client email to send the invite to." };
+  }
+  if (input.linkIsStandIn && input.outreachLive) {
+    return { ok: false, reason: "A stand-in Teams link (teams.example) cannot be sent to a real client." };
+  }
+  return { ok: true };
+}

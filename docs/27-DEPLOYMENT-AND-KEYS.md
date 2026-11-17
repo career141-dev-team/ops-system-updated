@@ -186,6 +186,27 @@ enough.
 
 ---
 
+### Laptop test for Teams meeting invites (17 Nov)
+
+For a laptop test in `.env.local` (never committed):
+
+- `OPS_SEND=on`
+- `OPS_OUTBOUND_LOCK=on`
+- `OPS_OUTBOUND_ALLOW_EMAILS=<the test addresses>`
+- `OPS_TEST_EMAIL=<one inbox you own>`
+- `OPS_DEV_SENDER_EMAIL=<a real mailbox in the tenant>` (used only while `OPS_DEV_SIGNIN=on`)
+- Remove `OPS_TEAMS_FAKE` (or set it off) so a real Teams link is made (requires `switch.teamsEnabled` on in Settings)
+- Leave `OPS_OUTREACH_LIVE` unset so test mode stays active
+
+In Microsoft Entra on the existing app registration (`MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`):
+
+- Application permissions `Mail.Send` and `Calendars.ReadWrite` with admin consent
+- An application access policy limiting the app to the mailboxes it may use (the sender and the ops organisers)
+
+To reach real clients: **only** after the owner explicitly says so in the conversation, set `OPS_OUTREACH_LIVE=on` on that machine **and** turn on `switch.outreachLive` in Settings, and add each real address to `OPS_OUTBOUND_ALLOW_EMAILS` while the outbound lock is on.
+
+---
+
 ## 6. The pilot, and how it ends
 
 One client. Two weeks. Their addresses in the allow-list and nobody else's.

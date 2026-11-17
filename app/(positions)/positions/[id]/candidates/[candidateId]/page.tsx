@@ -26,7 +26,7 @@ import {
   referenceForApplication,
 } from "@/data/desk";
 import { INTERNAL_MEANINGS, INTERNAL_OUTCOMES } from "@/lib/clientSets";
-import { candidatesForPosition } from "@/lib/positionCandidates";
+import { candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
 import { can } from "@/lib/roles";
 import { feedbackLog } from "@/lib/timeline";
 import { currentMember } from "@/lib/session";
@@ -71,7 +71,7 @@ export default async function PositionCandidatePage({
     .filter((row) => row.openingTaId === position.openingTaId)
     .sort((a, b) => a.setNumber - b.setNumber);
 
-  const candidates = candidatesForPosition(db, position, itsSets);
+  const candidates = candidatesForPosition(db, position, itsSets, await taApplicationsFor(position.openingTaId));
   const decodedId = decodeURIComponent(candidateId);
   const candidate =
     candidates.find((c) => c.id === decodedId || c.applicationTaId === decodedId) ??

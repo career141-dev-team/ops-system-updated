@@ -65,7 +65,7 @@ over older documents.
 
 | 3 Nov | **The agreement document is the truth where it and our notes disagree.** The owner's own ESA was read out of the mailbox and made into a template; two numbers in it contradicted earlier decisions, and the owner said to go with the document | Owner (chat) |
 | 3 Nov | Refund when no replacement is found in 60 working days: **50%** of the fee, not 25%. The agreement's reviewer struck 25 and wrote 50 on 10 Sep | Owner (chat), from the agreement |
-| 3 Nov | Late payment: **1% a month, compounded**, and nothing charged on an invoice disputed in good faith - not 5% simple. This closes open question 12 on the late charge | Owner (chat), from the agreement |
+| 3 Nov | ~~Late payment: **1% a month, compounded**, and nothing charged on an invoice disputed in good faith - not 5% simple. This closes open question 12 on the late charge~~ Rate superseded 17 Nov: **5% a month, compounded** (clause 5.5 of the current ESA); the rest stands | Owner (chat), from the agreement |
 | 3 Nov | The agreement asks for the company registration number and what the client's business is, and never asks for a tax number. The field list follows the document | From the agreement |
 
 | 3 Nov | **AI becomes Phase 9: one productivity layer over the finished system**, not a chatbot and not a new module. Written as Phase 9 of [15](15-BUILD-PLAN.md), with the register in [21](21-AI-OPPORTUNITIES.md). It comes after the pilot, because the desk must run on rules first; dictation and draft-improve may ride earlier | Owner (chat) |
@@ -113,6 +113,7 @@ over older documents.
 | 17 Nov | **The requirement can be proposed from a Teams call's transcript**, read after the call from Microsoft (`fetchTranscript`) and checked by a person before saving. It works only if somebody started transcription in the meeting; there is no bot in the call. Behind `switch.transcriptsEnabled` | Supervisor (17 Nov) |
 | 17 Nov | **New lead has three paths, and Direct client picks from our own clients.** Enquiry and Client discovery keep the form as it was. Direct client shows only a search over existing clients; picking one fills the company and offers the client's contacts as chips (or a new contact), and asks only "What do they need?". The company name comes from our record, never the form, so no second client can appear; the lead routes as an exact match does (signed agreement: requirement meeting; otherwise: waiting on the agreement) and goes to the client's owner. The form's sources are now ones the server accepts: it used to send values (`website_form`, `director`, `linkedin`) that were not in `LEAD_SOURCES`, so it could not save | Owner (chat), Figma 331:2976 variations A and B |
 | 17 Nov | **Inbox and Call are three-pane screens with Conversation / Call tabs** (Figma 395:11299, 396:11347). The folders and labels are the ones Ops can answer from its own records (`src/lib/inboxView.ts`): Inbox, Unread, Waiting on us, Drafts, Sent, Archived (= dealt with), and labels by what a thread or call is filed to (Clients, Openings, Money). The frames' stars, hand-made labels, Forward, call duration, recording and incoming/missed need a mail or phone system Ops does not have, so they are not drawn. Calls stay human: Call back is the phone's own link, and a call's next step is the open call task on the same record. The Director-set email (361:3346) is sent by the TA System, so it is not in this repository | Owner (chat), Figma |
+| 17 Nov | **A booked intro call or requirement meeting sends its invite email automatically on booking** (deliberate exception to "a person approves every client message") when a join link exists, at least one client recipient is present, and the booker leaves *"Email the invite to them now"* ticked (`canAutoSendInvite` in `src/lib/teams.ts`). It still passes through the same outbound gate (`gate()`, `OPS_SEND`, `OPS_OUTBOUND_LOCK`, daily cap, do-not-contact, and test-mode redirect). Sent from the organiser's mailbox (or `OPS_DEV_SENDER_EMAIL` under dev sign-in only), with the booker recorded as the approver and `"Sent automatically on booking."` in the note. A stand-in link (`teams.example`) is never sent to a real client (`outreachLive`). If the gate blocks or Microsoft refuses, the booking stands and the message keeps its real `blocked`/`failed` state | Owner (17 Nov) |
 | 3 Nov | **Talent Pulse compiles itself on Tuesday at nine and sets the next Tuesday's clock.** One issue a week, whoever asks for it, so the clock and the button cannot make two. A role whose TA has written no line keeps the issue in: a newsletter entry with nothing under it tells a reader nothing | Owner's rhythm, built |
 
 ## 2. The 17 conflicts between canvas cards, settled 27 Oct
@@ -167,3 +168,63 @@ confirm each one while walking the flow.
 | 18 | Import the current sheets (master, client, interview) or start clean at go-live? | Go-live |
 | 19 | ~~Talent Pulse: one tracked apply link per role?~~ Decided 1 Nov: own address per role | M5 |
 | 20 | What does "DLA" stand for (attends intro calls)? | M2 |
+
+## 17 Nov: the ESA is one template; only the client's details and the numbers change
+
+- Source: the owner's Valtrix draft and its cover email. One Word template with `{{holes}}`; nothing else changes per client (the owner confirmed: only the numbers).
+- The details are typed once, on the intro call, and go into both the document and the cover email.
+- **Refund is 25%, not 50%.** Clause 6.6 of the current ESA says 25%. An older draft said 50 (reviewer, 10 Sep) and the system followed it from 3 Nov; the owner chose the current document on 17 Nov. `REFUND_PCT` and the `refund.pct` seed are 25. A live server keeps its setting until someone changes it on the Settings screen. The 50% **surcharge** in clause 5.9 is a different number and stays.
+- The client's registration number is not printed in the ESA, so it is optional.
+- A reading copy of a Word file is made with a small reader on JSZip (`src/lib/docxHtml.ts`), not a new package; tables and pictures are not kept.
+
+## Decided 17 Nov: the ESA template and its terms
+
+- **One template, only the numbers change per client.** `docs/templates/ESA-TEMPLATE.docx` is the owner's Valtrix draft with a `{{hole}}` over each client-specific phrase (company, address, signatory, business, date, fee, payment, guarantee, replacement, refund). A client who negotiates changes numbers, never clauses.
+- **The ops person fills the details on the intro call** (the "agreement details" form on the lead's intro view), and the same form is on the agreement step.
+- **The cover email carries this client's fee, payment days and guarantee** beside clauses 5.1 and 6.1, and still waits for a person to approve it.
+- **Refund is 25%** (clause 6.6 of the current ESA). It was 50 from 3 Nov, from an older draft. The 50% *surcharge* in 5.9 is a different clause and stays 50.
+- **Late payment is 5% a month, compounded** (clause 5.5 of the current ESA), changed from 1% on the owner's say on 17 Nov. Still compounded, and still nothing on an invoice disputed in good faith. A running server keeps whatever **Late charge** says on the Settings screen until someone changes it there.
+
+
+## 17 Nov: the lead bar, and every draft is a new version
+
+- The opening is refused until the intro call is held. A draft agreement (made from the intro call's details form) no longer counts as "an agreement is out"; only one that has gone out does. A Director's lead still skips the call.
+- The lead's bar rings the step the page is on and shows the warning on any earlier step still open, so "on the opening, the intro call is not done" is visible.
+- Each "make a draft" is the next version (v1, v2, ...); nothing is written over. To change anything, edit the details and make the draft again.
+- A laptop has no LibreOffice, so the draft opens as a plain reading PDF built from the Word file. It is for reading only: it is never stored, and the client still gets only the LibreOffice PDF from the server.
+
+## 17 Nov: the ESA is sent at the end of the intro call (owner)
+
+- Order: intro call held → the agreement's details from the call → the ESA, read on the page → its email → **send** → then the opening is opened → Agreement (signed, or changes to settle) and Requirement side by side → Search & interviews → Joining → Guarantee.
+- This refines the supervisor's row above ("intro call → opening → agreement goes out at once"): both are right after the call and nothing waits on the other; the owner wants the ESA out first. The opening is still not blocked by the agreement, only by the call being held.
+- The details form appears once the call is marked held (before, it showed while the call was only booked).
+- On the bar the intro call is done when it was held **and** the ESA has gone out; the agreement stage starts when the client answers (changes asked for, or signed).
+
+## 17 Nov (evening): the opening comes last again (owner)
+
+- **Order:** Enquiry → Intro call (ends with the ESA sent) → **Agreement and Requirement side by side** → **Opening** → Search & interviews → Joining → Guarantee.
+- **Why:** since the supervisor's morning change the opening was created right after the intro call, and the TA System filled with openings for companies that never signed. The opening now waits for **the client's signed copy** (the Director's countersignature need not be there) and **a complete requirement** (`problemWithOpening`).
+- **Replaces** the supervisor's 17 Nov row "The opening is opened right after the intro call, and no longer waits for the agreement to be signed", and the order line in "the ESA is sent at the end of the intro call". The 3 Nov rule (no opening before the agreement is signed) is back, with one exception.
+- **The exception: "Open it now, without waiting"**, chosen per lead for a client we trust (owner's choice: per lead, not a flag on the client). It needs a written reason (10 characters or more), is kept on the lead with who and when (`openEarlyBy/At/Reason`), shows on the lead and as "opened early" on its card, and can be taken back while no opening exists. The role's name and number are still needed. The "Working without a signed agreement" line shows as before.
+- A lead opened early does not turn the agreement and requirement into "skipped" on the bar: they stay current.
+
+## 17 Nov (evening): finished steps are read-only; people on the opening; candidates by level (owner)
+
+- **Working and done.** Every step of the lead bar has two views. While a step is being worked on, its data can be changed. Once it is done, the same data is shown and nothing can be changed. A requirement with every required field written is **locked** (`requirementLocked`): the page has no form for it and `saveRequirement` refuses. The agreement's fields lock once it is signed (they already locked once it was sent). A decided industry check shows the decision instead of its buttons. Changes after that go through the client ("they want changes") and a new meeting, not an edit. The one exception: a signed agreement still takes the Director's countersigned copy.
+- **People on the opening.** The TA lead adds people to the opening, several at once and more later, and takes them off (`setOpeningPeople`, `OpsPosition.team`). Ops keeps the list and queues it with the Primary TA to `POST /integrations/v1/openings/{id}/team` as `memberIds`. **TA does not read `memberIds` yet**: an additive change to make in the TA repository through its own pull request (AGENTS rule 8). Until then Ops' list is the record. New TA staff are not created here; people come from TA's own list.
+- **Candidates by level** (`candidateLevel` in `src/lib/positionCandidates.ts`): found, **internal shortlist** (ours: in a CV set, or TA says screened/shortlisted), **external shortlist** (the client said yes), interviews, joining (placed), guarantee (joined), or out. The Candidates tab filters by these. When the TA System is connected its pipeline for the opening is merged in, so candidates TA shortlisted appear (`taApplicationsFor`); TA's own names for the stages before the client's yes are not published, so only `shortlisted`, `internal_shortlist` and `screened` count as internal and any other stays "found".
+
+## 17 Nov (evening): the Openings tab is three groups, not a board (owner)
+
+- **No Kanban.** The openings are listed in three groups, one under the other: **Requirement & JD**, **Search & interviews** (with the loop's summary on each row) and **Offer & joining**.
+- **The rule** (`app/(positions)/positions/page.tsx`): an opening **stays under Requirement & JD until the requirement/JD is approved** (`jdApprovedAt`), and, when its agreement is out, until that is **signed**; whatever else has started (a CV set, an interview). Only then does it move to Search & interviews, and it stays there while sets and interviews loop. It moves to Offer & joining **only once somebody is placed** (a placement that has not fallen through), whatever else is true. Closed openings stay under the Closed filter.
+- Before this, an opening with a CV set or an interview went to Search & interviews even when its JD was not approved.
+
+## 17 Nov (evening): the invoice is drawn to the owner's design, one per placed job (owner)
+
+- **The design is the owner's PDF "Invoice Final design 1 (SL)".** Ops draws it itself (`src/lib/invoicePdf.ts`, pdf-lib): logo, PLACEMENT TO / SERVICE OFFERED, invoice number and date, one table (position, name of the recruited, date of appointment, consultancy fee, due date, amount), the bank block, TOTAL DUE and the letterhead. A real PDF on any machine, no LibreOffice. A late charge adds a row; a surcharge and a credit note use the same sheet with their own title.
+- **The bank details are in Settings** ("Bank details on invoices", `bank.*`, set by the ops lead), not in the code. An invoice is refused, naming what is missing, until they are set: a bill with no way to pay is not made.
+- **An uploaded Word "Invoice template" still wins** if somebody uploads one (it is filled and turned into a PDF by LibreOffice on the server); without one the drawn design is used. The Files screen checks an uploaded template's holes.
+- **Numbering stays `C141-YYYY-0001`** (owner's choice); the owner's earlier plain numbers (e.g. 1643) stay as history.
+- **Shown per job:** the invoice page has "The invoice, as the client will get it" (the PDF on the page, versions, "Make the invoice to look at"), the Invoices list names the job (position, candidate), and a joined placement with no invoice has "Draft the invoice" (a refused draft was permanent before). The fee rule comes from the **signed** agreement (the countersignature is not needed), and the page says when none was on record.
+- **Fixed on the way:** a payment's bank reference and the day it arrived were sent by the forms and ignored; both are kept now (a future date is refused).

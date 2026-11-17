@@ -1,4 +1,5 @@
 import { figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { KeepFields } from "@/app/ui/KeepFields";
 import { DEFAULT_LENGTH, MEETING_LENGTHS } from "@/lib/teams";
 
 const field = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none";
@@ -38,6 +39,7 @@ export function MeetingBookingForm({
   return (
     <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="leadId" value={leadId} />
+      <KeepFields id={"meeting:" + submitLabel} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 sm:col-span-2">
@@ -107,11 +109,11 @@ export function MeetingBookingForm({
       {teamsOn ? (
         <label className="flex items-center gap-2 text-[13px] text-ink">
           <input type="checkbox" name="makeTeams" defaultChecked />
-          <span>Make the Teams meeting for me (it goes in that calendar; the client gets the link in a drafted email)</span>
+          <span>Make the Teams meeting for me (it goes in that calendar; the client gets the link in the invite)</span>
         </label>
       ) : (
         <p className="text-[13px] text-ink-soft">
-          Teams is switched off, so paste a meeting link below. It goes in the drafted invite.
+          Teams is switched off, so paste a meeting link below. It goes in the invite.
         </p>
       )}
       <label className="flex flex-col gap-1">
@@ -119,6 +121,11 @@ export function MeetingBookingForm({
           {teamsOn ? "Or paste a link instead" : "Meeting link or address"}
         </span>
         <input name="link" placeholder="https://teams.microsoft.com/..." className={field} />
+      </label>
+
+      <label className="flex items-center gap-2 text-[13px] text-ink">
+        <input type="checkbox" name="sendNow" defaultChecked />
+        <span>Email the invite to them now</span>
       </label>
 
       {offerAlsoRequirement && (

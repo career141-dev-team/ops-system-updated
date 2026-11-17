@@ -50,6 +50,9 @@ Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's loo
 ```bash
 sh deploy/local/start-ui.sh     # the screens on http://127.0.0.1:3300, invented data,
                                 # a JSON file for a store, nothing can be sent
+sh deploy/local/start.sh        # the same screens on the Ops Convex backend on this laptop
+                                # (Docker, 127.0.0.1:3310): what is saved is in the database
+                                # (dashboard http://127.0.0.1:6891), not in a file
 node tests/run.mjs              # all 57 suites, each in its own process
 node tests/run.mjs esa          # one suite
 npx tsc --noEmit                # types

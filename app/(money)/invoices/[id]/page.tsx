@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
   markInvoiceDisputed,
+  previewInvoice,
   raiseCreditNote,
   recordPayment,
   sendInvoice,
   writeOffInvoice,
 } from "@/app/actions";
 import {
+  agreementForLead,
   clientIn,
   desk,
   invoiceIn,
@@ -30,10 +32,16 @@ import {
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
+import { DraftDocument } from "@/app/ui/AgreementVersions";
+import { FieldList } from "@/app/ui/FieldList";
+import { SubmitButton } from "@/app/ui/SubmitButton";
+import { viewHref } from "@/lib/files";
+import { invoiceVersions } from "@/lib/invoiceDoc";
 import { day } from "@/lib/listing";
 import {
   WRITE_OFF_DAYS,
   balanceOf,
+  feeInWords,
   invoiceInWords,
   invoiceLines,
   money,
@@ -50,7 +58,7 @@ export default async function InvoiceDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; at?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -92,8 +100,8 @@ export default async function InvoiceDetailPage({
     number: inv.number,
     candidateName: placement?.candidateName ?? client?.name ?? "Client",
     positionTitle: placementRole ?? inv.about ?? "Placement fee",
-    clientName: client?.name ?? "Client",
-    feeWords: "placement fee",
+    clientName: client?.billingName || client?.name || "Client",
+    feeWords: placement ? feeInWords({ feeMonths: placement.feeMonths, feeBasis: placement.feeBasis }) : "placement fee",
     monthlySalary: placement?.monthlySalary ?? inv.amount,
     amount: inv.amount,
     lateCharge: inv.lateCharge,
@@ -106,6 +114,12 @@ export default async function InvoiceDetailPage({
   const hasTemplate = db.files.some(
     (f) => f.kind === (inv.kind === "credit_note" ? "credit_note_template" : "invoice_template") && f.subjectType === null,
   );
+  // The invoice as a document, version by version (owner, 17 Nov), and what it is made from.
+  const docFiles = db.files.filter((f) => f.kind === "invoice" && f.subjectType === "invoice" && f.subjectId === inv.id);
+  const versions = invoiceVersions(docFiles);
+  const newest = versions[0] ?? null;
+  const agreement = client?.leadId ? agreementForLead(db, client.leadId) : null;
+  const agreementSigned = agreement?.state === "signed" || agreement?.state === "countersigned";
   const history = db.audit
     .filter((e) => e.subjectType === "invoice" && e.subjectId === inv.id)
     .sort((a, b) => b.at - a.at);
@@ -150,7 +164,7 @@ export default async function InvoiceDetailPage({
 
         <JourneyBar active="Guarantee" />
 
-        {sp.msg && (
+        {sp.msg && !sp.at && (
           <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
             {sp.msg}
           </div>
@@ -262,6 +276,68 @@ export default async function InvoiceDetailPage({
             </FoldRow>
           )}
 
+          <div className={cardShell + " flex flex-col gap-3"}>
+            <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+              THE INVOICE, AS THE CLIENT WILL GET IT
+            </p>
+            {newest ? (
+              <DraftDocument file={newest.file} version={newest.version} />
+            ) : (
+              <p className="text-[14px] text-ink-soft">Press the button, and the invoice is drawn to your design and shown here.</p>
+            )}
+            {versions.length > 1 && (
+              <ul className="flex flex-col divide-y divide-rule text-[14px]">
+                {versions.map((v) => (
+                  <li key={v.version} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="font-medium text-ink">v{v.version}</span>
+                    <a href={viewHref(v.file)} target="_blank" rel="noopener noreferrer" className="font-medium text-brand hover:underline">
+                      Open in a new tab
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {inv.state === "draft" && canMoney && (
+              <form action={previewInvoice} className="flex flex-col gap-1.5">
+                <input type="hidden" name="invoiceId" value={inv.id} />
+                <SubmitButton id="make-invoice" className={pillSecondary + " self-start"}>
+                  {newest ? "Make the invoice again" : "Make the invoice to look at"}
+                </SubmitButton>
+                <p className="text-[12.5px] text-ink-soft">
+                  Made from this invoice, the placement, the client&rsquo;s billing details and your bank details in Settings. Nothing is sent. Changed the salary split or the billing details? Make it again: it becomes the next version.
+                </p>
+              </form>
+            )}
+            <FieldList
+              items={[
+                { label: "Billed to", value: client?.billingName },
+                { label: "Billing address", value: client?.billingAddress },
+                { label: "Billing email", value: client?.billingEmail },
+                { label: "Candidate", value: placement?.candidateName ?? inv.about },
+                { label: "Position", value: placementRole },
+                { label: "Joined on", value: placement?.joinedAt ? day(placement.joinedAt) : null },
+                { label: "Package, as TA gave it", value: placement?.package },
+                {
+                  label: "Basic salary / allowances",
+                  value:
+                    placement?.basicSalary && placement.basicSalary > 0
+                      ? money(placement.basicSalary, inv.currency) + " / " + money(placement.allowances, inv.currency)
+                      : null,
+                },
+                {
+                  label: "Fee rule",
+                  value: placement ? feeInWords({ feeMonths: placement.feeMonths, feeBasis: placement.feeBasis }) : null,
+                },
+                { label: "Due", value: inv.dueAt ? day(inv.dueAt) : null },
+              ]}
+            />
+            {placement && !agreementSigned && (
+              <p className="text-[12.5px] text-warn">
+                No signed agreement on record for this client, so the standard fee (one month of gross salary) was used. Check it against what was agreed.
+              </p>
+            )}
+          </div>
+
           <FoldRow
             title="As the client reads it"
             summary={inv.number}
@@ -270,8 +346,8 @@ export default async function InvoiceDetailPage({
             <div className={cardShell}>
               <p className="mb-3 text-[13px] text-ink-soft">
                 {hasTemplate
-                  ? "Sending fills your Word template and attaches it as a PDF. The lines below are the same figures."
-                  : "No invoice template is uploaded yet, so the lines below go in the body of the email. Upload one on the Files screen as an invoice template and the PDF is attached instead."}
+                  ? "Sending fills your uploaded Word template and attaches it as a PDF. The lines below are the same figures."
+                  : "Sending attaches the invoice above as a PDF. The lines below are the same figures."}
               </p>
               <pre className="whitespace-pre-wrap font-sans text-[14px] leading-[1.6] text-ink">
                 {linesText}

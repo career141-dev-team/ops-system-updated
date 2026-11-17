@@ -38,6 +38,7 @@ import {
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
+import { AgreementVersions } from "@/app/ui/AgreementVersions";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { balanceOf, money } from "@/lib/money";
@@ -125,7 +126,7 @@ export default async function ClientPage({
   const guaranteesRunning = db.guarantees.filter((g) => {
     const pl = db.placements.find((p) => p.id === g.placementId);
     const pos = pl ? theirPositions.find((p) => p.openingTaId === pl.openingTaId) : null;
-    return Boolean(pos && g.state === "running");
+    return Boolean(pos && (g.state === "running" || g.state === "warned"));
   });
 
   const theirIds = new Set<string>([
@@ -813,6 +814,12 @@ export default async function ClientPage({
                     }
                   />
                 </div>
+                <AgreementVersions
+                  esa={esa}
+                  files={db.files.filter(
+                    (f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId,
+                  )}
+                />
                 {lead && (
                   <Link
                     href={`/leads/${lead.id}?view=agreement`}

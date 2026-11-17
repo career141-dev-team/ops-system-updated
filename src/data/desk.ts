@@ -126,6 +126,9 @@ import {
   pipeline as taPipeline,
   placement as taPlacement,
   write as taWrite,
+  type TaClientSet,
+  type TaOpening,
+  type TaPlacement,
 } from "@/lib/ta";
 
 /**
@@ -1337,7 +1340,7 @@ export async function draftSurchargeInvoice(
   const position = positionForSet(db, set);
   const client = set.clientId ? clientIn(db, set.clientId) : null;
   const agreement = client?.leadId
-    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && (a.state === "signed" || a.state === "countersigned"))
     : null;
   const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
   const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
@@ -2011,7 +2014,7 @@ export async function askAboutRefund(guaranteeId: Id, now = Date.now()): Promise
     kind: "decide",
     title: "No replacement for " + guarantee.candidateName + " - refund?",
     body:
-      "Sixty working days have gone since they left and there is no replacement. The agreement says 50% of the fee, by decision. Replacing them is still the better answer if it is possible at all.",
+      "Sixty working days have gone since they left and there is no replacement. The agreement refunds part of the fee, by decision. Replacing them is still the better answer if it is possible at all.",
     assigneeId: db.members.find((m) => m.active && m.role === "director_ops")?.id ?? guarantee.ownerId,
     dueAt: now,
     subjectType: "guarantee",
@@ -2189,13 +2192,25 @@ export async function takePlacement(
 
   const answer = await taPlacement(placementTaId);
   if (!answer.ok) return null;
-  const theirs = answer.data;
+  return takePlacementFrom(placementTaId, answer.data, now);
+}
+
+/** The second half of a placement arriving; see takeClientSetReadyWith. */
+export async function takePlacementFrom(
+  placementTaId: string,
+  theirs: TaPlacement,
+  now = Date.now(),
+): Promise<OpsPlacement | null> {
+  const db = await desk();
+  const already = db.placements.find((p) => p.placementTaId === placementTaId);
+  if (already) return already;
   const position = theirs.openingId ? positionForOpening(db, theirs.openingId) : null;
   const client = position?.clientId ? clientIn(db, position.clientId) : null;
 
-  // The fee rule off the signed agreement, not off today's settings.
+  // The fee rule off the signed agreement (the client's signature is enough since 17 Nov; the countersignature
+  // follows), not off today's settings.
   const agreement = client?.leadId
-    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && a.state === "countersigned")
+    ? [...db.agreements].reverse().find((a) => a.leadId === client.leadId && (a.state === "signed" || a.state === "countersigned"))
     : null;
   const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
   const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
@@ -2463,7 +2478,7 @@ export async function draftFeeInvoice(
  * The payment chase (step 13).
  *
  * Fired by the clock when an invoice is past due and still owed. The late
- * charge is recomputed first - 1% a month, compounded, as the agreement words
+ * charge is recomputed first - the agreement's monthly rate, compounded, as the agreement words
  * it - and nothing is charged on an invoice the client disputes in good
  * faith, also from the agreement.
  */
@@ -3277,8 +3292,26 @@ export async function takeClientSetReady(data: Record<string, unknown>, now = Da
 
   const [round, job] = await Promise.all([taClientSet(openingTaId, setNumber), taOpening(openingTaId)]);
   if (!round.ok || !job.ok) return null;
+  return takeClientSetReadyWith(openingTaId, setNumber, round.data, job.data, now);
+}
 
-  const client = db.clients.find((c) => c.taClientId === job.data.clientId) ?? null;
+/**
+ * The second half of a set arriving: what TA said is already in hand (fetched,
+ * or invented by the stand-in panel at /dev/ta), and this makes the set, its
+ * due date and its clock on our side.
+ */
+export async function takeClientSetReadyWith(
+  openingTaId: string,
+  setNumber: number,
+  round: TaClientSet,
+  job: TaOpening,
+  now = Date.now(),
+): Promise<OpsClientSet | null> {
+  const db = await desk();
+  const already = db.clientSets.find((r) => r.openingTaId === openingTaId && r.setNumber === setNumber);
+  if (already) return already;
+
+  const client = db.clients.find((c) => c.taClientId === job.clientId) ?? null;
   const esa = client?.leadId ? agreementForLead(db, client.leadId) : null;
   const signedAt = esa?.signedAt ?? esa?.sentAt ?? null;
   const dueAt = signedAt
@@ -3291,15 +3324,15 @@ export async function takeClientSetReady(data: Record<string, unknown>, now = Da
     client?.ownerId ?? db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? db.members[0]?.id ?? "";
 
   const row = await addClientSet({
-    taRoundId: round.data.id,
+    taRoundId: round.id,
     openingTaId,
     setNumber,
     clientId: client?.id ?? null,
-    clientTaId: job.data.clientId,
-    name: setName(client?.name ?? job.data.clientId, job.data.title, setNumber),
-    role: job.data.title,
+    clientTaId: job.clientId,
+    name: setName(client?.name ?? job.clientId, job.title, setNumber),
+    role: job.title,
     state: "ready",
-    candidates: (round.data.applications ?? []).map((a) => ({
+    candidates: (round.applications ?? []).map((a) => ({
       applicationTaId: a.id,
       name: a.name,
       fileId: null,

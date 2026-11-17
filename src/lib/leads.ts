@@ -39,6 +39,7 @@ export type LeadState =
   | "intro_call"
   | "waiting_agreement"
   | "requirement"
+  | "handed_over"
   | "declined_industry"
   | "closed_silent"
   | "closed_other";
@@ -48,6 +49,7 @@ export const STATE_MEANINGS: Record<LeadState, string> = {
   intro_call: "An intro call is the next thing",
   waiting_agreement: "Waiting on the agreement",
   requirement: "Agreement done — the requirement meeting is next",
+  handed_over: "The opening is made; the agreement and the requirement run side by side",
   declined_industry: "Declined: banking or finance",
   closed_silent: "Closed: they stopped answering",
   closed_other: "Closed for another reason",
@@ -236,6 +238,27 @@ export function problemWithClosing(state: LeadState, reason: string): string | n
   if (!closing.includes(state)) return null;
   if (reason.trim().length < 4) return "Write why this lead is closing. Nothing closes without a reason.";
   return null;
+}
+
+export type LeadSection = "new" | "agreement" | "opening" | "closed";
+
+const AGREEMENT_OUT = ["draft", "sent", "chasing", "negotiating", "signed", "countersigned"];
+
+/**
+ * Which part of the Leads screen a lead belongs to (17 Nov).
+ *
+ * The count and each list used to be worked out separately, so a lead in a
+ * state one list did not name (`handed_over`, or one whose agreement was
+ * already countersigned) was counted and shown nowhere. One rule now decides,
+ * every state lands somewhere, and an unknown one is treated as new rather
+ * than dropped.
+ */
+export function leadSection(state: string, esaState: string | null): LeadSection {
+  if (state.startsWith("closed") || state === "declined_industry") return "closed";
+  if (state === "handed_over") return "opening";
+  if (state === "waiting_agreement" || state === "requirement") return "agreement";
+  if (esaState && AGREEMENT_OUT.includes(esaState)) return "agreement";
+  return "new";
 }
 
 /** A lead that is declined for the industry is never invited back. */

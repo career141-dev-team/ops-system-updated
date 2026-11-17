@@ -291,8 +291,8 @@ unopenable file), and refuses to send when a hole has no value.
 | **LibreOffice installed** | it is what turns the filled Word file into the PDF the client receives. Without it the screens say so plainly rather than failing |
 
 The three decisions in `.local/ESA-TEMPLATE-NOTES.md` are settled — the refund
-is 50% and late payment is 1% a month compounded, both taken from the document
-on 3 November — but **clause 1.1 still says "working calendar days"**, which is
+was 50% and late payment 1% a month compounded, both taken from the document
+on 3 November (changed 17 Nov to 25% and 5%, from the current ESA) — but **clause 1.1 still says "working calendar days"**, which is
 two different things, and every date in the agreement hangs off it.
 
 ---

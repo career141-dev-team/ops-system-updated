@@ -2,7 +2,7 @@
  * The guarantee, and closing a position (15, Phase 7).
  *
  * The owner's rules, each of which costs real money if it is wrong: ninety
- * days from joining, void on an unpaid fee, replacement before refund, 50%
+ * days from joining, void on an unpaid fee, replacement before refund, 25%
  * and only by decision, and nothing closed with an advert still up.
  */
 import assert from "node:assert/strict";
@@ -75,10 +75,10 @@ test("sixty working days to replace, counted as the agreement counts them", () =
   assert.equal((withHoliday - deadline) / DAY, 1);
 });
 
-test("a refund is 50%, only by decision, and replacement comes first", () => {
-  assert.equal(REFUND_PCT, 50);
-  assert.equal(refundAmount(450_000), 225_000);
-  assert.equal(refundAmount(450_000, 25), 112_500, "the number is a setting");
+test("a refund is 25%, only by decision, and replacement comes first", () => {
+  assert.equal(REFUND_PCT, 25);
+  assert.equal(refundAmount(450_000), 112_500);
+  assert.equal(refundAmount(450_000, 50), 225_000, "the number is a setting");
 
   const deadline = MONDAY + 84 * DAY;
   // Before the deadline the answer is "keep looking", said as a number.

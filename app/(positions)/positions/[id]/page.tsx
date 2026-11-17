@@ -11,6 +11,7 @@ import {
   recordLinkedInPost,
   requestAd,
   savePositionRequirement,
+  setOpeningPeople,
   setPositionTeam,
 } from "@/app/actions";
 import Icon from "@/app/Icon";
@@ -48,14 +49,16 @@ import {
 import { weekOf } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
 import { loopSummary } from "@/lib/journey";
+import { tailJourney } from "@/lib/leadJourney";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
-import { candidatesForPosition } from "@/lib/positionCandidates";
+import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel, candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
 import { REQUIREMENT_FIELDS, briefText, handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
+import { TA_STRATEGIES, resolveStrategyOwner, taOwnerId } from "@/lib/strategies";
 import { byDay, subjectsOfPosition, timeline } from "@/lib/timeline";
 
 type OpeningSubView =
@@ -156,7 +159,7 @@ export default async function PositionPage({
     now,
   );
 
-  const allCandidates = candidatesForPosition(db, position, itsSets);
+  const allCandidates = candidatesForPosition(db, position, itsSets, await taApplicationsFor(position.openingTaId));
 
   // The bar is worked out from what exists (17 Nov), as on the lead page. Search,
   // sets and interviews loop until the role is filled, so they are one step with
@@ -169,7 +172,12 @@ export default async function PositionPage({
     sets: itsSets,
     interviews: itsInterviews,
   });
-  const guaranteeLive = guarantee?.state === "running" || guarantee?.state === "warned";
+  const tail = tailJourney({
+    openingConfirmed: !!position.openingTaId,
+    placed: !!placement,
+    joined: !!placement?.joinedAt,
+    guarantee: guarantee?.state ?? null,
+  });
   const journeySteps: JourneyStep[] = [
     { label: "Enquiry", state: "done", href: leadId ? `/leads/${leadId}` : undefined },
     {
@@ -184,16 +192,19 @@ export default async function PositionPage({
     },
     {
       label: "Search & interviews",
-      state: placement ? "done" : position.openingTaId ? "current" : "upcoming",
+      state: tail[0],
       note: position.openingTaId ? loop.line : undefined,
+      href: `/positions/${position.id}?view=candidates`,
     },
     {
       label: "Joining",
-      state: placement?.joinedAt ? "done" : placement ? "current" : "upcoming",
+      state: tail[1],
+      href: placement ? `/placements/${placement.id}` : undefined,
     },
     {
       label: "Guarantee",
-      state: guarantee ? (guaranteeLive ? "current" : "done") : "upcoming",
+      state: tail[2],
+      href: guarantee ? `/guarantees/${guarantee.id}` : undefined,
     },
   ];
 
@@ -521,11 +532,60 @@ export default async function PositionPage({
             </FoldRow>
 
             <FoldRow
-              title="The TA side & 100% day"
-              summary={`Primary TA: ${primaryTaPerson?.fullName ?? (position.primaryTaId || "not set")} · 100% day: ${position.hundredPercentDay || "not set"}`}
-              defaultOpen={step.at === "team"}
+              title="People on this opening & the 100% day"
+              summary={`Primary TA: ${primaryTaPerson?.fullName ?? (position.primaryTaId || "not set")}${(position.team ?? []).length ? ` + ${(position.team ?? []).length} more` : ""} · 100% day: ${position.hundredPercentDay || "not set"}`}
+              defaultOpen
             >
               <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <span className={figmaLabel}>PEOPLE ON THIS OPENING</span>
+                  <ul className="flex flex-col divide-y divide-rule text-[14px]">
+                    <li className="flex items-center gap-2 py-1.5">
+                      <Avatar name={primaryTaPerson?.fullName ?? taName} size="28" tone="info" />
+                      <span className="text-ink">{primaryTaPerson?.fullName ?? (position.primaryTaId || "Not set")}</span>
+                      <span className="text-ink-soft">· Primary TA</span>
+                    </li>
+                    {(position.team ?? []).map((t) => {
+                      const person = taPeopleList.find((p) => p.id === t.taId);
+                      return (
+                        <li key={t.taId} className="flex items-center gap-2 py-1.5">
+                          <Avatar name={person?.fullName ?? t.taId} size="28" tone="neutral" />
+                          <span className="text-ink">{person?.fullName ?? t.taId}</span>
+                          {mayManage && (
+                            <form action={setOpeningPeople} className="ml-auto">
+                              <input type="hidden" name="positionId" value={position.id} />
+                              <input type="hidden" name="op" value="remove" />
+                              <input type="hidden" name="taId" value={t.taId} />
+                              <button type="submit" className="text-[13px] text-ink-faint hover:text-danger">
+                                Remove
+                              </button>
+                            </form>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {mayManage && (
+                    <form action={setOpeningPeople} className="flex flex-col gap-2 pt-2">
+                      <input type="hidden" name="positionId" value={position.id} />
+                      <input type="hidden" name="op" value="add" />
+                      <span className="text-[12.5px] text-ink-soft">Add people (pick as many as you like, and add more later):</span>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {taPeopleList
+                          .filter((p) => p.id !== position.primaryTaId && !(position.team ?? []).some((t) => t.taId === p.id))
+                          .map((p) => (
+                            <label key={p.id} className="flex items-center gap-1.5 text-[14px] text-ink">
+                              <input type="checkbox" name="taId" value={p.id} />
+                              {p.fullName}
+                            </label>
+                          ))}
+                      </div>
+                      <button type="submit" className={pillSecondary + " self-start"}>
+                        Add them to the opening
+                      </button>
+                    </form>
+                  )}
+                </div>
                 <p className="text-[14px] text-ink-soft">
                   {position.openingTaId
                     ? `Opening ${position.openingTaId}${position.taStatus ? ` · TA says: ${position.taStatus}` : ""}`
@@ -761,46 +821,96 @@ export default async function PositionPage({
       {/* ── SUB-VIEW 3: ADVERTISING (Frame 1:2244) ────────────────────── */}
       {subView === "advertising" && (
         <div className="flex flex-col gap-6">
-          {/* Strategies assigned (17 Nov): what each ops person will try for this role */}
+          {/* Strategies assigned (17 Nov): TA strategies assigned to an Ops or TA person on this job */}
           <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
             <h2 className="text-[18px] font-medium leading-[26px] text-ink">Strategies assigned</h2>
             {(position.strategies ?? []).length === 0 ? (
-              <p className="text-[14px] text-ink-soft">None yet. Give an ops person a strategy for this role below.</p>
+              <p className="text-[14px] text-ink-soft">None yet. Choose a strategy and assign it to an Ops or TA person below.</p>
             ) : (
               <ul className="flex flex-col divide-y divide-rule">
-                {(position.strategies ?? []).map((st) => (
-                  <li key={st.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
-                    <span className="text-ink">
-                      {st.text} <span className="text-ink-soft">· {memberIn(db, st.ownerId)?.name ?? "somebody"}</span>
-                    </span>
-                    {mayManage && (
-                      <form action={removeStrategy}>
-                        <input type="hidden" name="positionId" value={position.id} />
-                        <input type="hidden" name="strategyId" value={st.id} />
-                        <button type="submit" className="text-[13px] text-ink-faint hover:text-danger">
-                          Remove
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
+                {(position.strategies ?? []).map((st) => {
+                  const owner = resolveStrategyOwner(st.ownerId, db.members, taPeopleList);
+                  return (
+                    <li key={st.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[14px]">
+                      <span className="text-ink">
+                        {st.text}{" "}
+                        <span className="text-ink-soft">
+                          · {owner ? `${owner.name} (${owner.team})` : "somebody"}
+                        </span>
+                      </span>
+                      {mayManage && (
+                        <form action={removeStrategy}>
+                          <input type="hidden" name="positionId" value={position.id} />
+                          <input type="hidden" name="strategyId" value={st.id} />
+                          <button type="submit" className="text-[13px] text-ink-faint hover:text-danger">
+                            Remove
+                          </button>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {mayManage && (
-              <form action={addStrategy} className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-[1fr_200px_auto]">
-                <input type="hidden" name="positionId" value={position.id} />
-                <input name="text" required placeholder="What will they try?" className={figmaField} />
-                <select name="ownerId" defaultValue={me.id} className={figmaField}>
-                  {db.members.filter((m) => m.active).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <button type="submit" className={pillSecondary}>
-                  Add
-                </button>
-              </form>
+              <details className="border-t border-rule pt-3" open={(position.strategies ?? []).length === 0}>
+                <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                  Add strategies
+                </summary>
+                <form action={addStrategy} className="mt-3 flex flex-col gap-2">
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <div className="flex flex-col divide-y divide-rule rounded-[14px] border border-rule bg-surface px-3">
+                    {TA_STRATEGIES.map((s) => (
+                      <div
+                        key={s}
+                        className="grid grid-cols-1 items-center gap-2 py-2 sm:grid-cols-[220px_190px_1fr]"
+                      >
+                        <label className="flex items-center gap-2 text-[13.5px] text-ink">
+                          <input type="checkbox" name="pick" value={s} />
+                          <span>{s}</span>
+                        </label>
+                        <select
+                          name={"owner." + s}
+                          defaultValue={primaryTaPerson ? taOwnerId(primaryTaPerson.id) : me.id}
+                          className={figmaField}
+                        >
+                          {primaryTaPerson && (
+                            <optgroup label="TA on this job">
+                              <option value={taOwnerId(primaryTaPerson.id)}>
+                                {primaryTaPerson.fullName} (TA)
+                              </option>
+                            </optgroup>
+                          )}
+                          <optgroup label="Ops team">
+                            {db.members
+                              .filter((m) => m.active)
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name} (Ops)
+                                </option>
+                              ))}
+                          </optgroup>
+                          {taPeopleList.filter((p) => p.id !== primaryTaPerson?.id).length > 0 && (
+                            <optgroup label="TA team">
+                              {taPeopleList
+                                .filter((p) => p.id !== primaryTaPerson?.id)
+                                .map((p) => (
+                                  <option key={p.id} value={taOwnerId(p.id)}>
+                                    {p.fullName} (TA)
+                                  </option>
+                                ))}
+                            </optgroup>
+                          )}
+                        </select>
+                        <input name={"note." + s} placeholder="Note (optional)" className={figmaField} />
+                      </div>
+                    ))}
+                  </div>
+                  <button type="submit" className={pillSecondary + " self-start"}>
+                    Add selected
+                  </button>
+                </form>
+              </details>
             )}
           </div>
 
@@ -983,24 +1093,18 @@ export default async function PositionPage({
       {subView === "candidates" && (
         <div className="flex flex-col gap-5">
           {(() => {
-            const newCount = allCandidates.filter((c) => c.stageKey === "new").length;
-            const contactingCount = allCandidates.filter((c) => c.stageKey === "contacting").length;
-            const screenedCount = allCandidates.filter((c) => c.stageKey === "screened").length;
-            const droppedCount = allCandidates.filter((c) => c.stageKey === "dropped").length;
-            const shownCandidates = allCandidates.filter((c) =>
-              stage === "all" ? true : c.stageKey === stage,
-            );
+            // By level (owner, 17 Nov evening): internal shortlist, external shortlist, interviews, joining, guarantee.
+            const levelCount = (level: CandidateLevel) => allCandidates.filter((c) => c.level === level).length;
+            const shownCandidates = allCandidates.filter((c) => (stage === "all" ? true : c.level === stage));
+            const levelHref = (key: string) => `/positions/${position.id}?view=candidates&stage=${key}`;
 
             return (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <ViewPills
                     items={[
-                      { key: "all", label: "All", count: allCandidates.length, href: `/positions/${position.id}?view=candidates&stage=all` },
-                      { key: "new", label: "New", count: newCount, href: `/positions/${position.id}?view=candidates&stage=new` },
-                      { key: "contacting", label: "Contacting", count: contactingCount, href: `/positions/${position.id}?view=candidates&stage=contacting` },
-                      { key: "screened", label: "Screened", count: screenedCount, href: `/positions/${position.id}?view=candidates&stage=screened` },
-                      { key: "dropped", label: "Dropped out", count: droppedCount, href: `/positions/${position.id}?view=candidates&stage=dropped` },
+                      { key: "all", label: "All", count: allCandidates.length, href: levelHref("all") },
+                      ...CANDIDATE_LEVELS.map((level) => ({ key: level, label: LEVEL_LABELS[level], count: levelCount(level), href: levelHref(level) })),
                     ]}
                     active={stage}
                   />
@@ -1076,7 +1180,7 @@ export default async function PositionPage({
                         </span>
                       </div>
                       <span className="shrink-0 rounded-full bg-sunk px-2.5 py-1 text-[14px] font-medium leading-[22px] text-ink">
-                        {cand.manual ? "by hand" : cand.fit + " fit"}
+                        {LEVEL_LABELS[cand.level]}{cand.manual ? " · by hand" : ""}
                       </span>
                       <span
                         className={`w-[160px] shrink-0 text-right text-[14px] leading-[22px] ${

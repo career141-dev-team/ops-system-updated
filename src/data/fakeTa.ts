@@ -146,7 +146,12 @@ export type FakeAnswer<T> = { ok: true; data: T } | { ok: false; reason: string 
 export function fakeFile(path: string): FakeAnswer<{ bytes: Uint8Array; mime: string }> {
   const match = /\/applications\/([^/]+)\/prepared-cv$/.exec(path);
   if (!match) return { ok: false, reason: "The stand-in TA System has no file for " + path + "." };
-  const who = CLIENT_SETS[0].applications.find((a) => a.id === match[1]);
+  // Candidates the stand-in panel invents (ta_dev_...) get a CV too, named after
+  // the id; an id ending in "_nocv" is the one without a prepared CV.
+  const invented = /^ta_dev_/.test(match[1]);
+  const who = invented
+    ? { id: match[1], name: "SAMPLE CANDIDATE " + match[1].replace(/^ta_dev_/, "").toUpperCase(), preparedCv: !match[1].endsWith("_nocv") }
+    : CLIENT_SETS[0].applications.find((a) => a.id === match[1]);
   if (!who) return { ok: false, reason: "The stand-in has no application " + match[1] + "." };
   if (!who.preparedCv) return { ok: false, reason: "No prepared CV for " + who.name + " yet." };
   const text = "SAMPLE CV - " + who.name + " - invented, for testing only";

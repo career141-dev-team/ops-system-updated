@@ -111,18 +111,58 @@ export const STAGE_MEANINGS: Record<PositionStage, string> = {
 };
 
 /**
+ * A requirement whose required fields are all written is finished and locked (owner, 17 Nov
+ * evening): it is shown, and the forms for it are gone, on the page and in the action.
+ * Changes after that go through the client and a new requirement meeting, not an edit.
+ */
+export function requirementLocked(fields: RequirementFields): boolean {
+  return missingFields(fields).length === 0;
+}
+
+/**
  * Why the opening cannot be created in TA yet.
  *
- * Changed 17 Nov (supervisor review): the opening is opened right after the
- * intro call, with the agreement going out at the same time, so a signature no
- * longer gates it. TA cannot do without the position's name and how many
- * people; the rest of the requirement is written in later, in the requirement
- * meeting, and goes to the opening as it is saved.
+ * TA cannot do without the position's name and how many people, so those two are
+ * always needed. (Whether the agreement and the requirement are done first is
+ * `problemWithOpening`, below.)
  */
 export function problemWithHandover(fields: RequirementFields): string | null {
   const blank = (key: string) => !(fields[key] ?? "").trim();
   if (blank("title")) return "Write the position's title first: TA cannot open a role with no name.";
   if (blank("headcount")) return "Say how many people they want. TA cannot open a role without a number.";
+  return null;
+}
+
+/**
+ * Whether the opening may be created now (owner, 17 Nov evening).
+ *
+ * The 17 Nov morning rule opened roles right after the intro call, and the TA System filled with
+ * openings for companies that never agreed to the ESA. So the opening waits for the client's
+ * signed copy and a complete requirement; the Director's countersignature need not be there.
+ * A client we trust is the exception: on that one lead a person chose "open it now" with a
+ * reason, and only the role's name and number are then needed.
+ */
+export function problemWithOpening(input: {
+  esaState: string | null;
+  requirementBlanks: string[];
+  openEarly: boolean;
+  fields: RequirementFields;
+}): string | null {
+  if (!input.openEarly) {
+    const signed = input.esaState === "signed" || input.esaState === "countersigned";
+    const missing: string[] = [];
+    if (!signed) missing.push("the client has not signed the agreement yet");
+    if (input.requirementBlanks.length) missing.push("the requirement still has blanks: " + input.requirementBlanks.join(", "));
+    if (missing.length) {
+      return "Not yet: " + missing.join("; and ") + ". If this is a client you trust, choose \"Open it now, without waiting\" and say why.";
+    }
+  }
+  return problemWithHandover(input.fields);
+}
+
+/** Why "open it now, without waiting" needs words: it is the one way past the agreement. */
+export function problemWithEarlyOpening(reason: string): string | null {
+  if (reason.trim().length < 10) return "Say why this client can be opened for without waiting (a trusted client, who agreed it). It is kept with the lead.";
   return null;
 }
 

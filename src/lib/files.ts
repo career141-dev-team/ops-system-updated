@@ -144,6 +144,16 @@ export function previewable(mime: string): boolean {
   return mime === "application/pdf" || /^image\/(png|jpeg|webp)$/.test(mime);
 }
 
+/**
+ * Where "Open" goes for a file (17 Nov): a PDF or picture shows in the browser as it is,
+ * a Word file is read as a page, anything else downloads. Always opened in a new tab.
+ */
+export function viewHref(file: { id: string; name: string; mime: string }): string {
+  if (previewable(file.mime)) return "/api/files/" + file.id + "?inline=1";
+  if (extensionOf(file.name) === ".docx") return "/api/files/" + file.id + "/view";
+  return "/api/files/" + file.id;
+}
+
 /** What a browser should call it. Guessed from the name; we never trust the sender's. */
 export function mimeFor(name: string): string {
   switch (extensionOf(name)) {
