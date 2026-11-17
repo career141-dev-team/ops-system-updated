@@ -160,7 +160,7 @@ export default async function GuaranteesPage({
       <ViewPills items={views} active={view} />
 
       {msg && (
-        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+        <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
           {msg}
         </p>
       )}

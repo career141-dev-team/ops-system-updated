@@ -43,6 +43,7 @@ import {
   missingPlacementFields,
   money,
   placementInWords,
+  moneyWhole,
 } from "@/lib/money";
 import { placementNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
@@ -166,9 +167,9 @@ export default async function PlacementPage({
     : null;
   const maySplit = can(me, "money.manage") || mayManage;
   const estimatedFeeText = invoice
-    ? money(invoice.amount, invoice.currency)
+    ? moneyWhole(invoice.amount, invoice.currency)
     : estimatedFeeAmount
-      ? money(estimatedFeeAmount, placement.currency)
+      ? moneyWhole(estimatedFeeAmount, placement.currency)
       : feeInWords(placement);
 
   const guaranteeEndAt =
@@ -187,7 +188,6 @@ export default async function PlacementPage({
       <BackBar
         href="/placements"
         label={isNoShow ? placement.candidateName : "Placements"}
-        ownerName={owner?.name ?? "Unassigned"}
       />
 
       {/* Header (1:2795 / 1:1306 / 1:3426 / 1:2885) */}
@@ -234,7 +234,7 @@ export default async function PlacementPage({
       ) : null}
 
       {msg && (
-        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+        <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
           {msg}
         </p>
       )}
@@ -245,8 +245,6 @@ export default async function PlacementPage({
       {isNoShow && (activeView === "overview" || activeView === "joining") && (
         <NextStepCard
           eyebrow="UP NEXT · THE CLIENT DECIDES"
-          clock={step.clock ?? undefined}
-          clockTone="warn"
           title={
             placement.noShowChoice
               ? NO_SHOW_CHOICES[placement.noShowChoice] ?? placement.noShowChoice
@@ -259,7 +257,7 @@ export default async function PlacementPage({
             <div
               className={
                 placement.noShowChoice !== "close"
-                  ? "flex flex-col gap-0.5 rounded-[24px] border-2 border-brand bg-bg-brand px-[18px] py-4"
+                  ? "flex flex-col gap-0.5 rounded-[24px] border-2 border-brand bg-brand-tint px-[18px] py-4"
                   : "flex flex-col gap-0.5 rounded-[24px] bg-sunk px-[18px] py-4"
               }
             >
@@ -273,7 +271,7 @@ export default async function PlacementPage({
             <div
               className={
                 placement.noShowChoice === "close"
-                  ? "flex flex-col gap-0.5 rounded-[24px] border-2 border-brand bg-bg-brand px-[18px] py-4"
+                  ? "flex flex-col gap-0.5 rounded-[24px] border-2 border-brand bg-brand-tint px-[18px] py-4"
                   : "flex flex-col gap-0.5 rounded-[24px] bg-sunk px-[18px] py-4"
               }
             >
@@ -320,8 +318,6 @@ export default async function PlacementPage({
         <>
           <NextStepCard
             eyebrow={`WHOSE MOVE · ${firstName.toUpperCase()}’S`}
-            clock={step.clock ?? "Day 2"}
-            clockTone="neutral"
             title={`${firstName} is deciding on the offer`}
             body={
               missing.length > 0
@@ -376,7 +372,7 @@ export default async function PlacementPage({
           <>
             <NextStepCard
               eyebrow="TODAY · JOINING DAY"
-              clock={step.clock ?? "9:00 call"}
+              clock="9:00 call"
               clockTone="warn"
               title={`Did ${firstName} start today?`}
               body="The TA calls them at 9:00 and taps the answer here. Their answer starts two things at once."
@@ -486,6 +482,7 @@ export default async function PlacementPage({
           {/* 3 Big Stat Tiles (Frame 1:2895) */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatTile
+              outline
               value={estimatedFeeText}
               caption={`fee · ${feeInWords(placement)}`}
               size="lg"
@@ -500,6 +497,8 @@ export default async function PlacementPage({
                       ? invoice.state.replace(/_/g, " ")
                       : "Pending"
               }
+              outline
+              highlight={invoice?.state === "paid" ? "ok" : undefined}
               tone={invoice?.state === "paid" ? "ok" : "default"}
               caption={
                 invoice?.paidAt
@@ -513,10 +512,11 @@ export default async function PlacementPage({
             <StatTile
               value={
                 guarantee?.refundAmount
-                  ? money(guarantee.refundAmount, invoice?.currency ?? "LKR")
+                  ? moneyWhole(guarantee.refundAmount, invoice?.currency ?? "LKR")
                   : "None"
               }
               caption="refund"
+              outline
               size="lg"
             />
           </div>
@@ -532,7 +532,7 @@ export default async function PlacementPage({
               href={invoice ? `/invoices/${invoice.id}` : "/invoices"}
               className="flex items-center gap-3.5 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-sunk"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
                 <Icon name="wallet" size={17} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
@@ -564,7 +564,7 @@ export default async function PlacementPage({
               href={guarantee ? `/guarantees/${guarantee.id}` : `${basePath}?view=guarantee`}
               className="flex items-center gap-3.5 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-sunk"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
                 <Icon name="shield" size={17} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
@@ -588,7 +588,7 @@ export default async function PlacementPage({
               href={checklist ? `/closes/${checklist.id}` : "/closes"}
               className="mt-2 flex items-center gap-3.5 rounded-[16px] px-2 py-2.5 transition-colors hover:bg-sunk"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink">
                 <Icon name="flag" size={17} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
@@ -728,7 +728,7 @@ export default async function PlacementPage({
                   They never turned up — what happened?
                   <input name="reason" className={figmaField} />
                 </label>
-                <p className="text-[12.5px] text-ink-faint">
+                <p className="text-[14px] text-ink-faint">
                   Nothing is invoiced and nothing is refunded. The client chooses a replacement or stopping, and that
                   choice is drafted for them.
                 </p>
@@ -814,7 +814,7 @@ export default async function PlacementPage({
                 {placement.dojHistory.length === 1 ? "time" : "times"}:
               </p>
               {placement.dojHistory.map((move, i) => (
-                <p key={i} className="mt-1 text-[12.5px] text-ink-faint">
+                <p key={i} className="mt-1 text-[14px] text-ink-faint">
                   {move.from ? day(move.from) : "—"} → {day(move.to)} · {move.reason}
                 </p>
               ))}
@@ -834,7 +834,7 @@ export default async function PlacementPage({
           <div className="flex flex-col divide-y divide-rule">
             {theirAudit.map((entry) => (
               <div key={entry.id} className="py-2.5 first:pt-0 last:pb-0">
-                <p className="text-[13.5px] text-ink">
+                <p className="text-[14px] text-ink">
                   {entry.action}
                   {entry.after && <span className="text-ink-soft"> → {entry.after}</span>}
                 </p>
@@ -845,7 +845,7 @@ export default async function PlacementPage({
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[12.5px] text-ink-faint">
+          <p className="mt-3 text-[14px] text-ink-faint">
             {placementInWords(placement, now)}
           </p>
         </FoldRow>
