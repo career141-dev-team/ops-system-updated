@@ -20,7 +20,7 @@ export function aboutWhom(db: OpsDatabase, type: string | null, id: string | nul
 }
 
 /** What a conversation is filed to, in words and where it opens. */
-function filedTo(db: OpsDatabase, about: { type: string; id: string }): { said: string; href: string } {
+export function filedTo(db: OpsDatabase, about: { type: string; id: string }): { said: string; href: string } {
   const { type, id } = about;
   const named = (word: string, name: string | null | undefined) => (name ? word + " · " + name : word);
   if (type === "clientSet") return { said: named("CV set", db.clientSets.find((s) => s.id === id)?.name), href: "/sets/" + id };
@@ -85,8 +85,13 @@ export default function MessagesView({
     <div className="relative flex flex-col rounded-sheet bg-surface shadow-card max-md:overflow-hidden md:flex-row md:!overflow-hidden">
       {/* The conversations. */}
       <aside className="flex w-full shrink-0 flex-col gap-2.5 border-rule px-4 pb-6 pt-9 md:w-[520px] md:pt-[84px] md:overflow-y-auto md:border-r md:pl-8 md:pr-6">
-        <h1 className="text-[26px] leading-[34px] text-ink">Messages</h1>
-        {nav}
+        {/* Back to Today, and the three views, on one ruled row (Figma 391:7384); the tab above says "Messages". */}
+        <div className="flex items-center justify-between gap-3 border-b border-rule pb-5">
+          <Link href="/" aria-label="Back to Today" title="Back to Today" className="flex size-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-brand text-brand transition-colors hover:bg-brand-tint">
+            <Icon name="chevron-left" size={18} />
+          </Link>
+          {nav}
+        </div>
         <Link href="/interviews" className="flex items-center gap-1.5 self-start px-2 py-1 text-[14px] leading-[21px] text-ink-soft hover:text-ink">
           <Icon name="calendar" size={15} />
           Calendar
@@ -189,7 +194,7 @@ function ThreadPane({
 
   return (
     <section className="rise flex min-h-[560px] min-w-0 flex-1 flex-col gap-4 px-4 pb-7 pt-8 md:px-12 md:pt-[84px]">
-      <header className="flex flex-wrap items-center gap-3">
+      <header className="flex flex-wrap items-center gap-3 border-b border-rule pb-5">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h2 className="truncate text-[26px] leading-[34px] text-ink">{who}</h2>
           <p className="truncate text-[14px] leading-[21px] text-ink-faint">

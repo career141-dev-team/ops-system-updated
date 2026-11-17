@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { desk, fileIn, inboundRecent } from "@/data/desk";
 import NextStep from "@/app/NextStep";
+import { BackBar, PageBox } from "@/app/ui/figma";
 import Part from "@/app/Part";
 import { buildThreads, replySubject, replyTo, threadInWords } from "@/lib/mailbox";
 import { can } from "@/lib/roles";
@@ -51,6 +52,8 @@ export default async function ThreadPage({
   ].slice(0, 200);
 
   return (
+    <PageBox width="920" className="gap-4">
+      <BackBar href={"/mail?t=" + encodeURIComponent(thread.key)} label="Inbox" />
     <div className="flex max-w-[800px] flex-col gap-4">
       <div>
         <Link href="/mail" className="text-[12.5px] text-brand hover:underline">
@@ -200,6 +203,7 @@ export default async function ThreadPage({
         )}
       </Part>
     </div>
+    </PageBox>
   );
 }
 

@@ -9,6 +9,7 @@ import { approveAndSend, improveDraft, recordReply, saveDraft, useImprovedDraft 
 import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { IMPROVE_WORDS, type ImprovedDraft } from "@/lib/aiTasks";
+import { BackBar, PageBox, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
 
 /** One message, on its own page. Read it, change it, approve it. */
 export default async function MessagePage({
@@ -33,24 +34,27 @@ export default async function MessagePage({
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
 
-  const input = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
+  const input = figmaField;
+  const card = "rounded-[24px] bg-surface p-6 shadow-float";
+  const small = "rounded-full border border-rule-strong px-4 py-2 text-[14px] font-medium hover:bg-sunk";
 
   return (
-    <div className="max-w-[760px]">
-      <Link href="/" className="text-[12.5px] text-brand hover:underline">
-        Back to your day
-      </Link>
-      <h1 className="mt-2 text-[17px] font-medium">{message.subject || message.templateKey || "Message"}</h1>
-      <p className="mt-0.5 text-[13px] text-ink-soft">
-        {messageInWords(message)} · {message.state}
-      </p>
+    // Drawn like the other record pages (17 Nov): it was still in the first skeleton's style.
+    <PageBox width="880" className="gap-5">
+      <BackBar href="/" label="My Work" />
+      <div className="flex flex-col gap-1">
+        <p className="text-[14px] leading-[21px] text-ink-faint">
+          {messageInWords(message)} · {message.state}
+        </p>
+        <h1 className="text-[32px] font-light leading-[42px] text-ink">{message.subject || message.templateKey || "Message"}</h1>
+      </div>
 
       {msg && (
-        <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>
+        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
       )}
 
       {carries.length > 0 && (
-        <p className="mt-3 text-[13px] text-ink-soft">
+        <p className="text-[14px] text-ink-soft">
           Attached:{" "}
           {carries.map((file, i) => (
             <span key={file.id}>
@@ -65,29 +69,27 @@ export default async function MessagePage({
       )}
 
       {message.state === "draft" ? (
-        <form action={saveDraft} className="mt-4 flex flex-col gap-3">
+        <form action={saveDraft} className={card + " flex flex-col gap-3"}>
           <input type="hidden" name="messageId" value={message.id} />
           {message.channel !== "group_post" && (
-            <label className="block">
-              <span className="mb-1 block text-[12px] text-ink-soft">Subject</span>
+            <label className={figmaLabel}>
+              Subject
               <input name="subject" defaultValue={message.subject} className={input} />
             </label>
           )}
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-ink-soft">Message</span>
+          <label className={figmaLabel}>
+            Message
             <textarea name="body" defaultValue={message.body} rows={10} className={input} />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-              Save changes
-            </button>
+            <button className={pillSecondary}>Save changes</button>
           </div>
         </form>
       ) : (
-        <div className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-          <p className="text-[13.5px] font-medium">{message.subject}</p>
-          <p className="mt-2 whitespace-pre-wrap text-[13.5px] text-ink-soft">{message.body}</p>
-          {message.note && <p className="mt-3 text-[12.5px] text-warning">{message.note}</p>}
+        <div className={card}>
+          <p className="text-[16px] font-medium leading-[26px] text-ink">{message.subject}</p>
+          <p className="mt-2 whitespace-pre-wrap text-[16px] leading-[26px] text-ink-soft">{message.body}</p>
+          {message.note && <p className="mt-3 text-[14px] text-warning">{message.note}</p>}
         </div>
       )}
 
@@ -101,9 +103,9 @@ export default async function MessagePage({
         to the old ones, and "use it" or "leave it" is the sample we learn from.
       */}
       {message.state === "draft" && !proposed && (
-        <div className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-          <p className="text-[13.5px] font-medium">Improve the wording</p>
-          <p className="mt-1 text-[13px] text-ink-soft">
+        <div className="rounded-[20px] bg-sunk px-5 py-4">
+          <p className="text-[16px] font-medium leading-[26px] text-ink">Improve the wording</p>
+          <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
             The model rewrites what is already here and shows it beside your draft. It cannot add a fact, and nothing
             is saved until you press use it.
           </p>
@@ -113,9 +115,7 @@ export default async function MessagePage({
                 <form key={how} action={improveDraft}>
                   <input type="hidden" name="messageId" value={message.id} />
                   <input type="hidden" name="how" value={how} />
-                  <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-                    {IMPROVE_WORDS[how]}
-                  </button>
+                  <button className={small}>{IMPROVE_WORDS[how]}</button>
                 </form>
               ))}
             </div>
@@ -126,7 +126,7 @@ export default async function MessagePage({
       )}
 
       {proposed && (
-        <div className="mt-4 rounded-2xl border border-brand bg-surface px-5 py-4">
+        <div className="rounded-[24px] border-[1.5px] border-brand bg-surface p-6">
           <p className="text-[13.5px] font-medium">The model&rsquo;s version</p>
           <p className="mt-1 text-[12.5px] text-ink-soft">{proposed.changed}</p>
           <p className="mt-3 text-[13.5px] font-medium">{proposed.subject}</p>
@@ -143,51 +143,45 @@ export default async function MessagePage({
               <input type="hidden" name="subject" value={proposed.subject} />
               <input type="hidden" name="body" value={proposed.body} />
               <input type="hidden" name="use" value="yes" />
-              <button className="rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-ink-inverse">
-                Use it
-              </button>
+              <button className={pillPrimary}>Use it</button>
             </form>
             <form action={useImprovedDraft}>
               <input type="hidden" name="messageId" value={message.id} />
               <input type="hidden" name="runId" value={runId ?? ""} />
               <input type="hidden" name="use" value="no" />
-              <button className="rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-                Leave mine
-              </button>
+              <button className={pillSecondary}>Leave mine</button>
             </form>
           </div>
         </div>
       )}
 
       {message.subjectType && message.subjectId && (
-        <form action={recordReply} className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+        <form action={recordReply} className="rounded-[20px] bg-sunk px-5 py-4">
           <input type="hidden" name="subjectType" value={message.subjectType} />
           <input type="hidden" name="subjectId" value={message.subjectId} />
           <input type="hidden" name="back" value={"/messages/" + message.id} />
-          <p className="text-[13.5px] font-medium">Has the client answered?</p>
-          <p className="mt-1 text-[13px] text-ink-soft">
+          <p className="text-[16px] font-medium leading-[26px] text-ink">Has the client answered?</p>
+          <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
             Saying so stops every chase for this one at once. The reader will do this by itself
             once the Ops mailbox is connected.
           </p>
-          <button className="mt-3 rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
-            They answered, stop chasing
-          </button>
+          <button className={small + " mt-3 bg-surface"}>They answered, stop chasing</button>
         </form>
       )}
 
       {message.state === "draft" && (
-        <form action={approveAndSend} className="mt-4 border-t border-rule pt-4">
+        <form action={approveAndSend} className="flex flex-col gap-3 border-t border-rule pt-5">
           <input type="hidden" name="messageId" value={message.id} />
-          <p className="text-[13px] text-ink-soft">
+          <p className="text-[14px] leading-[21px] text-ink-soft">
             {message.channel === "group_post"
               ? "Nothing can send this. The group was made on somebody's phone, and Meta gives no way for a system to join a group it did not create. Approve it, copy it and post it from your phone - that it is yours to post is written here."
               : "Approving sends it. While the system is in test mode it goes to the test address instead, and the result is written here."}
           </p>
-          <button className="mt-3 rounded-full bg-brand px-4 py-1.5 text-[12.5px] font-medium text-ink-inverse">
+          <button className={pillPrimary + " self-start"}>
             {message.channel === "group_post" ? "Approve it, and post it myself" : "Approve and send"}
           </button>
         </form>
       )}
-    </div>
+    </PageBox>
   );
 }

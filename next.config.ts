@@ -7,7 +7,9 @@ const nextConfig: NextConfig = {
 
   // The laptop shared through a Cloudflare quick tunnel for a review (10 Nov);
   // without this the dev server refuses its own scripts to the tunnel's host.
-  allowedDevOrigins: ["*.trycloudflare.com"],
+  // 127.0.0.1 too (17 Nov): the run instructions open the app there, and the dev server only trusts "localhost" by
+  // name, so live reload was refused and every change needed a manual refresh. Development only.
+  allowedDevOrigins: ["*.trycloudflare.com", "127.0.0.1"],
 
   // The preview sits behind a password at the proxy and must never be indexed
   // (2 Nov). Belt and braces: every response says so too.
