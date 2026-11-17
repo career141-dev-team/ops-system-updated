@@ -75,7 +75,7 @@ test("the tab above the page names the entry the bar marks, or the page itself",
   assert.equal(workspaceTitle("/sets/abc"), "Openings", "a CV set is a face of a position");
   assert.equal(workspaceTitle("/guarantees/x"), "Placements");
   assert.equal(workspaceTitle("/invoices"), "Finance");
-  assert.equal(workspaceTitle("/account"), "Account");
+  assert.equal(workspaceTitle("/account"), "Profile");
   assert.equal(workspaceTitle("/notifications"), "Notifications");
   assert.equal(workspaceTitle("/chat"), "AURA");
   assert.equal(workspaceTitle("/sign-in"), null);
@@ -84,9 +84,9 @@ test("the tab above the page names the entry the bar marks, or the page itself",
 
 test("the tab is only drawn where a frame has one", () => {
   assert.equal(tabFor("/clients/abc"), "Clients");
-  assert.equal(tabFor("/leads/new"), null);
+  assert.equal(tabFor("/leads/new"), "Lead", "the form says Lead, though it is a Clients page");
   assert.equal(tabFor("/notifications"), null);
-  assert.equal(tabFor("/account"), null);
+  assert.equal(tabFor("/account"), "Profile");
   assert.equal(tabFor("/settings"), null);
   assert.equal(tabFor("/templates"), null, "a Settings face");
   assert.equal(tabFor("/find"), null);

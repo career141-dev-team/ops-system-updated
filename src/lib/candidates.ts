@@ -71,7 +71,7 @@ export function candidatesOnDesk(db: OpsDatabase): CandidateRow[] {
           c.decision === "shortlisted" ? "Shortlisted by the client"
           : rejected ? (c.claimVerdict === "dropped" ? "Dropped · client had the CV" : "Not taken by the client")
           : set.state === "sent" ? "With the client"
-          : "In " + set.name,
+          : "In CV set " + set.setNumber,
         tone: c.decision === "shortlisted" ? "ok" : rejected ? "quiet" : set.state === "sent" ? "violet" : "info",
         setName: set.name,
         fileId: c.fileId,

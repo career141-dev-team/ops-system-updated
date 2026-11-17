@@ -227,6 +227,19 @@ export function problemWithWriteOff(dueAt: number, reason: string, now = Date.no
 }
 
 /** Money, written the way an invoice writes it. */
+/** "LKR 412,500": a tile's amount, without the cents the frames never show (249:13655). */
+export function moneyWhole(amount: number, currency = "LKR"): string {
+  return currency + " " + (Number.isInteger(amount) ? amount.toLocaleString("en-US") : amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+}
+
+/** "LKR 2.1m", "LKR 640k": a total on the Finance screen, big enough to read at a glance (283:3343). */
+export function moneyCompact(amount: number, currency = "LKR"): string {
+  const trim = (n: number) => String(Math.round(n * 10) / 10);
+  if (amount >= 1_000_000) return currency + " " + trim(amount / 1_000_000) + "m";
+  if (amount >= 1_000) return currency + " " + Math.round(amount / 1_000) + "k";
+  return currency + " " + Math.round(amount);
+}
+
 export function money(amount: number, currency = "LKR"): string {
   return currency + " " + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

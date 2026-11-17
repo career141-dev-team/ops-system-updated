@@ -310,7 +310,7 @@ export default async function PlacementsPage({
       </div>
 
       {msg && (
-        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+        <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
           {msg}
         </p>
       )}
@@ -349,6 +349,7 @@ export default async function PlacementsPage({
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {displayedOffersJoining.map((item) => (
                 <RecordCard
+                  outline
                   key={item.placement.id}
                   href={`/placements/${item.placement.id}`}
                   overline={item.overline}
@@ -392,6 +393,7 @@ export default async function PlacementsPage({
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {inGuaranteeCards.map((card) => (
                 <RecordCard
+                  outline
                   key={card.id}
                   href={card.href}
                   overline={card.overline}
@@ -427,6 +429,7 @@ export default async function PlacementsPage({
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {replacementsList.map((card) => (
                 <RecordCard
+                  outline
                   key={card.id}
                   href={card.href}
                   overline={card.overline}

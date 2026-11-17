@@ -125,7 +125,6 @@ export default async function GuaranteePage({
             ? `${guarantee.candidateName} · placement`
             : "Guarantees"
         }
-        ownerName={owner?.name ?? "Unassigned"}
       />
 
       {/* Header (Frame 1:1362) */}
@@ -185,7 +184,7 @@ export default async function GuaranteePage({
       )}
 
       {msg && (
-        <p className="rounded-[20px] bg-bg-brand px-5 py-3 text-[14px] font-medium text-brand-ink">
+        <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
           {msg}
         </p>
       )}
@@ -268,7 +267,7 @@ export default async function GuaranteePage({
             </p>
           )}
           {placement && (
-            <p className="mt-3 text-[13.5px]">
+            <p className="mt-3 text-[14px]">
               <Link href={`/placements/${placement.id}`} className="text-brand hover:underline">
                 View original placement record →
               </Link>
@@ -300,7 +299,7 @@ export default async function GuaranteePage({
                   </label>
                   <button className={pillPrimary}>Record it</button>
                 </form>
-                <p className="mt-3 text-[12.5px] text-ink-faint">
+                <p className="mt-3 text-[14px] text-ink-faint">
                   What happens next turns on one thing: whether the fee was paid. Paid means the position reopens and a
                   replacement comes first, with sixty working days to finalise one.
                 </p>
@@ -352,13 +351,13 @@ export default async function GuaranteePage({
                       Decide a refund instead — the reason, which is read years later
                       <input name="reason" className={figmaField} />
                     </label>
-                    <p className="text-[12.5px] text-ink-faint">
+                    <p className="text-[14px] text-ink-faint">
                       The agreement says {REFUND_PCT}% of the fee paid, which would be{" "}
                       {money(refundAmount(paid), invoice?.currency ?? "LKR")}. Replacement first: this is yours to
                       decide, and the clock running out only puts the question.
                     </p>
                     {guarantee.deadlineAt && now < guarantee.deadlineAt && (
-                      <label className="flex items-center gap-2 text-[13.5px] text-ink-soft">
+                      <label className="flex items-center gap-2 text-[14px] text-ink-soft">
                         <input type="checkbox" name="early" value="yes" /> I am deciding before the sixty working days
                         are up
                       </label>
@@ -423,7 +422,7 @@ export default async function GuaranteePage({
           <div className="flex flex-col divide-y divide-rule">
             {theirAudit.map((entry) => (
               <div key={entry.id} className="py-2.5 first:pt-0 last:pb-0">
-                <p className="text-[13.5px] text-ink">
+                <p className="text-[14px] text-ink">
                   {entry.action}
                   {entry.after && <span className="text-ink-soft"> → {entry.after}</span>}
                 </p>
@@ -434,7 +433,7 @@ export default async function GuaranteePage({
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[12.5px] text-ink-faint">
+          <p className="mt-3 text-[14px] text-ink-faint">
             {GUARANTEE_MEANINGS[guarantee.state as GuaranteeState] ?? guarantee.state}
           </p>
         </FoldRow>

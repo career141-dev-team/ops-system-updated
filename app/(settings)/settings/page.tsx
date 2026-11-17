@@ -5,7 +5,8 @@ import { figmaField, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
-import { isInternal, settingRank, settingWords } from "@/lib/settingWords";
+import Link from "next/link";
+import { isFrameRule, isInternal, settingRank, settingWords } from "@/lib/settingWords";
 import Icon from "@/app/Icon";
 
 export const dynamic = "force-dynamic";
@@ -26,28 +27,12 @@ export default async function SettingsPage({
     (s) => s.key.startsWith("switch.") || typeof s.value === "boolean",
   );
   const numbers = settings.filter((s) => !switches.includes(s));
+  const frameRules = numbers.filter((s) => isFrameRule(s.key));
+  const otherRules = numbers.filter((s) => !isFrameRule(s.key));
+  const holidayYear = new Date().getFullYear();
+  const holidayDays = db.holidays.filter((h) => h.date.startsWith(String(holidayYear))).length;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-[26px] leading-[34px] text-ink">
-          Timers and working days
-        </h2>
-        <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
-          {mayChange
-            ? "Every clock in the system runs from these. Only the ops lead can change them, and every change asks why."
-            : "Every clock in the system runs from these. Only the ops lead can change them."}
-        </p>
-      </div>
-
-      {msg && (
-        <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
-          {msg}
-        </div>
-      )}
-
-      <section className="flex flex-col">
-        {numbers.map((setting) => {
+  const RULE = (setting: (typeof numbers)[number]) => {
           const words = settingWords(setting.key, setting.value);
           return (
             <div key={setting.key} className="border-b border-rule py-4 first:pt-2">
@@ -78,8 +63,50 @@ export default async function SettingsPage({
               </div>
             </div>
           );
-        })}
+        };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h2 className="text-[26px] leading-[34px] text-ink">
+          Timers and working days
+        </h2>
+        <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">
+          {mayChange
+            ? "Every clock in the system runs from these. Only the ops lead can change them, and every change asks why."
+            : "Every clock in the system runs from these. Only the ops lead can change them."}
+        </p>
+      </div>
+
+      {msg && (
+        <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
+          {msg}
+        </div>
+      )}
+
+      <section className="flex flex-col">
+        {frameRules.map(RULE)}
       </section>
+
+      {/* Public holidays have a line of their own in the frame; the page itself is /holidays. */}
+      <div className="flex items-center justify-between gap-4 pt-2 text-[14px] leading-[21px]">
+        <span className="flex items-center gap-2.5 text-ink-soft">
+          <Icon name="calendar" size={16} className="text-ink-faint" />
+          Public holidays {holidayYear} · {holidayDays} days loaded
+        </span>
+        <Link href="/holidays" className="text-ink underline">
+          Edit
+        </Link>
+      </div>
+
+      {otherRules.length > 0 && (
+        <div className="pt-2">
+          <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">OTHER RULES</div>
+          <section className="flex flex-col">
+            {otherRules.map(RULE)}
+          </section>
+        </div>
+      )}
 
       <div className="pt-2">
         <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">

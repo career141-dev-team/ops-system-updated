@@ -132,7 +132,7 @@ export function candidatesForPosition(
             : "Rejected by client"
           : set.state === "sent"
             ? "With the client"
-            : "In " + set.name;
+            : "In CV set " + set.setNumber;
       const statusTone: PositionCandidateView["statusTone"] = isShortlisted
         ? "ok"
         : isRejected

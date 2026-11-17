@@ -62,7 +62,7 @@ export default async function UnreportedHirePage({
       : null;
   const canClient = can(me, "client.manage");
   const canMoney = can(me, "money.manage");
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-5";
+  const cardShell = "rounded-[24px] border border-rule bg-surface p-5";
 
   return (
     <PageBox width="1080">
@@ -70,16 +70,16 @@ export default async function UnreportedHirePage({
         <BackBar href="/invoices?view=surcharges" label="Finance" />
 
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
             Unreported hire · surcharge invoice
           </p>
-          <h1 className="mt-1 font-serif text-[30px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+          <h1 className="mt-1 text-[40px] font-light leading-[50px] text-ink">
             {client?.name ?? "Client"}
           </h1>
         </div>
 
         {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
+          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
             {sp.msg}
           </div>
         )}
@@ -111,7 +111,7 @@ export default async function UnreportedHirePage({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className={cardShell}>
-                <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
                   EVIDENCE
                 </div>
                 <p className="mt-2 text-[14px] font-medium text-ink">{inv.about}</p>
@@ -122,10 +122,10 @@ export default async function UnreportedHirePage({
                 </p>
               </div>
               <div className={cardShell}>
-                <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
                   AMOUNT
                 </div>
-                <p className="mt-2 font-serif text-[26px] font-medium text-ink">
+                <p className="mt-2 text-[26px] font-light text-ink">
                   {money(inv.amount, inv.currency)}
                 </p>
                 <p className="mt-1 text-[13px] text-ink-soft">
@@ -151,7 +151,7 @@ export default async function UnreportedHirePage({
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className={cardShell}>
-                  <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
                     EVIDENCE
                   </div>
                   <p className="mt-2 text-[14px] font-medium text-ink">
@@ -162,10 +162,10 @@ export default async function UnreportedHirePage({
                   </p>
                 </div>
                 <div className={cardShell}>
-                  <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
                     SURCHARGE BASIS
                   </div>
-                  <p className="mt-2 font-serif text-[22px] font-medium text-ink">
+                  <p className="mt-2 text-[22px] font-light text-ink">
                     150% of placement fee
                   </p>
                   <p className="mt-1 text-[13px] text-ink-soft">
@@ -177,7 +177,7 @@ export default async function UnreportedHirePage({
               {canClient && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className={cardShell}>
-                    <h2 className="font-serif text-[18px] font-medium text-ink">
+                    <h2 className="text-[18px] font-light text-ink">
                       Draft surcharge invoice
                     </h2>
                     <form action={confirmUnreportedHire} className="mt-4 flex flex-col gap-3">
@@ -217,7 +217,7 @@ export default async function UnreportedHirePage({
                   </div>
 
                   <div className={cardShell}>
-                    <h2 className="font-serif text-[18px] font-medium text-ink">Dismiss check</h2>
+                    <h2 className="text-[18px] font-light text-ink">Dismiss check</h2>
                     <form action={dismissUnreportedHire} className="mt-4 flex flex-col gap-3">
                       <input type="hidden" name="setId" value={set.id} />
                       <div>

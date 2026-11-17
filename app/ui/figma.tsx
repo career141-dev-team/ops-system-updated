@@ -638,7 +638,10 @@ export function RecordCard({
   statusTone = "quiet",
   rightMeta,
   clockText,
+  outline = false,
 }: {
+  /** White with a hairline, as the Placements directory draws it (Figma 263:17210). */
+  outline?: boolean;
   href: string;
   chip?: { label: string; tone?: Tone };
   eyebrow?: string;
@@ -683,7 +686,7 @@ export function RecordCard({
       href={href}
       data-row
       data-open
-      className="flex min-h-[150px] flex-1 flex-col gap-2.5 rounded-[24px] bg-sunk px-6 py-[20px] transition-colors hover:bg-shell/80"
+      className={`flex min-h-[150px] flex-1 flex-col gap-2.5 rounded-[24px] px-6 py-[20px] transition-colors ${outline ? "border border-rule bg-surface hover:bg-sunk" : "bg-sunk hover:bg-shell/80"}`}
     >
       <div className="flex w-full items-center justify-between gap-2">
         {chip ? (
@@ -747,6 +750,8 @@ export function StatTile({
   tone = "default",
   size = "md",
   href,
+  outline = false,
+  highlight,
 }: {
   value: ReactNode;
   label?: ReactNode;
@@ -754,6 +759,10 @@ export function StatTile({
   tone?: "default" | "danger" | "brand" | "warn" | "ok";
   size?: "sm" | "md" | "lg";
   href?: string;
+  /** White with a hairline, as the money screens draw them (Figma 283:3343, 283:3198). */
+  outline?: boolean;
+  /** One tile the eye should land on: a green or red outline and tint. */
+  highlight?: "ok" | "danger";
 }) {
   const valCls =
     tone === "danger"
@@ -771,6 +780,14 @@ export function StatTile({
       : size === "sm"
         ? "text-[22px] font-normal leading-[30px] "
         : "text-[26px] font-normal leading-[34px] ";
+  const box =
+    highlight === "ok"
+      ? "border-[1.5px] border-success bg-brand-tint"
+      : highlight === "danger"
+        ? "border-[1.5px] border-danger bg-danger-soft"
+        : outline
+          ? "border border-rule bg-surface"
+          : "bg-sunk";
   const inner = (
     <>
       <p className={fontCls + valCls}>{value}</p>
@@ -781,14 +798,14 @@ export function StatTile({
     return (
       <Link
         href={href}
-        className="flex flex-1 flex-col gap-0.5 rounded-[24px] bg-sunk px-6 py-5 transition-colors hover:bg-shell/80"
+        className={`flex flex-1 flex-col gap-0.5 rounded-[24px] px-6 py-5 transition-colors hover:bg-shell/80 ${box}`}
       >
         {inner}
       </Link>
     );
   }
   return (
-    <div className="flex flex-1 flex-col gap-0.5 rounded-[24px] bg-sunk px-6 py-5">
+    <div className={`flex flex-1 flex-col gap-0.5 rounded-[24px] px-6 py-5 ${box}`}>
       {inner}
     </div>
   );
