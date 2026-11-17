@@ -105,20 +105,18 @@ export default async function ClosePage({
                 <span className="size-5 shrink-0 rounded-full border-2 border-rule-strong" />
               )}
 
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              {/* One line, the way the frame has it (249:14533): the thing, then who closes it. Who did it and when is on the tooltip. */}
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5" title={subtitle}>
                 <span className="text-[16px] leading-[26px] text-ink">{item.what}</span>
-                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                  {subtitle}
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sunk px-2.5 py-0.5 text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
+                  <span aria-hidden="true" className={"size-[6px] rounded-full " + (roleBadge === "TA" ? "bg-info" : roleBadge === "Ops" ? "bg-success" : "bg-ink-faint")} />
+                  {roleBadge}
                 </span>
               </div>
 
-              <span className="rounded-full bg-sunk px-2.5 py-0.5 text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
-                {roleBadge}
-              </span>
-
               {isDone ? (
                 <div className="flex items-center gap-2.5">
-                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ok">
+                  <span className="text-[14px] leading-[21px] text-ok">
                     Done
                   </span>
                   {!checklist.completedAt && mayManage && (
@@ -146,9 +144,7 @@ export default async function ClosePage({
                   </button>
                 </form>
               ) : (
-                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                  Waiting
-                </span>
+                <span className="text-[14px] leading-[21px] text-ink-faint">Waiting</span>
               )}
             </div>
           );
