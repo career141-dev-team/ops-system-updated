@@ -278,8 +278,10 @@ export default async function MyWorkPage({
             {others.length > 0 && (
               // The one part of Today that scrolls, and only when the rows outgrow the space left.
               // It takes the space left between Up next and AURA; AURA stays at the foot of the box.
-              <section className="mt-6 flex flex-col gap-1 md:min-h-0 md:overflow-y-auto">
-                <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 py-1">
+              // A box of its own (17 Nov, the owner): the sticky header used to be a dark strip over the glow with the rows
+              // loose beneath it. Now the header and the rows share one card, and the gap above it shows the glow.
+              <section className="mt-6 flex flex-col gap-1 rounded-[28px] bg-surface px-3 pb-3 shadow-float md:min-h-0 md:overflow-y-auto">
+                <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 pb-1 pt-3">
                   <p className={caption + " flex-1"}>{params.all ? "Everything today" : "Then"}</p>
                   {params.all ? (
                     <Link href={href("today")} className={caption + " hover:text-ink"}>Show fewer</Link>
