@@ -487,3 +487,13 @@ test("a fee invoice is not drafted for a client with no billing address (16 Nov)
   assert.equal(invoice?.amount, 80_000, "fee on basic, not gross");
   assert.equal(invoice?.dueAt, now + 30 * DAY, "due from the joined day, not the sent day");
 });
+
+import { moneyCompact, moneyWhole } from "@/lib/money";
+test("a tile's amount: whole rupees, and compact totals", () => {
+  assert.equal(moneyWhole(412_500), "LKR 412,500");
+  assert.equal(moneyWhole(412_500.5), "LKR 412,500.50");
+  assert.equal(moneyCompact(2_100_000), "LKR 2.1m");
+  assert.equal(moneyCompact(2_000_000), "LKR 2m");
+  assert.equal(moneyCompact(640_000), "LKR 640k");
+  assert.equal(moneyCompact(0), "LKR 0");
+});

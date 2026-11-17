@@ -64,6 +64,8 @@
   --color-warning: #8a5a12;
   --color-bg-warning: #fdf3e3;
   --color-bg-danger: #fdeceb; /* color/danger-soft */
+  --color-danger-soft: var(--color-bg-danger);
+  --color-brand-soft: var(--color-bg-brand);
   --color-bg-ok: #e6f2ec; /* color/brand-soft */
   --color-brand-tint: #f2f8f5; /* color/brand-tint: our side of a conversation */
 
