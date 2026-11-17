@@ -126,6 +126,9 @@ export function workspaceTitle(path: string): string | null {
   if (path === "/leads/new") return "Lead";
   // The Call page has its own tab name in the frame (396:11347), though it is part of the Inbox.
   if (path === "/calls") return "Call";
+  // A single task or message opens from My Work; its tab says what it is (17 Nov).
+  if (path.startsWith("/tasks/")) return "Task";
+  if (path.startsWith("/messages/")) return "Message";
   const own = pageAndSectionFor(path)?.page.what;
   // The frames call the Reports tab "Report" (249:10250).
   if (own) return own === "Reports" ? "Report" : own;
