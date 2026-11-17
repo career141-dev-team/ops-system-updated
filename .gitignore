@@ -16,3 +16,8 @@ next-env.d.ts
 
 graphify-out
 .vercel
+
+# Cloudflare: the built Worker, its local state and the local-only variables
+.open-next
+.wrangler
+.dev.vars
