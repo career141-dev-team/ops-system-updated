@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import AuraMark from "@/app/AuraMark";
 import Icon, { type IconName } from "@/app/Icon";
 import {
   clientsNewestFirst,
@@ -160,16 +161,17 @@ export default async function FindPage({
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <div className="flex flex-wrap items-baseline gap-3">
-            <h1 className="font-serif text-[32px] font-medium leading-[1.15] tracking-[-0.02em] text-ink">
+            <h1 className="text-[40px] font-light leading-[50px] text-ink">
               {asked ? `“${asked}”` : "Find anything"}
             </h1>
-            <span className="text-[14px] text-ink-faint">
+            <span className="text-[16px] leading-[26px] text-ink-faint">
               {asked
-                ? `${shown.length} result${shown.length === 1 ? "" : "s"}`
+                ? `${shown.length} result${shown.length === 1 ? "" : "s"} on the desk`
                 : `${rows.length} records on the desk`}
             </span>
           </div>
-          <form action="/find" className="flex items-center gap-2">
+          {/* The bar's own search brings you here, so the frame has no second box once there is a result (249:13500). */}
+          {!asked && <form action="/find" className="flex items-center gap-2">
             <input
               name="q"
               defaultValue={asked}
@@ -179,7 +181,7 @@ export default async function FindPage({
             <button type="submit" className={pillPrimary}>
               Search
             </button>
-          </form>
+          </form>}
         </div>
 
         {asked && shown.length > 0 && (
@@ -187,17 +189,15 @@ export default async function FindPage({
             href={topHit.href}
             className="flex items-center gap-3.5 rounded-[24px] bg-sunk px-5 py-4 transition hover:bg-sunk/80"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-[15px] font-semibold text-surface">
-              A
-            </span>
+            <AuraMark size={40} />
             <div className="min-w-0 flex-1">
-              <p className="text-[14.5px] text-ink">
+              <p className="text-[16px] leading-[26px] text-ink">
                 Top match: <strong className="font-medium">{topHit.title}</strong> ({topHit.says}).
                 {shown.length > 1
                   ? ` ${shown.length - 1} other matching record${shown.length - 1 === 1 ? "" : "s"} below.`
                   : ""}
               </p>
-              <p className="mt-0.5 text-[12px] font-medium text-ink-faint">
+              <p className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
                 AURA · from across the desk
               </p>
             </div>
@@ -206,7 +206,7 @@ export default async function FindPage({
         )}
 
         {!asked ? (
-          <div className="rounded-[24px] border border-edge bg-surface p-6">
+          <div className="rounded-[24px] border border-rule bg-surface p-6">
             <p className="text-[14px] text-ink-soft">
               Type a client name, role, candidate, invoice number, or owner above. The search looks
               across enquiries, clients, openings, CV sets, interviews, placements, and invoices at
@@ -214,7 +214,7 @@ export default async function FindPage({
             </p>
           </div>
         ) : shown.length === 0 ? (
-          <div className="rounded-[24px] border border-edge bg-surface p-6">
+          <div className="rounded-[24px] border border-rule bg-surface p-6">
             <p className="text-[14px] text-ink-soft">
               Nothing matched “{asked}” across {rows.length} records.
             </p>
@@ -226,32 +226,32 @@ export default async function FindPage({
               if (items.length === 0) return null;
               return (
                 <div key={group.key}>
-                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+                  <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
                     {group.heading}
                   </div>
-                  <div className="rounded-[24px] border border-edge bg-surface p-2">
-                    <div className="divide-y divide-edge/60">
+                  <div>
+                    <div className="flex flex-col gap-2">
                       {items.map((row) => (
                         <Link
                           key={row.id}
                           href={row.href}
-                          className="flex items-center justify-between gap-4 rounded-[16px] px-4 py-3.5 transition hover:bg-sunk/60"
+                          className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
                         >
                           <div className="flex min-w-0 items-center gap-3.5">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
                               <Icon name={group.icon} size={16} />
                             </span>
                             <div className="min-w-0">
-                              <div className="truncate text-[14px] font-medium text-ink">
+                              <div className="truncate text-[16px] leading-[26px] text-ink">
                                 {row.title}
                               </div>
-                              <div className="truncate text-[12px] text-ink-soft">
+                              <div className="truncate text-[14px] leading-[21px] text-ink-faint">
                                 {row.says} · {row.who}
                               </div>
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-3">
-                            <span className="text-[12.5px] text-ink-faint">{day(row.at)}</span>
+                            <span className="text-[14px] leading-[21px] text-ink-faint">{day(row.at)}</span>
                             <Icon name="chevron-right" size={16} className="text-ink-faint" />
                           </div>
                         </Link>

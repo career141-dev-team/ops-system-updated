@@ -129,6 +129,18 @@ export function workspaceTitle(path: string): string | null {
   return other ? OTHER_TITLES[other] : null;
 }
 
+/**
+ * Pages whose frames have no tab above the card (16 Nov, Figma 249:13500-14114): search results,
+ * the new-lead form, notifications, the profile and Settings. They still say where you are in the
+ * bar; the tab is only for the workspaces.
+ */
+const NO_TAB = ["/find", "/leads/new", "/notifications", "/account", ...(COVERS["/settings"] ?? [])];
+
+/** What the tab above the card says, or null where the frame draws none. */
+export function tabFor(path: string): string | null {
+  return NO_TAB.some((p) => path === p || path.startsWith(p + "/")) ? null : workspaceTitle(path);
+}
+
 /** Is this the entry we are under? The same rule, for marking it. */
 export function isHere(path: string, href: string): boolean {
   // Candidates sits under My Work in the frames (249:11300), though it has its own tab name.

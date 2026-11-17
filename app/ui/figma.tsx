@@ -667,12 +667,16 @@ export function RecordCard({
   const resolvedRightMeta = rightMeta ?? clockText;
   const dotColor =
     statusTone === "ok" || statusTone === "brand"
-      ? "bg-ok"
+      ? "bg-success"
       : statusTone === "warn"
         ? "bg-warn"
         : statusTone === "danger"
           ? "bg-danger"
-          : "bg-ink-faint";
+          : statusTone === "info"
+            ? "bg-info"
+            : statusTone === "violet"
+              ? "bg-violet"
+              : "bg-ink-faint";
 
   return (
     <Link
@@ -699,7 +703,7 @@ export function RecordCard({
       </div>
 
       <div className="flex flex-col gap-0.5">
-        <p className="truncate text-[18px] font-medium leading-[26px] text-ink">
+        <p className="truncate text-[16px] font-medium leading-[26px] text-ink">
           {title}
         </p>
         {subtitle && (
@@ -714,7 +718,7 @@ export function RecordCard({
       <div className="flex w-full items-center justify-between gap-2 pt-1">
         <span className="inline-flex items-center gap-2 truncate text-[14px] leading-[21px] text-ink-soft">
           {statusText && !footerLeft && (
-            <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dotColor}`} />
+            <span aria-hidden="true" className={`size-[7px] shrink-0 rounded-full ${dotColor}`} />
           )}
           <span className="truncate">{footerLeft ?? statusText ?? ""}</span>
         </span>
