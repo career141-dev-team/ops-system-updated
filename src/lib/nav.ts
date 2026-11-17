@@ -124,6 +124,8 @@ const OTHER_TITLES: Record<string, string> = { "/account": "Profile", "/notifica
 export function workspaceTitle(path: string): string | null {
   // The new-lead form is under Clients but its tab says "Lead" (16 Nov, the owner's screenshot).
   if (path === "/leads/new") return "Lead";
+  // The Call page has its own tab name in the frame (396:11347), though it is part of the Inbox.
+  if (path === "/calls") return "Call";
   const own = pageAndSectionFor(path)?.page.what;
   // The frames call the Reports tab "Report" (249:10250).
   if (own) return own === "Reports" ? "Report" : own;
