@@ -694,20 +694,14 @@ export default async function PositionPage({
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* Card 1: LinkedIn */}
             <div className="flex flex-col gap-2.5 rounded-[24px] bg-sunk px-6 py-[22px]">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-[18px] font-medium leading-[26px] text-ink">LinkedIn</h2>
-                <StatusChip
-                  label="Free · mandatory"
-                  tone={position.linkedInUrl ? "ok" : "warn"}
-                />
-              </div>
+              <h2 className="text-[18px] leading-[26px] text-ink">LinkedIn</h2>
               <p className="text-[14px] leading-[22px] text-ink-soft">
                 {position.linkedInUrl
                   ? `Live since ${position.linkedInPostedAt ? whenDate(position.linkedInPostedAt) : "Tuesday"} · posted by ${taName}`
                   : `Waiting for ${taName} to post on LinkedIn before going Live`}
               </p>
-              <p className="pt-1 text-[24px] font-light leading-[32px] text-ink">
-                {allCandidates.filter((c) => c.source === "LinkedIn").length || 9} applications
+              <p className="text-[14px] leading-[22px] text-ink">
+                {allCandidates.filter((c) => c.source === "LinkedIn").length} applications so far
               </p>
 
               <div className="mt-auto flex flex-col gap-2.5 pt-2">
@@ -748,13 +742,7 @@ export default async function PositionPage({
 
             {/* Card 2: TopJobs (1:2284) */}
             <div className="flex flex-col gap-2.5 rounded-[24px] bg-sunk px-6 py-[22px]">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-[18px] font-medium leading-[26px] text-ink">TopJobs</h2>
-                <StatusChip
-                  label="Paid · optional"
-                  tone={ad?.state === "live" ? "ok" : "warn"}
-                />
-              </div>
+              <h2 className="text-[18px] leading-[26px] text-ink">TopJobs</h2>
 
               <div className="flex flex-col gap-1.5 pt-1">
                 {[
@@ -830,10 +818,7 @@ export default async function PositionPage({
               const inPulse = thisWeekIssue?.lines.some((l) => l.positionId === position.id) ?? false;
               return (
                 <div className="flex flex-col gap-2.5 rounded-[24px] bg-sunk px-6 py-[22px]">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-[18px] font-medium leading-[26px] text-ink">Talent Pulse</h2>
-                    <StatusChip label="Weekly · free" tone="neutral" />
-                  </div>
+                  <h2 className="text-[18px] leading-[26px] text-ink">Talent Pulse</h2>
                   <p className="text-[14px] leading-[22px] text-ink-soft">
                     {inPulse ? "In this Tuesday’s list" : "Compiled every Tuesday"}
                   </p>
@@ -850,54 +835,33 @@ export default async function PositionPage({
             })()}
           </div>
 
-          {/* WHERE THE CVs CAME FROM (1:2318) */}
-          <div className="flex flex-col gap-2.5 pt-2">
-            <p className={figmaLabel}>WHERE THE CVs CAME FROM</p>
-            {[
-              {
-                label: "LinkedIn",
-                count: allCandidates.filter((c) => c.source === "LinkedIn").length || 9,
-                widthClass: "w-[220px]",
-                active: true,
-              },
-              {
-                label: "TA System database",
-                count: allCandidates.filter((c) => c.source === "TA System database").length || 3,
-                widthClass: "w-[80px]",
-                active: true,
-              },
-              {
-                label: "Talent Pulse",
-                count: allCandidates.filter((c) => c.source === "Talent Pulse").length || 2,
-                widthClass: "w-[50px]",
-                active: true,
-              },
-              {
-                label: "TopJobs",
-                count: ad?.cvCount ?? 0,
-                widthClass: (ad?.cvCount ?? 0) > 0 ? "w-[60px]" : "w-[4px]",
-                active: (ad?.cvCount ?? 0) > 0,
-              },
-            ].map((row) => (
-              <div key={row.label} className="flex items-center gap-3.5 py-1.5">
-                <span className="w-[160px] shrink-0 text-[14px] leading-[22px] text-ink">
-                  {row.label}
-                </span>
-                <div
-                  className={`h-[10px] rounded-[5px] ${
-                    row.active ? "bg-brand" : "bg-rule"
-                  } ${row.widthClass}`}
-                />
-                <span
-                  className={`text-[14px] leading-[22px] ${
-                    row.active ? "font-medium text-ink" : "text-ink-faint"
-                  }`}
-                >
-                  {row.count > 0 ? row.count : ad ? `${ad.state} · not live yet` : "0 · not live yet"}
-                </span>
+          {/* WHERE THE CVs CAME FROM (Figma 249:14374): real counts, bars in proportion, in a card of their own */}
+          {(() => {
+            const rows = [
+              { label: "LinkedIn", count: allCandidates.filter((c) => c.source === "LinkedIn").length },
+              { label: "TA System database", count: allCandidates.filter((c) => c.source === "TA System database").length },
+              { label: "Talent Pulse", count: allCandidates.filter((c) => c.source === "Talent Pulse").length },
+              { label: "TopJobs", count: ad?.cvCount ?? 0 },
+            ];
+            const most = Math.max(1, ...rows.map((r) => r.count));
+            return (
+              <div className="flex max-w-[640px] flex-col gap-2.5 rounded-[24px] bg-surface p-5 shadow-card">
+                <p className={figmaLabel}>WHERE THE CVs CAME FROM</p>
+                {rows.map((row) => (
+                  <div key={row.label} className="flex items-center gap-3.5 py-1">
+                    <span className="w-[140px] shrink-0 text-[14px] leading-[22px] text-ink">{row.label}</span>
+                    <div className="flex min-w-0 flex-1 items-center">
+                      <div
+                        className={`h-[10px] rounded-[5px] ${row.count > 0 ? "bg-brand" : "bg-rule"}`}
+                        style={{ width: row.count > 0 ? `${Math.max(4, (row.count / most) * 100)}%` : 4 }}
+                      />
+                    </div>
+                    <span className={`w-6 text-right text-[14px] leading-[22px] ${row.count > 0 ? "text-ink" : "text-ink-faint"}`}>{row.count}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       )}
 
