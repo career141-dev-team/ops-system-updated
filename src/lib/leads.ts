@@ -17,7 +17,9 @@
  */
 
 /** Where a lead came from. The website one arrives on its own; the rest are typed. */
-export const LEAD_SOURCES = ["website", "whatsapp", "call", "email", "referral", "other"] as const;
+// director, linkedin and walk_in are the sources the New lead form offers (Figma 249:13655); the form used to send
+// values this list did not hold, so a lead could not be saved from it at all.
+export const LEAD_SOURCES = ["website", "whatsapp", "call", "email", "referral", "director", "linkedin", "walk_in", "other"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 export const SOURCE_MEANINGS: Record<LeadSource, string> = {
@@ -26,6 +28,9 @@ export const SOURCE_MEANINGS: Record<LeadSource, string> = {
   call: "A phone call",
   email: "An email to one of us",
   referral: "Somebody we know passed them on",
+  director: "The Director brought them in",
+  linkedin: "We reached out on LinkedIn",
+  walk_in: "They walked in",
   other: "Somewhere else",
 };
 
@@ -236,4 +241,26 @@ export function problemWithClosing(state: LeadState, reason: string): string | n
 /** A lead that is declined for the industry is never invited back. */
 export function neverInviteBack(state: LeadState): boolean {
   return state === "declined_industry";
+}
+
+/**
+ * A lead for a company that is already our client ("Direct client", Figma 331:2976).
+ *
+ * The client was picked from our own list, so nothing needs asking the TA System: it routes the way an
+ * exact match does (`routeLead`) - to the requirement meeting when their agreement is signed, to waiting
+ * on the agreement when it is not. An active client is one whose agreement was countersigned.
+ */
+export function directClientRouting(client: { name: string; nameKey: string; stage: string; taClientId: string | null; id: string }): {
+  state: LeadState;
+  because: string;
+  existing: ClientLike;
+} {
+  const existing: ClientLike = {
+    id: client.taClientId ?? client.id,
+    name: client.name,
+    nameKey: client.nameKey,
+    esaSignedAt: client.stage === "active" ? 1 : null,
+  };
+  const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing });
+  return { state: routed.state, because: routed.because, existing };
 }
