@@ -228,3 +228,12 @@ confirm each one while walking the flow.
 - **Numbering stays `C141-YYYY-0001`** (owner's choice); the owner's earlier plain numbers (e.g. 1643) stay as history.
 - **Shown per job:** the invoice page has "The invoice, as the client will get it" (the PDF on the page, versions, "Make the invoice to look at"), the Invoices list names the job (position, candidate), and a joined placement with no invoice has "Draft the invoice" (a refused draft was permanent before). The fee rule comes from the **signed** agreement (the countersignature is not needed), and the page says when none was on record.
 - **Fixed on the way:** a payment's bank reference and the day it arrived were sent by the forms and ignored; both are kept now (a future date is refused).
+
+## 18 Nov: the Openings screens show only what is known (owner: "fix them in this branch")
+
+- **No invented values.** Five made-up candidates were added to every opening while the stand-in TA was on, with made-up fit scores, sources, years, notice and salary. They are gone. A candidate shows the set they are in, the client's answer and their interviews; the TA System keeps the screening notes, notice and package and does not send them to Ops yet, and the page says so.
+- **Fixed text replaced by the real rule:** "Day n of 21" (no such rule) is now "Open n days"; the ownership bar counts working days from `set.ownershipWorkingDays`; "feedback late" is past `feedback.chaseDays`; the hold page uses `hold.afterDays` and `hold.reviewDays`; "Needs a TA" means no primary TA (a waiting TA write no longer counts).
+- **Requirement & JD** shows the recorded fields or "Not recorded yet", and the brief exactly as TA gets it (`briefText`). The "Drafted by AURA" text and its style pills went: they were sentences in the code, not a draft.
+- **Advertising:** "Where the CVs came from" counts only TopJobs (`cvCount`), added by hand, and "not recorded". The TopJobs button says "Request the advert", which is what it does.
+- **The set page** lost the fixed "AURA read the reply" quote; our own interview (Pass / Hold / Fail) can be recorded on it, since the set cannot go without it.
+- **Logic:** a corrected receipt date restarts the receipt clocks still running (not one that already fired); the position page's requirement form is gone once the requirement is locked, and the action refuses too, as `saveRequirement` does; a save from the position queues the details write to TA like the lead's; the closing checklist includes "Close the TopJobs advert" when an advert ran.

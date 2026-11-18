@@ -1,4 +1,4 @@
-import { fakeTa, pipeline } from "@/lib/ta";
+import { pipeline } from "@/lib/ta";
 import type { OpsClientSet, OpsDatabase, OpsPosition } from "@/data/types";
 
 /**
@@ -59,8 +59,10 @@ export interface PositionCandidateView {
   applicationTaId: string;
   name: string;
   roleSummary: string;
-  source: "LinkedIn" | "TA System database" | "Talent Pulse" | "TopJobs" | "Added by hand";
-  fit: number;
+  /** Where the CV came from, when anybody recorded it (18 Nov: never guessed). */
+  source: "LinkedIn" | "TA System database" | "Talent Pulse" | "TopJobs" | "Added by hand" | null;
+  /** A fit score, when the TA System gives one. None does yet, so it is null rather than a made-up number. */
+  fit: number | null;
   stageKey: "new" | "contacting" | "screened" | "dropped";
   statusLabel: string;
   statusTone: "ok" | "warn" | "neutral";
@@ -92,91 +94,6 @@ export interface TaApplicationLike {
   currentStage: string;
 }
 
-const FALLBACK_TA_PIPELINE: (Omit<PositionCandidateView, "setId" | "setName" | "fileId" | "decision" | "decisionReason" | "level"> & { taStage: string | null })[] = [
-  {
-    id: "app-ishara-perera",
-    taStage: "client_shortlist",
-    applicationTaId: "app-ishara-perera",
-    name: "Ishara Perera",
-    roleSummary: "Senior Accountant, Cargills · 9 yrs",
-    source: "LinkedIn",
-    fit: 82,
-    stageKey: "screened",
-    statusLabel: "Shortlisted",
-    statusTone: "ok",
-    noticeWeeks: "2 weeks",
-    expectedSalary: "LKR 600k",
-    contactSummary: "WhatsApp and a call · reached on day 1",
-  },
-  {
-    id: "app-ruwan-fernando",
-    taStage: "shortlisted",
-    applicationTaId: "app-ruwan-fernando",
-    name: "Ruwan Fernando",
-    roleSummary: "Finance Controller, MAS · 11 yrs",
-    source: "TA System database",
-    fit: 78,
-    stageKey: "screened",
-    statusLabel: "With the client",
-    statusTone: "neutral",
-    noticeWeeks: "1 month",
-    expectedSalary: "LKR 620k",
-    contactSummary: "Phone call · reached on day 1",
-  },
-  {
-    id: "app-dinesh-jayawardena",
-    taStage: "screened",
-    applicationTaId: "app-dinesh-jayawardena",
-    name: "Dinesh Jayawardena",
-    roleSummary: "Finance Manager, Hayleys · 8 yrs",
-    source: "LinkedIn",
-    fit: 75,
-    stageKey: "screened",
-    statusLabel: "Screened",
-    statusTone: "neutral",
-    noticeWeeks: "1 month",
-    expectedSalary: "LKR 580k",
-    contactSummary: "WhatsApp and phone call · screened by TA",
-  },
-  {
-    id: "app-sanduni-wickramasinghe",
-    taStage: null,
-    applicationTaId: "app-sanduni-wickramasinghe",
-    name: "Sanduni Wickramasinghe",
-    roleSummary: "Group Accountant, John Keells · 7 yrs",
-    source: "Talent Pulse",
-    fit: 71,
-    stageKey: "contacting",
-    statusLabel: "Contacting · 2 of 3",
-    statusTone: "neutral",
-    noticeWeeks: "3 weeks",
-    expectedSalary: "LKR 540k",
-    contactSummary: "2 attempts (WhatsApp + call) · waiting for reply",
-  },
-  {
-    id: "app-malith-bandara",
-    taStage: null,
-    applicationTaId: "app-malith-bandara",
-    name: "Malith Bandara",
-    roleSummary: "Finance Lead, Aitken Spence · 6 yrs",
-    source: "LinkedIn",
-    fit: 64,
-    stageKey: "contacting",
-    statusLabel: "No reply · TA to call",
-    statusTone: "warn",
-    noticeWeeks: "1 month",
-    expectedSalary: "LKR 525k",
-    contactSummary: "2 WhatsApp messages · TA calling today",
-  },
-];
-
-const SOURCES: PositionCandidateView["source"][] = [
-  "LinkedIn",
-  "TA System database",
-  "Talent Pulse",
-  "TopJobs",
-];
-
 /**
  * Builds the unified candidate list for an opening (`1:2325` and `1:2433`),
  * merging real candidates from CV sets and interviews with the TA System's
@@ -200,8 +117,6 @@ export function candidatesForPosition(
   for (const set of itsSets) {
     for (const c of set.candidates) {
       const id = c.applicationTaId || `cand-${idx}`;
-      const fit = 84 - (idx * 4) % 22;
-      const source = SOURCES[idx % SOURCES.length];
       const isShortlisted = c.decision === "shortlisted";
       const isRejected = c.decision === "rejected" || c.claimVerdict === "dropped";
       const stageKey: PositionCandidateView["stageKey"] = isRejected ? "dropped" : "screened";
@@ -224,17 +139,16 @@ export function candidatesForPosition(
         id,
         applicationTaId: id,
         name: c.name,
-        roleSummary: `${position.title} candidate · ${8 + (idx % 5)} yrs`,
-        source,
-        fit,
+        // What Ops knows about them is the set they are in; their CV says the rest (18 Nov: no invented years).
+        roleSummary: "In " + (set.state === "sent" ? "CV set " + set.setNumber + ", with the client" : "CV set " + set.setNumber),
+        source: null,
+        fit: null,
         stageKey,
         statusLabel,
         statusTone,
-        noticeWeeks: idx % 2 === 0 ? "2 weeks" : "1 month",
-        expectedSalary: position.requirementId
-          ? db.requirements.find((r) => r.id === position.requirementId)?.fields.salary || "LKR 600k"
-          : "LKR 600k",
-        contactSummary: "WhatsApp and a call · reached on day 1",
+        noticeWeeks: "",
+        expectedSalary: "",
+        contactSummary: "",
         setId: set.id,
         setName: set.name,
         fileId: c.fileId,
@@ -253,7 +167,7 @@ export function candidatesForPosition(
       name: m.name,
       roleSummary: m.note || "Added by hand",
       source: "Added by hand",
-      fit: 0,
+      fit: null,
       stageKey: "new",
       statusLabel: "Added by hand, not in TA",
       statusTone: "neutral",
@@ -270,27 +184,6 @@ export function candidatesForPosition(
     });
   }
 
-  // The invented people below stand in for the TA System on a laptop. On the
-  // real desk they would be strangers on a client's opening, so they are shown
-  // only while the stand-in TA System is on.
-  for (const fb of fakeTa() ? FALLBACK_TA_PIPELINE : []) {
-    const alreadyByName = Array.from(byId.values()).some(
-      (existing) => existing.name.toLowerCase() === fb.name.toLowerCase(),
-    );
-    if (!byId.has(fb.id) && !alreadyByName) {
-      byId.set(fb.id, {
-        ...fb,
-        setId: itsSets[0]?.id ?? null,
-        setName: itsSets[0]?.name ?? null,
-        fileId: null,
-        decision: fb.statusLabel === "Shortlisted" ? "shortlisted" : null,
-        decisionReason: null,
-        level: "found",
-      });
-      taStageOf.set(fb.id, fb.taStage ?? "");
-    }
-  }
-
   // Whoever the TA System has on this opening and Ops has not heard of yet: shown by their TA stage.
   for (const a of taApplications) {
     const known = byId.has(a.id) || Array.from(byId.values()).some((e) => e.name.toLowerCase() === a.candidateName.toLowerCase());
@@ -300,8 +193,8 @@ export function candidatesForPosition(
       applicationTaId: a.id,
       name: a.candidateName,
       roleSummary: position.title + " candidate",
-      source: "TA System database",
-      fit: 0,
+      source: null,
+      fit: null,
       stageKey: "screened",
       statusLabel: "In the TA System: " + a.currentStage.replace(/_/g, " "),
       statusTone: "neutral",

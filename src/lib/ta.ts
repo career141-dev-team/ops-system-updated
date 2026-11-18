@@ -137,7 +137,7 @@ async function call<T>(
 
   if (fakeTa()) {
     const { fakeAnswer } = await import("@/data/fakeTa");
-    const answer = fakeAnswer<T>(path, String(init?.method ?? "GET"));
+    const answer = fakeAnswer<T>(path, String(init?.method ?? "GET"), init?.body);
     if (!answer.ok) return give(answer.reason);
     await note({ direction, path, ok: true, status: 200, ms: 0, note: "stand-in" });
     return { ok: true, data: answer.data, ms: 0 };

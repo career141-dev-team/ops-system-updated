@@ -79,6 +79,7 @@ import {
   startJoinClocks,
   requirementForLead,
   startReceiptClocks,
+  restartReceiptClocks,
   clientsNewestFirst,
   patchClient,
   draftMessage,
@@ -97,6 +98,7 @@ import {
   fileIn,
   logCall,
   pushOutbox,
+  takeOpeningUpdate,
   queueTaWrite,
   readTaEvents,
   removeHoliday,
@@ -535,6 +537,19 @@ export async function devTaSendSet(formData: FormData): Promise<void> {
       assignedAt: row.handedOverAt,
     },
   );
+  if (made) {
+    const { fakeTaAddApps } = await import("@/data/fakeTa");
+    fakeTaAddApps(
+      opening,
+      names.map((n) => ({
+        id: "ta_dev_" + base + "_s" + setNumber + n.toLowerCase(),
+        candidateName: "SAMPLE CANDIDATE " + n + " (SET " + setNumber + ")",
+        currentStage: "screened",
+        setNumber,
+        backupForApplicationId: null,
+      })),
+    );
+  }
   revalidatePath("/sets");
   devTaBack(made ? "TA says set " + setNumber + " is ready: five invented candidates, each with a sample CV." : "That set was already there.");
 }
@@ -623,6 +638,86 @@ export async function devTaJoined(formData: FormData): Promise<void> {
       (invoice ? "Invoice " + invoice.number + " is drafted. " : "No invoice yet: the client needs billing details on their record first. ") +
       (guarantee ? "The guarantee is running." : "No guarantee started."),
   );
+}
+
+/* ── The dev panel's Openings tools (18 Nov): the sample, the clocks, and what TA would say ── */
+
+/** Loads the invented Openings desk, copying the store aside first. */
+export async function devLoadOpeningsSample(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const { loadOpeningsSample } = await import("@/data/desk");
+  const done = await loadOpeningsSample(member.id);
+  revalidatePath("/positions");
+  devTaBack(done.ok ? "The Openings sample is loaded: five clients, six openings. Your data before it is copied to " + done.backup : done.why);
+}
+
+/** Takes the sample out again. */
+export async function devRemoveOpeningsSample(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const { removeOpeningsSample } = await import("@/data/desk");
+  const done = await removeOpeningsSample();
+  revalidatePath("/positions");
+  devTaBack(done.ok ? "The Openings sample is out (" + done.gone + " rows)." : done.why);
+}
+
+/** A clock comes due now, so its step happens without waiting days. */
+export async function devMoveClock(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const { moveClockToNow } = await import("@/data/desk");
+  const done = await moveClockToNow(String(formData.get("timerId") ?? ""));
+  devTaBack(done.ok ? "The clock came due and the clocks ran. See what it did on the opening, My Work or the bell." : done.why ?? "Could not move it.");
+}
+
+/** TA moves a candidate to another stage, and Ops counts the shortlist again (application.stage_changed). */
+export async function devTaStage(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const positionId = String(formData.get("positionId") ?? "");
+  const applicationId = String(formData.get("applicationId") ?? "");
+  const stage = String(formData.get("stage") ?? "");
+  if (!applicationId || !stage) devTaBack("Choose a candidate and a stage.");
+  const { fakeTaSetStage } = await import("@/data/fakeTa");
+  fakeTaSetStage(applicationId, stage);
+  const depth = await evaluateDepth(positionId);
+  revalidatePath("/positions/" + positionId);
+  devTaBack("TA moved them to " + stage.replace(/_/g, " ") + ". " + depth.what);
+}
+
+/** TA approves the JD, or closes the opening: the same handlers as their events. */
+export async function devTaOpening(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const position = positionIn(await desk(), String(formData.get("positionId") ?? ""));
+  if (!position?.openingTaId) devTaBack("The opening has to exist in TA first.");
+  const opening = (position as NonNullable<typeof position>).openingTaId as string;
+  const type = String(formData.get("type") ?? "");
+  if (type === "opening.closed") {
+    await openCloseChecklist(opening, "ta_closed", member.id);
+    await takeOpeningUpdate("opening.closed", { openingId: opening, reason: "Closed by TA (stand-in)." });
+    revalidatePath("/closes");
+    devTaBack("TA closed the opening. The closing checklist is open on the opening's page.");
+  }
+  await takeOpeningUpdate("opening.jd_approved", { openingId: opening });
+  devTaBack("TA approved the JD.");
+}
+
+/** TA reads the queue now: every waiting write goes to the stand-in, and every shortlist is counted again. */
+export async function devTaPushQueue(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  devTaOnly();
+  const result = await pushOutbox(Date.now(), true);
+  for (const p of (await desk()).positions.filter((p) => p.openingTaId && p.stage !== "closed")) await evaluateDepth(p.id);
+  revalidatePath("/positions");
+  devTaBack(result.sent + " writes went to the stand-in TA; " + result.waiting + " still waiting. Every shortlist was counted again.");
 }
 
 /**
@@ -3077,6 +3172,7 @@ export async function recordSetReceived(formData: FormData): Promise<void> {
   if (row.sentAt && when < row.sentAt - HOUR) back("They cannot have received it before it was sent.");
 
   await patchClientSet(setId, { receivedAt: when }, member.id, "clientSet.received", null);
+  await restartReceiptClocks({ ...row, receivedAt: when }, when, member.id);
   revalidatePath(here);
   back("Noted. Everything after this counts from then.");
 }
@@ -3607,21 +3703,7 @@ export async function saveRequirement(formData: FormData): Promise<void> {
     // TA has no endpoint for this yet (an additive one is a ta-system PR): until
     // there is, the write waits in the outbox and nothing is lost.
     const opened = db.positions.find((p) => p.requirementId === already.id);
-    if (opened) {
-      await queueTaWrite(
-        "/integrations/v1/openings/details",
-        {
-          opsPositionId: opened.id,
-          openingId: opened.openingTaId,
-          brief: briefText(fields),
-          level: fields.level ?? "",
-          locations: fields.locations ?? "",
-          package: fields.salary ?? "",
-          headcount: Number(fields.headcount ?? 1) || 1,
-        },
-        { type: "position", id: opened.id },
-      );
-    }
+    if (opened) await queueOpeningDetails(opened, fields);
   } else {
     await addRequirement({
       leadId,
@@ -4141,6 +4223,23 @@ export async function setOpeningPeople(formData: FormData): Promise<void> {
   back(row.openingTaId ? "Saved, and the TA System will be told." : "Saved. It goes to the TA System with the opening once TA confirms it.");
 }
 
+/** What the requirement says now, for the TA System's opening. It waits in the outbox until TA has the endpoint. */
+async function queueOpeningDetails(opened: { id: string; openingTaId: string | null }, fields: Record<string, string>): Promise<void> {
+  await queueTaWrite(
+    "/integrations/v1/openings/details",
+    {
+      opsPositionId: opened.id,
+      openingId: opened.openingTaId,
+      brief: briefText(fields),
+      level: fields.level ?? "",
+      locations: fields.locations ?? "",
+      package: fields.salary ?? "",
+      headcount: Number(fields.headcount ?? 1) || 1,
+    },
+    { type: "position", id: opened.id },
+  );
+}
+
 /** Update or create the requirement fields directly from the position's Requirement & JD sub-view. */
 export async function savePositionRequirement(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4155,6 +4254,8 @@ export async function savePositionRequirement(formData: FormData): Promise<void>
   if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
   const row = position as NonNullable<typeof position>;
   const existing = row.requirementId ? db.requirements.find((r) => r.id === row.requirementId) ?? null : null;
+  // The same lock as on the lead (18 Nov: this door edited a locked requirement and TA never heard).
+  if (existing && requirementLocked(existing.fields)) back("The requirement is complete and locked. It is shown as agreed; a change goes through the client.");
 
   const fields: Record<string, string> = { ...(existing?.fields ?? {}) };
   for (const [key, value] of formData.entries()) {
@@ -4182,8 +4283,9 @@ export async function savePositionRequirement(formData: FormData): Promise<void>
     await patchPosition(positionId, { requirementId: created.id }, member.id, "position.requirementLinked", null);
   }
 
+  await queueOpeningDetails(row, fields);
   revalidatePath("/positions/" + positionId);
-  back("Requirement details saved.");
+  back("Requirement details saved, and the TA System will be told.");
 }
 
 /** Approve the JD on a position and record jdApprovedAt so advertising opens. */

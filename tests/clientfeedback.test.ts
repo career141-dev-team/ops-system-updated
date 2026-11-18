@@ -181,3 +181,35 @@ test("the clocks a set starts all count from receipt, and a reply stops the chas
     ["hire.unreported", "set.ownership"],
   );
 });
+
+test("a corrected receipt date restarts the clocks still running, and not the ones that fired (18 Nov)", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-received-"));
+  process.env.OPS_STORE = "json";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const first = Date.now() - 3 * DAY;
+  const set = repo.addClientSet({
+    taRoundId: "ta_round1", openingTaId: "ta_j1", setNumber: 1, clientId: null, clientTaId: "ta_c1",
+    name: "SAMPLE CLIENT > HEAD OF FINANCE > SET 1", role: "Head of finance", state: "sent",
+    candidates: [{ applicationTaId: "ta_a1", name: "SAMPLE ONE", fileId: "f_1", problem: null }],
+    dueAt: null, sentAt: first, sentMessageId: null, sentTo: ["hr@example.test"], receivedAt: first, reason: null, ownerId: "m_owner",
+  });
+  await desk.startReceiptClocks(await desk.desk(), set, first);
+  // The chase has fired already: it must not fire again.
+  const chase = repo.liveTimers().find((t) => t.kind === "feedback.chase" && t.subjectId === set.id)!;
+  await desk.cancelClocksFor(await desk.desk(), "clientSet", set.id, "m_owner", "fired", ["feedback.chase"]);
+
+  const later = first + DAY;
+  const restarted = await desk.restartReceiptClocks({ ...set, receivedAt: later }, later, "m_owner");
+  assert.deepEqual(restarted.sort(), ["hire.unreported", "set.ownership", "silence.hold"]);
+  const live = repo.liveTimers().filter((t) => t.subjectId === set.id);
+  assert.equal(live.length, 3);
+  assert.ok(live.every((t) => t.startsAt === later), "all count from the corrected date");
+  assert.ok(!live.some((t) => t.kind === "feedback.chase"), "the chase is not started again");
+  assert.ok(chase);
+});

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
+import { SAMPLE_PREFIX, sampleOpenings } from "./sampleOpenings";
 import { repo } from "./store";
 import { seed } from "./seed";
 import type {
@@ -206,6 +207,10 @@ export async function createTask(
 }
 
 export async function startTimer(input: Omit<OpsTimer, "id" | "state" | "firedAt">): Promise<void> {
+  return startTimerNow(input);
+}
+
+async function startTimerNow(input: Omit<OpsTimer, "id" | "state" | "firedAt">): Promise<void> {
   if (!usingConvex()) {
     repo.startTimer(input);
     return;
@@ -950,7 +955,16 @@ export function holdsNewestFirst(db: OpsDatabase): OpsHold[] {
  * They all count from receipt, never from sending, and they start in one place
  * so a corrected receipt date can restart them together.
  */
-export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, receivedAt: number): Promise<void> {
+export async function startReceiptClocks(
+  db: OpsDatabase,
+  set: OpsClientSet,
+  receivedAt: number,
+  /** Only these kinds (a corrected receipt restarts only the clocks still running). */
+  only: string[] | null = null,
+): Promise<void> {
+  const startTimer = async (input: Parameters<typeof startTimerNow>[0]) => {
+    if (!only || only.includes(input.kind)) await startTimerNow(input);
+  };
   const holidays = db.holidays.map((h) => h.date);
   const window = ownershipWindow(receivedAt, holidays, numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS));
   const label = set.name;
@@ -997,6 +1011,23 @@ export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, rec
     ownerId: set.ownerId,
     payload: { label },
   });
+}
+
+/**
+ * The client got the set on another day: the clocks still running start again from then (18 Nov: the date was
+ * saved but the clocks kept counting from the old one). One that already fired is not fired twice.
+ */
+export async function restartReceiptClocks(set: OpsClientSet, receivedAt: number, by: Id): Promise<string[]> {
+  const db = await desk();
+  const kinds = ["set.ownership", "feedback.chase", "silence.hold", "hire.unreported"];
+  const running = db.timers
+    .filter((t) => t.subjectType === "clientSet" && t.subjectId === set.id && kinds.includes(t.kind))
+    .filter((t) => t.state === "running" || t.state === "warned")
+    .map((t) => t.kind);
+  if (!running.length) return [];
+  await cancelClocksFor(db, "clientSet", set.id, by, "The receipt date was corrected.", running);
+  await startReceiptClocks(db, set, receivedAt, running);
+  return running;
 }
 
 /* ── Requirements and positions (15, Phase 3) ─────────────────── */
@@ -2075,6 +2106,48 @@ export async function takeReplacement(
  * only the ones this position really had: no LinkedIn post means no item
  * about closing one.
  */
+/* ── The Openings sample, for testing on a laptop (18 Nov) ─────────── */
+
+/**
+ * Loads the invented Openings desk (src/data/sampleOpenings.ts) into the laptop's store and starts the clocks its
+ * states imply, through the same starters the real flow uses. The JSON store only: the file is copied aside first.
+ */
+export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise<{ ok: true; backup: string } | { ok: false; why: string }> {
+  if (usingConvex()) return { ok: false, why: "The Openings sample is for the laptop run (sh deploy/local/start-ui.sh), not the Convex backend." };
+  if (repo.all().clients.some((c) => c.id.startsWith(SAMPLE_PREFIX))) return { ok: false, why: "The Openings sample is already loaded." };
+  const rows = sampleOpenings(now, ownerId);
+  const backup = repo.addSample(rows as unknown as Partial<Record<keyof OpsDatabase, unknown[]>>);
+  const db = repo.all();
+  for (const set of rows.clientSets) {
+    if (set.state === "sent" && set.receivedAt) await startReceiptClocks(db, set, set.receivedAt);
+    if (set.state === "ready" && set.dueAt) {
+      await startTimer({ kind: "set.due", subjectType: "clientSet", subjectId: set.id, startsAt: now, dueAt: set.dueAt, warnAt: set.dueAt - 86_400_000, ownerId, payload: { label: set.name } });
+    }
+  }
+  for (const ad of rows.ads) {
+    if (ad.state === "live" && ad.closesAt) {
+      await startTimer({ kind: "ad.close", subjectType: "ad", subjectId: ad.id, startsAt: ad.liveAt ?? now, dueAt: ad.closesAt, warnAt: null, ownerId, payload: { label: ad.title } });
+    }
+  }
+  return { ok: true, backup };
+}
+
+/** Takes the sample out again, and everything that hung off it; the stand-in TA forgets what it remembered. */
+export async function removeOpeningsSample(): Promise<{ ok: true; gone: number } | { ok: false; why: string }> {
+  if (usingConvex()) return { ok: false, why: "The Openings sample is for the laptop run, not the Convex backend." };
+  const { fakeTaForget } = await import("@/data/fakeTa");
+  fakeTaForget();
+  return { ok: true, gone: repo.removeSample(SAMPLE_PREFIX) };
+}
+
+/** Dev only: a running clock comes due now, and the clocks run, so its step happens on the spot. */
+export async function moveClockToNow(timerId: Id, now = Date.now()): Promise<{ ok: boolean; why?: string }> {
+  if (usingConvex()) return { ok: false, why: "Moving a clock is for the laptop run only." };
+  repo.moveTimerToNow(timerId, now);
+  await runClocks(now);
+  return { ok: true };
+}
+
 export async function openCloseChecklist(
   openingTaId: string,
   trigger: string,
@@ -2092,7 +2165,11 @@ export async function openCloseChecklist(
     positionId: position?.id ?? null,
     clientId: position?.clientId ?? null,
     trigger,
-    items: closeItemsFor({ linkedInUrl: position?.linkedInUrl ?? null }, false),
+    // "Close the TopJobs advert" belongs on the list whenever an advert ran for this opening (18 Nov: it never did).
+    items: closeItemsFor(
+      { linkedInUrl: position?.linkedInUrl ?? null },
+      db.ads.some((ad) => ad.openingTaId === openingTaId && ["ordered", "live", "closed"].includes(ad.state)),
+    ),
     completedAt: null,
     ownerId: position?.ownerId ?? by,
   });
@@ -3651,12 +3728,15 @@ export async function queueTaWrite(
  * person has to do it by hand, because retrying silently for ever is how
  * something gets forgotten.
  */
-export async function pushOutbox(now = Date.now()): Promise<{ sent: number; waiting: number; gaveUp: number }> {
+export async function pushOutbox(now = Date.now(), standIn = false): Promise<{ sent: number; waiting: number; gaveUp: number }> {
   const db = await desk();
   // The ops lead's own switch, which lives in the settings rather than in the
   // environment: holding the TA link must not need a deploy. Nothing is lost
   // while it is off - the writes stay queued (4 Nov, Phase 8 step 8).
-  if (!switchedOn(db, "switch.taWritesEnabled")) {
+  // `standIn` is the dev panel's "TA reads the queue now" (18 Nov): only ever honoured when the TA System is the
+  // stand-in, so nothing can reach the real one through it.
+  const { fakeTa } = await import("@/lib/ta");
+  if (!switchedOn(db, "switch.taWritesEnabled") && !(standIn && fakeTa())) {
     return { sent: 0, waiting: dueNow(db.outbox, now).length, gaveUp: 0 };
   }
   const due = dueNow(db.outbox, now);

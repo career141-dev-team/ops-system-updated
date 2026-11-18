@@ -22,16 +22,14 @@ test("a person added by hand shows on the list, marked, with no fit score invent
   assert.equal(list[0].manual, true);
   assert.equal(list[0].id, "manual:mc1");
   assert.equal(list[0].statusLabel, "Added by hand, not in TA");
-  assert.equal(list[0].fit, 0);
+  assert.equal(list[0].fit, null);
 });
 
-test("the invented sample people appear only while the stand-in TA System is on", () => {
+test("no invented people, with or without the stand-in TA System (18 Nov)", () => {
   const empty = { ...position, manualCandidates: [] } as unknown as OpsPosition;
-
   delete process.env.OPS_TA_FAKE;
   assert.equal(candidatesForPosition(db, empty, []).length, 0);
-
   process.env.OPS_TA_FAKE = "on";
-  assert.ok(candidatesForPosition(db, empty, []).length > 0);
+  assert.equal(candidatesForPosition(db, empty, []).length, 0);
   delete process.env.OPS_TA_FAKE;
 });

@@ -39,19 +39,21 @@ import {
   liveHoldFor,
   liveTimers,
   member as memberIn,
+  numberOf,
   openChecklistFor,
   outboxWaiting,
   positionIn,
   requirementIn,
 } from "@/data/desk";
 import { weekOf } from "@/lib/adverts";
+import { OWNERSHIP_WORKING_DAYS, ownershipWindow } from "@/lib/clientFeedback";
 import { depthInWords } from "@/lib/depth";
 import { relatedWork } from "@/data/journeyOf";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
 import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel, candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
-import { REQUIREMENT_FIELDS, briefText, handoverInWords } from "@/lib/requirements";
+import { REQUIREMENT_FIELDS, briefText, handoverInWords, requirementLocked } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
@@ -95,13 +97,12 @@ export default async function PositionPage({
     view?: string;
     tab?: string;
     stage?: string;
-    style?: string;
   }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { id } = await params;
-  const { msg, view, tab, stage = "all", style } = await searchParams;
+  const { msg, view, tab, stage = "all" } = await searchParams;
 
   const db = await desk();
   const position = positionIn(db, id);
@@ -269,11 +270,12 @@ export default async function PositionPage({
                 ? Math.floor((now - waitingSet.receivedAt) / 86_400_000)
                 : 0;
               const undecided = waitingSet.candidates.filter((c) => !c.decision).length;
-              const isLate = silentDays >= 1;
+              // Late only past the feedback-chase setting (18 Nov: it said "late" after one day whatever the setting).
+              const isLate = silentDays > numberOf(db, "feedback.chaseDays", 1);
               return (
                 <NextStepCard
                   eyebrow="WHOSE MOVE · THE CLIENT’S"
-                  clock={isLate ? (silentDays === 1 ? "A day late" : `${silentDays} days late`) : "Inside 24h"}
+                  clock={silentDays === 0 ? "Sent today" : silentDays === 1 ? "Sent a day ago" : `Sent ${silentDays} days ago`}
                   clockTone={isLate ? "danger" : "warn"}
                   title={`${clientName} hasn’t replied on ${waitingSet.name}`}
                   body={`Sent ${waitingSet.sentAt ? whenDate(waitingSet.sentAt) : "recently"} · ${waitingSet.candidates.length} CVs · ${undecided} still waiting for a yes or no.`}
@@ -302,7 +304,7 @@ export default async function PositionPage({
                     ? "WHOSE MOVE · THE CLIENT’S"
                     : "WHOSE MOVE · OURS"
               }
-              clock={step.clock ?? `Day ${Math.min(daysOpen, 21)} of 21`}
+              clock={step.clock ?? `Open ${daysOpen} ${daysOpen === 1 ? "day" : "days"}`}
               clockTone={hold?.state === "proposed" ? "danger" : "warn"}
               title={
                 ad?.state === "flyer"
@@ -357,22 +359,30 @@ export default async function PositionPage({
                 value={String(waitingSet.candidates.length)}
                 caption="CVs with the client"
               />
-              <StatTile
-                value={`Day ${Math.min(7, Math.max(1, waitingSet.receivedAt ? Math.floor((now - waitingSet.receivedAt) / 86_400_000) + 1 : 1))} of 7`}
-                caption="client owns these CVs"
-              />
+              {(() => {
+                // The real window, in working days with holidays (18 Nov: was a calendar "Day n of 7").
+                const closesAt = waitingSet.receivedAt
+                  ? ownershipWindow(waitingSet.receivedAt, db.holidays.map((h) => h.date), numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS)).closesAt
+                  : null;
+                return (
+                  <StatTile
+                    value={closesAt === null ? "Not received" : closesAt < now ? "Closed" : "To " + whenDate(closesAt)}
+                    caption="client owns these CVs"
+                  />
+                );
+              })()}
               <StatTile
                 value={String(
                   itsSets.reduce(
                     (sum, s) => sum + s.candidates.filter((c) => c.decision === "shortlisted").length,
                     0,
-                  ) || 1,
+                  ),
                 )}
                 caption="shortlisted so far"
               />
               <StatTile
-                value={String(Math.max(0, allCandidates.length - waitingSet.candidates.length))}
-                caption="still in search (TA)"
+                value={String(allCandidates.filter((c) => !c.setId && c.level !== "out").length)}
+                caption="not in a set yet"
               />
             </div>
           ) : (
@@ -383,8 +393,8 @@ export default async function PositionPage({
                   caption="candidates so far"
                 />
                 <StatTile
-                  value={String(allCandidates.filter((c) => c.stageKey === "screened").length)}
-                  caption="screened by the TA"
+                  value={String(allCandidates.filter((c) => c.setId).length)}
+                  caption="in a CV set"
                 />
                 <StatTile
                   value={position.linkedInUrl ? "LinkedIn live" : "LinkedIn pending"}
@@ -600,47 +610,27 @@ export default async function PositionPage({
           <div className="flex w-full shrink-0 flex-col gap-3.5 lg:w-[400px]">
             <p className={figmaLabel}>FROM THE REQUIREMENT MEETING</p>
 
+            {/* Only what the meeting recorded (18 Nov: the gaps were filled with an invented salary, level and town). */}
             {[
-              {
-                label: "Salary",
-                value: requirement?.fields.salary || "LKR 350,000 – 420,000",
-              },
+              { label: "Salary", value: requirement?.fields.salary },
               {
                 label: "Level",
-                value:
-                  requirement?.fields.level
-                    ? `${requirement.fields.level}${requirement.fields.headcount ? ` · ${requirement.fields.headcount} open` : ""}`
-                    : "Mid-senior · 5+ years",
+                value: requirement?.fields.level
+                  ? `${requirement.fields.level}${requirement.fields.headcount ? ` · ${requirement.fields.headcount} open` : ""}`
+                  : "",
               },
-              {
-                label: "Location",
-                value: requirement?.fields.locations || "Colombo · on-site",
-              },
-              {
-                label: "What the client really wants",
-                value:
-                  requirement?.fields.mustHaves ||
-                  requirement?.fields.notes ||
-                  `Someone who has run a team of ${requirement?.fields.headcount || "8+"} and speaks Sinhala and English. Willing to work Saturdays.`,
-              },
+              { label: "Location", value: requirement?.fields.locations },
+              { label: "What the client really wants", value: requirement?.fields.jdNotes || requirement?.fields.insights },
             ].map((item) => (
-              <div
-                key={item.label}
-                className="flex items-start justify-between gap-3 rounded-[16px] bg-sunk px-4 py-3.5"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                    {item.label}
-                  </span>
-                  <span className="whitespace-pre-wrap text-[14px] leading-[22px] text-ink">
-                    {item.value}
-                  </span>
-                </div>
-                <Icon name="pen" size={16} className="mt-1 shrink-0 text-ink-faint" />
+              <div key={item.label} className="flex flex-col gap-0.5 rounded-[16px] bg-sunk px-4 py-3.5">
+                <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">{item.label}</span>
+                <span className={`whitespace-pre-wrap text-[14px] leading-[22px] ${item.value ? "text-ink" : "text-ink-faint"}`}>
+                  {item.value || "Not recorded yet"}
+                </span>
               </div>
             ))}
 
-            {mayManage && (
+            {mayManage && !(requirement && requirementLocked(requirement.fields)) && (
               <details id="edit-requirement" className="group rounded-[20px] bg-sunk px-4 py-3.5">
                 <summary className="flex cursor-pointer list-none items-center justify-between text-[13px] font-medium text-ink">
                   <span>Edit requirement fields</span>
@@ -667,14 +657,11 @@ export default async function PositionPage({
             )}
           </div>
 
-          {/* Right Column: Drafted by AURA JD Card (1:1975) */}
+          {/* The brief as the TA System gets it (18 Nov: was an "AURA" draft written from fixed sentences; AI drafting is off). */}
           <div className="flex flex-1 flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
             <div className="flex flex-wrap items-center gap-2.5">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-ink-inverse">
-                A
-              </div>
               <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
-                Drafted by AURA from the meeting notes
+                The brief, from the requirement meeting
               </span>
               <div className="ml-auto">
                 <StatusChip
@@ -688,63 +675,13 @@ export default async function PositionPage({
               {position.title} — {clientName}
             </h2>
 
-            <div className="flex flex-col gap-3 text-[14px] leading-[22px] text-ink-soft">
-              <p>
-                {clientName} is looking for a {style === "senior" ? "seasoned, hands-on " : ""}
-                {position.title} to lead day-to-day operations in{" "}
-                {requirement?.fields.locations || "Colombo"}.
-                {style === "salary" && (
-                  <> Package on offer: {requirement?.fields.salary || "LKR 350,000 – 420,000"} per month.</>
-                )}
-              </p>
-              {style !== "shorter" && (
-                <p>
-                  You’ll bring {requirement?.fields.level || "5+ years"} of relevant leadership experience, strong
-                  operational discipline, and fluency in English and Sinhala.{" "}
-                  {requirement?.fields.mustHaves
-                    ? `Must-haves from the brief: ${requirement.fields.mustHaves}.`
-                    : "Six-day week with Tuesday off."}
-                </p>
-              )}
-              {requirement?.fields && (
-                <details className="rounded-[14px] bg-sunk px-3.5 py-2.5 text-[12.5px] text-ink-soft">
-                  <summary className="cursor-pointer font-medium text-ink">
-                    Exact brief handed to the TA System
-                  </summary>
-                  <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] text-ink-soft">
-                    {briefText(requirement.fields)}
-                  </pre>
-                </details>
-              )}
-            </div>
-
-            {/* Quick refinement pills (1:1989) */}
-            <div className="flex flex-wrap items-center gap-2 pt-1.5">
-              <Link
-                href={`/positions/${position.id}?view=jd&style=shorter`}
-                className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "shorter" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
-                }`}
-              >
-                Shorter
-              </Link>
-              <Link
-                href={`/positions/${position.id}?view=jd&style=senior`}
-                className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "senior" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
-                }`}
-              >
-                More senior
-              </Link>
-              <Link
-                href={`/positions/${position.id}?view=jd&style=salary`}
-                className={`rounded-full px-3 py-1.5 text-[12px] font-medium tracking-[0.4px] ${
-                  style === "salary" ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell"
-                }`}
-              >
-                Add salary
-              </Link>
-            </div>
+            {requirement?.fields ? (
+              <pre className="whitespace-pre-wrap font-sans text-[14px] leading-[22px] text-ink-soft">
+                {briefText(requirement.fields)}
+              </pre>
+            ) : (
+              <p className="text-[14px] text-ink-faint">No requirement recorded yet. Fill in the fields on the left.</p>
+            )}
 
             {/* Action buttons (1:1996) */}
             <div className="flex flex-wrap items-center gap-2.5 pt-2">
@@ -758,9 +695,13 @@ export default async function PositionPage({
                   </button>
                 </form>
               )}
-              <a href="#edit-requirement" className={pillSecondary}>
-                Edit
-              </a>
+              {mayManage && !(requirement && requirementLocked(requirement.fields)) ? (
+                <a href="#edit-requirement" className={pillSecondary}>
+                  Edit
+                </a>
+              ) : requirement && requirementLocked(requirement.fields) ? (
+                <span className="text-[12px] text-ink-faint">The requirement is complete and locked.</span>
+              ) : null}
               <span className="ml-auto text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
                 {position.jdApprovedAt
                   ? `Approved ${whenDate(position.jdApprovedAt)} — advertising is open.`
@@ -874,11 +815,8 @@ export default async function PositionPage({
               <h2 className="text-[18px] leading-[26px] text-ink">LinkedIn</h2>
               <p className="text-[14px] leading-[22px] text-ink-soft">
                 {position.linkedInUrl
-                  ? `Live since ${position.linkedInPostedAt ? whenDate(position.linkedInPostedAt) : "Tuesday"} · posted by ${taName}`
+                  ? `Live${position.linkedInPostedAt ? " since " + whenDate(position.linkedInPostedAt) : ""} · posted by ${taName}`
                   : `Waiting for ${taName} to post on LinkedIn before going Live`}
-              </p>
-              <p className="text-[14px] leading-[22px] text-ink">
-                {allCandidates.filter((c) => c.source === "LinkedIn").length} applications so far
               </p>
 
               <div className="mt-auto flex flex-col gap-2.5 pt-2">
@@ -977,8 +915,9 @@ export default async function PositionPage({
                       <option value="single">Single — LKR 5,400</option>
                       <option value="hr_and_marketing">HR & Mktg — LKR 12,700</option>
                     </select>
+                    {/* It asks marketing for a flyer; nothing goes to TopJobs yet (18 Nov: said "Send the flyer"). */}
                     <button type="submit" className={pillPrimary}>
-                      Send the flyer
+                      Request the advert
                     </button>
                   </form>
                 ) : (
@@ -1014,11 +953,13 @@ export default async function PositionPage({
 
           {/* WHERE THE CVs CAME FROM (Figma 249:14374): real counts, bars in proportion, in a card of their own */}
           {(() => {
+            // Only sources somebody recorded (18 Nov: LinkedIn and the rest were counted from invented sources).
+            const byHand = allCandidates.filter((c) => c.manual).length;
+            const topJobs = ad?.cvCount ?? 0;
             const rows = [
-              { label: "LinkedIn", count: allCandidates.filter((c) => c.source === "LinkedIn").length },
-              { label: "TA System database", count: allCandidates.filter((c) => c.source === "TA System database").length },
-              { label: "Talent Pulse", count: allCandidates.filter((c) => c.source === "Talent Pulse").length },
-              { label: "TopJobs", count: ad?.cvCount ?? 0 },
+              { label: "TopJobs", count: topJobs },
+              { label: "Added by hand", count: byHand },
+              { label: "Not recorded", count: Math.max(0, allCandidates.length - byHand - topJobs) },
             ];
             const most = Math.max(1, ...rows.map((r) => r.count));
             return (
@@ -1129,7 +1070,7 @@ export default async function PositionPage({
                           {cand.name}
                         </span>
                         <span className="truncate text-[14px] leading-[22px] text-ink-faint">
-                          {cand.roleSummary} · {cand.source}
+                          {cand.roleSummary}{cand.source ? " · " + cand.source : ""}
                         </span>
                       </div>
                       <span className="shrink-0 rounded-full bg-sunk px-2.5 py-1 text-[14px] font-medium leading-[22px] text-ink">

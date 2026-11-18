@@ -14,7 +14,7 @@ import {
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
-import { clientIn, clientSetIn, desk, holdIn, member as memberIn } from "@/data/desk";
+import { clientIn, clientSetIn, desk, holdIn, member as memberIn, numberOf } from "@/data/desk";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
 import { holdNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
@@ -38,6 +38,9 @@ export default async function HoldPage({
   const { msg } = await searchParams;
 
   const db = await desk();
+  // From the settings (18 Nov: "30 days" was fixed text; the hold is proposed after hold.afterDays).
+  const afterDays = numberOf(db, "hold.afterDays", 14);
+  const reviewDays = numberOf(db, "hold.reviewDays", 30);
   const hold = holdIn(db, id);
   if (!hold) notFound();
 
@@ -96,7 +99,7 @@ export default async function HoldPage({
       <NextStepCard
         title={
           hold.state === "proposed"
-            ? `No feedback for 30 days — put ${client?.name ?? hold.openingTaId} on hold?`
+            ? `No feedback for ${afterDays} days — put ${client?.name ?? hold.openingTaId} on hold?`
             : step.where
         }
         clock={
@@ -106,10 +109,10 @@ export default async function HoldPage({
                 tone: step.clock.includes("ago") ? "danger" : "warn",
                 icon: "clock",
               }
-            : { label: "30 days", tone: "warn", icon: "clock" }
+            : { label: `${reviewDays} days`, tone: "warn", icon: "clock" }
         }
-        body={`${hold.reason}. Putting a client on hold pauses TA work and sends them a polite notice — it never closes the role on its own. We check back in 30 days.`}
-        byItself="Hold never closes a client automatically — a person decides after the 30-day review."
+        body={`${hold.reason.replace(/\.$/, "")}. Putting a client on hold pauses TA work and sends them a polite notice — it never closes the role on its own. We check back in ${reviewDays} days.`}
+        byItself={`Hold never closes a client automatically — a person decides after the ${reviewDays}-day review.`}
       >
         {mayManage && (
           <div className="flex flex-wrap items-center gap-3 pt-1">
