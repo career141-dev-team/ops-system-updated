@@ -149,6 +149,33 @@ export default function LeadCaptureForm({
         })}
       </div>
 
+      {/* Source pills (Figma 1:1903), right under the three paths (18 Nov, the owner): the first thing to say about a lead, before its fields. */}
+      {!direct && (
+      <div className="flex flex-col gap-2">
+        <span className={figmaLabel}>Source</span>
+        <div className="flex flex-wrap gap-2">
+          {SOURCES.map((s) => {
+            const active = source === s.value;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setSource(s.value)}
+                className={
+                  "rounded-full px-3.5 py-2 text-[14px] leading-[21px] transition-colors " +
+                  (active
+                    ? "bg-sunk font-medium text-ink"
+                    : "font-normal text-ink-soft hover:text-ink")
+                }
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      )}
+
       {direct && (
         <div className="flex flex-col gap-4">
           {!picked ? (
@@ -429,33 +456,6 @@ export default function LeadCaptureForm({
             </button>
           </div>
         )}
-      </div>
-      )}
-
-      {/* Source pills (Figma 1:1903) */}
-      {!direct && (
-      <div className="flex flex-col gap-2">
-        <span className={figmaLabel}>Source</span>
-        <div className="flex flex-wrap gap-2">
-          {SOURCES.map((s) => {
-            const active = source === s.value;
-            return (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => setSource(s.value)}
-                className={
-                  "rounded-full px-3.5 py-2 text-[14px] leading-[21px] transition-colors " +
-                  (active
-                    ? "bg-sunk font-medium text-ink"
-                    : "font-normal text-ink-soft hover:text-ink")
-                }
-              >
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
       </div>
       )}
 

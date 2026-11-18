@@ -52,7 +52,7 @@ export default async function HoldsPage({
         >
           <Icon name="search" size={18} className="shrink-0 text-ink-faint" />
           <input
-            name="q"
+            name="q" autoComplete="off"
             defaultValue={q}
             placeholder="Find a held client or opening"
             aria-label="Find a held client or opening"

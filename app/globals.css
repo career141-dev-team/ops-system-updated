@@ -188,6 +188,20 @@ body {
 }
 
 /*
+ * No ring around the text in a search box (18 Nov, the owner). The box is already a pill with a search icon, so
+ * the ring only drew a second border inside it. Every search box in the app is one of these: the bar's, the lists',
+ * the Inbox's, the client picker's. Written once here, and unlayered with a higher specificity than the ring above,
+ * so a box cannot get it back by accident.
+ */
+input[name="q"]:focus-visible,
+input[type="search"]:focus-visible,
+input[role="combobox"]:focus-visible,
+input[aria-label*="earch" i]:focus-visible,
+input[aria-label^="Find" i]:focus-visible {
+  outline: none;
+}
+
+/*
  * Every scrollbar in the app (14 Nov, the owner): a thin pill on no track,
  * the hairline grey, darker under the pointer - so it says "there is more"
  * without drawing a grey stripe down the page box. Chrome, Edge and Safari

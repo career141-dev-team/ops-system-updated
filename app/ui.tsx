@@ -244,7 +244,7 @@ export function Toolbar({
       <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-rule-strong bg-surface px-3 py-1.5">
         <Icon name="search" className="text-ink-faint" size={15} />
         <input
-          name="q"
+          name="q" autoComplete="off"
           defaultValue={q ?? ""}
           placeholder="Search by name, client, owner or what it says"
           className="w-full bg-transparent text-[13px] outline-none placeholder:text-ink-faint"

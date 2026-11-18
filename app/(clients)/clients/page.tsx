@@ -241,7 +241,7 @@ export default async function ClientsPage({
             {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
             <Icon name="search" size={18} className="shrink-0 text-ink-faint" />
             <input
-              name="q"
+              name="q" autoComplete="off"
               defaultValue={q}
               placeholder="Find one of your clients"
               aria-label="Find one of your clients"

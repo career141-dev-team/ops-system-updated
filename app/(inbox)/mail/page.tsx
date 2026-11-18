@@ -161,7 +161,7 @@ export default async function MailPage({
           <form action="/mail" className="mt-3 flex items-center gap-2 rounded-full bg-sunk px-4 py-2.5">
             {Object.entries(view).map(([k, v]) => (k !== "q" && k !== "t" && v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
             <Icon name="search" size={14} className="text-ink-faint" />
-            <input name="q" defaultValue={q} placeholder="Search messages" aria-label="Search messages" className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] text-ink outline-none placeholder:text-ink-faint" />
+            <input name="q" autoComplete="off" defaultValue={q} placeholder="Search messages" aria-label="Search messages" className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] text-ink outline-none placeholder:text-ink-faint" />
           </form>
           <nav aria-label="Conversations" className="mt-3 flex min-h-0 flex-col gap-1 lg:overflow-y-auto">
             {listed.length === 0 && <p className="px-3 py-4 text-[14px] text-ink-soft">{q ? "Nothing matches that." : "Nothing in this folder."}</p>}

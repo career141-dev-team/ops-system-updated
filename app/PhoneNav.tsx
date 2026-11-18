@@ -89,7 +89,7 @@ export default function PhoneNav({
     >
       <Icon name="search" className="text-ink-faint" size={15} />
       <input
-        name="q"
+        name="q" autoComplete="off"
         placeholder="Find anything"
         aria-label="Find a client, a position, a set, an invoice"
         className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-ink-faint"

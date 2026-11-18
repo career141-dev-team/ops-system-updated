@@ -173,7 +173,7 @@ export default async function FindPage({
           {/* The bar's own search brings you here, so the frame has no second box once there is a result (249:13500). */}
           {!asked && <form action="/find" className="flex items-center gap-2">
             <input
-              name="q"
+              name="q" autoComplete="off"
               defaultValue={asked}
               placeholder="Search clients, openings, sets, invoices..."
               className={figmaField + " w-[280px]"}
