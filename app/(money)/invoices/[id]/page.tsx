@@ -13,6 +13,7 @@ import {
   agreementForLead,
   clientIn,
   desk,
+  numberOf,
   invoiceIn,
   member as memberIn,
   placementIn,
@@ -47,6 +48,7 @@ import {
   invoiceLines,
   money,
   paidSoFar,
+  problemWithPaymentOn,
 } from "@/lib/money";
 import { invoiceNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
@@ -86,13 +88,15 @@ export default async function InvoiceDetailPage({
     inv.dueAt && inv.dueAt < now && inv.state !== "paid" && inv.state !== "written_off",
   );
 
+  // The settings, not the code's defaults (18 Nov).
+  const writeOffDays = numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS);
   const step = invoiceNextStep(
     inv,
     {
       owedSaid: money(bal, inv.currency),
       lateChargeSaid: inv.lateCharge > 0 ? money(inv.lateCharge, inv.currency) : null,
       billingEmail: client?.billingEmail ?? "",
-      writeOffAfterDays: WRITE_OFF_DAYS,
+      writeOffAfterDays: writeOffDays,
     },
     now,
   );
@@ -194,10 +198,7 @@ export default async function InvoiceDetailPage({
                   </button>
                 </form>
               )}
-              {bal > 0 &&
-                canMoney &&
-                inv.state !== "written_off" &&
-                inv.kind !== "credit_note" && (
+              {bal > 0 && canMoney && !problemWithPaymentOn(inv.state) && inv.kind !== "credit_note" && (
                   <Link
                     href={`/invoices/payment?invoiceId=${encodeURIComponent(inv.id)}`}
                     className={pillSecondary}
@@ -227,7 +228,7 @@ export default async function InvoiceDetailPage({
                 ? `late charge, month ${inv.lateMonths}`
                 : "late charge"
             }
-            caption={inv.lateMonths > 0 ? "5% monthly surcharge" : "none accrued"}
+            caption={inv.lateMonths > 0 ? `${numberOf(db, "invoice.latePctPerMonth", 5)}% a month, ${inv.lateMonths} ${inv.lateMonths === 1 ? "month" : "months"}` : "none accrued"}
           />
           <StatTile
             tone={overdue ? "danger" : "default"}
@@ -393,7 +394,7 @@ export default async function InvoiceDetailPage({
                 </div>
               )}
 
-              {canMoney && bal > 0 && inv.state !== "written_off" && inv.kind !== "credit_note" ? (
+              {canMoney && bal > 0 && !problemWithPaymentOn(inv.state) && inv.kind !== "credit_note" ? (
                 <form action={recordPayment} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <input type="hidden" name="invoiceId" value={inv.id} />
                   <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
@@ -472,7 +473,7 @@ export default async function InvoiceDetailPage({
             canMoney && (
               <FoldRow
                 title="Dispute & write-off"
-                summary={`Write-off after ${WRITE_OFF_DAYS} days`}
+                summary={`Write-off after ${writeOffDays} days`}
               >
                 <div className={cardShell}>
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

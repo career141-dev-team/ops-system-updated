@@ -229,6 +229,7 @@ import {
   CLOSE_TRIGGERS,
   REFUND_PCT,
   problemWithCloseComplete,
+  problemWithTick,
   problemWithLeaver,
   problemWithRefund,
   refundAmount,
@@ -246,6 +247,7 @@ import {
   problemWithNoShowChoice,
   paymentDate,
   problemWithPayment,
+  problemWithPaymentOn,
   problemWithWriteOff,
 } from "@/lib/money";
 import {
@@ -591,6 +593,10 @@ export async function devTaPlace(formData: FormData): Promise<void> {
   const row = position as NonNullable<typeof position>;
   const applicationId = String(formData.get("applicationId") ?? "");
   if (!applicationId) devTaBack("Pick who is placed.");
+  // One placement per candidate, as TA has (18 Nov: a second click made a second placement).
+  if (db.placements.some((p) => p.applicationTaId === applicationId && p.state !== "cancelled")) devTaBack("They are placed already.");
+  // "offer": TA has placed them but the join date and offer letter are not in yet, so the Offer state can be tested.
+  const offerOnly = String(formData.get("how") ?? "") === "offer";
   const name =
     db.clientSets.flatMap((c) => c.candidates).find((c) => c.applicationTaId === applicationId)?.name ?? "SAMPLE CANDIDATE";
   const placementId = "ta_pl_dev_" + Date.now().toString(36);
@@ -604,14 +610,14 @@ export async function devTaPlace(formData: FormData): Promise<void> {
     currency: "LKR",
     salaryBasis: "gross",
     package: "LKR 450,000 a month, plus fuel and a phone allowance. (Invented, for testing.)",
-    offerLetterFileId: "ta_file_offer_1",
-    joinDateMs: Date.now() + 14 * 86_400_000,
+    offerLetterFileId: offerOnly ? null : "ta_file_offer_1",
+    joinDateMs: offerOnly ? null : Date.now() + 14 * 86_400_000,
     joinConfirmedAt: null,
     fellThroughAt: null,
     fellThroughReason: null,
   });
   revalidatePath("/placements");
-  devTaBack(made ? name + " is placed. Joining in a fortnight." : "Nothing was made.");
+  devTaBack(made ? name + (offerOnly ? " has an offer; no join date or offer letter yet." : " is placed. Joining in a fortnight.") : "Nothing was made.");
 }
 
 /** TA says they joined, or never turned up. */
@@ -650,7 +656,7 @@ export async function devLoadOpeningsSample(): Promise<void> {
   const { loadOpeningsSample } = await import("@/data/desk");
   const done = await loadOpeningsSample(member.id);
   revalidatePath("/positions");
-  devTaBack(done.ok ? "The Openings sample is loaded: five clients, six openings. Your data before it is copied to " + done.backup : done.why);
+  devTaBack(done.ok ? "The sample is loaded: five clients, six openings, and seventeen placed jobs with their invoices and guarantees. Your data before it is copied to " + done.backup : done.why);
 }
 
 /** Takes the sample out again. */
@@ -5468,7 +5474,23 @@ export async function markJoined(formData: FormData): Promise<void> {
   const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
-  const answer = await markPlacementJoined(placementId, member.id);
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+  const now = Date.now();
+  // They joined on the join date when it has passed, not on the day somebody clicked (18 Nov): the guarantee
+  // counts from it. A join date still ahead means they started early, today.
+  const joinedAt = row.joinDate && row.joinDate <= now ? row.joinDate : now;
+  const answer = await markPlacementJoined(placementId, member.id, joinedAt);
+  // TA hears it from us when it was told by phone, as it does for a no-show or a new date (18 Nov).
+  if (answer.ok) {
+    await queueTaWrite(
+      "/integrations/v1/placements/" + row.placementTaId + "/joined",
+      { joinedAt },
+      { type: "placement", id: placementId },
+    );
+  }
   revalidatePath(here);
   revalidatePath("/placements");
   back(answer.what);
@@ -5544,6 +5566,9 @@ export async function recordNoShowChoice(formData: FormData): Promise<void> {
   if (!placement) redirect("/placements?msg=" + encodeURIComponent("That placement is gone."));
   const row = placement as NonNullable<typeof placement>;
 
+  // Only a no-show has a choice, and only one (18 Nov: any placement took one, and it could be changed).
+  if (row.state !== "no_show") back("Only a no-show has this choice.");
+  if (row.noShowChoice) back("The client's choice is recorded already: " + row.noShowChoice + ".");
   const choice = String(formData.get("choice") ?? "");
   const problem = problemWithNoShowChoice(choice);
   if (problem) back(problem);
@@ -5555,18 +5580,8 @@ export async function recordNoShowChoice(formData: FormData): Promise<void> {
     { status: choice === "replace" ? "open" : "closed", reason: "no-show, client chose to " + choice },
     { type: "placement", id: placementId },
   );
-  if (choice === "stop") {
-    await createTask({
-      kind: "check",
-      title: "Close the position: " + row.candidateName + "'s was a no-show",
-      body: "The client has stopped the search. Closing the adverts and the opening is the close checklist, which is Phase 7.",
-      assigneeId: row.ownerId,
-      dueAt: Date.now(),
-      subjectType: "placement",
-      subjectId: placementId,
-      link: here,
-    });
-  }
+  // The close checklist opens, with its own task (18 Nov: it was only a task saying the checklist was to come).
+  if (choice === "stop") await openCloseChecklist(row.openingTaId, "client_stopped", member.id);
   revalidatePath(here);
   back(
     choice === "replace"
@@ -5998,6 +6013,8 @@ export async function recordPayment(formData: FormData): Promise<void> {
   const noteText = String(formData.get("note") ?? "").trim();
   const note = [reference ? "Ref " + reference : "", noteText].filter(Boolean).join(" · ");
   const owed = balanceOf(row);
+  const notNow = problemWithPaymentOn(row.state);
+  if (notNow) back(notNow);
   const problem = problemWithPayment(amount, owed);
   if (problem) back(problem);
   const now = Date.now();
@@ -6031,12 +6048,19 @@ export async function recordPayment(formData: FormData): Promise<void> {
     if (guarantee && !guarantee.feePaidAt) {
       await patchGuarantee(
         guarantee.id,
-        { feePaidAt: now },
+        // The day the money arrived, not the day somebody typed it in (18 Nov).
+        { feePaidAt: received.at },
         member.id,
         "guarantee.feePaid",
         "The fee is settled, so the guarantee holds.",
       );
     }
+    // TA hears it is paid, as it heard it was sent (18 Nov).
+    await queueTaWrite(
+      "/integrations/v1/placements/" + (placement?.placementTaId ?? "") + "/invoice-state",
+      { state: "paid", invoiceNumber: row.number, amount: row.amount + row.lateCharge, paidAt: received.at },
+      { type: "invoice", id: invoiceId },
+    );
     const tell = db.members.filter((m) => m.active && (m.role === "accounts" || m.id === placement?.ownerId));
     await draftMessage({
       channel: "internal",
@@ -6072,6 +6096,14 @@ export async function markInvoiceDisputed(formData: FormData): Promise<void> {
 
   const reason = String(formData.get("reason") ?? "").trim();
   const settled = String(formData.get("settled") ?? "") === "yes";
+  // It never looked the invoice up (18 Nov): a dispute only stands on one the client owes.
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  const row = invoice as NonNullable<typeof invoice>;
+  if (!settled && !["sent", "partly_paid"].includes(row.state)) back("Only an invoice the client has and still owes on can be disputed.");
+  if (settled && !row.disputed) back("That invoice is not disputed.");
+  if (!settled && row.disputed) back("That invoice is disputed already.");
   if (!settled && reason.length < 4) back("Write what they say is wrong with it.");
 
   await patchInvoice(
@@ -6122,11 +6154,18 @@ export async function writeOffInvoice(formData: FormData): Promise<void> {
   );
   await cancelClocksFor(db, "invoice", invoiceId, member.id, "It has been written off.", null);
   const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  // It said the guarantee is void and the position closes, and did neither (18 Nov).
+  const guarantee = placement ? guaranteeForPlacement(db, placement.id) : null;
+  if (guarantee && guarantee.state !== "void" && guarantee.state !== "ended_clean") {
+    await patchGuarantee(guarantee.id, { state: "void", reason }, member.id, "guarantee.void", "The fee was written off.");
+    await cancelClocksFor(db, "guarantee", guarantee.id, member.id, "The fee was written off.", null);
+  }
+  if (placement) await openCloseChecklist(placement.openingTaId, "written_off", member.id, now);
   await createTask({
     kind: "check",
     title: "Written off: " + row.number,
     body:
-      "The guarantee does not apply to an unpaid fee, so it is void, and the position closes. The close checklist is Phase 7.",
+      "The guarantee does not apply to an unpaid fee, so it is void, and the position closes. The close checklist is open.",
     assigneeId: placement?.ownerId ?? member.id,
     dueAt: now,
     subjectType: "invoice",
@@ -6208,7 +6247,7 @@ export async function decideRefund(formData: FormData): Promise<void> {
     "guarantee.refundDecided",
     // Deciding before the sixty days are up is allowed and is written down as
     // what it was: a decision, not a deadline.
-    early ? reason + " (decided before the sixty working days were up)" : reason,
+    early ? reason + " (decided before the replacement window was up)" : reason,
   );
   await cancelClocksFor(db, "guarantee", guaranteeId, member.id, "The decision is made.", null);
   await createTask({
@@ -6273,11 +6312,12 @@ export async function tickCloseItem(formData: FormData): Promise<void> {
   const row = checklist as NonNullable<typeof checklist>;
   if (row.completedAt) back("That position is closed already.");
 
+  const refused = problemWithTick(row.items, key);
+  if (refused) back(refused);
   const now = Date.now();
   const items = row.items.map((item) =>
     item.key === key ? { ...item, doneAt: item.doneAt ? null : now, doneBy: item.doneAt ? null : member.id } : item,
   );
-  if (!items.some((item) => item.key === key)) back("No such item on this list.");
 
   await patchChecklist(checklistId, { items }, member.id, "close.itemTicked", key);
   // Closing the opening is ours to do through the API, and only once the
@@ -6732,8 +6772,9 @@ export async function confirmUnreportedHire(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
-  const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  // Back to the page the form was on (18 Nov: from the unreported-hires page a refusal landed on the set).
+  const here = backTo(formData, "/sets/" + setId);
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const who = String(formData.get("candidateName") ?? "").trim();
@@ -6747,6 +6788,8 @@ export async function confirmUnreportedHire(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/invoices");
   if (!answer.ok) back(answer.what);
+  // Asked and answered: the three-month question stops (18 Nov: only "dismiss" stopped it).
+  await cancelClocksFor(await desk(), "clientSet", setId, member.id, "They hired from it; the surcharge is drafted.", ["hire.unreported"]);
   redirect("/invoices/" + answer.invoiceId + "?msg=" + encodeURIComponent(answer.what + " Read it before it goes."));
 }
 
@@ -6778,7 +6821,8 @@ export async function raiseCreditNote(formData: FormData): Promise<void> {
   if (!can(member, "money.manage")) back(refusal("money.manage"));
 
   const amount = Number(formData.get("amount") ?? 0);
-  const why = String(formData.get("why") ?? "").trim();
+  // The form's field is "reason" (18 Nov: this read "why", so every credit note was refused as having no reason).
+  const why = String(formData.get("reason") ?? formData.get("why") ?? "").trim();
   const db = await desk();
   const against = invoiceIn(db, invoiceId);
   if (!against) back("That invoice is gone.");

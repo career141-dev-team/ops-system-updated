@@ -80,14 +80,13 @@ export default async function ClosePage({
       <div className="flex flex-col rounded-[28px] bg-surface px-[30px] py-[22px] shadow-float">
         {checklist.items.map((item) => {
           const isDone = Boolean(item.doneAt);
-          const roleBadge =
-            item.key === "pulse" ? "System" : item.whose === "ta" ? "TA" : "Ops";
+          const roleBadge = item.whose === "ta" ? "TA" : "Ops";
           const subtitle = isDone
             ? `Closed ${item.doneAt ? whenLocal(item.doneAt) : ""}${
                 item.doneBy ? ` · by ${memberIn(db, item.doneBy)?.name ?? "somebody"}` : ""
               }`
             : item.key === "opening"
-              ? "Closes once the three posts above are closed"
+              ? "Closes once the posts above are down"
               : item.whose === "ta"
                 ? "The TA closes this one"
                 : "Ops closes this one";
@@ -178,14 +177,15 @@ export default async function ClosePage({
         )}
       </div>
 
-      {/* Shield Callout Banner (1:3411) */}
-      <div className="flex items-center gap-2.5 rounded-[16px] bg-sunk px-4 py-3.5">
-        <Icon name="shield" size={18} className="shrink-0 text-ink-soft" />
-        <span className="text-[14px] leading-[22px] text-ink-soft">
-          Closing the posts doesn’t end the guarantee — it keeps running
-          {guarantee ? ` until ${whenDate(guarantee.endsAt)}` : ""}. The invoice and payment records are kept.
-        </span>
-      </div>
+      {/* Shield Callout Banner (1:3411): only while a guarantee is still running (18 Nov: shown for ended and void ones too). */}
+      {guarantee && ["running", "warned", "replacing"].includes(guarantee.state) && (
+        <div className="flex items-center gap-2.5 rounded-[16px] bg-sunk px-4 py-3.5">
+          <Icon name="shield" size={18} className="shrink-0 text-ink-soft" />
+          <span className="text-[14px] leading-[22px] text-ink-soft">
+            Closing the posts doesn’t end the guarantee — it keeps running until {whenDate(guarantee.endsAt)}. The invoice and payment records are kept.
+          </span>
+        </div>
+      )}
     </PageBox>
   );
 }

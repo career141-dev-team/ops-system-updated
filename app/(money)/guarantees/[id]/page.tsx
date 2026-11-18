@@ -21,6 +21,7 @@ import {
   guaranteeIn,
   invoiceIn,
   member as memberIn,
+  numberOf,
   placementIn,
   positionIn,
 } from "@/data/desk";
@@ -78,6 +79,12 @@ export default async function GuaranteePage({
   const invoice = placement?.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
   const paid = invoice ? invoice.payments.reduce((sum, p) => sum + p.amount, 0) : 0;
   const holidays = db.holidays.map((h) => h.date);
+  // From the settings, as the clocks are (18 Nov: the page had 75, 25% and sixty working days written in).
+  const warnDay = numberOf(db, "guarantee.warnDay", WARN_DAY);
+  const refundPct = numberOf(db, "refund.pct", REFUND_PCT);
+  const replacementDays = numberOf(db, "replacement.workingDays", REPLACEMENT_WORKING_DAYS);
+  // This guarantee's own length, from its dates (it was fixed when it started).
+  const guaranteeDays = Math.max(1, Math.round((guarantee.endsAt - guarantee.startsAt) / 86_400_000));
   const theirAudit = db.audit
     .filter((a) => a.subjectType === "guarantee" && a.subjectId === id)
     .slice(0, 12);
@@ -89,9 +96,9 @@ export default async function GuaranteePage({
   const step = guaranteeNextStep(
     guarantee,
     {
-      warnDay: WARN_DAY,
-      refundPct: REFUND_PCT,
-      replacementWorkingDays: REPLACEMENT_WORKING_DAYS,
+      warnDay,
+      refundPct,
+      replacementWorkingDays: replacementDays,
     },
     now,
   );
@@ -107,14 +114,14 @@ export default async function GuaranteePage({
 
   const elapsedDaysOf90 = Math.max(
     1,
-    Math.min(90, Math.ceil((now - guarantee.startsAt) / 86_400_000)),
+    Math.min(guaranteeDays, Math.ceil((now - guarantee.startsAt) / 86_400_000)),
   );
   const elapsedReplacementWorkingDays = guarantee.leftAt
     ? Math.max(1, workingDaysBetween(guarantee.leftAt, now, holidays))
     : 1;
   const replacementWorkingDaysLeft = Math.max(
     0,
-    REPLACEMENT_WORKING_DAYS - elapsedReplacementWorkingDays,
+    replacementDays - elapsedReplacementWorkingDays,
   );
 
   return (
@@ -167,19 +174,19 @@ export default async function GuaranteePage({
             Math.max(
               1,
               Math.round(
-                (elapsedReplacementWorkingDays / REPLACEMENT_WORKING_DAYS) * 30,
+                (elapsedReplacementWorkingDays / replacementDays) * 30,
               ),
             ),
           )}
           tone="brand"
-          caption={`Day ${elapsedReplacementWorkingDays} of ${REPLACEMENT_WORKING_DAYS} working days to replace ${firstName}`}
+          caption={`Day ${elapsedReplacementWorkingDays} of ${replacementDays} working days to replace ${firstName}`}
         />
       ) : (
         <SegmentedBar
           total={30}
-          filled={Math.min(30, Math.max(1, Math.round((elapsedDaysOf90 / 90) * 30)))}
+          filled={Math.min(30, Math.max(1, Math.round((elapsedDaysOf90 / guaranteeDays) * 30)))}
           tone={guarantee.state === "warned" ? "warn" : "brand"}
-          caption={`Day ${elapsedDaysOf90} of 90 · ${daysLeftInWords(guarantee.endsAt, now)}`}
+          caption={`Day ${elapsedDaysOf90} of ${guaranteeDays} · ${daysLeftInWords(guarantee.endsAt, now)}`}
         />
       )}
 
@@ -209,7 +216,7 @@ export default async function GuaranteePage({
         }
         body={
           guarantee.state === "replacing"
-            ? `The original placement stays linked, and no new fee is charged. If nobody is placed in time, the Director of Operations decides on a ${REFUND_PCT}% refund.`
+            ? `The original placement stays linked, and no new fee is charged. If nobody is placed in time, the Director of Operations decides on a ${refundPct}% refund.`
             : guaranteeInWords(guarantee, now, holidays)
         }
       >
@@ -262,7 +269,7 @@ export default async function GuaranteePage({
           )}
           {(guarantee.state === "running" || guarantee.state === "warned") && (
             <p className="mt-2 text-[13px] text-ink-faint">
-              {daysLeftInWords(guarantee.endsAt, now)}. The warning comes on day 75, so a wobble is heard while there is
+              {daysLeftInWords(guarantee.endsAt, now)}. The warning comes on day {warnDay}, so a wobble is heard while there is
               still time.
             </p>
           )}
@@ -301,7 +308,7 @@ export default async function GuaranteePage({
                 </form>
                 <p className="mt-3 text-[14px] text-ink-faint">
                   What happens next turns on one thing: whether the fee was paid. Paid means the position reopens and a
-                  replacement comes first, with sixty working days to finalise one.
+                  replacement comes first, with {replacementDays} working days to finalise one.
                 </p>
               </FoldRow>
             </div>
@@ -333,12 +340,12 @@ export default async function GuaranteePage({
                 </p>
                 {guarantee.deadlineAt && (
                   <p className="text-[14px] text-ink-soft">
-                    Sixty working days to finalise a replacement, which runs to {day(guarantee.deadlineAt)}.
+                    {replacementDays} working days to finalise a replacement, which runs to {day(guarantee.deadlineAt)}.
                   </p>
                 )}
                 <p className="text-[13px] text-ink-faint">
                   The TA System has been asked to reopen the position. A replacement placed on it is not invoiced again,
-                  and starts its own ninety days.
+                  and starts its own {guaranteeDays} days.
                 </p>
 
                 {can(me, "refund.decide") && (
@@ -352,13 +359,13 @@ export default async function GuaranteePage({
                       <input name="reason" className={figmaField} />
                     </label>
                     <p className="text-[14px] text-ink-faint">
-                      The agreement says {REFUND_PCT}% of the fee paid, which would be{" "}
-                      {money(refundAmount(paid), invoice?.currency ?? "LKR")}. Replacement first: this is yours to
+                      The agreement says {refundPct}% of the fee paid, which would be{" "}
+                      {money(refundAmount(paid, refundPct), invoice?.currency ?? "LKR")}. Replacement first: this is yours to
                       decide, and the clock running out only puts the question.
                     </p>
                     {guarantee.deadlineAt && now < guarantee.deadlineAt && (
                       <label className="flex items-center gap-2 text-[14px] text-ink-soft">
-                        <input type="checkbox" name="early" value="yes" /> I am deciding before the sixty working days
+                        <input type="checkbox" name="early" value="yes" /> I am deciding before the {replacementDays} working days
                         are up
                       </label>
                     )}
@@ -404,7 +411,7 @@ export default async function GuaranteePage({
               guarantee.state !== "refund_pending" &&
               guarantee.state !== "void" && (
                 <p className="text-[14px] text-ink-soft">
-                  If somebody leaves within the 90-day guarantee period while the fee is paid in full, a replacement
+                  If somebody leaves within the {guaranteeDays}-day guarantee period while the fee is paid in full, a replacement
                   comes first. A refund is decided by the Director only if a replacement cannot be made in time.
                 </p>
               )}

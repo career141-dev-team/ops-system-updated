@@ -40,7 +40,7 @@ export type GuaranteeState =
 
 export const GUARANTEE_MEANINGS: Record<GuaranteeState, string> = {
   running: "Running",
-  warned: "Running - fifteen days left",
+  warned: "Running - near the end, warned",
   ended_clean: "Ended cleanly",
   replacing: "They left: finding a replacement",
   replaced: "Replaced, and a new guarantee is running",
@@ -220,6 +220,22 @@ export function closeItemsFor(position: { linkedInUrl: string | null }, hasTopJo
     if (item.onlyIf === "topJobs") return hasTopJobs;
     return true;
   }).map((item) => ({ key: item.key, what: item.what, whose: item.whose, doneAt: null, doneBy: null }));
+}
+
+/**
+ * Whether an item can be ticked or unticked (18 Nov). The TA opening closes after every advert is down,
+ * and once it is ticked TA has been told, so it is not unticked.
+ */
+export function problemWithTick(items: CloseItem[], key: string): string | null {
+  const item = items.find((one) => one.key === key);
+  if (!item) return "No such item on this list.";
+  if (key === "opening" && item.doneAt) return "The TA System has been told the opening is closed, so this stays ticked.";
+  if (key === "opening") {
+    // The adverts, the items above it on the list; the lead and the group come after.
+    const before = items.filter((one) => (one.key === "linkedin" || one.key === "topjobs") && !one.doneAt);
+    if (before.length) return "Take the adverts down first: " + before.map((one) => one.what).join("; ") + ".";
+  }
+  return null;
 }
 
 export function problemWithCloseComplete(items: CloseItem[]): string | null {

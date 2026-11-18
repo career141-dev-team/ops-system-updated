@@ -868,7 +868,7 @@ export function placementNextStep(
       at: "joined",
       where: "Joined " + inDays(placement.joinedAt, now),
       waiting: "Nothing here: the fee is paid, and the guarantee runs on it.",
-      clock: "Ninety days from the day they joined, and a warning on day seventy-five.",
+      clock: "The guarantee runs from the day they joined, with a warning before it ends.",
     };
   }
 
@@ -945,7 +945,7 @@ export function invoiceNextStep(
       at: "send",
       where: "Drafted, waiting for accounts",
       waiting: "Send it to " + parts.billingEmail + ". It goes as a draft somebody approves, like every other message.",
-      clock: "Due thirty days after their first working day, once it has gone.",
+      clock: "Due the agreed number of days after their first working day, once it has gone.",
     };
   }
 
@@ -1079,7 +1079,7 @@ export function guaranteeNextStep(
   if (unpaid) {
     return {
       at: "fee",
-      where: guarantee.state === "warned" ? "Running - fifteen days left" : "Running",
+      where: "Running, " + Math.max(0, left) + " days left" + (guarantee.state === "warned" ? " (warned)" : ""),
       waiting:
         "Get the fee paid. Until it is paid in full this guarantee is worth nothing: if they leave now, nothing is replaced and nothing is refunded.",
       clock: "It ends " + inDays(guarantee.endsAt, now) + " either way. The day the invoice is paid is written on it.",
@@ -1088,7 +1088,8 @@ export function guaranteeNextStep(
 
   return {
     at: "running",
-    where: guarantee.state === "warned" ? "Running - fifteen days left" : "Running, " + Math.max(0, left) + " days left",
+    // The real days left (18 Nov: "fifteen days left" whatever the warning-day setting).
+    where: "Running, " + Math.max(0, left) + " days left" + (guarantee.state === "warned" ? " (warned)" : ""),
     waiting: "Nothing, unless they leave. Then say so here, the same day you hear it.",
     clock:
       "A warning on day " +

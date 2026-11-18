@@ -143,15 +143,16 @@ export const repo = {
 
   /** Takes out every row the sample added, and everything hanging off it (its clocks, tasks, drafts, writes, history). */
   removeSample(prefix: string): number {
-    const db = load() as unknown as Record<string, { id?: string; subjectId?: string | null; positionId?: string | null }[]>;
+    const db = load() as unknown as Record<string, Record<string, unknown>[]>;
+    // Rows the tester made from the sample too (a credit note drafted on a sample invoice), by what they hang off.
+    const fromSample = (row: Record<string, unknown>) =>
+      ["id", "subjectId", "positionId", "placementId", "clientId", "setId"].some((k) => String(row[k] ?? "").startsWith(prefix)) ||
+      String(row.openingTaId ?? "").startsWith("ta_" + prefix);
     let gone = 0;
     for (const key of Object.keys(db)) {
       if (!Array.isArray(db[key])) continue;
       const before = db[key].length;
-      db[key] = db[key].filter(
-        (row) =>
-          !(row.id ?? "").startsWith(prefix) && !(row.subjectId ?? "").startsWith(prefix) && !(row.positionId ?? "").startsWith(prefix),
-      );
+      db[key] = db[key].filter((row) => !fromSample(row));
       gone += before - db[key].length;
     }
     save();
