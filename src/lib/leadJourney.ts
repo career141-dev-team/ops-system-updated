@@ -34,6 +34,10 @@ export function leadJourney(p: {
   skipsIntro: boolean;
   introBooked: boolean;
   introHeld: boolean;
+  /** A client we already had when the lead arrived: no intro call to do. */
+  existingClient?: boolean;
+  /** That existing client already has a signed agreement on file. */
+  agreementOnFile?: boolean;
   /** The opening was opened (a position exists), signed or not. */
   positionExists: boolean;
   /** The lead was marked "open it now, without waiting" (a trusted client). */
@@ -46,11 +50,11 @@ export function leadJourney(p: {
 }): JourneyState[] {
   const checked =
     !(p.leadState === "new" && !p.clientTaId) && !(p.industryFlagged && !p.industryConfirmedBy);
-  const signed = p.esaState === "signed" || p.esaState === "countersigned";
+  const signed = p.esaState === "signed" || p.esaState === "countersigned" || !!p.agreementOnFile;
 
   // The intro call ends with the ESA sent to the client (owner, 17 Nov): held is not enough.
   const esaOut = p.esaState !== null && p.esaState !== "draft";
-  const done = [checked, (p.introHeld && esaOut) || p.skipsIntro, signed, p.requirementDone, p.positionExists];
+  const done = [checked, (p.introHeld && esaOut) || p.skipsIntro || !!p.existingClient, signed, p.requirementDone, p.positionExists];
   const started = [
     checked,
     p.introBooked || p.introHeld,
@@ -121,13 +125,17 @@ export function askedStep(step: string | null | undefined, view: string | null |
 }
 
 /**
- * Which step the page shows: the one asked for, or else the first one not
- * finished, so a lead opens where the work is rather than at the top or on
- * whatever happened to be flagged. A lead with every step done opens on the last.
+ * Which step the page shows: the one asked for, or else the step the work is at
+ * now (the first "current"), so a lead opens where it was left. It used to take
+ * the first step not done, so one old gap (an intro call jumped over) sent a lead
+ * that was already at the requirement back to the start every time (18 Nov).
+ * With no current step it falls back to the first not done, and a lead with
+ * every step done opens on the last.
  */
 export function stepToShow(asked: LeadStep | null, states: JourneyState[]): LeadStep {
   if (asked) return asked;
-  const first = states.findIndex((state) => state !== "done");
+  const now = states.indexOf("current");
+  const first = now !== -1 ? now : states.findIndex((state) => state !== "done");
   return LEAD_STEPS[first === -1 ? LEAD_STEPS.length - 1 : first];
 }
 

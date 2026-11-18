@@ -168,12 +168,8 @@ export default async function ClientsPage({
           ? whenInWords(intro.at, now)
           : agoShort(lead.createdAt, now);
 
-    const cardHref =
-      esa?.state === "signed"
-        ? `/leads/${lead.id}?view=agreement`
-        : lead.state === "requirement"
-          ? `/leads/${lead.id}?view=requirement`
-          : `/leads/${lead.id}`;
+    // No forced step: the lead page opens on the step the work is at (18 Nov).
+    const cardHref = `/leads/${lead.id}`;
 
     return (
       <RecordCard

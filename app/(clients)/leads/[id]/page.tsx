@@ -5,6 +5,8 @@ import {
   bookIntroCall,
   bookRequirementMeeting,
   checkLeadDuplicate,
+  chooseLeadMatch,
+  markLeadNewClient,
   closeLead,
   decideLeadIndustry,
   declineAgreement,
@@ -140,12 +142,12 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string }>;
+  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string; near?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg, at, proposed: proposedJson, view, step: stepParam } = await searchParams;
+  const { msg, at, proposed: proposedJson, view, step: stepParam, near: nearJson } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
@@ -155,6 +157,12 @@ export default async function LeadPage({
   const dictated: DictatedRequirement | null = proposedJson
     ? (JSON.parse(proposedJson) as DictatedRequirement)
     : null;
+  // The close matches from "Check the TA System"; a bad link just shows none.
+  let nearMatches: { id: string; name: string }[] = [];
+  try {
+    const parsed: unknown = nearJson ? JSON.parse(nearJson) : [];
+    if (Array.isArray(parsed)) nearMatches = parsed.filter((c) => typeof c?.id === "string" && typeof c?.name === "string");
+  } catch {}
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
 
@@ -240,6 +248,10 @@ export default async function LeadPage({
     industryFlagged: lead.industryFlagged,
     industryConfirmedBy: lead.industryConfirmedBy,
     skipsIntro: lead.source === "director",
+    // Linked to a client we already had: no intro call was ever booked, and if the routing said
+    // "requirement" it has a signed agreement on file (see routeLead).
+    existingClient: !!lead.clientTaId && !meetings.some((m) => m.kind === "intro") && ["requirement", "waiting_agreement", "handed_over"].includes(lead.state),
+    agreementOnFile: !!lead.clientTaId && !esa && !meetings.some((m) => m.kind === "intro") && ["requirement", "handed_over"].includes(lead.state),
     introBooked: meetings.some((m) => m.kind === "intro" && m.state === "booked"),
     introHeld: meetings.some((m) => m.kind === "intro" && m.state === "held"),
     positionExists: !!position,
@@ -1240,6 +1252,24 @@ export default async function LeadPage({
                         Stand-in TA System active in local mode.
                       </span>
                     )}
+                  </div>
+                )}
+
+                {mayManage && progress[0] !== "done" && nearMatches.length > 0 && (
+                  <div className="flex flex-col gap-2 border-t border-rule pt-3">
+                    <span className={figmaLabel}>Close matches in the TA System</span>
+                    {nearMatches.map((c) => (
+                      <form key={c.id} action={chooseLeadMatch} className="flex flex-wrap items-center gap-3 text-[14px]">
+                        <input type="hidden" name="leadId" value={lead.id} />
+                        <input type="hidden" name="taClientId" value={c.id} />
+                        <span className="text-ink">{c.name}</span>
+                        <button type="submit" className={pillSecondary}>It is this one</button>
+                      </form>
+                    ))}
+                    <form action={markLeadNewClient}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <button type="submit" className={pillSecondary}>None of these: a new client</button>
+                    </form>
                   </div>
                 )}
               </div>

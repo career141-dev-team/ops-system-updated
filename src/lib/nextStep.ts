@@ -49,6 +49,8 @@ export interface LeadLike {
   industryConfirmedBy: string | null;
   clientTaId: string | null;
   reason: string | null;
+  /** "director" skips the intro call by design. */
+  source?: string;
 }
 
 export interface MeetingLike {
@@ -97,6 +99,12 @@ export function leadNextStep(
   const reqMeeting = meetings.filter((m) => m.kind === "requirement");
   const booked = (list: MeetingLike[]) => list.find((m) => m.state === "booked") ?? null;
   const held = (list: MeetingLike[]) => list.some((m) => m.state === "held");
+  // A client we already had (linked at the enquiry, no intro call ever booked) and a Director's
+  // lead have no intro call to do; one with a signed agreement on file has no agreement either (18 Nov).
+  const existing =
+    !!lead.clientTaId && intro.length === 0 && ["requirement", "waiting_agreement", "handed_over"].includes(lead.state);
+  const skipsIntro = lead.source === "director" || existing;
+  const signedOnFile = existing && !esa && ["requirement", "handed_over"].includes(lead.state);
 
   if (lead.state === "declined_industry") {
     return {
@@ -136,7 +144,7 @@ export function leadNextStep(
   }
 
   // 3. The intro call.
-  if (!held(intro)) {
+  if (!held(intro) && !skipsIntro) {
     const next = booked(intro);
     if (next) {
       return {
@@ -159,7 +167,7 @@ export function leadNextStep(
   }
 
   // 4. The agreement.
-  if (!esa) {
+  if (!esa && !signedOnFile) {
     return {
       at: "agreement",
       waiting:
@@ -168,7 +176,7 @@ export function leadNextStep(
       clock: null,
     };
   }
-  if (esa.state === "draft") {
+  if (esa?.state === "draft") {
     return {
       at: "agreement",
       waiting: "Fill in the agreement's fields and send it. Every hole in the template is a required field.",
@@ -176,20 +184,22 @@ export function leadNextStep(
       clock: null,
     };
   }
-  if (esa.state === "sent" || esa.state === "chasing") {
+  if (esa && (esa.state === "sent" || esa.state === "chasing")) {
+    // The requirement runs beside the agreement, so the meeting need not wait for the signature (18 Nov).
+    const alongside = held(reqMeeting) || booked(reqMeeting) ? "" : " Meanwhile, book the requirement meeting: it runs alongside.";
     return {
       at: "agreement",
       waiting:
-        esa.chaseStep > 0
+        (esa.chaseStep > 0
           ? "Chased " + esa.chaseStep + " times and still not signed. The next chase is drafted for you to read."
-          : "Waiting on them to sign. Nothing to do unless they reply.",
+          : "Waiting on them to sign. Nothing to do unless they reply.") + alongside,
       where: "Sent " + inDays(esa.sentAt, now) + ", version " + esa.version,
       clock:
         "The chase goes by itself: email, WhatsApp, email, WhatsApp, email, then a call" +
         (esa.expiresAt ? ", and it declines " + inDays(esa.expiresAt, now) + " if nothing comes back." : "."),
     };
   }
-  if (esa.state === "changes") {
+  if (esa?.state === "negotiating") {
     return {
       at: "agreement",
       waiting: "They want changes. Agree the terms, write them into the fields, then send the next version. A requirement meeting is the place to settle them.",
@@ -199,7 +209,7 @@ export function leadNextStep(
   }
   // Signed by the client is what the opening waits for (owner, 17 Nov evening); the Director's
   // countersignature goes on in the background, so the ladder moves on to the requirement.
-  if (esa.state === "declined" || esa.state === "expired") {
+  if (esa && (esa.state === "declined" || esa.state === "expired")) {
     return {
       at: "closed",
       waiting: "Nothing: the agreement " + (esa.state === "expired" ? "ran out of time" : "was declined") + ".",

@@ -115,7 +115,10 @@ test("the page opens on the first step not finished, and a link can ask for anot
   assert.equal(stepToShow(null, ["done", "done", "current", "current", "upcoming"]), "agreement");
   assert.equal(stepToShow(null, ["done", "done", "done", "done", "current"]), "opening");
   // Something jumped over still counts as not finished.
-  assert.equal(stepToShow(null, ["done", "skipped", "done", "current", "current"]), "intro");
+  // A gap left behind does not pull the lead back (18 Nov): it opens where the work is.
+  assert.equal(stepToShow(null, ["done", "skipped", "done", "current", "current"]), "requirement");
+  // Nothing current but something not done (a closed lead): the first not done.
+  assert.equal(stepToShow(null, ["done", "skipped", "done", "done", "done"]), "intro");
   // Every step done: the last one.
   assert.equal(stepToShow(null, ["done", "done", "done", "done", "done"]), "opening");
   // Asked for: shown whatever the states say.
@@ -171,4 +174,13 @@ test("the bar rings the step you are on and warns on an earlier one still open",
   // On the step that is already current nothing changes; done steps stay done.
   assert.deepEqual(barStates(states, 1), states);
   assert.deepEqual(barStates(["done", "done", "current", "upcoming", "upcoming"], 3), ["done", "done", "skipped", "current", "upcoming"]);
+});
+
+test("an existing client skips the intro call, and a signed one on file skips the agreement too", () => {
+  const existing = { ...base, leadState: "requirement", clientTaId: "ta_c1", existingClient: true, agreementOnFile: true };
+  assert.deepEqual(leadJourney(existing), ["done", "done", "done", "current", "upcoming"]);
+  assert.equal(stepToShow(null, leadJourney(existing)), "requirement");
+  // Known to us but never signed: the agreement is still to do, the intro call is not.
+  const unsigned = { ...base, leadState: "waiting_agreement", clientTaId: "ta_c1", existingClient: true };
+  assert.deepEqual(leadJourney(unsigned), ["done", "done", "current", "current", "upcoming"]);
 });
