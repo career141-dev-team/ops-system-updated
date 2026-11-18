@@ -22,7 +22,6 @@ import {
 import Icon from "@/app/Icon";
 import {
   FoldRow,
-  JourneyBar,
   NextStepCard,
   PageBox,
   figmaField,
@@ -196,7 +195,6 @@ export default async function InterviewPage({
         <h1 className="text-[32px] font-light leading-[40px] text-ink md:text-[40px] md:leading-[50px]">{interview.candidateName}</h1>
       </div>
 
-      <JourneyBar active="Interviews" />
       <div className="h-2" aria-hidden="true" />
 
       {/* Slots / agreed (Figma 249:10142) */}

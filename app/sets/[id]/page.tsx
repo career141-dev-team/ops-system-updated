@@ -16,7 +16,6 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  JourneyBar,
   NextStepCard,
   PageBox,
   SegmentedBar,
@@ -51,17 +50,6 @@ import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 const INTERNAL_CHIP = { pass: "Interviewed · passed", hold: "Interview · on hold", fail: "Interview · failed" } as const;
-
-const JOURNEY_STEPS = [
-  "Enquiry",
-  "Agreement",
-  "Requirement",
-  "Search",
-  "With client",
-  "Interviews",
-  "Joining",
-  "Guarantee",
-];
 
 /**
  * Frame 1:968 — OP · CV set — [Client] (client decides / review & send).
@@ -164,9 +152,6 @@ export default async function SetPage({
           </div>
         </div>
       </div>
-
-      {/* 8-Step JourneyBar (1:980) */}
-      <JourneyBar steps={JOURNEY_STEPS} active="With client" />
 
       {/* 7-Segment Ownership Bar (1:1032) */}
       <div className="flex flex-wrap items-center gap-3 px-1">

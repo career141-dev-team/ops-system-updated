@@ -770,3 +770,20 @@ test("an existing client is not sent back to the intro call, and the requirement
   );
   assert.match(out.waiting, /book the requirement meeting/);
 });
+
+test("a complete requirement needs no meeting: an existing client's lead goes straight to the hand-over, and after it nothing is asked", () => {
+  const complete = { fields: { title: "Driver", level: "Senior", salary: "1" } };
+  const existing = lead({ state: "requirement", clientTaId: "ta_c1" });
+  // Written down in full, never a meeting: hand it to TA.
+  assert.equal(leadNextStep(existing, parts({ requirement: complete }), NOW).at, "opening");
+  // Still blank and no meeting: book it, as before.
+  assert.match(leadNextStep(existing, parts({ requirement: { fields: { title: "Driver" } } }), NOW).waiting, /Book the requirement meeting/);
+  // Handed over (queued for TA): the meeting is not asked for.
+  const handedOver = leadNextStep(
+    lead({ state: "handed_over", clientTaId: "ta_c1" }),
+    parts({ requirement: complete, position: { openingTaId: null, title: "Driver" } }),
+    NOW,
+  );
+  assert.equal(handedOver.at, "opening");
+  assert.doesNotMatch(handedOver.waiting, /requirement meeting/);
+});

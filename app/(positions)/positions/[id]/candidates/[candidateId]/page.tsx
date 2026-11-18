@@ -5,7 +5,6 @@ import Icon from "@/app/Icon";
 import {
   BackBar,
   FoldRow,
-  JourneyBar,
   NextStepCard,
   PageBox,
   StatTile,
@@ -30,17 +29,6 @@ import { candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidat
 import { can } from "@/lib/roles";
 import { feedbackLog } from "@/lib/timeline";
 import { currentMember } from "@/lib/session";
-
-const JOURNEY_STEPS = [
-  "Enquiry",
-  "Agreement",
-  "Requirement",
-  "Search",
-  "With client",
-  "Interviews",
-  "Joining",
-  "Guarantee",
-];
 
 /**
  * Frame 1:2433 — OP · Application — [Candidate] for [Position].
@@ -98,10 +86,6 @@ export default async function PositionCandidatePage({
   const firstName = candidate.name.split(" ")[0] || candidate.name;
   const baseHref = `/positions/${position.id}/candidates/${encodeURIComponent(candidate.id)}`;
 
-  let activeJourney = "With client";
-  if (candInterviews.length > 0) activeJourney = "Interviews";
-  else if (!candidate.setId) activeJourney = "Search";
-
   return (
     <PageBox width="1080" className="gap-6">
       <BackBar
@@ -148,8 +132,6 @@ export default async function PositionCandidatePage({
 
       {tab === "summary" && (
         <div className="flex flex-col gap-6">
-          <JourneyBar steps={JOURNEY_STEPS} active={activeJourney} />
-
           <NextStepCard
             eyebrow="WHOSE MOVE · THE CLIENT’S"
             clock="Day 3 of 7"

@@ -32,11 +32,11 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  JourneyBar,
-   type JourneyStep,
   NextStepCard,
   PageBox,
+  RelatedLinks,
   StatusChip,
+  ViewPills,
   figmaField,
   figmaLabel,
   pillDanger,
@@ -71,7 +71,7 @@ import {
   startingFields,
   whereItStands,
 } from "@/lib/esa";
-import { SOURCE_MEANINGS, STATE_MEANINGS, type LeadState } from "@/lib/leads";
+import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
   MAX_REBOOKS,
@@ -79,17 +79,16 @@ import {
   type MeetingKind,
   type MeetingState,
 } from "@/lib/meetings";
+import { positionStanding, relatedWork } from "@/data/journeyOf";
+import { STAGES } from "@/lib/journey";
+import { doneLine, flowOf } from "@/lib/leadFlow";
 import {
   LEAD_STEPS,
   LEAD_STEP_LABELS,
   type LeadStep,
   askedStep,
-  barStates,
   leadJourney,
-  stepAfter,
-  stepBefore,
   stepToShow,
-  tailJourney,
 } from "@/lib/leadJourney";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
@@ -197,12 +196,14 @@ export default async function LeadPage({
     },
     lead,
   );
-  const introHeldOrSkipped = lead.source === "director" || meetings.some((m) => m.kind === "intro" && m.state === "held");
+  // A Director's lead, or a client we already had, has no intro call (and maybe no agreement) to do.
+  const known = existingClientOf(lead, meetings, esa);
+  const introHeldOrSkipped = known.skipsIntro || meetings.some((m) => m.kind === "intro" && m.state === "held");
   const coverPreview = esa ? coverEmail(templateFor(db, "esa.cover"), esa.fields) : null;
   const esaMissing = esa ? missingFields(esa.fields) : [];
   const esaTemplate = currentTemplate(db.files, "esa_draft");
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
-  const agreementDone = esa?.state === "signed" || esa?.state === "countersigned";
+  const agreementDone = esa?.state === "signed" || esa?.state === "countersigned" || known.signedOnFile;
 
   const requirement = requirementForLead(db, lead.id);
   const requirementBlanks = requirement ? requirementBlanksOf(requirement.fields) : [];
@@ -247,11 +248,8 @@ export default async function LeadPage({
     clientTaId: lead.clientTaId,
     industryFlagged: lead.industryFlagged,
     industryConfirmedBy: lead.industryConfirmedBy,
-    skipsIntro: lead.source === "director",
-    // Linked to a client we already had: no intro call was ever booked, and if the routing said
-    // "requirement" it has a signed agreement on file (see routeLead).
-    existingClient: !!lead.clientTaId && !meetings.some((m) => m.kind === "intro") && ["requirement", "waiting_agreement", "handed_over"].includes(lead.state),
-    agreementOnFile: !!lead.clientTaId && !esa && !meetings.some((m) => m.kind === "intro") && ["requirement", "handed_over"].includes(lead.state),
+    skipsIntro: known.skipsIntro,
+    agreementOnFile: known.signedOnFile,
     introBooked: meetings.some((m) => m.kind === "intro" && m.state === "booked"),
     introHeld: meetings.some((m) => m.kind === "intro" && m.state === "held"),
     positionExists: !!position,
@@ -270,9 +268,6 @@ export default async function LeadPage({
   const activeView: "enquiry" | "decline" | "intro" | "opening" | "agreement" | "requirement" =
     shown === "enquiry" ? (flagged || view === "decline" ? "decline" : "enquiry") : shown;
   const stepHref = (to: LeadStep) => `/leads/${lead.id}?step=${to}`;
-  const before = stepBefore(shown);
-  const after = stepAfter(shown);
-  const shownDone = progress[LEAD_STEPS.indexOf(shown)] === "done";
   // The global "up next" card shows only on the step it is about.
   const upNextOn: LeadStep | null =
     step.at === "duplicate" || step.at === "industry" || step.at === "closed"
@@ -283,41 +278,46 @@ export default async function LeadPage({
           ? "opening"
           : null;
 
-  const placed = position ? db.placements.find((p) => p.positionId === position.id && p.state !== "cancelled") ?? null : null;
-  const guaranteeOf = placed ? db.guarantees.find((g) => g.placementId === placed.id) ?? null : null;
-  const tail = tailJourney({
-    openingConfirmed: !!position?.openingTaId,
-    placed: !!placed,
-    joined: !!placed?.joinedAt,
-    guarantee: guaranteeOf?.state ?? null,
-  });
+  // The pieces of this client's work that exist, as plain links (18 Nov: no progress bar), and the five
+  // sections of this lead as free tabs; the ones the backend says are next carry a small dot.
+  const related = relatedWork(db, { leadId: lead.id });
+  // After the opening the work goes on the opening's own page; this says where it stands (the Work board's answer).
+  const standing = position ? positionStanding(db, position) : null;
+  const standingWhat = standing ? (STAGES.find((s) => s.key === standing.stage)?.what ?? standing.stage) : "";
+  // The dot is the backend's own answer (leadNextStep), the same one the card says, so the two cannot differ.
+  const nextAt: LeadStep | null =
+    step.at === "duplicate" || step.at === "industry" ? "enquiry" : (LEAD_STEPS.find((s) => s === step.at) ?? null);
 
-  // The bar rings the step the page is on and warns on any earlier one still open (17 Nov).
-  const bar = barStates(progress, LEAD_STEPS.indexOf(shown));
-  const journeySteps: JourneyStep[] = [
-    { label: "Enquiry", state: bar[0], viewing: shown === "enquiry", href: stepHref("enquiry") },
-    { label: "Intro call", state: bar[1], viewing: shown === "intro", href: stepHref("intro") },
-    // The small line says why a step is not green yet: an agreement is done when it is signed,
-    // a requirement when every required field is filled.
-    { label: "Agreement", state: bar[2], viewing: shown === "agreement", href: stepHref("agreement"), note: esa && !agreementDone ? esa.state : undefined },
-    {
-      label: "Requirement",
-      state: bar[3],
-      viewing: shown === "requirement",
-      href: stepHref("requirement"),
-      note: requirement && requirementBlanks.length ? requirementBlanks.length + " blank" : undefined,
-    },
-    { label: "Opening", state: bar[4], viewing: shown === "opening", href: stepHref("opening") },
-    // The search, the sets and the interviews loop until the position is filled:
-    // one step here, with the loop itself on the opening.
-    {
-      label: "Search & interviews",
-      state: tail[0],
-      href: position ? `/positions/${position.id}` : undefined,
-    },
-    { label: "Joining", state: tail[1], href: placed ? `/placements/${placed.id}` : undefined },
-    { label: "Guarantee", state: tail[2], href: guaranteeOf ? `/guarantees/${guaranteeOf.id}` : undefined },
-  ];
+  // The flow (18 Nov): the step now, a second one beside it, and one line for each finished step.
+  const flow = flowOf(progress);
+  const heldIntro = meetings.filter((m) => m.kind === "intro" && m.state === "held").sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0];
+  const doneFacts = {
+    existingClient: !!lead.clientTaId && known.skipsIntro && lead.source !== "director",
+    skipsIntro: known.skipsIntro,
+    introHeldAt: heldIntro?.heldAt ?? null,
+    esaSentAt: esa?.sentAt ?? null,
+    esaSignedAt: esa?.signedAt ?? null,
+    countersigned: esa?.state === "countersigned",
+    signedOnFile: known.signedOnFile,
+    roleTitle: requirement?.fields.title ?? "",
+    openingTaId: position?.openingTaId ?? null,
+  };
+  const alsoCards = flow.alsoNow
+    .filter((s) => s !== shown)
+    .map((s) => ({
+      step: s,
+      line:
+        s === "requirement"
+          ? requirementBlanks.length && requirement
+            ? requirementBlanks.length + (requirementBlanks.length === 1 ? " field is" : " fields are") + " still blank"
+            : requirementMeeting
+              ? "The requirement meeting is booked"
+              : "Book the requirement meeting: it runs beside the agreement"
+          : esa
+            ? "The agreement is " + esa.state
+            : "The agreement has not been started",
+      button: s === "requirement" ? "Work on the requirement" : "Open the agreement",
+    }));
 
   const sourceText =
     SOURCE_MEANINGS[lead.source as keyof typeof SOURCE_MEANINGS] ?? lead.source;
@@ -458,7 +458,25 @@ export default async function LeadPage({
           </div>
         )}
 
-        <JourneyBar steps={journeySteps} />
+        {position && standing && (
+          <p className="text-[14px] text-ink-soft">
+            Where it is now:{" "}
+            <Link href={`/positions/${position.id}`} className="font-medium text-ink underline">
+              {standingWhat}
+            </Link>
+            {standing.loop ? " · " + standing.loop.line : ""}
+          </p>
+        )}
+        <RelatedLinks items={related} active="lead" />
+        <ViewPills
+          items={LEAD_STEPS.map((s) => ({
+            key: s,
+            label: LEAD_STEP_LABELS[s],
+            href: stepHref(s),
+            mark: s === nextAt,
+          }))}
+          active={shown}
+        />
         {position && !agreementDone && !closed && (
           <p className="text-[13px] text-warn">
             Working without a signed agreement since {whenDate(position.handedOverAt ?? now)}
@@ -1683,34 +1701,56 @@ export default async function LeadPage({
 
       {activeView !== "decline" && (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-5">
-            {before ? (
-              <Link href={stepHref(before)} className={pillSecondary}>
-                ← Back to {LEAD_STEP_LABELS[before].toLowerCase()}
+          {/* A dot was clicked and it is not the step the work is at: one way back, and no Back/Skip row (18 Nov). */}
+          {flow.now && shown !== flow.now && (
+            <Link href={`/leads/${lead.id}`} className={pillSecondary + " self-start"}>
+              ← Back to what is next: {LEAD_STEP_LABELS[flow.now].toLowerCase()}
+            </Link>
+          )}
+          {!flow.now && position && (
+            <Link href={`/positions/${position.id}`} className={pillPrimary + " self-start"}>
+              Next: the opening →
+            </Link>
+          )}
+
+          {/* The second thing current at once (the requirement beside the agreement), as a small card. */}
+          {alsoCards.map((card) => (
+            <div key={card.step} className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-sunk px-5 py-4">
+              <div className="flex flex-col gap-0.5">
+                <span className={figmaLabel}>ALSO HAPPENING · {LEAD_STEP_LABELS[card.step].toUpperCase()}</span>
+                <span className="text-[14px] text-ink">{card.line}</span>
+              </div>
+              <Link href={stepHref(card.step)} className={pillSecondary}>
+                {card.button}
               </Link>
-            ) : (
-              <span />
-            )}
-            {after ? (
-              <Link href={stepHref(after)} className={shownDone ? pillPrimary : pillSecondary}>
-                {shownDone ? "Next: " : "Skip to "}
-                {LEAD_STEP_LABELS[after].toLowerCase()} →
-              </Link>
-            ) : position ? (
-              <Link href={`/positions/${position.id}`} className={pillPrimary}>
-                Next: the opening →
-              </Link>
-            ) : null}
-          </div>
+            </div>
+          ))}
+
+          {/* What is finished, one quiet line each; a click opens its record. */}
+          {flow.done.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className={figmaLabel}>DONE SO FAR</span>
+              {flow.done.map((doneStep) => (
+                <Link
+                  key={doneStep}
+                  href={stepHref(doneStep)}
+                  className="flex flex-wrap items-baseline justify-between gap-2 border-t border-rule py-2 text-[13.5px] first:border-t-0 hover:opacity-80"
+                >
+                  <span className="font-medium text-ink-soft">{LEAD_STEP_LABELS[doneStep]}</span>
+                  <span className="text-ink-faint">{doneLine(doneStep, doneFacts)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2.5">
             {/* Fold 5: Close lead & audit */}
             <FoldRow
-              title="Close this lead or view history"
+              title="Something different?"
               summary={
                 closed
                   ? `Closed · ${STATE_MEANINGS[lead.state as LeadState] ?? lead.state}`
-                  : "Close with a reason · audit log"
+                  : "Close with a reason · what happened to it"
               }
             >
               <div className="flex flex-col gap-4">

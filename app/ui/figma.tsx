@@ -21,31 +21,6 @@ export type Tone =
   | "neutral"
   | "quiet";
 
-export const JOURNEY_STEPS = [
-  "Enquiry",
-  "Agreement",
-  "Requirement",
-  "Search",
-  "With client",
-  "Interviews",
-  "Joining",
-  "Guarantee",
-] as const;
-
-export type JourneyStepName = (typeof JOURNEY_STEPS)[number];
-
-export type JourneyStepItem = {
-  label: string;
-  /** "skipped": not finished, but a later step has started - it stays visible and clickable. */
-  state: "done" | "current" | "upcoming" | "skipped";
-  /** The page being looked at; shown in bold, separate from progress. */
-  viewing?: boolean;
-  /** A short line under the label, e.g. the counts of a loop. */
-  note?: string;
-  href?: string;
-};
-
-export type JourneyStep = JourneyStepItem;
 
 const AVATAR_TONES = [
   "bg-bg-brand text-brand",
@@ -310,6 +285,15 @@ export function ClockPill({
 }
 
 /**
+ * The other pieces of this client's work - lead, opening, placement, invoice, guarantee - as plain
+ * links, shown only when there is more than one (18 Nov). Replaces the progress bar: it says where
+ * you can go, not how far along anything is.
+ */
+export function RelatedLinks({ items, active }: { items: { key: string; label: string; href: string }[]; active: string }) {
+  return items.length > 1 ? <ViewPills items={items} active={active} /> : null;
+}
+
+/**
  * View pills (`1:425`, `1:611`, `1:3563`): one horizontal row of pill links
  * with optional counts in `text-ink-faint`.
  */
@@ -318,7 +302,8 @@ export function ViewPills({
   active,
   rightSlot,
 }: {
-  items: { key: string; label: string; href: string; count?: number }[];
+  /** `mark`: a small dot for "this is next" (18 Nov); it says where to go, not how far along it is. */
+  items: { key: string; label: string; href: string; count?: number; mark?: boolean }[];
   active: string;
   rightSlot?: ReactNode;
 }) {
@@ -337,6 +322,7 @@ export function ViewPills({
             }
           >
             <span>{item.label}</span>
+            {item.mark && <span className="size-1.5 rounded-full bg-brand" title="Next" />}
             {typeof item.count === "number" && (
               <span className="text-ink-faint">{item.count}</span>
             )}
@@ -349,111 +335,6 @@ export function ViewPills({
           {rightSlot}
         </>
       )}
-    </div>
-  );
-}
-
-/**
- * 8-step horizontal Journey bar (`1:508`, `1:689`, `1:2065`, `1:3459`).
- * Accepts either explicit `steps: (JourneyStepItem | string)[]` OR `active: JourneyStepName | string` + `hrefs`.
- */
-export function JourneyBar({
-  steps,
-  active,
-  hrefs,
-}: {
-  steps?: readonly (JourneyStepItem | string)[];
-  active?: JourneyStepName | string;
-  hrefs?: Partial<Record<string, string>>;
-}) {
-  const stringSteps =
-    steps && steps.length > 0 && typeof steps[0] === "string"
-      ? (steps as readonly string[])
-      : JOURNEY_STEPS;
-  const activeIdx = active ? Math.max(0, stringSteps.indexOf(active)) : 0;
-  const resolvedSteps: JourneyStepItem[] =
-    steps && steps.length > 0 && typeof steps[0] !== "string"
-      ? (steps as JourneyStepItem[])
-      : stringSteps.map((s, idx) => ({
-          label: s,
-          state: idx < activeIdx ? "done" : idx === activeIdx ? "current" : "upcoming",
-          href: hrefs?.[s],
-        }));
-
-  return (
-    <div className="flex w-full items-start overflow-x-auto py-1" aria-label="Journey">
-      {resolvedSteps.map((step, idx) => {
-        const isDone = step.state === "done";
-        const isCurrent = step.state === "current";
-        const isSkipped = step.state === "skipped";
-        const circle = isSkipped ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-warn bg-warn-soft text-[13px] font-bold leading-none text-warn">
-            !
-          </span>
-        ) : isDone ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-ink-inverse">
-            <Icon name="check" size={14} />
-          </span>
-        ) : isCurrent ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-brand bg-bg-brand">
-            <span className="size-2 rounded-full bg-brand" />
-          </span>
-        ) : (
-          <span className="size-6 shrink-0 rounded-full bg-sunk" />
-        );
-        const label = (
-          <span
-            className={
-              "w-[92px] text-center font-medium sm:w-[112px] " +
-              (isCurrent || step.viewing
-                ? "text-[14px] leading-[21px] text-ink"
-                : isSkipped
-                  ? "text-[12px] leading-4 tracking-[0.4px] text-warn"
-                  : isDone
-                    ? "text-[12px] leading-4 tracking-[0.4px] text-ink-soft"
-                    : "text-[12px] leading-4 tracking-[0.4px] text-ink-faint")
-            }
-          >
-            {step.label}
-            {isSkipped && <span className="sr-only"> (skipped)</span>}
-            {step.note && (
-              <span className="mt-0.5 block text-[11px] font-normal leading-[14px] text-ink-faint">{step.note}</span>
-            )}
-          </span>
-        );
-        const content = (
-          <div className="flex w-[92px] shrink-0 flex-col items-center gap-2 sm:w-[112px]">
-            {circle}
-            {label}
-          </div>
-        );
-        return (
-          <div
-            key={step.label}
-            className={
-              "flex items-start " +
-              (idx < resolvedSteps.length - 1 ? "min-w-[100px] flex-1" : "shrink-0")
-            }
-          >
-            {step.href ? (
-              <Link href={step.href} className="hover:opacity-85">
-                {content}
-              </Link>
-            ) : (
-              content
-            )}
-            {idx < resolvedSteps.length - 1 && (
-              <div className="min-w-[12px] flex-1 pt-[11px]">
-                <div
-                  className={
-                    "h-[2px] w-full rounded-[1px] " + (isDone ? "bg-brand" : "bg-shell")
-                  }
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }

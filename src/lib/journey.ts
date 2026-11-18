@@ -61,7 +61,7 @@ export function stageOfLead(
   if (parts.esaState === "signed" || parts.esaState === "countersigned") return "requirement";
   if (parts.esaState) return "agreement";
   // A client we already had skips the intro call (the enquiry's routing says where they are).
-  if (lead.state === "requirement") return "requirement";
+  if (lead.state === "requirement" || lead.state === "handed_over") return "requirement";
   if (lead.state === "waiting_agreement" || parts.heldIntro) return "agreement";
   // The enquiry is done once the TA check was answered, as the lead page decides it. A new client has
   // no TA id until its agreement is countersigned, so the id alone kept every new client in Enquiry.

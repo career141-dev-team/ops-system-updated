@@ -1,3 +1,4 @@
+import { relatedWork } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -14,7 +15,7 @@ import Icon from "@/app/Icon";
 import {
   BackBar,
   FoldRow,
-  JourneyBar,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   SegmentedBar,
@@ -228,12 +229,9 @@ export default async function PlacementPage({
         </h1>
       </div>
 
-      {/* Show 8-step JourneyBar on Offer stage (Frame 1:2783), or 5 ViewPills on Placement (Frames 1:1294 & 1:2873) */}
-      {isOfferStage && !view ? (
-        <JourneyBar active="Joining" />
-      ) : !isNoShow ? (
-        <ViewPills items={subViews} active={activeView} />
-      ) : null}
+      {/* Plain links to the rest of this client's work (18 Nov), then this placement's own views once the offer is made. */}
+      {!isNoShow && <RelatedLinks items={relatedWork(db, { placementId: placement.id })} active="placement" />}
+      {!(isOfferStage && !view) && !isNoShow && <ViewPills items={subViews} active={activeView} />}
 
       {msg && !at && (
         <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">

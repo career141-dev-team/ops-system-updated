@@ -1,3 +1,4 @@
+import { relatedWork } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -5,7 +6,7 @@ import { decideRefund, markRefunded, recordLeaver } from "@/app/actions";
 import {
   BackBar,
   FoldRow,
-  JourneyBar,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   SegmentedBar,
@@ -155,8 +156,7 @@ export default async function GuaranteePage({
         </h1>
       </div>
 
-      {/* 8-step JourneyBar (Frame 1:1365) */}
-      <JourneyBar active="Guarantee" />
+      {placement && <RelatedLinks items={relatedWork(db, { placementId: placement.id })} active="guarantee" />}
 
       {/* 30-segment Clock Bar (Frame 1:1420) */}
       {guarantee.state === "replacing" ? (
