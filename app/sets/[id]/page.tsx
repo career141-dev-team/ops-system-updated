@@ -7,6 +7,7 @@ import {
   dropFromClientSet,
   recordClientDecision,
   recordCvClaim,
+  recordInternalInterview,
   recordSetReceived,
   reviewClientSet,
   sendClientSet,
@@ -45,6 +46,7 @@ import {
   silentDays,
   windowInWords,
 } from "@/lib/clientFeedback";
+import { workingDaysBetween } from "@/lib/calendar";
 import { MIN_CVS, STATE_MEANINGS, type SetState, dueInWords, whereItStands } from "@/lib/clientSets";
 import { setNextStep } from "@/lib/nextStep";
 import { can } from "@/lib/roles";
@@ -127,11 +129,10 @@ export default async function SetPage({
     now,
   );
 
-  const elapsedDays = set.receivedAt
-    ? Math.min(7, Math.max(1, Math.floor((now - set.receivedAt) / 86_400_000) + 1))
-    : 0;
-  const closesDate = window ? whenDate(window.closesAt) : "7 working days after receipt";
-  const firstUndecided = set.candidates.find((c) => !c.decision && !c.claimedAt) ?? null;
+  // Working days from the setting, with holidays (18 Nov: the bar counted calendar days out of a fixed 7).
+  const ownershipDays = numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS);
+  const elapsedDays = set.receivedAt ? Math.min(ownershipDays, workingDaysBetween(set.receivedAt, now, holidays)) : 0;
+  const closesDate = window ? whenDate(window.closesAt) : "";
 
   return (
     <PageBox width="1160" className="gap-6">
@@ -170,11 +171,11 @@ export default async function SetPage({
 
       {/* 7-Segment Ownership Bar (1:1032) */}
       <div className="flex flex-wrap items-center gap-3 px-1">
-        <SegmentedBar total={7} filled={elapsedDays} />
+        <SegmentedBar total={ownershipDays} filled={elapsedDays} />
         <span className="text-[14px] leading-[22px] text-ink">
-          {set.receivedAt
-            ? `Day ${elapsedDays} of 7 working days — ${clientName} owns these CVs until ${closesDate}.`
-            : `7 working days of CV ownership start the day ${clientName} receives this set.`}
+          {window
+            ? `${windowInWords(window, now, holidays)} — ${clientName} owns these CVs until ${closesDate}.`
+            : `${ownershipDays} working days of CV ownership start the day ${clientName} receives this set.`}
         </span>
       </div>
 
@@ -214,46 +215,10 @@ export default async function SetPage({
         />
       )}
 
-      {/* AURA Reply Card (1:1042 — when set is sent and waiting on decisions) */}
-      {set.state === "sent" && firstUndecided && (
-        <div className="flex flex-wrap items-center gap-3.5 rounded-[24px] bg-surface px-[18px] py-4 shadow-float">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-[16px] bg-ink text-[12px] font-medium text-ink-inverse">
-            A
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[14px] font-medium leading-[22px] text-ink">
-              AURA read {client?.billingName || clientName}’s reply
-            </span>
-            <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-soft">
-              “We’d like to meet {firstUndecided.name}. Let us review the remaining candidates in this set.”
-            </span>
-          </div>
-          {mayManage && (
-            <div className="flex items-center gap-2">
-              <form action={recordClientDecision}>
-                <input type="hidden" name="setId" value={set.id} />
-                <input type="hidden" name="applicationTaId" value={firstUndecided.applicationTaId} />
-                <input type="hidden" name="decision" value="shortlisted" />
-                <input
-                  type="hidden"
-                  name="reason"
-                  value={`Shortlisted by ${client?.billingName || clientName} for Round 1`}
-                />
-                <button type="submit" className={pillPrimary}>
-                  Confirm
-                </button>
-              </form>
-              <a href={`#decide-${firstUndecided.applicationTaId}`} className={pillSecondary}>
-                Not quite
-              </a>
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* 18 Nov: an "AURA read the reply" card stood here with a fixed quote; the client's answers are recorded per candidate below. */}
       {/* Candidate List (1:1051) */}
       <div className="flex flex-col divide-y divide-rule">
-        {set.candidates.map((who, idx) => {
+        {set.candidates.map((who) => {
           const file = who.fileId ? fileIn(db, who.fileId) : null;
           const isShortlisted = who.decision === "shortlisted";
           const isDecided = Boolean(who.decision);
@@ -300,7 +265,7 @@ export default async function SetPage({
 
                   <div className="flex flex-wrap items-center gap-1.5 text-[14px] leading-[22px] text-ink-faint">
                     <span>
-                      {set.role} candidate · {8 + (idx % 4)} yrs
+                      {set.role} candidate
                     </span>
                     {who.decision && (
                       <span className="text-ink-soft">
@@ -339,6 +304,21 @@ export default async function SetPage({
                     who.internalInterview?.outcome === "pass" ? "ok" : who.internalInterview ? "warn" : "neutral"
                   }
                 />
+
+                {/* Record our own interview here, since the set cannot go without it (18 Nov). */}
+                {mayManage && set.state !== "sent" && !who.internalInterview && (
+                  <form action={recordInternalInterview} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="setId" value={set.id} />
+                    <input type="hidden" name="applicationTaId" value={who.applicationTaId} />
+                    <input type="hidden" name="back" value={`/sets/${set.id}`} />
+                    <input name="notes" placeholder="Notes" aria-label={`Interview notes for ${who.name}`} className={`${figmaField} w-[180px] text-[13px]`} />
+                    {(["pass", "hold", "fail"] as const).map((o) => (
+                      <button key={o} type="submit" name="outcome" value={o} className={o === "pass" ? pillPrimary : pillSecondary}>
+                        {o === "pass" ? "Pass" : o === "hold" ? "Hold" : "Fail"}
+                      </button>
+                    ))}
+                  </form>
+                )}
 
                 {/* Right decision chip or Shortlist / Reject actions */}
                 {isShortlisted ? (

@@ -169,6 +169,7 @@ Also built on 17 Nov (supervisor review; each is a decision in 09):
 | Interview invites: a calendar event (Teams for online, an address for onsite) and both feedbacks side by side | `bookInterview`, `recordClientBooking`, `recordCandidateFeedbackByHand`, the candidate's Interviews tab |
 | Candidates added by hand | `addManualCandidate`, `src/lib/positionCandidates.ts` |
 | Pretend to be the TA System (`/dev/ta`) | development only, never against the real TA: opens when `OPS_DEV_SIGNIN` and `OPS_TA_FAKE` are both on (`sh deploy/local/start-ui.sh`). Buttons make TA create an opening, send a set of five CVs, send interview events, place a candidate and say they joined, through the same handlers as real events (`devTa*` in `app/actions.ts`) |
+| Testing Openings on a laptop (18 Nov) | `src/data/sampleOpenings.ts`, `src/lib/fakeTaState.ts`, `src/data/fakeTa.ts`, `/dev/ta` | "Load the Openings sample" adds five invented clients and six openings, one per state, after copying `.data-ui/ops.json` to `ops.before-sample-<time>.json`; "Remove" takes out only `smp_` rows. The stand-in TA answers each sample opening by id and keeps the stages Ops' pushed decisions set (`.data-ui/fake-ta.json`). Per opening: TA approves the JD, TA closes it, TA moves a candidate, move a clock to now, TA reads the queue |
 | The requirement from a Teams transcript | `src/lib/transcript.ts`, `fetchTranscript`, `readRequirementFromCall` |
 
 Not done from that review, each with its reason:

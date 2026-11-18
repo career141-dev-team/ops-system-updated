@@ -207,6 +207,10 @@ export async function createTask(
 }
 
 export async function startTimer(input: Omit<OpsTimer, "id" | "state" | "firedAt">): Promise<void> {
+  return startTimerNow(input);
+}
+
+async function startTimerNow(input: Omit<OpsTimer, "id" | "state" | "firedAt">): Promise<void> {
   if (!usingConvex()) {
     repo.startTimer(input);
     return;
@@ -951,7 +955,16 @@ export function holdsNewestFirst(db: OpsDatabase): OpsHold[] {
  * They all count from receipt, never from sending, and they start in one place
  * so a corrected receipt date can restart them together.
  */
-export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, receivedAt: number): Promise<void> {
+export async function startReceiptClocks(
+  db: OpsDatabase,
+  set: OpsClientSet,
+  receivedAt: number,
+  /** Only these kinds (a corrected receipt restarts only the clocks still running). */
+  only: string[] | null = null,
+): Promise<void> {
+  const startTimer = async (input: Parameters<typeof startTimerNow>[0]) => {
+    if (!only || only.includes(input.kind)) await startTimerNow(input);
+  };
   const holidays = db.holidays.map((h) => h.date);
   const window = ownershipWindow(receivedAt, holidays, numberOf(db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS));
   const label = set.name;
@@ -998,6 +1011,23 @@ export async function startReceiptClocks(db: OpsDatabase, set: OpsClientSet, rec
     ownerId: set.ownerId,
     payload: { label },
   });
+}
+
+/**
+ * The client got the set on another day: the clocks still running start again from then (18 Nov: the date was
+ * saved but the clocks kept counting from the old one). One that already fired is not fired twice.
+ */
+export async function restartReceiptClocks(set: OpsClientSet, receivedAt: number, by: Id): Promise<string[]> {
+  const db = await desk();
+  const kinds = ["set.ownership", "feedback.chase", "silence.hold", "hire.unreported"];
+  const running = db.timers
+    .filter((t) => t.subjectType === "clientSet" && t.subjectId === set.id && kinds.includes(t.kind))
+    .filter((t) => t.state === "running" || t.state === "warned")
+    .map((t) => t.kind);
+  if (!running.length) return [];
+  await cancelClocksFor(db, "clientSet", set.id, by, "The receipt date was corrected.", running);
+  await startReceiptClocks(db, set, receivedAt, running);
+  return running;
 }
 
 /* ── Requirements and positions (15, Phase 3) ─────────────────── */

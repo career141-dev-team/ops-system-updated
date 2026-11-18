@@ -79,6 +79,7 @@ import {
   startJoinClocks,
   requirementForLead,
   startReceiptClocks,
+  restartReceiptClocks,
   clientsNewestFirst,
   patchClient,
   draftMessage,
@@ -3103,6 +3104,7 @@ export async function recordSetReceived(formData: FormData): Promise<void> {
   if (row.sentAt && when < row.sentAt - HOUR) back("They cannot have received it before it was sent.");
 
   await patchClientSet(setId, { receivedAt: when }, member.id, "clientSet.received", null);
+  await restartReceiptClocks({ ...row, receivedAt: when }, when, member.id);
   revalidatePath(here);
   back("Noted. Everything after this counts from then.");
 }
@@ -3633,21 +3635,7 @@ export async function saveRequirement(formData: FormData): Promise<void> {
     // TA has no endpoint for this yet (an additive one is a ta-system PR): until
     // there is, the write waits in the outbox and nothing is lost.
     const opened = db.positions.find((p) => p.requirementId === already.id);
-    if (opened) {
-      await queueTaWrite(
-        "/integrations/v1/openings/details",
-        {
-          opsPositionId: opened.id,
-          openingId: opened.openingTaId,
-          brief: briefText(fields),
-          level: fields.level ?? "",
-          locations: fields.locations ?? "",
-          package: fields.salary ?? "",
-          headcount: Number(fields.headcount ?? 1) || 1,
-        },
-        { type: "position", id: opened.id },
-      );
-    }
+    if (opened) await queueOpeningDetails(opened, fields);
   } else {
     await addRequirement({
       leadId,
@@ -4159,6 +4147,23 @@ export async function setOpeningPeople(formData: FormData): Promise<void> {
   back(row.openingTaId ? "Saved, and the TA System will be told." : "Saved. It goes to the TA System with the opening once TA confirms it.");
 }
 
+/** What the requirement says now, for the TA System's opening. It waits in the outbox until TA has the endpoint. */
+async function queueOpeningDetails(opened: { id: string; openingTaId: string | null }, fields: Record<string, string>): Promise<void> {
+  await queueTaWrite(
+    "/integrations/v1/openings/details",
+    {
+      opsPositionId: opened.id,
+      openingId: opened.openingTaId,
+      brief: briefText(fields),
+      level: fields.level ?? "",
+      locations: fields.locations ?? "",
+      package: fields.salary ?? "",
+      headcount: Number(fields.headcount ?? 1) || 1,
+    },
+    { type: "position", id: opened.id },
+  );
+}
+
 /** Update or create the requirement fields directly from the position's Requirement & JD sub-view. */
 export async function savePositionRequirement(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -4173,6 +4178,8 @@ export async function savePositionRequirement(formData: FormData): Promise<void>
   if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
   const row = position as NonNullable<typeof position>;
   const existing = row.requirementId ? db.requirements.find((r) => r.id === row.requirementId) ?? null : null;
+  // The same lock as on the lead (18 Nov: this door edited a locked requirement and TA never heard).
+  if (existing && requirementLocked(existing.fields)) back("The requirement is complete and locked. It is shown as agreed; a change goes through the client.");
 
   const fields: Record<string, string> = { ...(existing?.fields ?? {}) };
   for (const [key, value] of formData.entries()) {
@@ -4200,8 +4207,9 @@ export async function savePositionRequirement(formData: FormData): Promise<void>
     await patchPosition(positionId, { requirementId: created.id }, member.id, "position.requirementLinked", null);
   }
 
+  await queueOpeningDetails(row, fields);
   revalidatePath("/positions/" + positionId);
-  back("Requirement details saved.");
+  back("Requirement details saved, and the TA System will be told.");
 }
 
 /** Approve the JD on a position and record jdApprovedAt so advertising opens. */

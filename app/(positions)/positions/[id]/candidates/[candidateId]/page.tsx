@@ -26,7 +26,7 @@ import {
   referenceForApplication,
 } from "@/data/desk";
 import { INTERNAL_MEANINGS, INTERNAL_OUTCOMES } from "@/lib/clientSets";
-import { candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
+import { LEVEL_LABELS, candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
 import { can } from "@/lib/roles";
 import { feedbackLog } from "@/lib/timeline";
 import { currentMember } from "@/lib/session";
@@ -73,9 +73,8 @@ export default async function PositionCandidatePage({
 
   const candidates = candidatesForPosition(db, position, itsSets, await taApplicationsFor(position.openingTaId));
   const decodedId = decodeURIComponent(candidateId);
-  const candidate =
-    candidates.find((c) => c.id === decodedId || c.applicationTaId === decodedId) ??
-    candidates[0];
+  // An id nobody has is a missing page, not the first candidate (18 Nov).
+  const candidate = candidates.find((c) => c.id === decodedId || c.applicationTaId === decodedId);
   if (!candidate) notFound();
 
   const candInterviews = db.interviews.filter(
@@ -98,9 +97,23 @@ export default async function PositionCandidatePage({
   const firstName = candidate.name.split(" ")[0] || candidate.name;
   const baseHref = `/positions/${position.id}/candidates/${encodeURIComponent(candidate.id)}`;
 
-  let activeJourney = "With client";
-  if (candInterviews.length > 0) activeJourney = "Interviews";
-  else if (!candidate.setId) activeJourney = "Search";
+  let activeJourney = "Search";
+  if (candidate.level === "joining" || candidate.level === "guarantee") activeJourney = "Joining";
+  else if (candInterviews.length > 0) activeJourney = "Interviews";
+  else if (inSetRow?.state === "sent") activeJourney = "With client";
+
+  // What is next for them, from the facts (18 Nov: it used to say "Day 3 of 7" and "is deciding" for everybody).
+  const sentDays = inSetRow?.receivedAt ? Math.max(0, Math.floor((Date.now() - inSetRow.receivedAt) / 86_400_000)) : null;
+  const next =
+    candidate.level === "out"
+      ? { eyebrow: "OUT", title: `${firstName} is out of this opening`, body: candidate.decisionReason ? "“" + candidate.decisionReason + "”" : candidate.statusLabel, clock: null }
+      : candidate.decision === "shortlisted"
+        ? { eyebrow: "WHOSE MOVE · OURS", title: `${clientName} shortlisted ${firstName}`, body: "Agree an interview time with the client.", clock: null }
+        : inSetRow?.state === "sent"
+          ? { eyebrow: "WHOSE MOVE · THE CLIENT’S", title: `${clientName} is deciding on ${firstName}`, body: `In ${inSetRow.name}, waiting for the client to shortlist or pass.`, clock: sentDays !== null ? (sentDays === 0 ? "Sent today" : "Sent " + sentDays + (sentDays === 1 ? " day ago" : " days ago")) : null }
+          : inSetRow
+            ? { eyebrow: "WHOSE MOVE · OURS", title: `Interview ${firstName} before the set goes`, body: `In ${inSetRow.name}, not sent yet. Our own interview is on the screening tab and the set's page.`, clock: null }
+            : { eyebrow: "WHOSE MOVE · THE TA’S", title: `${firstName} is in the TA's search`, body: candidate.statusLabel, clock: null };
 
   return (
     <PageBox width="1080" className="gap-6">
@@ -151,15 +164,11 @@ export default async function PositionCandidatePage({
           <JourneyBar steps={JOURNEY_STEPS} active={activeJourney} />
 
           <NextStepCard
-            eyebrow="WHOSE MOVE · THE CLIENT’S"
-            clock="Day 3 of 7"
+            eyebrow={next.eyebrow}
+            clock={next.clock ?? undefined}
             clockTone="warn"
-            title={`${clientName} is deciding on ${firstName}`}
-            body={
-              candidate.setName
-                ? `Sent in ${candidate.setName} · waiting for the client to shortlist or pass.`
-                : `Screened by the TA (${candidate.roleSummary}) · ready for the next CV set.`
-            }
+            title={next.title}
+            body={next.body}
             actions={
               candidate.setId ? (
                 <Link href={`/sets/${candidate.setId}`} className={pillPrimary}>
@@ -175,60 +184,30 @@ export default async function PositionCandidatePage({
             }
           />
 
-          {/* 3 StatTiles (1:2513) */}
+          {/* What Ops knows (18 Nov: the fit score, notice and salary were invented; TA keeps those). */}
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-            <StatTile
-              value={`${candidate.fit} fit`}
-              caption="for this opening · scored by AI"
-            />
-            <StatTile
-              value={candidate.noticeWeeks}
-              caption="until she can start"
-            />
-            <StatTile
-              value={candidate.expectedSalary}
-              caption="expected salary"
-            />
+            <StatTile value={LEVEL_LABELS[candidate.level]} caption="where they are" />
+            <StatTile value={inSetRow ? "Set " + inSetRow.setNumber : "Not in a set"} caption={inSetRow ? (inSetRow.state === "sent" ? "with the client" : "not sent yet") : "the TA is still searching"} />
+            <StatTile value={candidate.decision === "shortlisted" ? "Shortlisted" : candidate.decision === "rejected" ? "Passed" : "Not yet"} caption="the client's answer" />
           </div>
 
-          <FoldRow
-            title="Contact attempts"
-            summary={candidate.contactSummary}
-          >
-            <div className="flex flex-col gap-2 text-[14px] text-ink-soft">
-              <p>{candidate.contactSummary}</p>
-              <p className="text-[12px] text-ink-faint">
-                Source: {candidate.source} · Current role: {candidate.roleSummary}
-              </p>
-            </div>
-          </FoldRow>
+          {candidate.contactSummary && (
+            <FoldRow title="Contact details" summary={candidate.contactSummary}>
+              <p className="text-[14px] text-ink-soft">{candidate.contactSummary}</p>
+            </FoldRow>
+          )}
         </div>
       )}
 
       {tab === "screening" && (
         <div className="flex flex-col gap-4 rounded-[24px] bg-sunk p-6">
           <p className={figmaLabel}>SCREENING & CONTACT LOG (TA SYSTEM)</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-[12px] text-ink-faint">Current role & experience</p>
-              <p className="text-[14px] font-medium text-ink">{candidate.roleSummary}</p>
-            </div>
-            <div>
-              <p className="text-[12px] text-ink-faint">Source channel</p>
-              <p className="text-[14px] font-medium text-ink">{candidate.source}</p>
-            </div>
-            <div>
-              <p className="text-[12px] text-ink-faint">Notice period</p>
-              <p className="text-[14px] font-medium text-ink">{candidate.noticeWeeks}</p>
-            </div>
-            <div>
-              <p className="text-[12px] text-ink-faint">Expected package</p>
-              <p className="text-[14px] font-medium text-ink">{candidate.expectedSalary}</p>
-            </div>
-          </div>
-          <div className="border-t border-rule pt-3 text-[14px] text-ink-soft">
-            {candidate.contactSummary}
-          </div>
+          <p className="text-[14px] text-ink">{candidate.roleSummary}</p>
+          {candidate.source && <p className="text-[14px] text-ink-soft">Came from {candidate.source}.</p>}
+          {candidate.contactSummary && <p className="text-[14px] text-ink-soft">{candidate.contactSummary}</p>}
+          <p className="text-[13px] text-ink-faint">
+            The TA System keeps the screening notes, the notice period and the package. Ops is not sent them yet.
+          </p>
 
           {/* Our own interview, before the CV goes to the client (owner, 16 Nov) */}
           <div className="flex flex-col gap-3 border-t border-rule pt-4">
@@ -410,9 +389,13 @@ export default async function PositionCandidatePage({
       {tab === "activity" && (
         <div className="flex flex-col gap-3 rounded-[24px] bg-sunk p-6 text-[14px] text-ink-soft">
           <p className={figmaLabel}>APPLICATION ACTIVITY</p>
-          <p>• {candidate.contactSummary}</p>
-          <p>• Scored {candidate.fit} fit for {position.title}</p>
-          {candidate.setName && <p>• Included in {candidate.setName}</p>}
+          {candidate.manual && <p>• Added by hand in Ops</p>}
+          {candidate.setName && <p>• In {candidate.setName}{inSetRow?.state === "sent" ? ", sent to the client" : ""}</p>}
+          {candidate.decision && <p>• The client {candidate.decision === "shortlisted" ? "shortlisted them" : "passed"}{candidate.decisionReason ? ": “" + candidate.decisionReason + "”" : ""}</p>}
+          {candInterviews.map((iv) => (
+            <p key={iv.id}>• Interview round {iv.round}: {iv.state}</p>
+          ))}
+          {!candidate.manual && !candidate.setName && candInterviews.length === 0 && <p>• In the TA System&rsquo;s search: {candidate.statusLabel}</p>}
         </div>
       )}
     </PageBox>

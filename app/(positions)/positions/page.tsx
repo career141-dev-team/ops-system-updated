@@ -9,7 +9,7 @@ import {
   desk,
   liveHoldFor,
   member as memberIn,
-  outboxWaiting,
+  numberOf,
   positionsNewestFirst,
   runClocks,
 } from "@/data/desk";
@@ -63,13 +63,9 @@ export default async function PositionsPage({
   await runClocks();
   const now = Date.now();
   const db = await desk();
-  const queued = new Set(
-    outboxWaiting(db)
-      .filter((one) => one.subjectType === "position")
-      .map((one) => one.subjectId),
-  );
 
   const allPositions = positionsNewestFirst(db);
+  const chaseDays = numberOf(db, "feedback.chaseDays", 1);
 
   const cards: BoardCard[] = allPositions.map((position) => {
     const client = position.clientId ? clientIn(db, position.clientId) : null;
@@ -90,7 +86,8 @@ export default async function PositionsPage({
 
     const closed = position.stage === "closed" || Boolean(position.closedAt);
     const onHold = Boolean(hold) || position.stage === "on_hold";
-    const needsTa = !closed && (!position.primaryTaId || !position.openingTaId || queued.has(position.id));
+    // No primary TA on it (18 Nov: a TA write waiting in the queue also counted, which is not "needs a TA").
+    const needsTa = !closed && !position.primaryTaId;
     const needsJd = !closed && !position.jdApprovedAt;
     // An agreement that is out but not signed holds the opening under Requirement & JD (one that was never started does not).
     const leadId = position.requirementId ? (db.requirements.find((r) => r.id === position.requirementId)?.leadId ?? null) : null;
@@ -139,7 +136,7 @@ export default async function PositionsPage({
       const silentDays = activeSet.receivedAt
         ? Math.floor((now - activeSet.receivedAt) / 86_400_000)
         : 0;
-      if (silentDays >= 2) {
+      if (activeSet.state === "sent" && silentDays > chaseDays) {
         dotClass = "bg-danger";
         statusText = "Feedback late";
         statusDanger = true;
@@ -147,7 +144,7 @@ export default async function PositionsPage({
         dotClass = "bg-warning";
         statusText =
           activeSet.state === "sent"
-            ? `${activeSet.name} · Day ${Math.max(1, silentDays + 1)} of 7`
+            ? `${activeSet.name} · sent ${silentDays === 0 ? "today" : silentDays === 1 ? "a day ago" : silentDays + " days ago"}`
             : `${activeSet.name} ready to send`;
       }
     } else {
@@ -161,7 +158,7 @@ export default async function PositionsPage({
         statusDanger = hold?.state === "proposed";
       } else {
         dotClass = "bg-brand";
-        statusText = `Day ${Math.min(daysOpen, 21)} of 21`;
+        statusText = `Open ${daysOpen} ${daysOpen === 1 ? "day" : "days"}`;
       }
     }
 
