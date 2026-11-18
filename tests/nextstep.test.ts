@@ -133,7 +133,7 @@ test("the agreement's own steps, each with whose move it is", () => {
   assert.match(chased.waiting, /Chased 3 times/);
 
   assert.match(
-    leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, esa: esa({ state: "changes", version: 2 }) }, NOW).waiting,
+    leadNextStep(lead({ clientTaId: "ta_c1" }), { ...held, esa: esa({ state: "negotiating", version: 2 }) }, NOW).waiting,
     /want changes/,
   );
   // Signed by the client is what the opening waits for: the ladder moves on to the requirement
@@ -750,4 +750,40 @@ test("a client with nothing of ours open but their mail waiting says so, not 'no
   assert.equal(clientNextStep(client, { ...parts, unanswered: 3 }).waiting, "3 emails from them are waiting for an answer.");
   assert.equal(clientNextStep(client, { ...parts, unanswered: 1 }).waiting, "One email from them is waiting for an answer.");
   assert.match(clientNextStep(client, parts).waiting, /Nothing is open for them/);
+});
+
+test("an existing client is not sent back to the intro call, and the requirement runs beside a sent agreement", () => {
+  const signedBefore = leadNextStep(lead({ state: "requirement", clientTaId: "ta_c1" }), parts(), NOW);
+  assert.equal(signedBefore.at, "requirement");
+  const unsigned = leadNextStep(lead({ state: "waiting_agreement", clientTaId: "ta_c1" }), parts(), NOW);
+  assert.equal(unsigned.at, "agreement");
+  // A Director's lead skips the intro call by design.
+  assert.equal(leadNextStep({ ...lead({ clientTaId: "ta_c1" }), source: "director" }, parts(), NOW).at, "agreement");
+  const held = [{ kind: "intro", state: "held", at: NOW - DAY, rebookCount: 0 }];
+  const out = leadNextStep(
+    lead({ clientTaId: "ta_c1" }),
+    parts({
+      meetings: held,
+      esa: { state: "sent", version: 1, chaseStep: 0, sentAt: NOW - DAY, expiresAt: NOW + 13 * DAY, signedAt: null },
+    }),
+    NOW,
+  );
+  assert.match(out.waiting, /book the requirement meeting/);
+});
+
+test("a complete requirement needs no meeting: an existing client's lead goes straight to the hand-over, and after it nothing is asked", () => {
+  const complete = { fields: { title: "Driver", level: "Senior", salary: "1" } };
+  const existing = lead({ state: "requirement", clientTaId: "ta_c1" });
+  // Written down in full, never a meeting: hand it to TA.
+  assert.equal(leadNextStep(existing, parts({ requirement: complete }), NOW).at, "opening");
+  // Still blank and no meeting: book it, as before.
+  assert.match(leadNextStep(existing, parts({ requirement: { fields: { title: "Driver" } } }), NOW).waiting, /Book the requirement meeting/);
+  // Handed over (queued for TA): the meeting is not asked for.
+  const handedOver = leadNextStep(
+    lead({ state: "handed_over", clientTaId: "ta_c1" }),
+    parts({ requirement: complete, position: { openingTaId: null, title: "Driver" } }),
+    NOW,
+  );
+  assert.equal(handedOver.at, "opening");
+  assert.doesNotMatch(handedOver.waiting, /requirement meeting/);
 });

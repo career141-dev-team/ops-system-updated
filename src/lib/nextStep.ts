@@ -19,6 +19,8 @@
  * Nothing here touches a database.
  */
 
+import { existingClientOf } from "@/lib/leads";
+
 const DAY = 86_400_000;
 
 export interface Step {
@@ -49,6 +51,8 @@ export interface LeadLike {
   industryConfirmedBy: string | null;
   clientTaId: string | null;
   reason: string | null;
+  /** "director" skips the intro call by design. */
+  source?: string;
 }
 
 export interface MeetingLike {
@@ -97,6 +101,7 @@ export function leadNextStep(
   const reqMeeting = meetings.filter((m) => m.kind === "requirement");
   const booked = (list: MeetingLike[]) => list.find((m) => m.state === "booked") ?? null;
   const held = (list: MeetingLike[]) => list.some((m) => m.state === "held");
+  const { skipsIntro, signedOnFile } = existingClientOf(lead, meetings, esa);
 
   if (lead.state === "declined_industry") {
     return {
@@ -136,7 +141,7 @@ export function leadNextStep(
   }
 
   // 3. The intro call.
-  if (!held(intro)) {
+  if (!held(intro) && !skipsIntro) {
     const next = booked(intro);
     if (next) {
       return {
@@ -159,7 +164,7 @@ export function leadNextStep(
   }
 
   // 4. The agreement.
-  if (!esa) {
+  if (!esa && !signedOnFile) {
     return {
       at: "agreement",
       waiting:
@@ -168,7 +173,7 @@ export function leadNextStep(
       clock: null,
     };
   }
-  if (esa.state === "draft") {
+  if (esa?.state === "draft") {
     return {
       at: "agreement",
       waiting: "Fill in the agreement's fields and send it. Every hole in the template is a required field.",
@@ -176,20 +181,22 @@ export function leadNextStep(
       clock: null,
     };
   }
-  if (esa.state === "sent" || esa.state === "chasing") {
+  if (esa && (esa.state === "sent" || esa.state === "chasing")) {
+    // The requirement runs beside the agreement, so the meeting need not wait for the signature (18 Nov).
+    const alongside = held(reqMeeting) || booked(reqMeeting) ? "" : " Meanwhile, book the requirement meeting: it runs alongside.";
     return {
       at: "agreement",
       waiting:
-        esa.chaseStep > 0
+        (esa.chaseStep > 0
           ? "Chased " + esa.chaseStep + " times and still not signed. The next chase is drafted for you to read."
-          : "Waiting on them to sign. Nothing to do unless they reply.",
+          : "Waiting on them to sign. Nothing to do unless they reply.") + alongside,
       where: "Sent " + inDays(esa.sentAt, now) + ", version " + esa.version,
       clock:
         "The chase goes by itself: email, WhatsApp, email, WhatsApp, email, then a call" +
         (esa.expiresAt ? ", and it declines " + inDays(esa.expiresAt, now) + " if nothing comes back." : "."),
     };
   }
-  if (esa.state === "changes") {
+  if (esa?.state === "negotiating") {
     return {
       at: "agreement",
       waiting: "They want changes. Agree the terms, write them into the fields, then send the next version. A requirement meeting is the place to settle them.",
@@ -199,7 +206,7 @@ export function leadNextStep(
   }
   // Signed by the client is what the opening waits for (owner, 17 Nov evening); the Director's
   // countersignature goes on in the background, so the ladder moves on to the requirement.
-  if (esa.state === "declined" || esa.state === "expired") {
+  if (esa && (esa.state === "declined" || esa.state === "expired")) {
     return {
       at: "closed",
       waiting: "Nothing: the agreement " + (esa.state === "expired" ? "ran out of time" : "was declined") + ".",
@@ -208,8 +215,12 @@ export function leadNextStep(
     };
   }
 
-  // 5. The requirement meeting, which cannot happen before the agreement.
-  if (!held(reqMeeting)) {
+  // 5. The requirement meeting, which cannot happen before the agreement. It is how the requirement
+  //    gets written, so once the requirement is complete (or already handed over) there is no meeting
+  //    left to hold: an existing client's lead that never had one was told to book it after the
+  //    hand-over (18 Nov, found walking one through).
+  const blanks = requiredFields.filter((key) => !(requirement?.fields[key] ?? "").trim());
+  if (!held(reqMeeting) && blanks.length > 0 && !position) {
     const next = booked(reqMeeting);
     if (next) {
       return {
@@ -228,7 +239,6 @@ export function leadNextStep(
   }
 
   // 6. The requirement itself, and the hand-over.
-  const blanks = requiredFields.filter((key) => !(requirement?.fields[key] ?? "").trim());
   if (blanks.length) {
     return {
       at: "requirement",

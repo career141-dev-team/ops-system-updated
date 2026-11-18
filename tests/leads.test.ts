@@ -10,6 +10,7 @@ import test from "node:test";
 import {
   type ClientLike,
   duplicateMatch,
+  existingClientOf,
   LEAD_SOURCES,
   flagIndustry,
   leadSection,
@@ -176,4 +177,18 @@ test("every source the capture form offers is one the server accepts", () => {
     assert.ok((LEAD_SOURCES as readonly string[]).includes(source), source + " is offered by the form but refused by the server");
     assert.equal(problemWithNewLead({ company: "Test Co", source, contactEmail: "a@b.co", contactPhone: "" } as never), null);
   }
+});
+
+test("an existing client has no intro call, and no agreement when one is signed on file", () => {
+  const intro = [{ kind: "intro" }];
+  // Linked at the enquiry, signed before: routeLead put it at "requirement".
+  assert.deepEqual(existingClientOf({ state: "requirement", clientTaId: "ta_c1" }, [], null), { skipsIntro: true, signedOnFile: true });
+  // Known to us but never signed: the agreement is still to do.
+  assert.deepEqual(existingClientOf({ state: "waiting_agreement", clientTaId: "ta_c1" }, [], null), { skipsIntro: true, signedOnFile: false });
+  // A new client after its countersignature also has a TA id, but it had an intro call.
+  assert.deepEqual(existingClientOf({ state: "requirement", clientTaId: "ta_c1" }, intro, { state: "countersigned" }), { skipsIntro: false, signedOnFile: false });
+  // Still being checked: nothing skipped.
+  assert.deepEqual(existingClientOf({ state: "new", clientTaId: null }, [], null), { skipsIntro: false, signedOnFile: false });
+  // A Director's lead skips the call by design, and still needs its agreement.
+  assert.deepEqual(existingClientOf({ state: "intro_call", clientTaId: null, source: "director" }, [], null), { skipsIntro: true, signedOnFile: false });
 });

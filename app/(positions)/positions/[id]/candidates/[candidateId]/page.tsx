@@ -5,7 +5,6 @@ import Icon from "@/app/Icon";
 import {
   BackBar,
   FoldRow,
-  JourneyBar,
   NextStepCard,
   PageBox,
   StatTile,
@@ -30,17 +29,6 @@ import { LEVEL_LABELS, candidatesForPosition, taApplicationsFor } from "@/lib/po
 import { can } from "@/lib/roles";
 import { feedbackLog } from "@/lib/timeline";
 import { currentMember } from "@/lib/session";
-
-const JOURNEY_STEPS = [
-  "Enquiry",
-  "Agreement",
-  "Requirement",
-  "Search",
-  "With client",
-  "Interviews",
-  "Joining",
-  "Guarantee",
-];
 
 /**
  * Frame 1:2433 — OP · Application — [Candidate] for [Position].
@@ -96,11 +84,6 @@ export default async function PositionCandidatePage({
   const cvFile = candidate.fileId ? fileIn(db, candidate.fileId) : null;
   const firstName = candidate.name.split(" ")[0] || candidate.name;
   const baseHref = `/positions/${position.id}/candidates/${encodeURIComponent(candidate.id)}`;
-
-  let activeJourney = "Search";
-  if (candidate.level === "joining" || candidate.level === "guarantee") activeJourney = "Joining";
-  else if (candInterviews.length > 0) activeJourney = "Interviews";
-  else if (inSetRow?.state === "sent") activeJourney = "With client";
 
   // What is next for them, from the facts (18 Nov: it used to say "Day 3 of 7" and "is deciding" for everybody).
   const sentDays = inSetRow?.receivedAt ? Math.max(0, Math.floor((Date.now() - inSetRow.receivedAt) / 86_400_000)) : null;
@@ -161,8 +144,6 @@ export default async function PositionCandidatePage({
 
       {tab === "summary" && (
         <div className="flex flex-col gap-6">
-          <JourneyBar steps={JOURNEY_STEPS} active={activeJourney} />
-
           <NextStepCard
             eyebrow={next.eyebrow}
             clock={next.clock ?? undefined}

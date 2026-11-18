@@ -1,3 +1,4 @@
+import { relatedWork } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -21,7 +22,7 @@ import {
   BackBar,
   ClockPill,
   FoldRow,
-  JourneyBar,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   StatTile,
@@ -162,7 +163,7 @@ export default async function InvoiceDetailPage({
           </StatusChip>
         </div>
 
-        <JourneyBar active="Guarantee" />
+        {placement && <RelatedLinks items={relatedWork(db, { placementId: placement.id })} active="invoice" />}
 
         {sp.msg && !sp.at && (
           <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">

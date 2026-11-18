@@ -57,10 +57,15 @@ export function stageOfLead(
   if (lead.state.startsWith("closed") || lead.state === "declined_industry") return "closed";
   // The agreement outranks the meeting: a lead whose agreement is out is not
   // waiting for a call, whatever its own state field says.
-  if (parts.esaState && parts.esaState !== "countersigned") return "agreement";
-  if (parts.esaState === "countersigned") return "requirement";
-  if (parts.heldIntro) return "agreement";
-  if (!lead.clientTaId || (lead.industryFlagged && !lead.industryConfirmedBy)) return "enquiry";
+  // Signed by the client is enough to move on to the requirement; the countersignature follows in the background.
+  if (parts.esaState === "signed" || parts.esaState === "countersigned") return "requirement";
+  if (parts.esaState) return "agreement";
+  // A client we already had skips the intro call (the enquiry's routing says where they are).
+  if (lead.state === "requirement" || lead.state === "handed_over") return "requirement";
+  if (lead.state === "waiting_agreement" || parts.heldIntro) return "agreement";
+  // The enquiry is done once the TA check was answered, as the lead page decides it. A new client has
+  // no TA id until its agreement is countersigned, so the id alone kept every new client in Enquiry.
+  if ((lead.state === "new" && !lead.clientTaId) || (lead.industryFlagged && !lead.industryConfirmedBy)) return "enquiry";
   return "intro";
 }
 

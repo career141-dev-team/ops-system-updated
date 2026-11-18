@@ -283,6 +283,7 @@ import {
   neverInviteBack,
   problemWithClosing,
   directClientRouting,
+  existingClientOf,
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
@@ -353,6 +354,14 @@ import { previewRoleFrom } from "@/lib/roles";
  */
 function leadBack(here: string, step: string, msg: string, formData: FormData): string {
   return answerBack(here + "?step=" + step, msg, formData);
+}
+
+/**
+ * A step is finished (18 Nov): go to the bare lead page, which opens on the step the work is at now,
+ * so the person never has to find what comes next. An error keeps `leadBack` and stays where it was.
+ */
+function leadMoved(here: string, msg: string, formData: FormData): string {
+  return answerBack(here, msg, formData);
 }
 
 /** The same for a page that has no steps (a placement, an invoice): the answer comes back beside the button. */
@@ -1448,6 +1457,7 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
 
   const lead = leadIn(await desk(), leadId);
   if (!lead) back("That lead is gone.");
+  if (!atEnquiry(lead as NonNullable<typeof lead>)) back(ALREADY_CHECKED);
   const company = (lead as NonNullable<typeof lead>).company;
 
   const answer = await taClients(company);
@@ -1464,31 +1474,19 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
   );
 
   if (found.exact) {
-    const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing: found.exact });
-    await patchLead(
-      leadId,
-      { clientTaId: found.exact.id, state: routed.state },
-      member.id,
-      "lead.linkedToClient",
-      routed.because,
-    );
-    // They are a company we already have, so the client record starts here
-    // rather than waiting for an agreement they may already have signed.
-    await clientFromLead(
-      await desk(),
-      { ...(lead as NonNullable<typeof lead>), clientTaId: found.exact.id },
-      found.exact.esaSignedAt ? "active" : "lead",
-      member.id,
-    );
+    const routed = await linkLeadToClient(lead as NonNullable<typeof lead>, found.exact, member.id);
     revalidatePath(here);
-    revalidatePath("/clients");
-    back("They are already our client. " + routed.because);
+    redirect(leadMoved(here, "They are already our client. " + routed.because, formData));
   }
 
   if (found.near.length) {
-    back(
-      "No exact match. These look close, so somebody has to decide: " +
-        found.near.map((c) => c.name).join(" · "),
+    // The matches ride on the link so the page can offer "it's this one" and "none of these":
+    // without them a lead with only a near match could never finish its enquiry (18 Nov).
+    const near = encodeURIComponent(JSON.stringify(found.near.map((c) => ({ id: c.id, name: c.name }))));
+    redirect(
+      leadBack(here, "enquiry", "No exact match. These look close, so somebody has to decide: pick one, or say none of them.", formData) +
+        "&near=" +
+        near,
     );
   }
   // No match is an answer, and it has to be written down: with the lead left as
@@ -1496,7 +1494,69 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
   const fresh = routeLead({ industryFlagged: false, industryConfirmed: false, existing: null });
   await patchLead(leadId, { state: fresh.state }, member.id, "lead.checkedNewClient", fresh.because);
   revalidatePath(here);
-  back("Nobody like that in the TA System, so this is a new client. " + fresh.because);
+  redirect(leadMoved(here, "Nobody like that in the TA System, so this is a new client. " + fresh.because, formData));
+}
+
+/**
+ * The TA check is answered once (18 Nov). A stale tab, or Back after the intro call was
+ * booked, must not send a lead that moved on - or a closed one - back to the start.
+ */
+function atEnquiry(lead: { state: string; clientTaId: string | null }): boolean {
+  return lead.state === "new" && !lead.clientTaId;
+}
+const ALREADY_CHECKED = "This lead was already checked against the TA System, so nothing changed.";
+
+/** Links a lead to a client we already have, and starts the client record from it. */
+async function linkLeadToClient(
+  lead: NonNullable<ReturnType<typeof leadIn>>,
+  existing: { id: string; name: string; nameKey: string; esaSignedAt: number | null },
+  memberId: string,
+) {
+  const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing });
+  await patchLead(lead.id, { clientTaId: existing.id, state: routed.state }, memberId, "lead.linkedToClient", routed.because);
+  // They are a company we already have, so the client record starts here
+  // rather than waiting for an agreement they may already have signed.
+  await clientFromLead(await desk(), { ...lead, clientTaId: existing.id }, existing.esaSignedAt ? "active" : "lead", memberId);
+  revalidatePath("/clients");
+  return routed;
+}
+
+/** "It's this one": a person picked one of the near matches. The id is checked against TA again, not trusted. */
+export async function chooseLeadMatch(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const lead = leadIn(await desk(), leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  if (!atEnquiry(row)) back(ALREADY_CHECKED);
+  const answer = await taClients(row.company);
+  if (!answer.ok) back("Could not ask the TA System: " + answer.reason);
+  const picked = (answer.ok ? answer.data : []).find((c) => c.id === String(formData.get("taClientId") ?? ""));
+  if (!picked) back("That client was not in the TA System's answer. Check again.");
+  const routed = await linkLeadToClient(row, picked!, member.id);
+  revalidatePath(here);
+  redirect(leadMoved(here, "Linked to " + picked!.name + ". " + routed.because, formData));
+}
+
+/** "None of these": a person looked at the near matches and says this is a new client. */
+export async function markLeadNewClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const lead = leadIn(await desk(), leadId);
+  if (!lead) back("That lead is gone.");
+  if (!atEnquiry(lead as NonNullable<typeof lead>)) back(ALREADY_CHECKED);
+  const fresh = routeLead({ industryFlagged: false, industryConfirmed: false, existing: null });
+  await patchLead(leadId, { state: fresh.state }, member.id, "lead.checkedNewClient", "A person looked at the close matches: none is them.");
+  revalidatePath(here);
+  redirect(leadMoved(here, "A new client. " + fresh.because, formData));
 }
 
 /**
@@ -1814,9 +1874,13 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
 
   revalidatePath(here);
   const missing = missingFromHeld(notes);
-  back(
-    "Saved. The agreement is due in " + hours + " hours." +
-      (missing.length ? " Still not known: " + missing.join(" and ") + "." : ""),
+  redirect(
+    leadMoved(
+      here,
+      "Saved. The agreement is due in " + hours + " hours." +
+        (missing.length ? " Still not known: " + missing.join(" and ") + "." : ""),
+      formData,
+    ),
   );
 }
 
@@ -2407,9 +2471,13 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   });
 
   revalidatePath(here);
-  back(
-    "Signed. Everyone has been told, and the Director has a day to countersign." +
-      (auto && !auto.ok ? " " + auto.reason : ""),
+  redirect(
+    leadMoved(
+      here,
+      "Signed. Everyone has been told, and the Director has a day to countersign." +
+        (auto && !auto.ok ? " " + auto.reason : ""),
+      formData,
+    ),
   );
 }
 
@@ -3653,7 +3721,8 @@ export async function saveRequirement(formData: FormData): Promise<void> {
   }
   revalidatePath(here);
   const problem = problemWithRequirement(fields);
-  back(problem ? "Saved. " + problem : "Saved. It can go to the TA System now.");
+  if (problem) back("Saved. " + problem);
+  redirect(leadMoved(here, "Saved. It can go to the TA System now.", formData));
 }
 
 /**
@@ -3795,13 +3864,16 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   // After the intro call, and (owner, 17 Nov evening) once the client has signed and the
   // requirement is complete, unless this lead was marked "open it now".
   const esa = agreementForLead(db, leadId);
-  const talked = meetingsForLead(db, leadId).some((m) => m.state === "held");
+  const leadMeetings = meetingsForLead(db, leadId);
+  const talked = leadMeetings.some((m) => m.state === "held");
+  // A Director's lead, or a client we already had, has no intro call; one signed before has no agreement here (18 Nov).
+  const known = existingClientOf(row, leadMeetings, esa);
   // A draft made from the intro call's own form (17 Nov) is not an agreement that has gone out:
   // it must not stand in for the call, or the opening opens before the call is held.
   const goneOut = !!esa && esa.state !== "draft";
-  if (!talked && !goneOut && lead && lead.source !== "director") back("Hold the intro call first: the opening is opened after it.");
+  if (!talked && !goneOut && !known.skipsIntro) back("Hold the intro call first: the opening is opened after it.");
   const problem = problemWithOpening({
-    esaState: esa?.state ?? null,
+    esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
     requirementBlanks: requirementMissing(req.fields).map((f) => f.label.toLowerCase()),
     openEarly: !!row.openEarlyAt,
     fields: req.fields,
@@ -3858,8 +3930,12 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   await patchLead(leadId, { state: "handed_over" }, member.id, "lead.handedOver", null);
   revalidatePath(here);
   revalidatePath("/positions");
-  back(
-    "Handed over. The opening is queued for the TA System; it appears on the position the moment TA confirms it, and the brief goes exactly as written.",
+  redirect(
+    leadMoved(
+      here,
+      "Handed over. The opening is queued for the TA System; it appears on the position the moment TA confirms it, and the brief goes exactly as written.",
+      formData,
+    ),
   );
 }
 

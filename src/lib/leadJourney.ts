@@ -30,10 +30,12 @@ export function leadJourney(p: {
   clientTaId: string | null;
   industryFlagged: boolean;
   industryConfirmedBy: string | null;
-  /** A Director's lead skips the intro call by design. */
+  /** No intro call to do: a Director's lead, or a client we already had (`existingClientOf`). */
   skipsIntro: boolean;
   introBooked: boolean;
   introHeld: boolean;
+  /** A client we already had, with a signed agreement on file (`existingClientOf`). */
+  agreementOnFile?: boolean;
   /** The opening was opened (a position exists), signed or not. */
   positionExists: boolean;
   /** The lead was marked "open it now, without waiting" (a trusted client). */
@@ -46,7 +48,7 @@ export function leadJourney(p: {
 }): JourneyState[] {
   const checked =
     !(p.leadState === "new" && !p.clientTaId) && !(p.industryFlagged && !p.industryConfirmedBy);
-  const signed = p.esaState === "signed" || p.esaState === "countersigned";
+  const signed = p.esaState === "signed" || p.esaState === "countersigned" || !!p.agreementOnFile;
 
   // The intro call ends with the ESA sent to the client (owner, 17 Nov): held is not enough.
   const esaOut = p.esaState !== null && p.esaState !== "draft";
@@ -71,21 +73,6 @@ export function leadJourney(p: {
     if (isDone) return "done";
     if (STAGE_OF_STEP[i] < furthest) return "skipped";
     return STAGE_OF_STEP[i] === currentStage ? "current" : "upcoming";
-  });
-}
-
-/**
- * What the bar shows when the page is on one step (17 Nov): the viewed step is
- * ringed, and an earlier step that is still not done shows the warning "!", so
- * "you are on the opening and the intro call is still open" can be read at a
- * glance. Done steps stay done.
- */
-export function barStates(states: JourneyState[], shownIndex: number): JourneyState[] {
-  return states.map((state, i) => {
-    if (state === "done") return state;
-    if (i < shownIndex) return "skipped";
-    if (i === shownIndex && state === "upcoming") return "current";
-    return state;
   });
 }
 
@@ -121,13 +108,17 @@ export function askedStep(step: string | null | undefined, view: string | null |
 }
 
 /**
- * Which step the page shows: the one asked for, or else the first one not
- * finished, so a lead opens where the work is rather than at the top or on
- * whatever happened to be flagged. A lead with every step done opens on the last.
+ * Which step the page shows: the one asked for, or else the step the work is at
+ * now (the first "current"), so a lead opens where it was left. It used to take
+ * the first step not done, so one old gap (an intro call jumped over) sent a lead
+ * that was already at the requirement back to the start every time (18 Nov).
+ * With no current step it falls back to the first not done, and a lead with
+ * every step done opens on the last.
  */
 export function stepToShow(asked: LeadStep | null, states: JourneyState[]): LeadStep {
   if (asked) return asked;
-  const first = states.findIndex((state) => state !== "done");
+  const now = states.indexOf("current");
+  const first = now !== -1 ? now : states.findIndex((state) => state !== "done");
   return LEAD_STEPS[first === -1 ? LEAD_STEPS.length - 1 : first];
 }
 
@@ -137,25 +128,4 @@ export function stepAfter(step: LeadStep): LeadStep | null {
 
 export function stepBefore(step: LeadStep): LeadStep | null {
   return LEAD_STEPS[LEAD_STEPS.indexOf(step) - 1] ?? null;
-}
-
-/**
- * The last three steps of the bar, from what exists on the opening: the search
- * and interviews are done once somebody is placed, joining is done once they
- * joined, and the guarantee is current while it runs and done once it ended.
- * They were hard-coded "upcoming" on the lead page, so the bar never went green
- * past the requirement (17 Nov).
- */
-export function tailJourney(p: {
-  openingConfirmed: boolean;
-  placed: boolean;
-  joined: boolean;
-  guarantee: string | null;
-}): [JourneyState, JourneyState, JourneyState] {
-  const running = ["running", "warned", "replacing", "refund_pending"];
-  return [
-    p.placed ? "done" : p.openingConfirmed ? "current" : "upcoming",
-    p.joined ? "done" : p.placed ? "current" : "upcoming",
-    !p.guarantee ? "upcoming" : running.includes(p.guarantee) ? "current" : "done",
-  ];
 }

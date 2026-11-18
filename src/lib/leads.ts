@@ -232,6 +232,31 @@ export function routeLead(input: {
   return { state: "intro_call", because: "A new client: the intro call comes first." };
 }
 
+/**
+ * A lead that has no intro call to do, and one that has no agreement to do (18 Nov).
+ *
+ * A Director's lead skips the call by design. A client we already had is linked at
+ * the enquiry (routeLead sends it to "waiting_agreement", or to "requirement" when
+ * an agreement is signed on file) and never books an intro call. A new client only
+ * gets its TA id once countersigned, after a held call, so "linked, and no intro
+ * meeting ever" is the existing client. One rule, used by the bar, the next-step
+ * card, the page and the hand-over; it was written in three places before.
+ */
+export function existingClientOf(
+  lead: { state: string; clientTaId: string | null; source?: string },
+  meetings: { kind: string }[],
+  esa: { state: string } | null,
+): { skipsIntro: boolean; signedOnFile: boolean } {
+  const existing =
+    !!lead.clientTaId &&
+    !meetings.some((m) => m.kind === "intro") &&
+    ["requirement", "waiting_agreement", "handed_over"].includes(lead.state);
+  return {
+    skipsIntro: lead.source === "director" || existing,
+    signedOnFile: existing && !esa && ["requirement", "handed_over"].includes(lead.state),
+  };
+}
+
 /** The owner's rule: nothing closes without a reason written down first. */
 export function problemWithClosing(state: LeadState, reason: string): string | null {
   const closing: LeadState[] = ["declined_industry", "closed_silent", "closed_other"];

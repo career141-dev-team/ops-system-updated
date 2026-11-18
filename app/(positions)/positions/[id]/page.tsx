@@ -20,8 +20,7 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  JourneyBar,
-  type JourneyStep,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   StatTile,
@@ -33,7 +32,6 @@ import {
   pillSecondary,
 } from "@/app/ui/figma";
 import {
-  agreementForLead,
   clientIn,
   desk,
   issuesNewestFirst,
@@ -50,8 +48,7 @@ import {
 import { weekOf } from "@/lib/adverts";
 import { OWNERSHIP_WORKING_DAYS, ownershipWindow } from "@/lib/clientFeedback";
 import { depthInWords } from "@/lib/depth";
-import { loopSummary } from "@/lib/journey";
-import { tailJourney } from "@/lib/leadJourney";
+import { relatedWork } from "@/data/journeyOf";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
@@ -162,52 +159,8 @@ export default async function PositionPage({
 
   const allCandidates = candidatesForPosition(db, position, itsSets, await taApplicationsFor(position.openingTaId));
 
-  // The bar is worked out from what exists (17 Nov), as on the lead page. Search,
-  // sets and interviews loop until the role is filled, so they are one step with
-  // the counts under it.
-  const leadId = requirement?.leadId ?? null;
-  const esa = leadId ? agreementForLead(db, leadId) : null;
-  const agreementSigned = esa?.state === "signed" || esa?.state === "countersigned";
-  const loop = loopSummary({
-    taStatus: position.stage === "closed" ? "closed" : hold || position.stage === "on_hold" ? "on_hold" : "active",
-    sets: itsSets,
-    interviews: itsInterviews,
-  });
-  const tail = tailJourney({
-    openingConfirmed: !!position.openingTaId,
-    placed: !!placement,
-    joined: !!placement?.joinedAt,
-    guarantee: guarantee?.state ?? null,
-  });
-  const journeySteps: JourneyStep[] = [
-    { label: "Enquiry", state: "done", href: leadId ? `/leads/${leadId}` : undefined },
-    {
-      label: "Agreement",
-      state: agreementSigned ? "done" : esa ? "current" : "upcoming",
-      href: leadId ? `/leads/${leadId}?view=agreement` : undefined,
-    },
-    {
-      label: "Requirement",
-      state: position.jdApprovedAt ? "done" : "current",
-      href: `/positions/${position.id}?view=jd`,
-    },
-    {
-      label: "Search & interviews",
-      state: tail[0],
-      note: position.openingTaId ? loop.line : undefined,
-      href: `/positions/${position.id}?view=candidates`,
-    },
-    {
-      label: "Joining",
-      state: tail[1],
-      href: placement ? `/placements/${placement.id}` : undefined,
-    },
-    {
-      label: "Guarantee",
-      state: tail[2],
-      href: guarantee ? `/guarantees/${guarantee.id}` : undefined,
-    },
-  ];
+  // The other pieces of this client's work, as plain links (18 Nov: no progress bar).
+  const related = relatedWork(db, { positionId: position.id });
 
   // What is running or open on this opening: reminders, chases, and tasks.
   const whenDateOf = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
@@ -309,35 +262,8 @@ export default async function PositionPage({
       {/* ── SUB-VIEW 1: OVERVIEW (Frames 1:866 & 1:3682) ──────────────── */}
       {subView === "overview" && (
         <div className="flex flex-col gap-6">
-          <JourneyBar steps={journeySteps} />
+          <RelatedLinks items={related} active="opening" />
 
-          <Contacts
-            scope="position"
-            id={position.id}
-            contacts={position.contacts ?? []}
-            mayManage={mayManage}
-            heading="EXTRA PEOPLE FOR THIS POSITION"
-            hint={
-              "Anyone about this role only, such as the team lead who is hiring. They are written to as well as " +
-              clientName +
-              "'s standard contacts, who are on the client's page."
-            }
-          />
-
-          {waitingOn.length > 0 && (
-            <div className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
-              <span className={figmaLabel}>WAITING ON · REMINDERS, CHASES AND TASKS</span>
-              <ul className="flex flex-col gap-1 text-[14px] text-ink-soft">
-                {waitingOn.slice(0, 8).map((w) => (
-                  <li key={w.key}>
-                    <span className="text-ink">{w.text}</span> · {w.when}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* NextStepCard: Frame 1:866 (when a CV set is with the client) vs Frame 1:3682 (when with the TA) */}
           {waitingSet ? (
             (() => {
               const silentDays = waitingSet.receivedAt
@@ -488,6 +414,33 @@ export default async function PositionPage({
               </div>
             </>
           )}
+
+          {waitingOn.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-[24px] bg-sunk px-6 py-5">
+              <span className={figmaLabel}>WAITING ON · REMINDERS, CHASES AND TASKS</span>
+              <ul className="flex flex-col gap-1 text-[14px] text-ink-soft">
+                {waitingOn.slice(0, 8).map((w) => (
+                  <li key={w.key}>
+                    <span className="text-ink">{w.text}</span> · {w.when}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+
+          <Contacts
+            scope="position"
+            id={position.id}
+            contacts={position.contacts ?? []}
+            mayManage={mayManage}
+            heading="EXTRA PEOPLE FOR THIS POSITION"
+            hint={
+              "Anyone about this role only, such as the team lead who is hiring. They are written to as well as " +
+              clientName +
+              "'s standard contacts, who are on the client's page."
+            }
+          />
 
           {/* Collapsible FoldRows (1:964) */}
           <div className="flex flex-col gap-2.5">

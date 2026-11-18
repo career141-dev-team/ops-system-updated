@@ -10,13 +10,13 @@ import {
   liveHoldFor,
   meetingsForLead,
   member as memberIn,
-  openChecklistFor,
   positionsNewestFirst,
   requirementForLead,
   runClocks,
 } from "@/data/desk";
 import { REQUIREMENT_FIELDS } from "@/lib/requirements";
-import { STAGES, loopSummary, rowsInStage, sittingFor, stageOfLead, stageOfPosition, type JourneyRow } from "@/lib/journey";
+import { positionStanding } from "@/data/journeyOf";
+import { STAGES, rowsInStage, sittingFor, stageOfLead, type JourneyRow } from "@/lib/journey";
 import { leadNextStep, positionNextStep, setNextStep } from "@/lib/nextStep";
 import { MIN_CVS } from "@/lib/clientSets";
 import { depthInWords } from "@/lib/depth";
@@ -89,35 +89,8 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     const invoice = placement
       ? (db.invoices.find((row) => row.placementId === placement.id && row.state !== "paid" && row.state !== "written_off") ?? null)
       : null;
-    const guarantee = placement
-      ? (db.guarantees.find((row) => row.placementId === placement.id && (row.state === "running" || row.state === "warned")) ?? null)
-      : null;
-    const interview =
-      db.interviews.find(
-        (row) =>
-          row.openingTaId === position.openingTaId &&
-          ["slots", "agreed", "booked", "reconfirmed"].includes(row.state),
-      ) ?? null;
-    const closed = openChecklistFor(db, position.openingTaId ?? "")?.completedAt ?? null;
-
-    const stage = stageOfPosition(position, {
-      setWithClient: Boolean(waitingSet),
-      liveInterview: Boolean(interview),
-      placement: placement ? { joinedAt: placement.joinedAt, state: placement.state } : null,
-      invoiceOwing: Boolean(invoice),
-      guaranteeRunning: Boolean(guarantee),
-      closed: Boolean(closed),
-    });
-
-    // The search loop is one stage with a count of what is in it (17 Nov).
-    const loop =
-      stage === "in_search"
-        ? loopSummary({
-            taStatus: closed ? "closed" : hold || position.stage === "on_hold" ? "on_hold" : "active",
-            sets,
-            interviews: db.interviews.filter((row) => row.openingTaId === position.openingTaId),
-          })
-        : null;
+    // The stage and the search loop come from one place, shared with the lead page (18 Nov).
+    const { stage, loop } = positionStanding(db, position);
 
     // The sentence is the one that thing's own page shows: the set's card
     // while a set is with the client, the position's otherwise.
