@@ -1,3 +1,4 @@
+import { journeyOfPlacement } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -155,8 +156,8 @@ export default async function GuaranteePage({
         </h1>
       </div>
 
-      {/* 8-step JourneyBar (Frame 1:1365) */}
-      <JourneyBar active="Guarantee" />
+      {/* The same bar as the lead and the opening (18 Nov) */}
+      {placement && <JourneyBar steps={journeyOfPlacement(db, placement, "guarantee")} />}
 
       {/* 30-segment Clock Bar (Frame 1:1420) */}
       {guarantee.state === "replacing" ? (

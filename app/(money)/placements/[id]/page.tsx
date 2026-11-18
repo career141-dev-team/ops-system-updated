@@ -1,3 +1,4 @@
+import { journeyOfPlacement } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -228,12 +229,13 @@ export default async function PlacementPage({
         </h1>
       </div>
 
-      {/* Show 8-step JourneyBar on Offer stage (Frame 1:2783), or 5 ViewPills on Placement (Frames 1:1294 & 1:2873) */}
-      {isOfferStage && !view ? (
-        <JourneyBar active="Joining" />
-      ) : !isNoShow ? (
-        <ViewPills items={subViews} active={activeView} />
-      ) : null}
+      {/* The same bar as the lead and the opening on every view (18 Nov); the tabs sit under it once the offer is made. */}
+      {!isNoShow && (
+        <JourneyBar
+          steps={journeyOfPlacement(db, placement, activeView === "finance" ? "invoice" : activeView === "guarantee" ? "guarantee" : "joining")}
+        />
+      )}
+      {!(isOfferStage && !view) && !isNoShow && <ViewPills items={subViews} active={activeView} />}
 
       {msg && !at && (
         <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">

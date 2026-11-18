@@ -280,10 +280,12 @@ export default async function LeadPage({
 
   const placed = position ? db.placements.find((p) => p.positionId === position.id && p.state !== "cancelled") ?? null : null;
   const guaranteeOf = placed ? db.guarantees.find((g) => g.placementId === placed.id) ?? null : null;
+  const feeInvoice = placed?.invoiceId ? db.invoices.find((i) => i.id === placed.invoiceId) ?? null : null;
   const tail = tailJourney({
     openingConfirmed: !!position?.openingTaId,
     placed: !!placed,
     joined: !!placed?.joinedAt,
+    invoice: feeInvoice?.state ?? null,
     guarantee: guaranteeOf?.state ?? null,
   });
 
@@ -312,7 +314,9 @@ export default async function LeadPage({
       href: position ? `/positions/${position.id}` : undefined,
     },
     { label: "Joining", state: tail[1], href: placed ? `/placements/${placed.id}` : undefined },
-    { label: "Guarantee", state: tail[2], href: guaranteeOf ? `/guarantees/${guaranteeOf.id}` : undefined },
+    // Sending the invoice is part of the guarantee stage (owner, 18 Nov), so it has its own step before it.
+    { label: "Invoice", state: tail[2], href: feeInvoice ? `/invoices/${feeInvoice.id}` : placed ? `/placements/${placed.id}?view=finance` : undefined },
+    { label: "Guarantee", state: tail[3], href: guaranteeOf ? `/guarantees/${guaranteeOf.id}` : undefined },
   ];
 
   // The flow (18 Nov): the step now, a second one beside it, and one line for each finished step.

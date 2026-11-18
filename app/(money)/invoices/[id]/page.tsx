@@ -1,3 +1,4 @@
+import { journeyOfPlacement } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -162,7 +163,7 @@ export default async function InvoiceDetailPage({
           </StatusChip>
         </div>
 
-        <JourneyBar active="Guarantee" />
+        {placement && <JourneyBar steps={journeyOfPlacement(db, placement, "invoice")} />}
 
         {sp.msg && !sp.at && (
           <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
