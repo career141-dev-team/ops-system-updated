@@ -20,7 +20,7 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  JourneyBar,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   StatTile,
@@ -32,15 +32,12 @@ import {
   pillSecondary,
 } from "@/app/ui/figma";
 import {
-  agreementForLead,
   clientIn,
   desk,
   issuesNewestFirst,
-  leadIn,
   liveAdFor,
   liveHoldFor,
   liveTimers,
-  meetingsForLead,
   member as memberIn,
   openChecklistFor,
   outboxWaiting,
@@ -49,9 +46,7 @@ import {
 } from "@/data/desk";
 import { weekOf } from "@/lib/adverts";
 import { depthInWords } from "@/lib/depth";
-import { loopSummary } from "@/lib/journey";
-import { existingClientOf } from "@/lib/leads";
-import { openingJourney, tailJourney } from "@/lib/leadJourney";
+import { relatedWork } from "@/data/journeyOf";
 import { clockInWords, timeLeft } from "@/lib/timers";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { positionNextStep } from "@/lib/nextStep";
@@ -163,43 +158,8 @@ export default async function PositionPage({
 
   const allCandidates = candidatesForPosition(db, position, itsSets, await taApplicationsFor(position.openingTaId));
 
-  // The bar is worked out from what exists (17 Nov), as on the lead page. Search,
-  // sets and interviews loop until the role is filled, so they are one step with
-  // the counts under it.
-  const leadId = requirement?.leadId ?? null;
-  const esa = leadId ? agreementForLead(db, leadId) : null;
-  const leadRow = leadId ? leadIn(db, leadId) : null;
-  // A client we already had, signed before, has no agreement of its own on this lead (existingClientOf).
-  const agreementSigned =
-    esa?.state === "signed" ||
-    esa?.state === "countersigned" ||
-    (!!leadRow && existingClientOf(leadRow, meetingsForLead(db, leadRow.id), esa).signedOnFile);
-  const loop = loopSummary({
-    taStatus: position.stage === "closed" ? "closed" : hold || position.stage === "on_hold" ? "on_hold" : "active",
-    sets: itsSets,
-    interviews: itsInterviews,
-  });
-  const feeInvoice = placement?.invoiceId ? db.invoices.find((i) => i.id === placement.invoiceId) ?? null : null;
-  const tail = tailJourney({
-    openingConfirmed: !!position.openingTaId,
-    placed: !!placement,
-    joined: !!placement?.joinedAt,
-    invoice: feeInvoice?.state ?? null,
-    guarantee: guarantee?.state ?? null,
-  });
-  // The same bar as the lead page and the money pages (18 Nov), not a list of its own.
-  const journeySteps = openingJourney({
-    leadId,
-    positionId: position.id,
-    agreementSigned,
-    openingConfirmed: !!position.openingTaId,
-    searchNote: position.openingTaId ? loop.line : undefined,
-    tail,
-    placementId: placement?.id ?? null,
-    invoiceId: feeInvoice?.id ?? null,
-    guaranteeId: guarantee?.id ?? null,
-    viewing: position.openingTaId ? "search" : "opening",
-  });
+  // The other pieces of this client's work, as plain links (18 Nov: no progress bar).
+  const related = relatedWork(db, { positionId: position.id });
 
   // What is running or open on this opening: reminders, chases, and tasks.
   const whenDateOf = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
@@ -301,7 +261,7 @@ export default async function PositionPage({
       {/* ── SUB-VIEW 1: OVERVIEW (Frames 1:866 & 1:3682) ──────────────── */}
       {subView === "overview" && (
         <div className="flex flex-col gap-6">
-          <JourneyBar steps={journeySteps} />
+          <RelatedLinks items={related} active="opening" />
 
           {waitingSet ? (
             (() => {

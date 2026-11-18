@@ -76,21 +76,6 @@ export function leadJourney(p: {
   });
 }
 
-/**
- * What the bar shows when the page is on one step (17 Nov): the viewed step is
- * ringed, and an earlier step that is still not done shows the warning "!", so
- * "you are on the opening and the intro call is still open" can be read at a
- * glance. Done steps stay done.
- */
-export function barStates(states: JourneyState[], shownIndex: number): JourneyState[] {
-  return states.map((state, i) => {
-    if (state === "done") return state;
-    if (i < shownIndex) return "skipped";
-    if (i === shownIndex && state === "upcoming") return "current";
-    return state;
-  });
-}
-
 /* ── One step at a time (17 Nov) ───────────────────────────────────── */
 
 export type LeadStep = "enquiry" | "intro" | "agreement" | "requirement" | "opening";
@@ -143,79 +128,4 @@ export function stepAfter(step: LeadStep): LeadStep | null {
 
 export function stepBefore(step: LeadStep): LeadStep | null {
   return LEAD_STEPS[LEAD_STEPS.indexOf(step) - 1] ?? null;
-}
-
-/**
- * The last four steps of the bar, from what exists on the opening: the search
- * and interviews are done once somebody is placed, joining is done once they
- * joined, the invoice is the thing to do from the joining day until it is paid,
- * and the guarantee is current while it runs and done once it ended.
- * They were hard-coded "upcoming" on the lead page, so the bar never went green
- * past the requirement (17 Nov). The invoice step was added on 18 Nov: the owner
- * counts sending it as part of the guarantee stage, and nothing on the bar said so.
- */
-export function tailJourney(p: {
-  openingConfirmed: boolean;
-  placed: boolean;
-  joined: boolean;
-  /** The fee invoice's state, or null when none is raised yet. */
-  invoice?: string | null;
-  guarantee: string | null;
-}): [JourneyState, JourneyState, JourneyState, JourneyState] {
-  const running = ["running", "warned", "replacing", "refund_pending"];
-  const invoiceDone = p.invoice === "paid" || p.invoice === "written_off";
-  return [
-    p.placed ? "done" : p.openingConfirmed ? "current" : "upcoming",
-    p.joined ? "done" : p.placed ? "current" : "upcoming",
-    invoiceDone ? "done" : p.joined ? "current" : "upcoming",
-    !p.guarantee ? "upcoming" : running.includes(p.guarantee) ? "current" : "done",
-  ];
-}
-
-export interface JourneyItem {
-  label: string;
-  state: JourneyState;
-  href?: string;
-  note?: string;
-  viewing?: boolean;
-  together?: string;
-}
-
-/**
- * The same bar for every page from the opening on (18 Nov): the opening, the placement, the
- * invoice and the guarantee each drew their own list of steps, with other names, so the
- * journey changed shape as a person moved through it. Everything before the opening is done
- * by definition (an opening exists), except an agreement that was not signed: that one stays
- * an open ring, because the opening was made early on purpose.
- */
-export function openingJourney(p: {
-  leadId: string | null;
-  positionId: string;
-  agreementSigned: boolean;
-  openingConfirmed: boolean;
-  searchNote?: string;
-  tail: [JourneyState, JourneyState, JourneyState, JourneyState];
-  placementId: string | null;
-  invoiceId: string | null;
-  guaranteeId: string | null;
-  viewing?: "opening" | "search" | "joining" | "invoice" | "guarantee";
-}): JourneyItem[] {
-  const lead = (step: LeadStep) => (p.leadId ? `/leads/${p.leadId}?step=${step}` : undefined);
-  const at = (key: NonNullable<typeof p.viewing>) => p.viewing === key;
-  return [
-    { label: "Enquiry", state: "done", href: lead("enquiry") },
-    { label: "Intro call", state: "done", href: lead("intro") },
-    { label: "Agreement", state: p.agreementSigned ? "done" : "skipped", href: lead("agreement"), together: "side by side" },
-    { label: "Requirement", state: "done", href: lead("requirement"), together: "side by side" },
-    { label: "Opening", state: p.openingConfirmed ? "done" : "current", href: `/positions/${p.positionId}`, viewing: at("opening") },
-    { label: "Search & interviews", state: p.tail[0], note: p.searchNote, href: `/positions/${p.positionId}?view=candidates`, viewing: at("search") },
-    { label: "Joining", state: p.tail[1], href: p.placementId ? `/placements/${p.placementId}` : undefined, viewing: at("joining") },
-    {
-      label: "Invoice",
-      state: p.tail[2],
-      href: p.invoiceId ? `/invoices/${p.invoiceId}` : p.placementId ? `/placements/${p.placementId}?view=finance` : undefined,
-      viewing: at("invoice"),
-    },
-    { label: "Guarantee", state: p.tail[3], href: p.guaranteeId ? `/guarantees/${p.guaranteeId}` : undefined, viewing: at("guarantee") },
-  ];
 }

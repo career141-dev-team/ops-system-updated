@@ -38,10 +38,12 @@ meant to work, so the designs fit the flow. Nothing here is a design.
   the page blurred behind it (decisions, 13 and 16 Nov).
 - **One thing now (18 Nov).** A record page says the step the work is at, once, and the rest stays
   quiet: a second current step is a small "also happening" card, finished steps are one line each,
-  and the exceptions sit under "Something different?". The path bar has no warning marks: a step
-  passed over is an open ring that says "not done". A finished step sends the person to the page
-  that opens on what comes next. The lead page is first; the opening, placement and guarantee
-  pages follow.
+  and the exceptions sit under "Something different?". **No progress bar (owner, 18 Nov):** a
+  person moves freely. A lead's five sections are plain tabs, the one the backend says is next
+  carries a small dot, and the links to the rest of the client's work (lead, opening, placement,
+  invoice, guarantee) list only what exists. The order is the backend's - its rules refuse what
+  is out of turn - and the screen does not draw it. A finished step sends the person to the page
+  that opens on what comes next.
 - **One page per thing,** with a list and a detail view. Edit in place, save on the page,
   show the result in plain words ("Sent to the client", "Could not send — the email address
   is missing").

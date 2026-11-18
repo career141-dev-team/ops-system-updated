@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LEAD_STEPS, askedStep, barStates, leadJourney, openingJourney, stepAfter, stepBefore, stepToShow, tailJourney } from "@/lib/leadJourney";
+import { LEAD_STEPS, askedStep, leadJourney, stepAfter, stepBefore, stepToShow } from "@/lib/leadJourney";
 
 const base = {
   closed: false,
@@ -146,58 +146,12 @@ test("the steps run in order, with a back and a next", () => {
   assert.equal(stepBefore("opening"), "requirement");
 });
 
-test("the search, joining, invoice and guarantee steps go green as the opening gets there", () => {
-  const none = { openingConfirmed: false, placed: false, joined: false, guarantee: null };
-  assert.deepEqual(tailJourney(none), ["upcoming", "upcoming", "upcoming", "upcoming"]);
-  assert.deepEqual(tailJourney({ ...none, openingConfirmed: true }), ["current", "upcoming", "upcoming", "upcoming"]);
-  assert.deepEqual(tailJourney({ ...none, openingConfirmed: true, placed: true }), ["done", "current", "upcoming", "upcoming"]);
-  const joined = { openingConfirmed: true, placed: true, joined: true };
-  // From the joining day the invoice is the thing to do, whether or not one is raised yet.
-  assert.deepEqual(tailJourney({ ...joined, guarantee: null }), ["done", "done", "current", "upcoming"]);
-  assert.deepEqual(tailJourney({ ...joined, invoice: "sent", guarantee: "running" }), ["done", "done", "current", "current"]);
-  assert.deepEqual(tailJourney({ ...joined, invoice: "paid", guarantee: "running" }), ["done", "done", "done", "current"]);
-  assert.deepEqual(tailJourney({ ...joined, invoice: "paid", guarantee: "warned" }), ["done", "done", "done", "current"]);
-  assert.deepEqual(tailJourney({ ...joined, invoice: "paid", guarantee: "ended_clean" }), ["done", "done", "done", "done"]);
-  assert.deepEqual(tailJourney({ ...joined, invoice: "written_off", guarantee: "ended_clean" }), ["done", "done", "done", "done"]);
-});
-
-test("the bar after the opening is one list for every page, and an unsigned agreement stays visible", () => {
-  const tail = tailJourney({ openingConfirmed: true, placed: true, joined: true, invoice: "sent", guarantee: "running" });
-  const bar = openingJourney({
-    leadId: "l1",
-    positionId: "p1",
-    agreementSigned: false,
-    openingConfirmed: true,
-    tail,
-    placementId: "pl1",
-    invoiceId: "i1",
-    guaranteeId: "g1",
-    viewing: "invoice",
-  });
-  assert.deepEqual(bar.map((s) => s.label), ["Enquiry", "Intro call", "Agreement", "Requirement", "Opening", "Search & interviews", "Joining", "Invoice", "Guarantee"]);
-  assert.equal(bar[2].state, "skipped");
-  assert.deepEqual(bar.filter((s) => s.viewing).map((s) => s.label), ["Invoice"]);
-  assert.equal(bar[7].href, "/invoices/i1");
-  assert.equal(bar[2].href, "/leads/l1?step=agreement");
-});
-
 test("details typed on the intro call (a draft agreement) do not mark the call skipped", () => {
   assert.deepEqual(leadJourney({ ...base, introBooked: true, esaState: "draft" }), ["done", "current", "upcoming", "upcoming", "upcoming"]);
   // Sent without the call marked held: the call is still the step to finish.
   assert.deepEqual(leadJourney({ ...base, introBooked: true, esaState: "sent" }), ["done", "current", "upcoming", "upcoming", "upcoming"]);
   // The client answering (changes, or signed) is what starts the agreement stage.
   assert.deepEqual(leadJourney({ ...base, introHeld: true, esaState: "negotiating" }), ["done", "done", "current", "current", "upcoming"]);
-});
-
-test("the bar rings the step you are on and warns on an earlier one still open", () => {
-  // The owner's screenshot: looking ahead of the step that is still open (the intro call not held yet).
-  const states = leadJourney({ ...base, introBooked: true, esaState: "draft" });
-  assert.deepEqual(states, ["done", "current", "upcoming", "upcoming", "upcoming"]);
-  assert.deepEqual(barStates(states, 2), ["done", "skipped", "current", "upcoming", "upcoming"]);
-  assert.deepEqual(barStates(states, 4), ["done", "skipped", "skipped", "skipped", "current"]);
-  // On the step that is already current nothing changes; done steps stay done.
-  assert.deepEqual(barStates(states, 1), states);
-  assert.deepEqual(barStates(["done", "done", "current", "upcoming", "upcoming"], 3), ["done", "done", "skipped", "current", "upcoming"]);
 });
 
 test("an existing client skips the intro call, and a signed one on file skips the agreement too", () => {

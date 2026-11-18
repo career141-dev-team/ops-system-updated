@@ -32,11 +32,11 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  JourneyBar,
-   type JourneyStep,
   NextStepCard,
   PageBox,
+  RelatedLinks,
   StatusChip,
+  ViewPills,
   figmaField,
   figmaLabel,
   pillDanger,
@@ -79,16 +79,15 @@ import {
   type MeetingKind,
   type MeetingState,
 } from "@/lib/meetings";
+import { relatedWork } from "@/data/journeyOf";
 import { doneLine, flowOf } from "@/lib/leadFlow";
 import {
   LEAD_STEPS,
   LEAD_STEP_LABELS,
   type LeadStep,
   askedStep,
-  barStates,
   leadJourney,
   stepToShow,
-  tailJourney,
 } from "@/lib/leadJourney";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
@@ -278,46 +277,12 @@ export default async function LeadPage({
           ? "opening"
           : null;
 
-  const placed = position ? db.placements.find((p) => p.positionId === position.id && p.state !== "cancelled") ?? null : null;
-  const guaranteeOf = placed ? db.guarantees.find((g) => g.placementId === placed.id) ?? null : null;
-  const feeInvoice = placed?.invoiceId ? db.invoices.find((i) => i.id === placed.invoiceId) ?? null : null;
-  const tail = tailJourney({
-    openingConfirmed: !!position?.openingTaId,
-    placed: !!placed,
-    joined: !!placed?.joinedAt,
-    invoice: feeInvoice?.state ?? null,
-    guarantee: guaranteeOf?.state ?? null,
-  });
-
-  // The bar rings the step the page is on and warns on any earlier one still open (17 Nov).
-  const bar = barStates(progress, LEAD_STEPS.indexOf(shown));
-  const journeySteps: JourneyStep[] = [
-    { label: "Enquiry", state: bar[0], viewing: shown === "enquiry", href: stepHref("enquiry") },
-    { label: "Intro call", state: bar[1], viewing: shown === "intro", href: stepHref("intro") },
-    // The small line says why a step is not green yet: an agreement is done when it is signed,
-    // a requirement when every required field is filled.
-    { label: "Agreement", state: bar[2], viewing: shown === "agreement", href: stepHref("agreement"), note: esa && !agreementDone ? esa.state : undefined, together: "side by side" },
-    {
-      label: "Requirement",
-      together: "side by side",
-      state: bar[3],
-      viewing: shown === "requirement",
-      href: stepHref("requirement"),
-      note: requirement && requirementBlanks.length ? requirementBlanks.length + " blank" : undefined,
-    },
-    { label: "Opening", state: bar[4], viewing: shown === "opening", href: stepHref("opening") },
-    // The search, the sets and the interviews loop until the position is filled:
-    // one step here, with the loop itself on the opening.
-    {
-      label: "Search & interviews",
-      state: tail[0],
-      href: position ? `/positions/${position.id}` : undefined,
-    },
-    { label: "Joining", state: tail[1], href: placed ? `/placements/${placed.id}` : undefined },
-    // Sending the invoice is part of the guarantee stage (owner, 18 Nov), so it has its own step before it.
-    { label: "Invoice", state: tail[2], href: feeInvoice ? `/invoices/${feeInvoice.id}` : placed ? `/placements/${placed.id}?view=finance` : undefined },
-    { label: "Guarantee", state: tail[3], href: guaranteeOf ? `/guarantees/${guaranteeOf.id}` : undefined },
-  ];
+  // The pieces of this client's work that exist, as plain links (18 Nov: no progress bar), and the five
+  // sections of this lead as free tabs; the ones the backend says are next carry a small dot.
+  const related = relatedWork(db, { leadId: lead.id });
+  // The dot is the backend's own answer (leadNextStep), the same one the card says, so the two cannot differ.
+  const nextAt: LeadStep | null =
+    step.at === "duplicate" || step.at === "industry" ? "enquiry" : (LEAD_STEPS.find((s) => s === step.at) ?? null);
 
   // The flow (18 Nov): the step now, a second one beside it, and one line for each finished step.
   const flow = flowOf(progress);
@@ -489,7 +454,16 @@ export default async function LeadPage({
           </div>
         )}
 
-        <JourneyBar steps={journeySteps} />
+        <RelatedLinks items={related} active="lead" />
+        <ViewPills
+          items={LEAD_STEPS.map((s) => ({
+            key: s,
+            label: LEAD_STEP_LABELS[s],
+            href: stepHref(s),
+            mark: s === nextAt,
+          }))}
+          active={shown}
+        />
         {position && !agreementDone && !closed && (
           <p className="text-[13px] text-warn">
             Working without a signed agreement since {whenDate(position.handedOverAt ?? now)}

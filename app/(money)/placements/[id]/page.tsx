@@ -1,4 +1,4 @@
-import { journeyOfPlacement } from "@/data/journeyOf";
+import { relatedWork } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -15,7 +15,7 @@ import Icon from "@/app/Icon";
 import {
   BackBar,
   FoldRow,
-  JourneyBar,
+  RelatedLinks,
   NextStepCard,
   PageBox,
   SegmentedBar,
@@ -229,12 +229,8 @@ export default async function PlacementPage({
         </h1>
       </div>
 
-      {/* The same bar as the lead and the opening on every view (18 Nov); the tabs sit under it once the offer is made. */}
-      {!isNoShow && (
-        <JourneyBar
-          steps={journeyOfPlacement(db, placement, activeView === "finance" ? "invoice" : activeView === "guarantee" ? "guarantee" : "joining")}
-        />
-      )}
+      {/* Plain links to the rest of this client's work (18 Nov), then this placement's own views once the offer is made. */}
+      {!isNoShow && <RelatedLinks items={relatedWork(db, { placementId: placement.id })} active="placement" />}
       {!(isOfferStage && !view) && !isNoShow && <ViewPills items={subViews} active={activeView} />}
 
       {msg && !at && (
