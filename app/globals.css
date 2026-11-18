@@ -197,7 +197,11 @@ input[name="q"]:focus-visible,
 input[type="search"]:focus-visible,
 input[role="combobox"]:focus-visible,
 input[aria-label*="earch" i]:focus-visible,
-input[aria-label^="Find" i]:focus-visible {
+input[aria-label^="Find" i]:focus-visible,
+input[aria-label*="AURA" i]:focus-visible,
+textarea[aria-label*="AURA" i]:focus-visible,
+input[aria-label^="Reply" i]:focus-visible,
+textarea[aria-label^="Say what" i]:focus-visible {
   outline: none;
 }
 
