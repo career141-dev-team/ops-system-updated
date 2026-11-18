@@ -512,3 +512,13 @@ test("the day the money arrived comes from the form: blank is today, a past day 
   assert.match(paymentDate("17/11/2026", now).problem ?? "", /Pick the day/);
   assert.match(paymentDate("2026-13-45", now).problem ?? "", /Pick the day/);
 });
+
+test("only an invoice the client has, and owes on, takes a payment (18 Nov)", async () => {
+  const { problemWithPaymentOn } = await import("@/lib/money");
+  assert.match(problemWithPaymentOn("draft") ?? "", /Send it first/);
+  assert.match(problemWithPaymentOn("paid") ?? "", /paid already/);
+  assert.match(problemWithPaymentOn("written_off") ?? "", /written off/);
+  assert.match(problemWithPaymentOn("credit_note") ?? "", /credit note/);
+  assert.equal(problemWithPaymentOn("sent"), null);
+  assert.equal(problemWithPaymentOn("partly_paid"), null);
+});

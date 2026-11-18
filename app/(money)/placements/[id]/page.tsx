@@ -33,6 +33,7 @@ import {
   guaranteesNewestFirst,
   invoiceIn,
   member as memberIn,
+  numberOf,
   placementIn,
   positionIn,
 } from "@/data/desk";
@@ -175,16 +176,24 @@ export default async function PlacementPage({
       ? moneyWhole(estimatedFeeAmount, placement.currency)
       : feeInWords(placement);
 
+  // The guarantee's own length once it runs, the setting before (18 Nov: "90" and "30 days" were written in).
+  const guaranteeDays = guarantee
+    ? Math.max(1, Math.round((guarantee.endsAt - guarantee.startsAt) / 86_400_000))
+    : numberOf(db, "guarantee.days", 90);
+  const dueDays = numberOf(db, "invoice.dueDays", 30);
   const guaranteeEndAt =
-    guarantee?.endsAt ?? (placement.joinDate ?? now) + 90 * 86_400_000;
+    guarantee?.endsAt ?? (placement.joinDate ?? now) + guaranteeDays * 86_400_000;
   const guaranteeElapsedDays = guarantee
-    ? Math.max(1, Math.min(90, Math.ceil((now - guarantee.startsAt) / 86_400_000)))
+    ? Math.max(1, Math.min(guaranteeDays, Math.ceil((now - guarantee.startsAt) / 86_400_000)))
     : 0;
+  const joinDay = placement.joinDate ? new Date(placement.joinDate + 5.5 * 3_600_000).toISOString().slice(0, 10) : null;
+  const today = new Date(now + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const joinsToday = joinDay === today;
 
   const checklistDoneCount = checklist
     ? checklist.items.filter((i) => Boolean(i.doneAt)).length
     : 0;
-  const checklistTotalCount = checklist ? checklist.items.length : 4;
+  const checklistTotalCount = checklist ? checklist.items.length : 0;
 
   return (
     <PageBox width="1080" className="gap-6">
@@ -371,11 +380,11 @@ export default async function PlacementPage({
         (activeView === "overview" || activeView === "joining") && (
           <>
             <NextStepCard
-              eyebrow="TODAY · JOINING DAY"
-              clock="9:00 call"
-              clockTone="warn"
-              title={`Did ${firstName} start today?`}
-              body="The TA calls them at 9:00 and taps the answer here. Their answer starts two things at once."
+              eyebrow={joinsToday ? "TODAY · JOINING DAY" : "JOINING DAY"}
+              clock={joinsToday ? "9:00 call" : !joinDay ? "No date yet" : joinDay < today ? "Join day passed" : "Joins " + joinDay}
+              clockTone={joinDay && joinDay < today ? "danger" : "warn"}
+              title={joinsToday || !joinDay ? `Did ${firstName} start today?` : joinDay < today ? `Did ${firstName} start on ${joinDay}?` : `${firstName} joins on ${joinDay}`}
+              body="The TA calls them at 9:00 on the joining day and taps the answer here. Their answer starts two things at once."
             >
               {mayManage && placement.state === "placed" && (
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">
@@ -416,7 +425,7 @@ export default async function PlacementPage({
                       : `Drafted for you to approve · ${estimatedFeeText}`}
                   </p>
                   <p className="text-[14px] leading-[21px] text-ink-faint">
-                    Due 30 days after joining
+                    Due {dueDays} days after joining
                   </p>
                 </div>
 
@@ -427,11 +436,11 @@ export default async function PlacementPage({
                       <Icon name="shield" size={16} />
                     </span>
                     <p className="text-[16px] font-medium leading-[26px] text-ink">
-                      90-day guarantee
+                      {guaranteeDays}-day guarantee
                     </p>
                   </div>
                   <p className="text-[14px] leading-[21px] text-ink-soft">
-                    Starts today · ends {longDate(guaranteeEndAt)}
+                    Starts the day they join · ends {longDate(guaranteeEndAt)}
                   </p>
                   <p className="text-[14px] leading-[21px] text-ink-faint">
                     If they leave, we replace them first
@@ -542,7 +551,7 @@ export default async function PlacementPage({
                 <p className="text-[14px] leading-[21px] text-ink-faint">
                   {invoice
                     ? invoiceInWords(invoice, now)
-                    : "Sent on joining day · due 30 days"}
+                    : `Drafted on joining day · due ${dueDays} days after joining`}
                 </p>
               </div>
               <span
@@ -581,7 +590,7 @@ export default async function PlacementPage({
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
                 <p className="text-[16px] leading-[26px] text-ink">
-                  90-day guarantee
+                  {guaranteeDays}-day guarantee
                 </p>
                 <p className="text-[14px] leading-[21px] text-ink-faint">
                   {guarantee
@@ -590,7 +599,7 @@ export default async function PlacementPage({
                 </p>
               </div>
               <span className="text-[14px] leading-[21px] text-ink-faint">
-                {guarantee ? `Day ${guaranteeElapsedDays} of 90` : "90 days"}
+                {guarantee ? `Day ${guaranteeElapsedDays} of ${guaranteeDays}` : `${guaranteeDays} days`}
               </span>
               <Icon name="chevron-right" size={18} className="text-ink-faint" />
             </Link>
@@ -608,11 +617,11 @@ export default async function PlacementPage({
                   Close the posts
                 </p>
                 <p className="text-[14px] leading-[21px] text-ink-faint">
-                  The fee is in, so the job ads can come down
+                  {checklist ? "Every advert comes down before the opening closes" : "Opens when the guarantee ends, or the search stops"}
                 </p>
               </div>
               <span className="text-[14px] leading-[21px] text-ink-faint">
-                {checklistDoneCount} of {checklistTotalCount} done
+                {checklist ? `${checklistDoneCount} of ${checklistTotalCount} done` : "Not started"}
               </span>
               <Icon name="chevron-right" size={18} className="text-ink-faint" />
             </Link>
@@ -637,18 +646,18 @@ export default async function PlacementPage({
             <>
               <SegmentedBar
                 total={30}
-                filled={Math.min(30, Math.max(1, Math.round((guaranteeElapsedDays / 90) * 30)))}
+                filled={Math.min(30, Math.max(1, Math.round((guaranteeElapsedDays / guaranteeDays) * 30)))}
                 tone={guarantee.state === "replacing" ? "warn" : "brand"}
-                caption={`Day ${guaranteeElapsedDays} of 90 · ${daysLeftInWords(guarantee.endsAt, now)}`}
+                caption={`Day ${guaranteeElapsedDays} of ${guaranteeDays} · ${daysLeftInWords(guarantee.endsAt, now)}`}
               />
               <NextStepCard
-                eyebrow="90-DAY GUARANTEE"
+                eyebrow={`${guaranteeDays}-DAY GUARANTEE`}
                 clock={daysLeftInWords(guarantee.endsAt, now)}
                 clockTone={guarantee.state === "replacing" ? "warn" : "neutral"}
                 title={guaranteeInWords(guarantee, now, db.holidays.map((h) => h.date))}
                 body={
                   guarantee.feePaidAt
-                    ? `The fee was paid in full on ${day(guarantee.feePaidAt)}, so the guarantee holds: if ${firstName} leaves within 90 days, we replace them first.`
+                    ? `The fee was paid in full on ${day(guarantee.feePaidAt)}, so the guarantee holds: if ${firstName} leaves within ${guaranteeDays} days, we replace them first.`
                     : "The fee is not paid in full yet, so the guarantee only starts holding the day the fee is settled."
                 }
               >
@@ -661,7 +670,7 @@ export default async function PlacementPage({
             </>
           ) : (
             <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
-              The 90-day guarantee starts automatically on the day {firstName} joins.
+              The {guaranteeDays}-day guarantee starts automatically on the day {firstName} joins.
             </div>
           )}
         </div>
@@ -719,7 +728,7 @@ export default async function PlacementPage({
               defaultOpen={activeView === "joining" || step.at === "joining"}
             >
               <p className="mb-3 max-w-[70ch] text-[14px] text-ink-soft">
-                The TA phones them on the morning. Marking them joined drafts the invoice at once, because the thirty
+                The TA phones them on the morning. Marking them joined drafts the invoice at once, because the {dueDays}
                 days run from their first working day whether or not anybody remembered.
               </p>
 

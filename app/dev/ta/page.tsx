@@ -61,6 +61,14 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
     "hold.review": "review the hold",
     "hire.unreported": "the 3-month unreported-hire check",
     "ad.close": "close the TopJobs advert",
+    "doj.remind.week": "a week before they join",
+    "doj.remind.day": "the day before they join",
+    "doj.join": "the joining-day check",
+    "invoice.due": "the invoice falls due",
+    "invoice.chase": "chase the unpaid invoice (adds the late charge)",
+    "guarantee.warn": "the guarantee warning",
+    "guarantee.end": "the guarantee ends",
+    "replacement.deadline": "the replacement deadline",
   };
 
   return (
@@ -191,7 +199,11 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
                   (t.subjectType === "position" && t.subjectId === position.id) ||
                   (t.subjectType === "clientSet" && sets.some((s) => s.id === t.subjectId)) ||
                   (t.subjectType === "ad" && db.ads.some((ad) => ad.id === t.subjectId && ad.positionId === position.id)) ||
-                  (t.subjectType === "hold" && db.holds.some((h) => h.id === t.subjectId && h.openingTaId === position.openingTaId)),
+                  (t.subjectType === "hold" && db.holds.some((h) => h.id === t.subjectId && h.openingTaId === position.openingTaId)) ||
+                  // The money clocks too (18 Nov): joining, the invoice and the guarantee.
+                  (t.subjectType === "placement" && placements.some((p) => p.id === t.subjectId)) ||
+                  (t.subjectType === "invoice" && db.invoices.some((i) => i.id === t.subjectId && placements.some((p) => p.id === i.placementId))) ||
+                  (t.subjectType === "guarantee" && db.guarantees.some((g) => g.id === t.subjectId && placements.some((p) => p.id === g.placementId))),
               );
               if (mine.length === 0) return null;
               return (
@@ -252,8 +264,11 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
                     ))}
                   </select>
                 </label>
-                <button type="submit" className={pillSecondary}>
+                <button type="submit" name="how" value="joining" className={pillSecondary}>
                   TA places them (LKR 450,000, joining in 14 days)
+                </button>
+                <button type="submit" name="how" value="offer" className={pillSecondary}>
+                  Offer only (no date or letter yet)
                 </button>
               </form>
             )}

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { SAMPLE_TA } from "@/data/sampleOpenings";
+import { SAMPLE_TA_MONEY } from "@/data/samplePlacements";
 import { EMPTY_STATE, addApps, applyWrite, pipelineNow, setStage, type FakeTaApp, type FakeTaState } from "@/lib/fakeTaState";
 import { nameKey } from "@/lib/leads";
 
@@ -247,7 +248,9 @@ export function fakeAnswer<T>(path: string, method = "GET", body?: unknown): Fak
   }
   if (where.endsWith("/client-sets")) return give(sampleOpening ? SAMPLE_TA.sets.filter((r) => r.openingId === openingId) : CLIENT_SETS);
   if (/\/placements\/[^/]+$/.test(where)) {
-    return where.endsWith("/ta_p1") ? give(PLACEMENT) : { ok: false, reason: "The stand-in has no placement " + where.split("/").pop() + "." };
+    if (where.endsWith("/ta_p1")) return give(PLACEMENT);
+    const sample = SAMPLE_TA_MONEY.placement(where.split("/").pop() ?? "");
+    return sample ? give(sample) : { ok: false, reason: "The stand-in has no placement " + where.split("/").pop() + "." };
   }
   if (where.endsWith("/pipeline")) return give(openingId ? fakeTaPipeline(openingId) : PIPELINE);
   if (where.endsWith("/events")) {

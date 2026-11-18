@@ -7,6 +7,7 @@ import {
   invoicesNewestFirst,
   member as memberIn,
   placementIn,
+  unreportedToAsk,
   positionIn,
   runClocks,
 } from "@/data/desk";
@@ -41,7 +42,7 @@ function parseView(raw: string | undefined): View {
 
 function statusTone(state: string, overdue: boolean): string {
   if (state === "paid") return "text-ok";
-  if (state === "disputed" || overdue) return "text-danger";
+  if (overdue) return "text-danger";
   if (state === "sent" || state === "partly_paid") return "text-warn";
   return "text-ink-faint";
 }
@@ -63,16 +64,17 @@ export default async function InvoicesPage({
   const now = Date.now();
   const allInvoices = invoicesNewestFirst(db);
 
+  // shortcut: the totals add every invoice as LKR, the only currency Ops bills in today; split by currency if a
+  // client is ever billed in another.
   let totalOwed = 0;
   let openCount = 0;
   let totalLate = 0;
   let lateCount = 0;
 
-  const monthStart = new Date(now);
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const monthStartMs = monthStart.getTime();
-  const monthLabel = monthStart.toLocaleDateString("en-GB", { month: "long" });
+  // The month in Colombo, not the server's own time zone (18 Nov).
+  const colombo = new Date(now + 5.5 * 3_600_000);
+  const monthStartMs = Date.UTC(colombo.getUTCFullYear(), colombo.getUTCMonth(), 1) - 5.5 * 3_600_000;
+  const monthLabel = colombo.toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
 
   let collectedMonth = 0;
   let monthPayments = 0;
@@ -80,10 +82,12 @@ export default async function InvoicesPage({
   for (const inv of allInvoices) {
     if (inv.kind === "credit_note") continue;
     const bal = balanceOf(inv);
-    if (inv.state !== "paid" && inv.state !== "written_off" && bal > 0) {
+    // A draft has not gone, so the client owes nothing on it yet (18 Nov: drafts counted as owed and late).
+    if (inv.state !== "paid" && inv.state !== "written_off" && inv.state !== "draft" && bal > 0) {
       totalOwed += bal;
       openCount += 1;
-      if (inv.dueAt && inv.dueAt < now) {
+      // A dispute in good faith is not late (the agreement's own exception).
+      if (inv.dueAt && inv.dueAt < now && !inv.disputed) {
         totalLate += bal;
         lateCount += 1;
       }
@@ -96,12 +100,7 @@ export default async function InvoicesPage({
     }
   }
 
-  const unreportedTimers = db.timers.filter(
-    (t) =>
-      t.state === "running" &&
-      t.kind === "hire.unreported" &&
-      t.subjectType === "clientSet",
-  );
+  const unreportedTimers = unreportedToAsk(db);
   const refundGuarantees = db.guarantees.filter(
     (g) => g.state === "refund_pending" || g.state === "refunded",
   );
@@ -112,7 +111,7 @@ export default async function InvoicesPage({
         inv.kind !== "credit_note" &&
         inv.state !== "paid" &&
         inv.state !== "written_off" &&
-        ((inv.dueAt && inv.dueAt < now) || inv.state === "disputed" || inv.lateMonths > 0)
+        ((inv.dueAt && inv.dueAt < now) || inv.disputed || inv.lateMonths > 0)
       );
     }
     if (view === "payments") {
@@ -251,7 +250,7 @@ export default async function InvoicesPage({
                         </div>
                         <div className="truncate text-[14px] leading-[21px] text-ink-faint">
                           {posTitle ?? "Placement"} ·{" "}
-                          {g.refundAmount != null ? money(g.refundAmount, "LKR") : "Refund case"}
+                          {g.refundAmount != null ? money(g.refundAmount, placementIn(db, g.placementId)?.currency ?? "LKR") : "Refund case"}
                         </div>
                       </div>
                     </div>
@@ -294,8 +293,10 @@ export default async function InvoicesPage({
                     ? "Paid"
                     : inv.state === "written_off"
                       ? "Written off"
-                      : inv.state === "disputed"
+                      : inv.disputed
                         ? "Disputed"
+                        : inv.state === "draft"
+                          ? "Draft, not sent"
                         : overdue
                           ? `${money(bal, inv.currency)} overdue`
                           : bal > 0

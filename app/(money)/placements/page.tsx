@@ -9,11 +9,13 @@ import {
   guaranteesNewestFirst,
   invoiceIn,
   member as memberIn,
+  numberOf,
   placementsNewestFirst,
   positionIn,
   runClocks,
 } from "@/data/desk";
 import { workingDaysBetween } from "@/lib/calendar";
+import { GUARANTEE_MEANINGS, REPLACEMENT_WORKING_DAYS, type GuaranteeState } from "@/lib/guarantee";
 import { balanceOf, placementInWords } from "@/lib/money";
 import { currentMember } from "@/lib/session";
 
@@ -57,6 +59,12 @@ export default async function PlacementsPage({
   const allPlacements = placementsNewestFirst(db);
   const allGuarantees = guaranteesNewestFirst(db);
   const holidays = db.holidays.map((h) => h.date);
+  const replacementDays = numberOf(db, "replacement.workingDays", REPLACEMENT_WORKING_DAYS);
+  // A guarantee's length is its own dates (18 Nov: every card said "of 90" and "of 60" whatever the settings).
+  const lengthOf = (g: { startsAt: number; endsAt: number }) => Math.max(1, Math.round((g.endsAt - g.startsAt) / 86_400_000));
+  const dayOf = (g: { startsAt: number; endsAt: number }) =>
+    `Day ${Math.max(1, Math.min(lengthOf(g), Math.ceil((now - g.startsAt) / 86_400_000)))} of ${lengthOf(g)}`;
+  const LIVE = ["running", "warned", "replacing", "refund_pending"];
 
   const query = (q ?? "").trim().toLowerCase();
   const matchesQuery = (words: (string | null | undefined)[]) => {
@@ -83,9 +91,9 @@ export default async function PlacementsPage({
       const isJoining =
         (placement.state === "placed" && Boolean(placement.joinDate && placement.offerLetterFileRef)) ||
         placement.state === "no_show";
-      const isInGuarantee =
-        placement.state === "joined" ||
-        Boolean(guarantee && (guarantee.state === "running" || guarantee.state === "warned" || guarantee.state === "replacing"));
+      // Only a guarantee still running (18 Nov: every joined placement counted, ended and void ones too).
+      const isInGuarantee = Boolean(guarantee && LIVE.includes(guarantee.state));
+      const isEnded = placement.state === "cancelled" || Boolean(guarantee && !LIVE.includes(guarantee.state));
       const isReplacement =
         Boolean(placement.isReplacementOf) || guarantee?.state === "replacing";
 
@@ -104,10 +112,15 @@ export default async function PlacementsPage({
         const createdDay = SHORT_DAYS[colomboDate(placement.createdAt).getUTCDay()];
         offerJoiningClock = `Since ${createdDay}`;
       } else if (placement.joinDate) {
-        if (isSameDay(placement.joinDate, now) || placement.joinDate < now) {
+        if (isSameDay(placement.joinDate, now)) {
           offerJoiningStatus = "Joining today";
           offerJoiningTone = "ok";
-          offerJoiningClock = "9:00 call";
+          offerJoiningClock = "Check they started";
+        } else if (placement.joinDate < now) {
+          // 18 Nov: a join date already gone said "Joining today · 9:00 call".
+          offerJoiningStatus = "Join day passed";
+          offerJoiningTone = "danger";
+          offerJoiningClock = "Not confirmed yet";
         } else {
           offerJoiningStatus = `Joins ${shortDate(placement.joinDate)}`;
           offerJoiningTone = "brand";
@@ -121,15 +134,10 @@ export default async function PlacementsPage({
       // Build card status & clock for In Guarantee
       let guaranteeStatus = "All well";
       let guaranteeTone: Tone = "ok";
-      let guaranteeClock = "90 days";
+      let guaranteeClock = "";
       let guaranteeHref = `/placements/${placement.id}`;
 
       if (guarantee) {
-        const totalDays = 90;
-        const elapsedDays = Math.max(
-          1,
-          Math.min(totalDays, Math.ceil((now - guarantee.startsAt) / 86_400_000)),
-        );
         const daysLeft = Math.max(0, Math.ceil((guarantee.endsAt - now) / 86_400_000));
 
         if (guarantee.state === "replacing") {
@@ -138,24 +146,37 @@ export default async function PlacementsPage({
           const elapsedWorking = guarantee.leftAt
             ? workingDaysBetween(guarantee.leftAt, now, holidays)
             : 1;
-          guaranteeClock = `Day ${Math.max(1, elapsedWorking)} of 60`;
+          guaranteeClock = `Day ${Math.max(1, elapsedWorking)} of ${replacementDays} working days`;
           guaranteeHref = `/guarantees/${guarantee.id}`;
+        } else if (invoice?.disputed) {
+          // Nothing is late on a disputed invoice (18 Nov: it read "Invoice late").
+          guaranteeStatus = "Invoice disputed";
+          guaranteeTone = "warn";
+          guaranteeClock = dayOf(guarantee);
         } else if (invoice && invoice.dueAt && invoice.dueAt < now && balanceOf(invoice) > 0) {
           guaranteeStatus = "Invoice late";
           guaranteeTone = "danger";
-          guaranteeClock = `Day ${elapsedDays} of 90`;
+          guaranteeClock = dayOf(guarantee);
         } else if (!guarantee.feePaidAt) {
           guaranteeStatus = "Awaiting fee payment";
           guaranteeTone = "warn";
-          guaranteeClock = `Day ${elapsedDays} of 90`;
-        } else if (daysLeft <= 15 && daysLeft > 0) {
+          guaranteeClock = dayOf(guarantee);
+        } else if (guarantee.state === "refund_pending") {
+          guaranteeStatus = "Refund to decide";
+          guaranteeTone = "danger";
+          guaranteeClock = dayOf(guarantee);
+        } else if (!LIVE.includes(guarantee.state)) {
+          guaranteeStatus = GUARANTEE_MEANINGS[guarantee.state as GuaranteeState] ?? guarantee.state;
+          guaranteeTone = "neutral";
+          guaranteeClock = "Ended";
+        } else if (guarantee.state === "warned" && daysLeft > 0) {
           guaranteeStatus = `Ends in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`;
           guaranteeTone = "ok";
-          guaranteeClock = `Day ${elapsedDays} of 90`;
+          guaranteeClock = dayOf(guarantee);
         } else {
           guaranteeStatus = "All well";
           guaranteeTone = "ok";
-          guaranteeClock = `Day ${elapsedDays} of 90`;
+          guaranteeClock = dayOf(guarantee);
         }
       }
 
@@ -169,6 +190,7 @@ export default async function PlacementsPage({
         isOffer,
         isJoining,
         isInGuarantee,
+        isEnded,
         isReplacement,
         offerJoiningStatus,
         offerJoiningTone,
@@ -197,7 +219,6 @@ export default async function PlacementsPage({
       const client = g.clientId ? clientIn(db, g.clientId) : null;
       const clientName = client?.name ?? "Client";
       const overline = `${clientName} · ${g.openingTaId}`;
-      const elapsedDays = Math.max(1, Math.min(90, Math.ceil((now - g.startsAt) / 86_400_000)));
       const daysLeft = Math.max(0, Math.ceil((g.endsAt - now) / 86_400_000));
       const isReplacing = g.state === "replacing";
       return {
@@ -208,12 +229,15 @@ export default async function PlacementsPage({
         title: g.candidateName,
         statusText: isReplacing
           ? "Left · replacing"
-          : daysLeft <= 15 && daysLeft > 0
-            ? `Ends in ${daysLeft} days`
-            : "All well",
+          : g.state === "warned" && daysLeft > 0
+            ? `Ends in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`
+            : LIVE.includes(g.state)
+              ? "All well"
+              : (GUARANTEE_MEANINGS[g.state as GuaranteeState] ?? g.state),
         statusTone: (isReplacing ? "warn" : "ok") as Tone,
-        clockText: isReplacing ? "Replacing" : `Day ${elapsedDays} of 90`,
+        clockText: isReplacing ? "Replacing" : LIVE.includes(g.state) ? dayOf(g) : "Ended",
         isReplacement: isReplacing,
+        live: LIVE.includes(g.state),
       };
     })
     .filter((g) => matchesQuery([g.title, g.overline, g.owner]));
@@ -221,6 +245,22 @@ export default async function PlacementsPage({
   const offersList = enrichedPlacements.filter((p) => p.isOffer);
   const joiningList = enrichedPlacements.filter((p) => p.isJoining);
   const offersAndJoiningList = enrichedPlacements.filter((p) => p.isOffer || p.isJoining);
+
+  const endedCards = [
+    ...enrichedPlacements
+      .filter((p) => p.isEnded)
+      .map((p) => ({
+        id: p.placement.id,
+        href: `/placements/${p.placement.id}`,
+        overline: p.overline,
+        owner: p.owner,
+        title: p.placement.candidateName,
+        statusText: p.placement.state === "cancelled" ? "Fell through" : p.guaranteeStatus,
+        statusTone: "neutral" as Tone,
+        clockText: p.placement.state === "cancelled" ? "Cancelled" : "Ended",
+      })),
+    ...standaloneGuarantees.filter((g) => !g.live),
+  ];
 
   const inGuaranteeCards = [
     ...enrichedPlacements
@@ -236,7 +276,7 @@ export default async function PlacementsPage({
         clockText: p.guaranteeClock,
         isReplacement: p.isReplacement,
       })),
-    ...standaloneGuarantees,
+    ...standaloneGuarantees.filter((g) => g.live),
   ];
 
   const replacementsList = [
@@ -261,11 +301,14 @@ export default async function PlacementsPage({
     { key: "joining", label: "Joining", count: joiningList.length, href: "/placements?view=joining" },
     { key: "guarantee", label: "In guarantee", count: inGuaranteeCards.length, href: "/placements?view=guarantee" },
     { key: "replacements", label: "Replacements", count: replacementsList.length, href: "/placements?view=replacements" },
+    // Cancelled placements and ended guarantees had no section, though "All" counted them (18 Nov).
+    { key: "ended", label: "Ended", count: endedCards.length, href: "/placements?view=ended" },
   ];
 
   const showOffersAndJoining = view === "all" || view === "offers" || view === "joining";
   const showGuarantee = view === "all" || view === "guarantee";
   const showReplacementsOnly = view === "replacements";
+  const showEnded = view === "ended";
 
   const displayedOffersJoining =
     view === "offers"
@@ -387,7 +430,7 @@ export default async function PlacementsPage({
 
           {inGuaranteeCards.length === 0 ? (
             <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
-              No guarantee is running right now. One starts by itself the day somebody joins, and runs ninety days from that day.
+              No guarantee is running right now. One starts by itself the day somebody joins, and runs {numberOf(db, "guarantee.days", 90)} days from that day.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -428,6 +471,36 @@ export default async function PlacementsPage({
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {replacementsList.map((card) => (
+                <RecordCard
+                  outline
+                  key={card.id}
+                  href={card.href}
+                  overline={card.overline}
+                  ownerName={card.owner}
+                  title={card.title}
+                  statusText={card.statusText}
+                  statusTone={card.statusTone}
+                  clockText={card.clockText}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {showEnded && (
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-[26px] font-normal leading-[34px] text-ink">Ended</h2>
+            <span className="text-[14px] leading-[21px] text-ink-faint">{endedCards.length}</span>
+          </div>
+          {endedCards.length === 0 ? (
+            <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
+              Nothing has fallen through or finished yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {endedCards.map((card) => (
                 <RecordCard
                   outline
                   key={card.id}

@@ -5,7 +5,7 @@ import {
   dismissUnreportedHire,
   sendInvoice,
 } from "@/app/actions";
-import { clientIn, clientSetIn, desk, invoiceIn } from "@/data/desk";
+import { clientIn, clientSetIn, desk, invoiceIn, numberOf, unreportedToAsk } from "@/data/desk";
 import {
   BackBar,
   ClockPill,
@@ -43,12 +43,7 @@ export default async function UnreportedHirePage({
       : null;
 
   if (!inv && !set) {
-    const openTimer = db.timers.find(
-      (t) =>
-        t.state === "running" &&
-        t.kind === "hire.unreported" &&
-        t.subjectType === "clientSet",
-    );
+    const openTimer = unreportedToAsk(db)[0];
     if (openTimer) {
       redirect(`/invoices/unreported?setId=${encodeURIComponent(openTimer.subjectId)}`);
     }
@@ -61,6 +56,9 @@ export default async function UnreportedHirePage({
       ? clientIn(db, inv.clientId)
       : null;
   const canClient = can(me, "client.manage");
+  // The settings the surcharge is drafted from (18 Nov: the page said 50%, 150% and "3-month" whatever they were).
+  const pct = numberOf(db, "hire.surchargePct", 50);
+  const months = numberOf(db, "hire.unreportedMonths", 3);
   const canMoney = can(me, "money.manage");
   const cardShell = "rounded-[24px] border border-rule bg-surface p-5";
 
@@ -89,7 +87,7 @@ export default async function UnreportedHirePage({
             <NextStepCard
               eyebrow="UP NEXT"
               clock={<ClockPill tone="danger" label="Surcharge draft" />}
-              title="Approve the 50% surcharge invoice"
+              title={`Approve the ${pct}% surcharge invoice`}
               body="Review the evidence and amount below before sending this surcharge invoice to the client."
               actions={
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -129,7 +127,7 @@ export default async function UnreportedHirePage({
                   {money(inv.amount, inv.currency)}
                 </p>
                 <p className="mt-1 text-[13px] text-ink-soft">
-                  Includes 50% surcharge under the signed client agreement.
+                  Includes the {pct}% surcharge under the signed client agreement.
                 </p>
               </div>
             </div>
@@ -139,7 +137,7 @@ export default async function UnreportedHirePage({
             <>
               <NextStepCard
                 eyebrow="UP NEXT"
-                clock={<ClockPill tone="warn" label="3-month check" />}
+                clock={<ClockPill tone="warn" label={`${months}-month check`} />}
                 title={`Confirm or dismiss the unreported hire for ${set.role}`}
                 body="If the client hired someone from this CV set without notifying Career 141, draft the surcharge invoice. Otherwise record their explanation."
                 actions={
@@ -166,7 +164,7 @@ export default async function UnreportedHirePage({
                     SURCHARGE BASIS
                   </div>
                   <p className="mt-2 text-[22px] font-light text-ink">
-                    150% of placement fee
+                    {pct}% of the placement fee
                   </p>
                   <p className="mt-1 text-[13px] text-ink-soft">
                     Calculated from the candidate&rsquo;s agreed monthly salary.
@@ -182,6 +180,7 @@ export default async function UnreportedHirePage({
                     </h2>
                     <form action={confirmUnreportedHire} className="mt-4 flex flex-col gap-3">
                       <input type="hidden" name="setId" value={set.id} />
+                      <input type="hidden" name="back" value="/invoices/unreported" />
                       <div>
                         <label className={figmaLabel} htmlFor="candidateName">
                           Candidate hired
@@ -191,9 +190,16 @@ export default async function UnreportedHirePage({
                           name="candidateName"
                           type="text"
                           required
-                          defaultValue={set.candidates[0]?.name ?? ""}
+                          list={`hired-${set.id}`}
+                          placeholder="Who did they hire?"
                           className={figmaField}
                         />
+                        {/* The set's candidates as suggestions, none chosen for them (18 Nov: the first was pre-filled). */}
+                        <datalist id={`hired-${set.id}`}>
+                          {set.candidates.map((c) => (
+                            <option key={c.applicationTaId} value={c.name} />
+                          ))}
+                        </datalist>
                       </div>
                       <div>
                         <label className={figmaLabel} htmlFor="monthlySalary">

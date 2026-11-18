@@ -1,6 +1,7 @@
 import "server-only";
 
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
+import { samplePlacements } from "@/data/samplePlacements";
 import { SAMPLE_PREFIX, sampleOpenings } from "./sampleOpenings";
 import { repo } from "./store";
 import { seed } from "./seed";
@@ -955,6 +956,21 @@ export function holdsNewestFirst(db: OpsDatabase): OpsHold[] {
  * They all count from receipt, never from sending, and they start in one place
  * so a corrected receipt date can restart them together.
  */
+/**
+ * Sets whose three-month question has come due and nobody has answered: no surcharge drafted and not dismissed
+ * (18 Nov: the list showed every *running* clock, i.e. sets not three months old yet, as "flagged").
+ */
+export function unreportedToAsk(db: OpsDatabase): OpsTimer[] {
+  return db.timers.filter(
+    (t) =>
+      t.kind === "hire.unreported" &&
+      t.subjectType === "clientSet" &&
+      t.state === "fired" &&
+      !db.invoices.some((inv) => inv.setId === t.subjectId && inv.kind === "surcharge") &&
+      !db.audit.some((a) => a.subjectType === "clientSet" && a.subjectId === t.subjectId && a.action === "clientSet.unreportedDismissed"),
+  );
+}
+
 export async function startReceiptClocks(
   db: OpsDatabase,
   set: OpsClientSet,
@@ -999,14 +1015,16 @@ export async function startReceiptClocks(
     ownerId: set.ownerId,
     payload: { label },
   });
-  // Three months, and the agreement's 50% surcharge if they hired from it
-  // without telling us (step 18).
+  // Three months (the setting), and the agreement's surcharge if they hired
+  // from it without telling us (step 18). 18 Nov: it was a fixed 90 days.
+  const unreportedAt = new Date(receivedAt);
+  unreportedAt.setUTCMonth(unreportedAt.getUTCMonth() + numberOf(db, "hire.unreportedMonths", 3));
   await startTimer({
     kind: "hire.unreported",
     subjectType: "clientSet",
     subjectId: set.id,
     startsAt: receivedAt,
-    dueAt: receivedAt + 90 * 86_400_000,
+    dueAt: unreportedAt.getTime(),
     warnAt: null,
     ownerId: set.ownerId,
     payload: { label },
@@ -2116,12 +2134,42 @@ export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise
   if (usingConvex()) return { ok: false, why: "The Openings sample is for the laptop run (sh deploy/local/start-ui.sh), not the Convex backend." };
   if (repo.all().clients.some((c) => c.id.startsWith(SAMPLE_PREFIX))) return { ok: false, why: "The Openings sample is already loaded." };
   const rows = sampleOpenings(now, ownerId);
-  const backup = repo.addSample(rows as unknown as Partial<Record<keyof OpsDatabase, unknown[]>>);
+  // The Placements sample rides along (18 Nov): one placed job for each placement, invoice and guarantee state.
+  const money = samplePlacements(now, ownerId);
+  rows.positions.push(...money.positions);
+  rows.closeChecklists.push(...money.closeChecklists);
+  const backup = repo.addSample({
+    ...(rows as unknown as Partial<Record<keyof OpsDatabase, unknown[]>>),
+    placements: money.placements,
+    invoices: money.invoices,
+    guarantees: money.guarantees,
+  });
   const db = repo.all();
   for (const set of rows.clientSets) {
     if (set.state === "sent" && set.receivedAt) await startReceiptClocks(db, set, set.receivedAt);
     if (set.state === "ready" && set.dueAt) {
       await startTimer({ kind: "set.due", subjectType: "clientSet", subjectId: set.id, startsAt: now, dueAt: set.dueAt, warnAt: set.dueAt - 86_400_000, ownerId, payload: { label: set.name } });
+    }
+  }
+  // The clocks those states would have running, so "move a clock to now" has them (only ones still ahead).
+  for (const placement of money.placements) {
+    if (placement.state === "placed" && placement.joinDate && placement.joinDate > now) await startJoinClocks(placement, now);
+  }
+  for (const inv of money.invoices) {
+    if (!["sent", "partly_paid"].includes(inv.state) || inv.kind === "credit_note" || !inv.dueAt) continue;
+    // Not due yet: the due clock. Overdue: the next monthly chase.
+    const dueAt = inv.dueAt > now ? inv.dueAt : now + 30 * 86_400_000 - ((now - inv.dueAt) % (30 * 86_400_000));
+    await startTimer({ kind: inv.dueAt > now ? "invoice.due" : "invoice.chase", subjectType: "invoice", subjectId: inv.id, startsAt: inv.sentAt ?? now, dueAt, warnAt: null, ownerId, payload: { label: inv.number } });
+  }
+  for (const g of money.guarantees) {
+    if (g.state === "running") {
+      await startTimer({ kind: "guarantee.warn", subjectType: "guarantee", subjectId: g.id, startsAt: g.startsAt, dueAt: warnOn(g.startsAt, numberOf(db, "guarantee.warnDay", WARN_DAY)), warnAt: null, ownerId, payload: { label: g.candidateName } });
+    }
+    if (g.state === "running" || g.state === "warned") {
+      await startTimer({ kind: "guarantee.end", subjectType: "guarantee", subjectId: g.id, startsAt: g.startsAt, dueAt: g.endsAt, warnAt: null, ownerId, payload: { label: g.candidateName } });
+    }
+    if (g.state === "replacing" && g.deadlineAt) {
+      await startTimer({ kind: "replacement.deadline", subjectType: "guarantee", subjectId: g.id, startsAt: g.leftAt ?? now, dueAt: g.deadlineAt, warnAt: null, ownerId, payload: { label: g.candidateName } });
     }
   }
   for (const ad of rows.ads) {

@@ -131,7 +131,7 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   },
   "replacement.deadline": {
     kind: "decide",
-    title: "Sixty working days and no replacement",
+    title: "The replacement window is up, and no replacement",
     body: "The question goes to the Director of Operations: keep looking, or refund part of the fee as the agreement says. A refund is a decision, never a timeout.",
   },
   "guarantee.warn": {

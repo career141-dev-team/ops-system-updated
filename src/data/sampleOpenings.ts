@@ -12,6 +12,7 @@ import type {
   OpsTalentPulseIssue,
 } from "@/data/types";
 import { nameKey } from "@/lib/leads";
+import { SAMPLE_FEE_RULES, SAMPLE_TA_MONEY } from "@/data/samplePlacements";
 
 /**
  * The Openings sample (18 Nov, the owner: "dummy data with real values" to test Openings on a laptop).
@@ -110,7 +111,7 @@ export const SAMPLE_TA = {
     opsOwnerId: null,
     contacts: [{ name: c.hr, email: c.hrEmail, role: "hr", phone: "+94 77 000 " + String(1000 + c.key.length * 37).slice(0, 4) }],
   })),
-  openings: OPENINGS.filter((o) => !("noOpening" in o)).map((o) => ({
+  openings: [...OPENINGS.filter((o) => !("noOpening" in o)).map((o) => ({
     id: "ta_smp_j" + o.n,
     title: o.title,
     clientId: "ta_smp_c_" + o.company,
@@ -119,7 +120,7 @@ export const SAMPLE_TA = {
     taLeadId: "ta_u1",
     headcount: 1,
     assignedAt: Date.UTC(2026, 9, 20),
-  })),
+  })), ...SAMPLE_TA_MONEY.openings],
   sets: OPENINGS.flatMap((o) =>
     o.sets.map((s) => ({
       id: "ta_smp_round" + o.n + "_" + s.n,
@@ -134,8 +135,9 @@ export const SAMPLE_TA = {
     })),
   ),
   /** Each opening's pipeline, before anything the tester does moves a stage (see src/lib/fakeTaState.ts). */
-  pipelines: Object.fromEntries(
-    OPENINGS.filter((o) => !("noOpening" in o)).map((o) => [
+  pipelines: Object.fromEntries([
+    ...Object.entries(SAMPLE_TA_MONEY.pipelines),
+    ...OPENINGS.filter((o) => !("noOpening" in o)).map((o) => [
       "ta_smp_j" + o.n,
       o.sets.flatMap((s) =>
         s.people.map((p) => ({
@@ -147,7 +149,7 @@ export const SAMPLE_TA = {
         })),
       ),
     ]),
-  ) as Record<string, { id: string; candidateName: string; currentStage: string; setNumber: number | null; backupForApplicationId: null }[]>,
+  ]) as Record<string, { id: string; candidateName: string; currentStage: string; setNumber: number | null; backupForApplicationId: null }[]>,
   /** Who has a prepared CV, for the stand-in's file answer. */
   cvs: Object.fromEntries(OPENINGS.flatMap((o) => o.sets.flatMap((s) => s.people.map((p) => [p.id, { name: p.name, preparedCv: p.preparedCv }])))) as Record<
     string,
@@ -220,7 +222,14 @@ export function sampleOpenings(now: number, ownerId: string): SampleRows {
       clientTaId: taClientId,
       state: "countersigned",
       version: 1,
-      fields: { company: c.name, fee: "one month of gross salary", guarantee: "90 days" },
+      // A real fee rule, as a signed agreement carries one (18 Nov: only words, so every fee was the code's default).
+      fields: {
+        company: c.name,
+        feeMonths: String(SAMPLE_FEE_RULES[c.key].feeMonths),
+        feeBasis: SAMPLE_FEE_RULES[c.key].feeBasis,
+        fee: SAMPLE_FEE_RULES[c.key].feeMonths + (SAMPLE_FEE_RULES[c.key].feeMonths === 1 ? " month" : " months") + " of " + SAMPLE_FEE_RULES[c.key].feeBasis + " salary",
+        guarantee: "90 days",
+      },
       draftFileId: null,
       sentAt: ago(36),
       sentMessageId: null,

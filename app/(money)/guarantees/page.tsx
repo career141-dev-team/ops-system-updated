@@ -7,6 +7,7 @@ import {
   desk,
   guaranteesNewestFirst,
   member as memberIn,
+  numberOf,
   placementIn,
   positionIn,
   runClocks,
@@ -32,6 +33,7 @@ export default async function GuaranteesPage({
   const db = await desk();
   const all = guaranteesNewestFirst(db);
   const holidays = db.holidays.map((h) => h.date);
+  const replacementDays = numberOf(db, "replacement.workingDays", 60);
   const query = (q ?? "").trim().toLowerCase();
 
   const cards = all
@@ -44,13 +46,15 @@ export default async function GuaranteesPage({
       const roleTitle = position?.title ?? guarantee.openingTaId;
       const overline = `${clientName} · ${roleTitle}`;
 
-      const elapsedDays = Math.max(1, Math.min(90, Math.ceil((now - guarantee.startsAt) / 86_400_000)));
+      // Its own length, and the replacement window from the setting (18 Nov: "of 90", "of 60" and "15" were written in).
+      const length = Math.max(1, Math.round((guarantee.endsAt - guarantee.startsAt) / 86_400_000));
+      const elapsedDays = Math.max(1, Math.min(length, Math.ceil((now - guarantee.startsAt) / 86_400_000)));
       const daysLeft = Math.max(0, Math.ceil((guarantee.endsAt - now) / 86_400_000));
       const unpaid = !guarantee.feePaidAt && (guarantee.state === "running" || guarantee.state === "warned");
 
       let statusText = guaranteeInWords(guarantee, now, holidays);
       let statusTone: Tone = "ok";
-      let clockText = `Day ${elapsedDays} of 90`;
+      let clockText = `Day ${elapsedDays} of ${length}`;
 
       if (guarantee.state === "replacing") {
         statusText = "Left · replacing";
@@ -58,7 +62,7 @@ export default async function GuaranteesPage({
         const elapsedWorking = guarantee.leftAt
           ? workingDaysBetween(guarantee.leftAt, now, holidays)
           : 1;
-        clockText = `Day ${Math.max(1, elapsedWorking)} of 60`;
+        clockText = `Day ${Math.max(1, elapsedWorking)} of ${replacementDays} working days`;
       } else if (guarantee.state === "refund_pending") {
         statusText = "Refund pending";
         statusTone = "warn";
@@ -66,7 +70,7 @@ export default async function GuaranteesPage({
       } else if (unpaid) {
         statusText = "Fee unpaid";
         statusTone = "danger";
-      } else if (daysLeft <= 15 && daysLeft > 0) {
+      } else if (guarantee.state === "warned" && daysLeft > 0) {
         statusText = `Ends in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`;
         statusTone = "ok";
       } else if (guarantee.state === "running" || guarantee.state === "warned") {
@@ -188,7 +192,7 @@ export default async function GuaranteesPage({
 
       {soonest && (
         <p className="text-[13px] text-ink-faint">
-          The soonest ends in {daysLeftInWords(soonest.endsAt, now)}.
+          The soonest to end: {daysLeftInWords(soonest.endsAt, now)}.
         </p>
       )}
     </PageBox>

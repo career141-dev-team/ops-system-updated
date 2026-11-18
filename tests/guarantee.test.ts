@@ -391,3 +391,20 @@ test("a fee paid after the guarantee started still makes it hold", async () => {
   const held = repo.guaranteeIn(guarantee!.id);
   assert.equal(verdictOnLeaver(held?.feePaidAt ?? null).state, "replacing", "now a leaver is replaced, not void");
 });
+
+test("the TA opening is ticked last, and stays ticked once TA is told (18 Nov)", async () => {
+  const { problemWithTick, closeItemsFor } = await import("@/lib/guarantee");
+  const items = closeItemsFor({ linkedInUrl: "https://www.linkedin.com/jobs/view/1" }, true);
+  assert.match(problemWithTick(items, "opening") ?? "", /adverts down first/);
+  assert.equal(problemWithTick(items, "nothing"), "No such item on this list.");
+  // The adverts down is enough; the lead and the group come after the opening.
+  const advertsDown = items.map((i) => (i.key === "linkedin" || i.key === "topjobs" ? { ...i, doneAt: 1 } : i));
+  assert.equal(problemWithTick(advertsDown, "opening"), null);
+  const allButOpening = items.map((i) => (i.key === "opening" ? i : { ...i, doneAt: 1 }));
+  assert.equal(problemWithTick(allButOpening, "opening"), null);
+  const allDone = allButOpening.map((i) => ({ ...i, doneAt: 1 }));
+  assert.match(problemWithTick(allDone, "opening") ?? "", /stays ticked/);
+  // Any other item can still be unticked.
+  const other = allDone.find((i) => i.key !== "opening")!;
+  assert.equal(problemWithTick(allDone, other.key), null);
+});

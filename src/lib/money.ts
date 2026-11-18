@@ -201,6 +201,18 @@ export function balanceOf(invoice: InvoiceLike): number {
 }
 
 /** A payment has to be real money against something still owed. */
+/**
+ * Whether an invoice can take money at all (18 Nov: a draft could be marked paid, so a guarantee held on a fee
+ * the client had never been sent).
+ */
+export function problemWithPaymentOn(state: string): string | null {
+  if (state === "draft") return "This invoice has not gone to the client yet. Send it first.";
+  if (state === "paid") return "This invoice is paid already.";
+  if (state === "written_off") return "This invoice is written off.";
+  if (state === "credit_note") return "A credit note is not paid; it is set against an invoice.";
+  return null;
+}
+
 export function problemWithPayment(amount: number, balance: number): string | null {
   if (!Number.isFinite(amount) || amount <= 0) return "How much did they pay?";
   if (balance <= 0) return "Nothing is owed on this invoice.";
