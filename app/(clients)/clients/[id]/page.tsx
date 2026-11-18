@@ -922,7 +922,7 @@ export default async function ClientPage({
               {kind !== "all" && <input type="hidden" name="kind" value={kind} />}
               <Icon name="search" size={18} className="shrink-0 text-ink-faint" />
               <input
-                name="q"
+                name="q" autoComplete="off"
                 defaultValue={q}
                 placeholder="Search what happened"
                 aria-label="Search what happened"

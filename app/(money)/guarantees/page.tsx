@@ -148,7 +148,7 @@ export default async function GuaranteesPage({
             <Icon name="search" size={15} className="text-ink-faint" />
             <input
               type="search"
-              name="q"
+              name="q" autoComplete="off"
               defaultValue={q ?? ""}
               placeholder="Filter guarantees…"
               className="w-40 bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"

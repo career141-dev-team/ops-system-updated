@@ -287,7 +287,7 @@ export default async function PlacementsPage({
               <Icon name="search" size={15} className="text-ink-faint" />
               <input
                 type="search"
-                name="q"
+                name="q" autoComplete="off"
                 defaultValue={q ?? ""}
                 placeholder="Filter placements…"
                 className="w-40 bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"

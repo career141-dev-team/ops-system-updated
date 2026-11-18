@@ -157,7 +157,7 @@ export default function TopBar({
           >
             <Icon name="search" size={18} className="shrink-0 text-ink-faint" />
             <input
-              name="q"
+              name="q" autoComplete="off"
               placeholder="Search or ask AURA"
               aria-label="Search the desk"
               className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] outline-none placeholder:text-ink-faint"

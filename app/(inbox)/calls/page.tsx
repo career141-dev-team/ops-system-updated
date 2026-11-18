@@ -143,7 +143,7 @@ export default async function CallsPage({
           <form action="/calls" className="mt-3 flex items-center gap-2 rounded-full bg-sunk px-4 py-2.5">
             {Object.entries(view).map(([k, v]) => (k !== "q" && v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
             <Icon name="search" size={14} className="text-ink-faint" />
-            <input name="q" defaultValue={q} placeholder="Search calls or contacts" aria-label="Search calls" className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] text-ink outline-none placeholder:text-ink-faint" />
+            <input name="q" autoComplete="off" defaultValue={q} placeholder="Search calls or contacts" aria-label="Search calls" className="min-w-0 flex-1 bg-transparent text-[14px] leading-[21px] text-ink outline-none placeholder:text-ink-faint" />
           </form>
           <nav aria-label="Calls" className="mt-3 flex min-h-0 flex-col lg:overflow-y-auto">
             {folder === "tocall" ? (

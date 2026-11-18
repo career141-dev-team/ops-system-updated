@@ -34,7 +34,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
           <Icon name="search" size={20} className="text-ink-faint" />
           {f && <input type="hidden" name="f" value={f} />}
           <input
-            name="q"
+            name="q" autoComplete="off"
             defaultValue={q}
             placeholder="Name, role or client"
             aria-label="Find a candidate"

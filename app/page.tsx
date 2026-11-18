@@ -189,12 +189,12 @@ export default async function MyWorkPage({
         {view !== "approve" && (
         <header className="rise mt-1 flex flex-col items-center gap-1 text-center">
           <p className="text-[14px] leading-[21px] text-ink-faint">{dayInWords(now)}</p>
-          <h1 className="text-[40px] font-light leading-[50px] text-ink md:text-[56px] md:leading-[66px]">
+          <h1 className="text-[36px] font-light leading-[46px] text-ink md:text-[48px] md:leading-[58px]">
             {greetingFor(now)}, {firstName(member.name)}
           </h1>
           <p className="text-[16px] leading-[26px] text-ink-soft">{summaryLine(items.length, late)}</p>
           {total > 0 && (
-            <div className="flex items-center gap-1.5 pt-3" aria-label={done + " of " + total + " done"}>
+            <div className="flex items-center gap-1.5 pt-2" aria-label={done + " of " + total + " done"}>
               {Array.from({ length: Math.min(total, 12) }, (_, i) => (
                 <span key={i} className={"h-1 w-9 rounded-[2px] " + (i < Math.round((done / total) * Math.min(total, 12)) ? "bg-brand" : "bg-shell")} />
               ))}
@@ -213,7 +213,8 @@ export default async function MyWorkPage({
         {view === "today" && (
           <div className="rise flex flex-col md:min-h-0 md:flex-1">
             {/* Up next: one thing, and the one move that settles it. */}
-            <section className="mt-6 flex flex-col gap-4 rounded-[28px] bg-surface px-7 pb-5 pt-7 shadow-float">
+            {/* Smaller than it was (18 Nov, the owner), so Then below it can show two or three tasks before it scrolls. */}
+            <section className="mt-4 flex flex-col gap-2.5 rounded-[28px] bg-surface px-6 pb-4 pt-5 shadow-float">
               {first ? (
                 <>
                   <div className="flex items-center">
@@ -226,40 +227,40 @@ export default async function MyWorkPage({
                     )}
                   </div>
                   {who && <p className="text-[14px] leading-[21px] text-ink-faint">{who}</p>}
-                  <h2 className="text-[22px] leading-[30px] text-ink md:text-[26px] md:leading-[34px]">{title}</h2>
-                  <p className="text-[16px] leading-[26px] text-ink-soft">
+                  <h2 className="text-[20px] leading-[28px] text-ink md:text-[22px] md:leading-[30px]">{title}</h2>
+                  <p className="text-[14px] leading-[22px] text-ink-soft">
                     {detail ? detail + " " : ""}
                     {aiLine ?? firstBecause(first, others)}
                   </p>
-                  <div className="flex flex-wrap items-center gap-2.5 pt-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
                     {firstDraft ? (
                       <form action={approveAndSend}>
                         <input type="hidden" name="messageId" value={firstDraft.id} />
                         <input type="hidden" name="back" value="/" />
-                        <button className="rounded-full bg-ink px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-inverse active:scale-[0.98]">
+                        <button className="rounded-full bg-ink px-4 py-2 text-[14px] font-medium leading-[21px] text-ink-inverse active:scale-[0.98]">
                           {firstDraft.channel === "group_post" ? "Approve" : "Approve and send"}
                         </button>
                       </form>
                     ) : (
-                      <Link href={first.href} className="rounded-full bg-ink px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-inverse active:scale-[0.98]">
+                      <Link href={first.href} className="rounded-full bg-ink px-4 py-2 text-[14px] font-medium leading-[21px] text-ink-inverse active:scale-[0.98]">
                         {verb}
                       </Link>
                     )}
                     {firstDraft && (
-                      <Link href={first.href} className="rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk">
+                      <Link href={first.href} className="rounded-full border border-rule-strong bg-surface px-4 py-2 text-[14px] font-medium leading-[21px] text-ink hover:bg-sunk">
                         Read it first
                       </Link>
                     )}
                     {aiOn && !aiLine && (
                       <form action={explainFirst}>
-                        <button className="rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink hover:bg-sunk">
+                        <button className="rounded-full border border-rule-strong bg-surface px-4 py-2 text-[14px] font-medium leading-[21px] text-ink hover:bg-sunk">
                           Ask AURA why this first
                         </button>
                       </form>
                     )}
                     <span className="flex-1" />
                     {others.length > 0 && (
-                      <Link href={laterHref} className="rounded-full px-5 py-[11px] text-[16px] font-medium leading-[26px] text-ink-soft hover:text-ink">
+                      <Link href={laterHref} className="rounded-full px-4 py-2 text-[14px] font-medium leading-[21px] text-ink-soft hover:text-ink">
                         Later
                       </Link>
                     )}
@@ -280,7 +281,7 @@ export default async function MyWorkPage({
               // It takes the space left between Up next and AURA; AURA stays at the foot of the box.
               // A box of its own (17 Nov, the owner): the sticky header used to be a dark strip over the glow with the rows
               // loose beneath it. Now the header and the rows share one card, and the gap above it shows the glow.
-              <section className="mt-6 flex flex-col gap-1 rounded-[28px] bg-surface px-3 pb-3 shadow-float md:min-h-0 md:overflow-y-auto">
+              <section className="mt-4 flex flex-col gap-1 rounded-[28px] bg-surface px-3 pb-3 shadow-float md:min-h-[184px] md:max-h-[200px] md:flex-1 md:overflow-y-auto">
                 <div className="sticky top-0 z-[1] flex items-center bg-surface px-2 pb-1 pt-3">
                   <p className={caption + " flex-1"}>{params.all ? "Everything today" : "Then"}</p>
                   {params.all ? (

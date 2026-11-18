@@ -69,7 +69,7 @@ export default async function SetsPage({
           <Icon name="find" size={18} className="shrink-0 text-ink-faint" />
           <input
             type="search"
-            name="q"
+            name="q" autoComplete="off"
             defaultValue={q}
             placeholder="Find a CV set or role"
             className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
