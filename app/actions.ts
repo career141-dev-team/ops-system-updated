@@ -1369,31 +1369,19 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
   );
 
   if (found.exact) {
-    const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing: found.exact });
-    await patchLead(
-      leadId,
-      { clientTaId: found.exact.id, state: routed.state },
-      member.id,
-      "lead.linkedToClient",
-      routed.because,
-    );
-    // They are a company we already have, so the client record starts here
-    // rather than waiting for an agreement they may already have signed.
-    await clientFromLead(
-      await desk(),
-      { ...(lead as NonNullable<typeof lead>), clientTaId: found.exact.id },
-      found.exact.esaSignedAt ? "active" : "lead",
-      member.id,
-    );
+    const routed = await linkLeadToClient(lead as NonNullable<typeof lead>, found.exact, member.id);
     revalidatePath(here);
-    revalidatePath("/clients");
     back("They are already our client. " + routed.because);
   }
 
   if (found.near.length) {
-    back(
-      "No exact match. These look close, so somebody has to decide: " +
-        found.near.map((c) => c.name).join(" · "),
+    // The matches ride on the link so the page can offer "it's this one" and "none of these":
+    // without them a lead with only a near match could never finish its enquiry (18 Nov).
+    const near = encodeURIComponent(JSON.stringify(found.near.map((c) => ({ id: c.id, name: c.name }))));
+    redirect(
+      leadBack(here, "enquiry", "No exact match. These look close, so somebody has to decide: pick one, or say none of them.", formData) +
+        "&near=" +
+        near,
     );
   }
   // No match is an answer, and it has to be written down: with the lead left as
@@ -1402,6 +1390,56 @@ export async function checkLeadDuplicate(formData: FormData): Promise<void> {
   await patchLead(leadId, { state: fresh.state }, member.id, "lead.checkedNewClient", fresh.because);
   revalidatePath(here);
   back("Nobody like that in the TA System, so this is a new client. " + fresh.because);
+}
+
+/** Links a lead to a client we already have, and starts the client record from it. */
+async function linkLeadToClient(
+  lead: NonNullable<ReturnType<typeof leadIn>>,
+  existing: { id: string; name: string; nameKey: string; esaSignedAt: number | null },
+  memberId: string,
+) {
+  const routed = routeLead({ industryFlagged: false, industryConfirmed: false, existing });
+  await patchLead(lead.id, { clientTaId: existing.id, state: routed.state }, memberId, "lead.linkedToClient", routed.because);
+  // They are a company we already have, so the client record starts here
+  // rather than waiting for an agreement they may already have signed.
+  await clientFromLead(await desk(), { ...lead, clientTaId: existing.id }, existing.esaSignedAt ? "active" : "lead", memberId);
+  revalidatePath("/clients");
+  return routed;
+}
+
+/** "It's this one": a person picked one of the near matches. The id is checked against TA again, not trusted. */
+export async function chooseLeadMatch(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const lead = leadIn(await desk(), leadId);
+  if (!lead) back("That lead is gone.");
+  const row = lead as NonNullable<typeof lead>;
+  const answer = await taClients(row.company);
+  if (!answer.ok) back("Could not ask the TA System: " + answer.reason);
+  const picked = (answer.ok ? answer.data : []).find((c) => c.id === String(formData.get("taClientId") ?? ""));
+  if (!picked) back("That client was not in the TA System's answer. Check again.");
+  const routed = await linkLeadToClient(row, picked!, member.id);
+  revalidatePath(here);
+  back("Linked to " + picked!.name + ". " + routed.because);
+}
+
+/** "None of these": a person looked at the near matches and says this is a new client. */
+export async function markLeadNewClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const leadId = String(formData.get("leadId") ?? "");
+  const here = "/leads/" + leadId;
+  const back = (msg: string) => redirect(leadBack(here, "enquiry", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!leadIn(await desk(), leadId)) back("That lead is gone.");
+  const fresh = routeLead({ industryFlagged: false, industryConfirmed: false, existing: null });
+  await patchLead(leadId, { state: fresh.state }, member.id, "lead.checkedNewClient", "A person looked at the close matches: none is them.");
+  revalidatePath(here);
+  back("A new client. " + fresh.because);
 }
 
 /**

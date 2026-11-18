@@ -182,3 +182,11 @@ test("how long it has sat, in words a person reads", () => {
   assert.equal(sittingFor(NOW - 7 * DAY, NOW), "1 week");
   assert.equal(sittingFor(NOW - 21 * DAY, NOW), "3 weeks");
 });
+
+test("a new client is not left in the enquiry once it is checked, and signed moves on to the requirement", () => {
+  const checked = { state: "intro_call", clientTaId: null, industryFlagged: false, industryConfirmedBy: null };
+  assert.equal(stageOfLead(checked, { heldIntro: false, esaState: null }), "intro");
+  assert.equal(stageOfLead({ ...checked, state: "new" }, { heldIntro: false, esaState: null }), "enquiry");
+  assert.equal(stageOfLead(checked, { heldIntro: true, esaState: "signed" }), "requirement");
+  assert.equal(stageOfLead({ ...checked, state: "requirement", clientTaId: "ta_c1" }, { heldIntro: false, esaState: null }), "requirement");
+});
