@@ -19,6 +19,8 @@
  * Nothing here touches a database.
  */
 
+import { existingClientOf } from "@/lib/leads";
+
 const DAY = 86_400_000;
 
 export interface Step {
@@ -99,12 +101,7 @@ export function leadNextStep(
   const reqMeeting = meetings.filter((m) => m.kind === "requirement");
   const booked = (list: MeetingLike[]) => list.find((m) => m.state === "booked") ?? null;
   const held = (list: MeetingLike[]) => list.some((m) => m.state === "held");
-  // A client we already had (linked at the enquiry, no intro call ever booked) and a Director's
-  // lead have no intro call to do; one with a signed agreement on file has no agreement either (18 Nov).
-  const existing =
-    !!lead.clientTaId && intro.length === 0 && ["requirement", "waiting_agreement", "handed_over"].includes(lead.state);
-  const skipsIntro = lead.source === "director" || existing;
-  const signedOnFile = existing && !esa && ["requirement", "handed_over"].includes(lead.state);
+  const { skipsIntro, signedOnFile } = existingClientOf(lead, meetings, esa);
 
   if (lead.state === "declined_industry") {
     return {

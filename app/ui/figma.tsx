@@ -43,6 +43,8 @@ export type JourneyStepItem = {
   /** A short line under the label, e.g. the counts of a loop. */
   note?: string;
   href?: string;
+  /** Steps that run together share a name: the line between them says "side by side" (18 Nov). */
+  together?: string;
 };
 
 export type JourneyStep = JourneyStepItem;
@@ -386,38 +388,34 @@ export function JourneyBar({
         const isDone = step.state === "done";
         const isCurrent = step.state === "current";
         const isSkipped = step.state === "skipped";
+        // Calm (18 Nov): a step passed over is an open ring that says "not done", not a yellow "!" -
+        // it is something to come back to, not an alarm. The step being looked at gets a soft halo.
+        const halo = step.viewing ? " ring-4 ring-bg-brand" : "";
         const circle = isSkipped ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-warn bg-warn-soft text-[13px] font-bold leading-none text-warn">
-            !
-          </span>
+          <span className={"size-5 shrink-0 rounded-full border-2 border-rule-strong bg-surface" + halo} />
         ) : isDone ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-ink-inverse">
-            <Icon name="check" size={14} />
+          <span className={"flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-ink-inverse" + halo}>
+            <Icon name="check" size={12} />
           </span>
         ) : isCurrent ? (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-brand bg-bg-brand">
+          <span className={"flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-brand bg-surface" + halo}>
             <span className="size-2 rounded-full bg-brand" />
           </span>
         ) : (
-          <span className="size-6 shrink-0 rounded-full bg-sunk" />
+          <span className={"size-5 shrink-0 rounded-full bg-sunk" + halo} />
         );
         const label = (
           <span
             className={
-              "w-[92px] text-center font-medium sm:w-[112px] " +
-              (isCurrent || step.viewing
-                ? "text-[14px] leading-[21px] text-ink"
-                : isSkipped
-                  ? "text-[12px] leading-4 tracking-[0.4px] text-warn"
-                  : isDone
-                    ? "text-[12px] leading-4 tracking-[0.4px] text-ink-soft"
-                    : "text-[12px] leading-4 tracking-[0.4px] text-ink-faint")
+              "w-[92px] text-center text-[12px] leading-4 sm:w-[112px] " +
+              (isCurrent || step.viewing ? "font-medium text-ink" : isDone ? "text-ink-soft" : "text-ink-faint")
             }
           >
             {step.label}
-            {isSkipped && <span className="sr-only"> (skipped)</span>}
-            {step.note && (
-              <span className="mt-0.5 block text-[11px] font-normal leading-[14px] text-ink-faint">{step.note}</span>
+            {(isSkipped || step.note) && (
+              <span className="mt-0.5 block text-[11px] leading-[14px] text-ink-faint">
+                {isSkipped ? "not done" : step.note}
+              </span>
             )}
           </span>
         );
@@ -427,6 +425,8 @@ export function JourneyBar({
             {label}
           </div>
         );
+        const next = resolvedSteps[idx + 1];
+        const joined = !!step.together && step.together === next?.together;
         return (
           <div
             key={step.label}
@@ -443,12 +443,17 @@ export function JourneyBar({
               content
             )}
             {idx < resolvedSteps.length - 1 && (
-              <div className="min-w-[12px] flex-1 pt-[11px]">
-                <div
-                  className={
-                    "h-[2px] w-full rounded-[1px] " + (isDone ? "bg-brand" : "bg-shell")
-                  }
-                />
+              <div className="relative min-w-[12px] flex-1 pt-[9px]">
+                {joined ? (
+                  <>
+                    <div className="h-[2px] w-full border-t-2 border-dashed border-rule-strong" />
+                    <span className="absolute left-1/2 top-[-4px] -translate-x-1/2 whitespace-nowrap text-[10px] leading-3 text-ink-faint">
+                      {step.together}
+                    </span>
+                  </>
+                ) : (
+                  <div className={"h-[2px] w-full rounded-[1px] " + (isDone ? "bg-brand" : "bg-shell")} />
+                )}
               </div>
             )}
           </div>

@@ -30,13 +30,11 @@ export function leadJourney(p: {
   clientTaId: string | null;
   industryFlagged: boolean;
   industryConfirmedBy: string | null;
-  /** A Director's lead skips the intro call by design. */
+  /** No intro call to do: a Director's lead, or a client we already had (`existingClientOf`). */
   skipsIntro: boolean;
   introBooked: boolean;
   introHeld: boolean;
-  /** A client we already had when the lead arrived: no intro call to do. */
-  existingClient?: boolean;
-  /** That existing client already has a signed agreement on file. */
+  /** A client we already had, with a signed agreement on file (`existingClientOf`). */
   agreementOnFile?: boolean;
   /** The opening was opened (a position exists), signed or not. */
   positionExists: boolean;
@@ -54,7 +52,7 @@ export function leadJourney(p: {
 
   // The intro call ends with the ESA sent to the client (owner, 17 Nov): held is not enough.
   const esaOut = p.esaState !== null && p.esaState !== "draft";
-  const done = [checked, (p.introHeld && esaOut) || p.skipsIntro || !!p.existingClient, signed, p.requirementDone, p.positionExists];
+  const done = [checked, (p.introHeld && esaOut) || p.skipsIntro, signed, p.requirementDone, p.positionExists];
   const started = [
     checked,
     p.introBooked || p.introHeld,

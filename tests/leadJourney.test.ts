@@ -177,10 +177,10 @@ test("the bar rings the step you are on and warns on an earlier one still open",
 });
 
 test("an existing client skips the intro call, and a signed one on file skips the agreement too", () => {
-  const existing = { ...base, leadState: "requirement", clientTaId: "ta_c1", existingClient: true, agreementOnFile: true };
+  const existing = { ...base, leadState: "requirement", clientTaId: "ta_c1", skipsIntro: true, agreementOnFile: true };
   assert.deepEqual(leadJourney(existing), ["done", "done", "done", "current", "upcoming"]);
   assert.equal(stepToShow(null, leadJourney(existing)), "requirement");
   // Known to us but never signed: the agreement is still to do, the intro call is not.
-  const unsigned = { ...base, leadState: "waiting_agreement", clientTaId: "ta_c1", existingClient: true };
+  const unsigned = { ...base, leadState: "waiting_agreement", clientTaId: "ta_c1", skipsIntro: true };
   assert.deepEqual(leadJourney(unsigned), ["done", "done", "current", "current", "upcoming"]);
 });
