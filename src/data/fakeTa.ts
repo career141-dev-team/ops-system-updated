@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import { SAMPLE_TA } from "@/data/sampleOpenings";
+import { EMPTY_STATE, addApps, applyWrite, pipelineNow, setStage, type FakeTaApp, type FakeTaState } from "@/lib/fakeTaState";
 import { nameKey } from "@/lib/leads";
 
 /**
@@ -137,6 +142,52 @@ const PLACEMENT = {
 
 export type FakeAnswer<T> = { ok: true; data: T } | { ok: false; reason: string };
 
+/*
+ * The stand-in's memory (18 Nov): stage changes and the dev panel's people, in a file beside the store, so the
+ * depth rules can be seen working on a laptop (src/lib/fakeTaState.ts). Losing it only resets the stand-in.
+ */
+const stateFile = () => path.join(process.env.OPS_DATA_DIR || path.join(process.cwd(), ".data"), "fake-ta.json");
+
+function readState(): FakeTaState {
+  try {
+    return { ...EMPTY_STATE, ...(JSON.parse(fs.readFileSync(stateFile(), "utf8")) as Partial<FakeTaState>) };
+  } catch {
+    return EMPTY_STATE;
+  }
+}
+
+function writeState(state: FakeTaState): void {
+  try {
+    fs.mkdirSync(path.dirname(stateFile()), { recursive: true });
+    fs.writeFileSync(stateFile(), JSON.stringify(state, null, 2));
+  } catch {
+    // shortcut: a stand-in that cannot write simply forgets, which only matters for testing on a laptop.
+  }
+}
+
+/** The dev panel: TA moves a candidate to another stage. */
+export function fakeTaSetStage(applicationId: string, stage: string): void {
+  writeState(setStage(readState(), applicationId, stage));
+}
+
+/** The dev panel: the people it just sent in a set join that opening's pipeline. */
+export function fakeTaAddApps(openingId: string, apps: FakeTaApp[]): void {
+  writeState(addApps(readState(), openingId, apps));
+}
+
+/** Forget everything the stand-in remembered (when the Openings sample is taken out). */
+export function fakeTaForget(): void {
+  writeState(EMPTY_STATE);
+}
+
+/** An opening's pipeline: the sample's, the dev panel's, or else the recorded one. */
+export function fakeTaPipeline(openingId: string) {
+  const state = readState();
+  // The sample's people and any the dev panel sent since, or else the recorded pipeline every test relies on.
+  const base = [...(SAMPLE_TA.pipelines[openingId] ?? []), ...(state.apps[openingId] ?? [])];
+  return base.length ? pipelineNow(base, state) : PIPELINE;
+}
+
 /**
  * A file the stand-in hands over: the smallest thing that is really a PDF.
  *
@@ -151,7 +202,9 @@ export function fakeFile(path: string): FakeAnswer<{ bytes: Uint8Array; mime: st
   const invented = /^ta_dev_/.test(match[1]);
   const who = invented
     ? { id: match[1], name: "SAMPLE CANDIDATE " + match[1].replace(/^ta_dev_/, "").toUpperCase(), preparedCv: !match[1].endsWith("_nocv") }
-    : CLIENT_SETS[0].applications.find((a) => a.id === match[1]);
+    : SAMPLE_TA.cvs[match[1]]
+      ? { id: match[1], ...SAMPLE_TA.cvs[match[1]] }
+      : CLIENT_SETS[0].applications.find((a) => a.id === match[1]);
   if (!who) return { ok: false, reason: "The stand-in has no application " + match[1] + "." };
   if (!who.preparedCv) return { ok: false, reason: "No prepared CV for " + who.name + " yet." };
   const text = "SAMPLE CV - " + who.name + " - invented, for testing only";
@@ -174,24 +227,29 @@ export function fakeFile(path: string): FakeAnswer<{ bytes: Uint8Array; mime: st
   return { ok: true, data: { bytes: new TextEncoder().encode(pdf), mime: "application/pdf" } };
 }
 
-export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
+export function fakeAnswer<T>(path: string, method = "GET", body?: unknown): FakeAnswer<T> {
   const [where, query] = path.split("?");
   const give = (data: unknown) => ({ ok: true as const, data: data as T });
+  // Which opening a path is about, when it names one: the sample's are answered by id (18 Nov).
+  const openingId = /\/openings\/([^/]+)/.exec(where)?.[1] ?? null;
+  const sampleOpening = openingId ? SAMPLE_TA.openings.find((o) => o.id === openingId) : undefined;
 
   if (where.endsWith("/people")) return give(PEOPLE);
-  if (where.endsWith("/clients")) return give(CLIENTS);
-  if (/\/openings\/[^/]+$/.test(where)) return give(OPENINGS[0]);
-  if (where.endsWith("/openings")) return give(OPENINGS);
+  if (where.endsWith("/clients")) return give([...CLIENTS, ...SAMPLE_TA.clients]);
+  if (/\/openings\/[^/]+$/.test(where)) return give(sampleOpening ?? OPENINGS[0]);
+  if (where.endsWith("/openings")) return give([...OPENINGS, ...SAMPLE_TA.openings]);
   if (/\/client-sets\/\d+$/.test(where)) {
     const n = Number(where.split("/").pop());
-    const found = CLIENT_SETS.find((r) => r.setNumber === n);
+    const found = sampleOpening
+      ? SAMPLE_TA.sets.find((r) => r.openingId === openingId && r.setNumber === n)
+      : CLIENT_SETS.find((r) => r.setNumber === n);
     return found ? give(found) : { ok: false, reason: "The stand-in has no set " + n + "." };
   }
-  if (where.endsWith("/client-sets")) return give(CLIENT_SETS);
+  if (where.endsWith("/client-sets")) return give(sampleOpening ? SAMPLE_TA.sets.filter((r) => r.openingId === openingId) : CLIENT_SETS);
   if (/\/placements\/[^/]+$/.test(where)) {
     return where.endsWith("/ta_p1") ? give(PLACEMENT) : { ok: false, reason: "The stand-in has no placement " + where.split("/").pop() + "." };
   }
-  if (where.endsWith("/pipeline")) return give(PIPELINE);
+  if (where.endsWith("/pipeline")) return give(openingId ? fakeTaPipeline(openingId) : PIPELINE);
   if (where.endsWith("/events")) {
     // As the live route works (checked against it, 9 Nov): \`after\` is the
     // time of the last event handled, in milliseconds; a cursor that is not
@@ -206,6 +264,20 @@ export function fakeAnswer<T>(path: string, method = "GET"): FakeAnswer<T> {
   // A write is accepted and nothing is kept. The stand-in cannot pretend to
   // have created an opening, but it must accept the write, or the outbox could
   // never be shown draining before the real API exists.
-  if (method !== "GET") return give({ accepted: true, standIn: true });
+  if (method !== "GET") {
+    // It now remembers what moves a candidate (a client's decision, a CV the client already had), 18 Nov.
+    const before = readState();
+    const after = applyWrite(before, where, typeof body === "string" ? safeJson(body) : body);
+    if (after !== before) writeState(after);
+    return give({ accepted: true, standIn: true });
+  }
   return { ok: false, reason: "The stand-in TA System has no answer for " + where + "." };
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

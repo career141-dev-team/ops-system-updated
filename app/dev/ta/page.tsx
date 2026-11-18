@@ -2,15 +2,22 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
+  devLoadOpeningsSample,
+  devMoveClock,
+  devRemoveOpeningsSample,
   devTaCreateOpening,
   devTaInterviewEvent,
   devTaJoined,
+  devTaOpening,
   devTaPlace,
+  devTaPushQueue,
   devTaSendSet,
+  devTaStage,
 } from "@/app/actions";
 import { PageBox, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { clientIn, desk, positionsNewestFirst } from "@/data/desk";
-import { fakeTa } from "@/lib/ta";
+import { clientIn, desk, liveTimers, outboxWaiting, positionsNewestFirst } from "@/data/desk";
+import { SAMPLE_PREFIX } from "@/data/sampleOpenings";
+import { fakeTa, pipeline } from "@/lib/ta";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 
 /**
@@ -30,6 +37,31 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
   const { msg } = await searchParams;
   const db = await desk();
   const positions = positionsNewestFirst(db);
+  const sampleIn = db.clients.some((c) => c.id.startsWith(SAMPLE_PREFIX));
+  const timers = liveTimers(db);
+  const waitingWrites = outboxWaiting(db).length;
+  // TA's pipeline for every opening, for "TA moves a candidate" (the stand-in answers by opening since 18 Nov).
+  const pipelines = new Map(
+    await Promise.all(
+      positions
+        .filter((p) => p.openingTaId)
+        .map(async (p) => {
+          const answer = await pipeline(p.openingTaId as string);
+          return [p.id, answer.ok ? answer.data.applications : []] as const;
+        }),
+    ),
+  );
+  const STAGES = ["screened", "sent_to_client", "client_shortlist", "interview", "offer", "rejected_by_client", "withdrawn"];
+  const clockWords: Record<string, string> = {
+    "set.due": "the set is due at the client",
+    "set.ownership": "the client's CV ownership ends",
+    "feedback.chase": "chase the client's feedback",
+    "feedback.call": "call the client about feedback",
+    "silence.hold": "propose a hold for silence",
+    "hold.review": "review the hold",
+    "hire.unreported": "the 3-month unreported-hire check",
+    "ad.close": "close the TopJobs advert",
+  };
 
   return (
     <PageBox width="1080" className="gap-6">
@@ -43,6 +75,30 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
       </div>
 
       {msg && <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</div>}
+
+      {/* The Openings sample and the queue (18 Nov). */}
+      <section className="flex flex-col gap-3 rounded-[24px] border border-rule px-6 py-5">
+        <span className={figmaLabel}>SAMPLE DATA · LAPTOP ONLY</span>
+        <p className="text-[14px] text-ink-soft">
+          Five invented clients and six openings, one in each state (JD to approve, searching, a set ready, a set with
+          the client, hold at five, waiting for TA, closed), with their adverts, interviews and clocks. Your data is
+          copied aside first; removing the sample takes out only its rows.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {sampleIn ? (
+            <form action={devRemoveOpeningsSample}>
+              <button type="submit" className={pillSecondary}>Remove the Openings sample</button>
+            </form>
+          ) : (
+            <form action={devLoadOpeningsSample}>
+              <button type="submit" className={pillPrimary}>Load the Openings sample</button>
+            </form>
+          )}
+          <form action={devTaPushQueue}>
+            <button type="submit" className={pillSecondary}>TA reads the queue now ({waitingWrites} waiting)</button>
+          </form>
+        </div>
+      </section>
 
       {positions.length === 0 && (
         <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
@@ -84,6 +140,75 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
                 </form>
               </div>
             )}
+
+            {position.openingTaId && position.stage !== "closed" && (
+              <div className="flex flex-wrap items-center gap-3">
+                {!position.jdApprovedAt && (
+                  <form action={devTaOpening}>
+                    <input type="hidden" name="positionId" value={position.id} />
+                    <input type="hidden" name="type" value="opening.jd_approved" />
+                    <button type="submit" className={pillSecondary}>TA approves the JD</button>
+                  </form>
+                )}
+                <form action={devTaOpening}>
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <input type="hidden" name="type" value="opening.closed" />
+                  <button type="submit" className={pillSecondary}>TA closes the opening</button>
+                </form>
+              </div>
+            )}
+
+            {(pipelines.get(position.id) ?? []).length > 0 && (
+              <form action={devTaStage} className="flex flex-wrap items-end gap-2 border-t border-rule pt-3">
+                <input type="hidden" name="positionId" value={position.id} />
+                <label className={figmaLabel + " min-w-[240px]"}>
+                  TA moves
+                  <select name="applicationId" className={figmaField}>
+                    {(pipelines.get(position.id) ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.candidateName} · now {a.currentStage.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={figmaLabel + " min-w-[180px]"}>
+                  to
+                  <select name="stage" className={figmaField}>
+                    {STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" className={pillSecondary}>Move, and count the shortlist</button>
+              </form>
+            )}
+
+            {(() => {
+              const mine = timers.filter(
+                (t) =>
+                  (t.subjectType === "position" && t.subjectId === position.id) ||
+                  (t.subjectType === "clientSet" && sets.some((s) => s.id === t.subjectId)) ||
+                  (t.subjectType === "ad" && db.ads.some((ad) => ad.id === t.subjectId && ad.positionId === position.id)) ||
+                  (t.subjectType === "hold" && db.holds.some((h) => h.id === t.subjectId && h.openingTaId === position.openingTaId)),
+              );
+              if (mine.length === 0) return null;
+              return (
+                <div className="flex flex-col gap-2 border-t border-rule pt-3">
+                  <span className={figmaLabel}>CLOCKS · MOVE ONE TO NOW</span>
+                  {mine.map((t) => (
+                    <form key={t.id} action={devMoveClock} className="flex flex-wrap items-center gap-3 text-[14px] text-ink">
+                      <input type="hidden" name="timerId" value={t.id} />
+                      <span className="min-w-[320px]">
+                        {clockWords[t.kind] ?? t.kind} · {t.payload.label ?? ""} · due {new Date(t.dueAt + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ")}
+                      </span>
+                      <button type="submit" className={pillSecondary}>Make it due now</button>
+                    </form>
+                  ))}
+                </div>
+              );
+            })()}
 
             {interviews.length > 0 && (
               <div className="flex flex-col gap-2 border-t border-rule pt-3">

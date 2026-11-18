@@ -126,6 +126,47 @@ export const repo = {
     save();
   },
 
+  /**
+   * The Openings sample (18 Nov, /dev/ta, laptop only): adds its rows after copying the file aside, so what was
+   * clicked before can be put back by hand. Returns the copy's path.
+   */
+  addSample(rows: Partial<Record<keyof OpsDatabase, unknown[]>>): string {
+    const db = load();
+    const backup = path.join(dir, "ops.before-sample-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json");
+    fs.copyFileSync(file, backup);
+    for (const [key, list] of Object.entries(rows)) {
+      (db as unknown as Record<string, unknown[]>)[key].push(...(list ?? []));
+    }
+    save();
+    return backup;
+  },
+
+  /** Takes out every row the sample added, and everything hanging off it (its clocks, tasks, drafts, writes, history). */
+  removeSample(prefix: string): number {
+    const db = load() as unknown as Record<string, { id?: string; subjectId?: string | null; positionId?: string | null }[]>;
+    let gone = 0;
+    for (const key of Object.keys(db)) {
+      if (!Array.isArray(db[key])) continue;
+      const before = db[key].length;
+      db[key] = db[key].filter(
+        (row) =>
+          !(row.id ?? "").startsWith(prefix) && !(row.subjectId ?? "").startsWith(prefix) && !(row.positionId ?? "").startsWith(prefix),
+      );
+      gone += before - db[key].length;
+    }
+    save();
+    return gone;
+  },
+
+  /** Dev only: a running clock comes due now, so what it does can be seen without waiting days for it. */
+  moveTimerToNow(timerId: Id, now: number): void {
+    const timer = load().timers.find((t) => t.id === timerId);
+    if (!timer) return;
+    timer.dueAt = now;
+    if (timer.warnAt !== null) timer.warnAt = now;
+    save();
+  },
+
   /** The whole desk, for the screens to read through `src/data/desk.ts`. */
   all(): OpsDatabase {
     return load();

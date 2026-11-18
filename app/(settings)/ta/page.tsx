@@ -1,10 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { pushOutboxNow, queueTestWrite, readEventsNow } from "@/app/actions";
 import { EVENTS_CURSOR, EVENTS_READ_AT, desk, eventsNewestFirst, outboxWaiting, settingValue } from "@/data/desk";
 import { outboxInWords } from "@/lib/outbox";
 import { can } from "@/lib/roles";
-import { currentMember } from "@/lib/session";
+import { currentMember, devSignInAllowed } from "@/lib/session";
 import { fakeTa, people, readsEnabled, windowInWords, writesEnabled } from "@/lib/ta";
 import { cursorAgeInWords } from "@/lib/taEvents";
 
@@ -44,6 +45,14 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
           Nothing on this page is real: a stand-in is answering. The TA side exists now (its endpoints are in
           ta-system, docs/OPS-SYSTEM-API.md). To use it, set OPS_TA_BASE_URL and OPS_TA_TOKEN, turn
           OPS_TA_READS_ENABLED on, and turn OPS_TA_FAKE off.
+        </p>
+      )}
+      {fakeTa() && devSignInAllowed() && (
+        <p className="mt-2 text-[13.5px]">
+          <Link href="/dev/ta" className="font-medium text-brand hover:underline">
+            Pretend to be the TA System
+          </Link>{" "}
+          · load the Openings sample, move clocks, say what TA would say (laptop only).
         </p>
       )}
       {!fakeTa() && !writesEnabled() && (
