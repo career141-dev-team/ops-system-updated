@@ -79,7 +79,8 @@ import {
   type MeetingKind,
   type MeetingState,
 } from "@/lib/meetings";
-import { relatedWork } from "@/data/journeyOf";
+import { positionStanding, relatedWork } from "@/data/journeyOf";
+import { STAGES } from "@/lib/journey";
 import { doneLine, flowOf } from "@/lib/leadFlow";
 import {
   LEAD_STEPS,
@@ -280,6 +281,9 @@ export default async function LeadPage({
   // The pieces of this client's work that exist, as plain links (18 Nov: no progress bar), and the five
   // sections of this lead as free tabs; the ones the backend says are next carry a small dot.
   const related = relatedWork(db, { leadId: lead.id });
+  // After the opening the work goes on the opening's own page; this says where it stands (the Work board's answer).
+  const standing = position ? positionStanding(db, position) : null;
+  const standingWhat = standing ? (STAGES.find((s) => s.key === standing.stage)?.what ?? standing.stage) : "";
   // The dot is the backend's own answer (leadNextStep), the same one the card says, so the two cannot differ.
   const nextAt: LeadStep | null =
     step.at === "duplicate" || step.at === "industry" ? "enquiry" : (LEAD_STEPS.find((s) => s === step.at) ?? null);
@@ -454,6 +458,15 @@ export default async function LeadPage({
           </div>
         )}
 
+        {position && standing && (
+          <p className="text-[14px] text-ink-soft">
+            Where it is now:{" "}
+            <Link href={`/positions/${position.id}`} className="font-medium text-ink underline">
+              {standingWhat}
+            </Link>
+            {standing.loop ? " · " + standing.loop.line : ""}
+          </p>
+        )}
         <RelatedLinks items={related} active="lead" />
         <ViewPills
           items={LEAD_STEPS.map((s) => ({

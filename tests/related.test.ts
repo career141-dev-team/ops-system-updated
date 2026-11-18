@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { relatedWork } from "@/data/journeyOf";
-import type { OpsDatabase } from "@/data/types";
+import { positionStanding, relatedWork } from "@/data/journeyOf";
+import type { OpsDatabase, OpsPosition } from "@/data/types";
 
 function db(): OpsDatabase {
   return {
@@ -35,4 +35,31 @@ test("nothing that does not exist yet is listed", () => {
   assert.deepEqual(relatedWork(early, { leadId: "l1" }).map((i) => i.key), ["lead", "opening"]);
   const justLead = { ...early, positions: [] } as unknown as OpsDatabase;
   assert.deepEqual(relatedWork(justLead, { leadId: "l1" }).map((i) => i.key), ["lead"]);
+});
+
+test("where an opening stands after it was opened: the furthest it has got", () => {
+  const base = {
+    clientSets: [],
+    holds: [],
+    closeChecklists: [],
+    interviews: [],
+    placements: [] as unknown[],
+    invoices: [] as unknown[],
+    guarantees: [] as unknown[],
+  };
+  const position = { id: "p1", openingTaId: "ta1", stage: "open" } as unknown as OpsPosition;
+  const standing = (over: object) => positionStanding({ ...base, ...over } as unknown as OpsDatabase, position).stage;
+  assert.equal(standing({}), "in_search");
+  const placed = { id: "pl1", openingTaId: "ta1", state: "placed", joinedAt: null };
+  assert.equal(standing({ placements: [placed] }), "joining");
+  const joined = { ...placed, state: "joined", joinedAt: 1 };
+  assert.equal(standing({ placements: [joined] }), "money");
+  // A running guarantee is the furthest it has got, whether or not the invoice is paid yet.
+  const guarantee = { placementId: "pl1", state: "running" };
+  assert.equal(standing({ placements: [joined], invoices: [{ placementId: "pl1", state: "sent" }], guarantees: [guarantee] }), "guarantee");
+  assert.equal(standing({ placements: [joined], invoices: [{ placementId: "pl1", state: "paid" }], guarantees: [guarantee] }), "guarantee");
+  // A cancelled placement does not move it on.
+  assert.equal(standing({ placements: [{ ...placed, state: "cancelled" }] }), "in_search");
+  // In search it also says what the loop holds.
+  assert.match(positionStanding({ ...base } as unknown as OpsDatabase, position).loop?.line ?? "", /Search active/);
 });

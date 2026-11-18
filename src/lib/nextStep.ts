@@ -215,8 +215,12 @@ export function leadNextStep(
     };
   }
 
-  // 5. The requirement meeting, which cannot happen before the agreement.
-  if (!held(reqMeeting)) {
+  // 5. The requirement meeting, which cannot happen before the agreement. It is how the requirement
+  //    gets written, so once the requirement is complete (or already handed over) there is no meeting
+  //    left to hold: an existing client's lead that never had one was told to book it after the
+  //    hand-over (18 Nov, found walking one through).
+  const blanks = requiredFields.filter((key) => !(requirement?.fields[key] ?? "").trim());
+  if (!held(reqMeeting) && blanks.length > 0 && !position) {
     const next = booked(reqMeeting);
     if (next) {
       return {
@@ -235,7 +239,6 @@ export function leadNextStep(
   }
 
   // 6. The requirement itself, and the hand-over.
-  const blanks = requiredFields.filter((key) => !(requirement?.fields[key] ?? "").trim());
   if (blanks.length) {
     return {
       at: "requirement",
