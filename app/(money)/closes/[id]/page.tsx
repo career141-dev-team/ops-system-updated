@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { completeClose, tickCloseItem } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { BackBar, PageBox, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { Card, PageTitle, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { checklistIn, clientIn, desk, member as memberIn, positionIn } from "@/data/desk";
 import { CLOSE_TRIGGERS, problemWithCloseComplete } from "@/lib/guarantee";
 import { can } from "@/lib/roles";
@@ -43,41 +44,21 @@ export default async function ClosePage({
   const whenDate = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
   return (
-    <PageBox width="1080" className="gap-6">
-      <BackBar
-        href={
-          placement
-            ? `/placements/${placement.id}`
-            : position
-              ? `/positions/${position.id}`
-              : "/closes"
-        }
-        label={
-          placement
-            ? `${placement.candidateName} · placement`
-            : position
-              ? `${position.title} · ${clientName}`
-              : "Closes"
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title="Close the posts"
+        sub={`${position?.title ?? checklist.openingTaId} � ${clientName} � ${CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}`}
+        right={
+          <Link href={position ? `/positions/${position.id}` : "/closes"} className={pillSecondary}>
+            {position ? "Back to the role" : "All closes"}
+          </Link>
         }
       />
 
-      {msg && (
-        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
-          {msg}
-        </div>
-      )}
-
-      {/* Header (1:3372) */}
-      <div className="flex flex-col gap-1.5 border-b border-rule pb-[18px]">
-        <span className="text-[14px] leading-[22px] text-ink-faint">
-          {position?.title ?? checklist.openingTaId} · {clientName} ·{" "}
-          {CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}
-        </span>
-        <h1 className="text-[40px] font-light leading-[50px] text-ink">Close the posts</h1>
-      </div>
+      {msg && <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</div>}
 
       {/* Floating Checklist Card (1:3378) */}
-      <div className="flex flex-col rounded-[28px] bg-surface px-[30px] py-[22px] shadow-float">
+      <Card>
         {checklist.items.map((item) => {
           const isDone = Boolean(item.doneAt);
           const roleBadge = item.whose === "ta" ? "TA" : "Ops";
@@ -175,7 +156,7 @@ export default async function ClosePage({
             Closed {whenLocal(checklist.completedAt)}. Nothing of it is left running.
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Shield Callout Banner (1:3411): only while a guarantee is still running (18 Nov: shown for ended and void ones too). */}
       {guarantee && ["running", "warned", "replacing"].includes(guarantee.state) && (
@@ -186,6 +167,6 @@ export default async function ClosePage({
           </span>
         </div>
       )}
-    </PageBox>
+    </div>
   );
 }
