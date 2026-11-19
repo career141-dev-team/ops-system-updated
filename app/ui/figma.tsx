@@ -854,7 +854,7 @@ export function PillTabs({
   active: string;
 }) {
   return (
-    <nav className="flex flex-wrap items-center gap-2">
+    <nav className="flex items-center gap-2 max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 md:flex-wrap">
       {items.map((item) => {
         const on = item.key === active;
         return (
@@ -864,7 +864,7 @@ export function PillTabs({
             scroll={false}
             aria-current={on ? "page" : undefined}
             className={
-              "t-body-m inline-flex items-center gap-2 rounded-full px-4 py-2.5 transition-colors " +
+              "t-body-m inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 transition-colors " +
               (on ? "bg-ink text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")
             }
           >

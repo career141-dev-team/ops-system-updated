@@ -3,13 +3,14 @@ import { notFound, redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
 import { PillTabs, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import PhoneRoleCard from "@/app/ui/phone/PhoneRoleCard";
 import SomethingChangedPanel from "@/app/ui/SomethingChangedPanel";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
 import { resolveRoleTab } from "@/lib/roleTabs";
 import { currentMember } from "@/lib/session";
 
-import { clock, weekdayDayMonth } from "./tabs/shared/fmt";
+import { clock, dayMonth, weekdayDayMonth } from "./tabs/shared/fmt";
 import { buildRoleCtx, type RoleCtx } from "./tabs/ctx";
 import Guarantee from "./tabs/Guarantee";
 import History from "./tabs/History";
@@ -82,6 +83,9 @@ export default async function PositionPage({
     const iv = c.itsInterviews.find((x) => x.id === sp.on) ?? c.liveIv;
     const when = iv?.at ? `${weekdayDayMonth(iv.at)}, ${clock(iv.at)}` : null;
     const form = (key: string, panel: string) => panelHref(path, { view: key }, panel, iv?.id);
+    // The two offer forms are about a placement, not an interview: the one still waiting to join.
+    const pl = c.itsPlacements.find((p) => p.state === "placed");
+    const offerForm = (panel: string) => (pl ? panelHref(path, { view: "offer" }, panel, pl.id) : undefined);
     return (
       <SomethingChangedPanel
         title={iv?.candidateName ?? position.title}
@@ -91,9 +95,9 @@ export default async function PositionPage({
           { label: "Client cancelled", href: form("interviews", "find-a-time") },
           { label: "Client moved it", href: form("interviews", "find-a-time") },
           { label: "Candidate cannot come", href: form("interviews", "find-a-time") },
-          { label: "Candidate dropped out", href: form("offer", "offer-declined") },
-          { label: "No-show", href: form("offer", "did-not-join") },
-          { label: "Waits for", note: "until a date", href: form("overview", "hold-close") },
+          { label: "Candidate dropped out", href: offerForm("offer-declined"), note: pl ? undefined : "no offer made yet" },
+          { label: "No-show", href: offerForm("did-not-join"), note: pl ? undefined : "nobody has joined yet" },
+          { label: "Waits for", note: "until a date", href: form("overview", "hold-close-reopen") },
           { label: "Other", href: panelHref(path, sp, "add-note") },
         ]}
       />
@@ -125,31 +129,31 @@ export default async function PositionPage({
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-3.5">
-            <h1 className="t-display">{position.title}</h1>
-            <span className={"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium leading-4 " + word.wrap}>
+            <h1 className="t-display max-md:!text-[17px] max-md:!font-medium max-md:!leading-6">{position.title}</h1>
+            <span className={"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium leading-4 max-md:hidden " + word.wrap}>
               <span aria-hidden className={"size-1.5 rounded-full " + word.dot} />
               {word.label}
             </span>
           </div>
-          <p className="t-small text-ink-3">{sub}</p>
+          <p className="t-small text-ink-3 max-md:hidden">{sub}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link scroll={false} href={to("interviews", "find-a-time")} className={pillPrimary}>
+          <Link scroll={false} href={to("interviews", "find-a-time")} className={pillPrimary + " max-md:hidden"}>
             <Icon name="plus" size={14} />
             Book an interview
           </Link>
           {tabKey === "overview" && (
             <>
-              <Link scroll={false} href={to("overview", "hold-close-reopen")} className={pillSecondary}>
+              <Link scroll={false} href={to("overview", "hold-close-reopen")} className={pillSecondary + " max-md:hidden"}>
                 Hold, close or reopen
               </Link>
-              <Link scroll={false} href={to("overview", "not-practical")} className={pillSecondary}>
+              <Link scroll={false} href={to("overview", "not-practical")} className={pillSecondary + " max-md:hidden"}>
                 Not practical
               </Link>
             </>
           )}
           {tabKey === "requirement" && (
-            <Link scroll={false} href={to("requirement", "meeting-not-held")} className={pillSecondary}>
+            <Link scroll={false} href={to("requirement", "meeting-not-held")} className={pillSecondary + " max-md:hidden"}>
               Meeting not held
             </Link>
           )}
@@ -161,6 +165,29 @@ export default async function PositionPage({
               <Icon name="more" size={18} />
             </summary>
             <div className="absolute right-0 z-10 mt-2 flex w-[260px] flex-col rounded-[18px] border border-rule bg-surface p-2 shadow-card">
+              {/* The header's own buttons, on a phone (PH3 has only the title row). */}
+              <Link scroll={false} href={to("interviews", "find-a-time")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                Book an interview
+              </Link>
+              {tabKey === "overview" && (
+                <>
+                  <Link scroll={false} href={to("overview", "hold-close-reopen")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                    Hold, close or reopen
+                  </Link>
+                  <Link scroll={false} href={to("overview", "not-practical")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                    Not practical
+                  </Link>
+                </>
+              )}
+              {tabKey === "requirement" && (
+                <Link scroll={false} href={to("requirement", "meeting-not-held")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                  Meeting not held
+                </Link>
+              )}
+              {/* G2: the Flow list sends "More" to Something changed; the other pages stay one tap further. */}
+              <Link scroll={false} href={panelHref(path, { view: tabKey }, "something-changed", (c.liveIv ?? c.itsInterviews[0])?.id)} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
+                Something changed
+              </Link>
               {client && (
                 <Link href={`/clients/${client.id}`} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
                   Open {clientName}
@@ -181,8 +208,17 @@ export default async function PositionPage({
 
       {msg && <div className="t-body rounded-[16px] border border-rule bg-sunk px-4 py-3">{msg}</div>}
 
+      {/* Phone (PH3): the numbers strip is replaced by a summary card. */}
+      <PhoneRoleCard
+        client={clientName}
+        title={position.title}
+        stages={[n.taSearch.n, n.ready.n, n.withClient.n, n.interviews.n, n.offer.n, n.joining.n, n.guarantee.n].map((x) => x > 0)}
+        headline={c.waitingSet ? `SET ${c.waitingSet.setNumber} is with the client` : word.label}
+        line={c.waitingSet?.sentAt ? `Day ${Math.floor((now - c.waitingSet.sentAt) / 86_400_000) + 1} of 7 since ${dayMonth(c.waitingSet.sentAt)}.` : c.step.waiting}
+      />
+
       {/* Numbers (R0): where the people on this opening are */}
-      <section className="flex flex-wrap items-center gap-x-2 gap-y-4 rounded-[28px] bg-surface px-7 py-[22px] shadow-card">
+      <section className="max-md:hidden flex flex-wrap items-center gap-x-2 gap-y-4 rounded-[28px] bg-surface px-7 py-[22px] shadow-card">
         {cell("TA search", n.taSearch.n, n.taSearch.line, to("sets"))}
         {cell("Ready to send", n.ready.n, n.ready.line, to("sets"))}
         {cell("With the client", n.withClient.n, n.withClient.line, to("sets"))}
