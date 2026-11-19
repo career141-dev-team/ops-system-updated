@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { BackBar, PageBox, RecordCard, ViewPills, type Tone } from "@/app/ui/figma";
+import { Card, DataTable, EmptyState, PageTitle, StatusChip, type Tone } from "@/app/ui/figma";
 import { checklistsNewestFirst, clientIn, desk, member as memberIn, positionIn } from "@/data/desk";
 import { closeInWords } from "@/lib/guarantee";
 import { currentMember } from "@/lib/session";
@@ -51,47 +51,37 @@ export default async function ClosesPage({
   ];
 
   return (
-    <PageBox width="full" className="gap-6">
-      <BackBar href="/placements" label="Placements" />
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title="Closing positions"
+        sub="Every way a position ends opens this list: a guarantee that ran its ninety days, a refund, a fee written off, a client who stopped, or a TA who closed the opening first."
+        tabs={views}
+        active={view}
+      />
 
-      <div className="flex flex-col gap-1">
-        <h1 className="text-[32px] font-light leading-[40px] text-ink">
-          Closing positions
-        </h1>
-        <p className="max-w-[70ch] text-[14px] text-ink-soft">
-          Every way a position ends opens this list: a guarantee that ran its ninety days, a refund, a fee written off,
-          a client who stopped, or a TA who closed the opening first.
-        </p>
-      </div>
+      {msg && <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">{msg}</p>}
 
-      <ViewPills items={views} active={view} />
-
-      {msg && (
-        <p className="rounded-[20px] bg-brand-tint px-5 py-3 text-[14px] font-medium text-brand-ink">
-          {msg}
-        </p>
-      )}
-
-      {shown.length === 0 ? (
-        <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
-          Nothing is closing right now. A checklist opens automatically when a guarantee ends, a refund is decided, or a position stops.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {shown.map((c) => (
-            <RecordCard
-              key={c.checklist.id}
-              href={`/closes/${c.checklist.id}`}
-              overline={c.overline}
-              ownerName={c.owner}
-              title={c.title}
-              statusText={c.statusText}
-              statusTone={c.statusTone}
-              clockText={c.clockText}
-            />
-          ))}
-        </div>
-      )}
-    </PageBox>
+      <Card>
+        <DataTable
+          columns={[{ label: "Position" }, { label: "Why" }, { label: "Owner" }, { label: "Progress" }, { label: "State" }]}
+          empty={
+            <EmptyState title="Nothing is closing right now">
+              A checklist opens automatically when a guarantee ends, a refund is decided, or a position stops.
+            </EmptyState>
+          }
+          rows={shown.map((c) => ({
+            key: c.checklist.id,
+            href: `/closes/${c.checklist.id}`,
+            cells: [
+              c.title,
+              c.overline,
+              c.owner,
+              c.clockText,
+              <StatusChip key="s" label={c.statusText} tone={c.statusTone} />,
+            ],
+          }))}
+        />
+      </Card>
+    </div>
   );
 }
