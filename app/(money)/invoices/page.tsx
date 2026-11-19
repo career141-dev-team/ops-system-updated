@@ -1,363 +1,262 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
+import { draftInvoiceForPlacement } from "@/app/actions";
 import {
   clientIn,
   desk,
   invoicesNewestFirst,
-  member as memberIn,
+  numberOf,
   placementIn,
-  unreportedToAsk,
   positionIn,
   runClocks,
+  unreportedToAsk,
 } from "@/data/desk";
-import {
-  PageBox,
-  StatTile,
-  ViewPills,
-  pillGhost,
-  pillSecondary,
-} from "@/app/ui/figma";
-import { day } from "@/lib/listing";
-import { invoiceDrift } from "@/lib/exports";
-import { balanceOf, invoiceInWords, money, moneyCompact, paidSoFar } from "@/lib/money";
+import { Card, PageTitle, pillGhost, pillSecondary } from "@/app/ui/figma";
+import { SubmitButton } from "@/app/ui/SubmitButton";
+import { boardSummary, columnOf, type Column } from "@/lib/accountsBoard";
+import { closeHref, panelHref } from "@/lib/panel";
+import { WRITE_OFF_DAYS, balanceOf, money, moneyWhole } from "@/lib/money";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import InvoicePanel from "./InvoicePanel";
+import WriteOffPanel from "./WriteOffPanel";
 
 export const dynamic = "force-dynamic";
 
-type View = "invoices" | "collections" | "payments" | "refunds" | "surcharges";
+const PATH = "/invoices";
+const SHOWN = 2;
 
-function parseView(raw: string | undefined): View {
-  if (
-    raw === "collections" ||
-    raw === "payments" ||
-    raw === "refunds" ||
-    raw === "surcharges"
-  ) {
-    return raw;
-  }
-  return "invoices";
-}
+/** "17 Nov" and "Thu 3 Dec", in Colombo. */
+const COLOMBO = 5.5 * 3_600_000;
+const short = (at: number) => new Date(at + COLOMBO).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const longDay = (at: number) => new Date(at + COLOMBO).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
-function statusTone(state: string, overdue: boolean): string {
-  if (state === "paid") return "text-ok";
-  if (overdue) return "text-danger";
-  if (state === "sent" || state === "partly_paid") return "text-warn";
-  return "text-ink-faint";
-}
+const COLUMNS: { key: Column; title: string; dot: string }[] = [
+  { key: "to_send", title: "To send", dot: "bg-warn" },
+  { key: "sent", title: "Sent", dot: "bg-info" },
+  { key: "late", title: "Late", dot: "bg-danger" },
+  { key: "paid", title: "Paid", dot: "bg-brand" },
+];
+
+const smallBtn = "inline-flex cursor-pointer items-center rounded-full border border-rule bg-surface px-3 py-[7px] t-label text-ink hover:bg-sunk";
+const smallInk = "inline-flex cursor-pointer items-center rounded-full bg-ink px-3 py-[7px] t-label text-ink-inverse";
 
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; msg?: string }>;
+  searchParams: Promise<{ msg?: string; panel?: string; on?: string; more?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
 
   const sp = await searchParams;
-  const view = parseView(sp.view);
   const canMoney = can(me, "money.manage");
 
   await runClocks();
   const db = await desk();
   const now = Date.now();
-  const allInvoices = invoicesNewestFirst(db);
+  const all = invoicesNewestFirst(db);
+  const sum = boardSummary(all, now);
+  const month = new Date(now + COLOMBO).toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
 
-  // shortcut: the totals add every invoice as LKR, the only currency Ops bills in today; split by currency if a
-  // client is ever billed in another.
-  let totalOwed = 0;
-  let openCount = 0;
-  let totalLate = 0;
-  let lateCount = 0;
-
-  // The month in Colombo, not the server's own time zone (18 Nov).
-  const colombo = new Date(now + 5.5 * 3_600_000);
-  const monthStartMs = Date.UTC(colombo.getUTCFullYear(), colombo.getUTCMonth(), 1) - 5.5 * 3_600_000;
-  const monthLabel = colombo.toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
-
-  let collectedMonth = 0;
-  let monthPayments = 0;
-
-  for (const inv of allInvoices) {
-    if (inv.kind === "credit_note") continue;
-    const bal = balanceOf(inv);
-    // A draft has not gone, so the client owes nothing on it yet (18 Nov: drafts counted as owed and late).
-    if (inv.state !== "paid" && inv.state !== "written_off" && inv.state !== "draft" && bal > 0) {
-      totalOwed += bal;
-      openCount += 1;
-      // A dispute in good faith is not late (the agreement's own exception).
-      if (inv.dueAt && inv.dueAt < now && !inv.disputed) {
-        totalLate += bal;
-        lateCount += 1;
-      }
-    }
-    for (const p of inv.payments) {
-      if (p.paidAt >= monthStartMs) {
-        collectedMonth += p.amount;
-        monthPayments += 1;
-      }
-    }
+  const placed = (id: string | null) => (id ? placementIn(db, id) : null);
+  const byColumn = new Map<Column, typeof all>();
+  for (const inv of all) {
+    const col = columnOf(inv, now);
+    if (col) byColumn.set(col, [...(byColumn.get(col) ?? []), inv]);
   }
+  // Oldest late first: that is the one to chase.
+  byColumn.get("late")?.sort((a, b) => (a.dueAt ?? 0) - (b.dueAt ?? 0));
+  const oldestLate = byColumn.get("late")?.[0];
+  const oldestLateClient = oldestLate?.clientId ? clientIn(db, oldestLate.clientId)?.name : null;
 
-  const unreportedTimers = unreportedToAsk(db);
-  const refundGuarantees = db.guarantees.filter(
-    (g) => g.state === "refund_pending" || g.state === "refunded",
-  );
+  // Joined, and nobody has made the invoice (a replacement under the guarantee is not invoiced again).
+  const joinedNoInvoice = db.placements.filter((p) => p.state === "joined" && !p.invoiceId && !p.isReplacementOf);
+  const unreported = unreportedToAsk(db);
 
-  const visibleInvoices = allInvoices.filter((inv) => {
-    if (view === "collections") {
-      return (
-        inv.kind !== "credit_note" &&
-        inv.state !== "paid" &&
-        inv.state !== "written_off" &&
-        ((inv.dueAt && inv.dueAt < now) || inv.disputed || inv.lateMonths > 0)
-      );
-    }
-    if (view === "payments") {
-      return inv.payments.length > 0 || inv.state === "paid" || inv.state === "partly_paid";
-    }
-    if (view === "refunds") {
-      return inv.kind === "credit_note";
-    }
-    if (view === "surcharges") {
-      return inv.kind === "surcharge";
-    }
-    return inv.kind !== "credit_note";
-  });
+  const invoiceCount = all.filter((i) => i.kind !== "credit_note").length;
 
-  const tabs = [
-    { key: "invoices", label: "Invoices", href: "/invoices" },
-    { key: "collections", label: "Collections", href: "/invoices?view=collections" },
-    { key: "payments", label: "Payments", href: "/invoices?view=payments" },
-    { key: "refunds", label: "Refunds", href: "/invoices?view=refunds" },
-    { key: "surcharges", label: "Surcharges", href: "/invoices?view=surcharges" },
+  const rail = [
+    { label: "Invoiced", value: sum.invoicedSum, bar: "bg-ink" },
+    { label: `Paid · ${sum.paidCount} invoice${sum.paidCount === 1 ? "" : "s"}`, value: sum.paidSum, bar: "bg-brand" },
+    { label: `Late · ${sum.late} invoice${sum.late === 1 ? "" : "s"}`, value: sum.lateSum, bar: "bg-danger" },
+    { label: "Sent, not due", value: sum.sentNotDueSum, bar: "bg-info" },
+  ];
+  const railMax = Math.max(1, ...rail.map((r) => r.value));
+
+  const numbers = [
+    { label: "To send", value: sum.toSend, tone: "text-warn", caption: "drafted, need you" },
+    { label: "Sent", value: sum.sent, tone: "text-info", caption: "waiting for payment" },
+    { label: "Due this week", value: sum.dueThisWeek, tone: "text-warn", caption: `by ${longDay(now + 7 * 86_400_000)}` },
+    { label: "Late", value: sum.late, tone: "text-danger", caption: sum.late ? `oldest ${sum.oldestLateDays} day${sum.oldestLateDays === 1 ? "" : "s"}` : "none late" },
+    { label: "Paid this month", value: sum.paidCount, tone: "text-brand", caption: moneyWhole(sum.paidSum, "LKR") },
   ];
 
-  const cardShell = "flex flex-col gap-2";
+  const open = sp.panel === "invoice" || sp.panel === "write-off" ? all.find((i) => i.id === sp.on) : null;
+  const close = closeHref(PATH, sp);
 
   return (
-    <PageBox width="1160">
-      <div className="flex flex-col gap-6">
-        {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
-            {sp.msg}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatTile
-            size="lg"
-            outline
-            value={moneyCompact(totalOwed, "LKR")}
-            label="owed to us"
-            caption={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
-          />
-          <StatTile
-            size="lg"
-            outline
-            highlight={totalLate > 0 ? "danger" : undefined}
-            tone={totalLate > 0 ? "danger" : "default"}
-            value={moneyCompact(totalLate, "LKR")}
-            label="late"
-            caption={lateCount > 0 ? `${lateCount} past due date` : "none overdue"}
-          />
-          <StatTile
-            size="lg"
-            outline
-            value={moneyCompact(collectedMonth, "LKR")}
-            label={`collected in ${monthLabel}`}
-            caption={`${monthPayments} payment${monthPayments === 1 ? "" : "s"} logged`}
-          />
-        </div>
-
-        <ViewPills
-          items={tabs}
-          active={view}
-          rightSlot={
-            canMoney ? (
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title="Invoices"
+        sub={`${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"} · ${longDay(now)}`}
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            {canMoney && (
               <Link href="/invoices/payment" className={pillSecondary}>
-                Log a payment
+                Payments and refunds
               </Link>
-            ) : undefined
-          }
-        />
+            )}
+            <a href="/api/exports/invoices.csv" className={pillGhost}>Invoices CSV</a>
+            <a href="/api/exports/payments.csv" className={pillGhost}>Payments CSV</a>
+          </div>
+        }
+      />
 
-        {view === "surcharges" && unreportedTimers.length > 0 && (
-          <div className={cardShell}>
-            <div className="px-4 pb-2 pt-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-              Unreported hire checks ({unreportedTimers.length})
-            </div>
+      {sp.msg && !open && <p role="status" className="t-body rounded-[18px] bg-brand-tint px-4 py-3">{sp.msg}</p>}
+
+      <section className="grid grid-cols-2 gap-6 rounded-[28px] bg-surface px-7 py-[22px] shadow-card md:grid-cols-5 md:gap-0">
+        {numbers.map((n, i) => (
+          <div key={n.label} className={"flex flex-col gap-1 md:px-7 " + (i > 0 ? "md:border-l md:border-rule" : "md:pl-0")}>
+            <p className="t-micro text-ink-3">{n.label}</p>
+            <p className={"text-[36px] font-medium leading-[44px] " + n.tone}>{n.value}</p>
+            <p className="t-small text-ink-3">{n.caption}</p>
+          </div>
+        ))}
+      </section>
+
+      <div className="grid grid-cols-1 items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card title="Invoices" sub="Grouped by where each one stands. Each card has one button.">
+          {(joinedNoInvoice.length > 0 || unreported.length > 0) &&
             <div className="flex flex-col gap-2">
-              {unreportedTimers.map((t) => {
+              {joinedNoInvoice.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center gap-[18px] rounded-[18px] bg-sunk px-5 py-4">
+                  <span className="flex w-[150px] items-center gap-2 t-label text-warn"><span className="size-2 rounded-[4px] bg-warn" />Needs you</span>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+                    <p className="t-body-m">Joined, no invoice</p>
+                    <p className="t-small text-ink-2">
+                      {p.candidateName} joined {(p.clientId ? clientIn(db, p.clientId)?.name : null) ?? "the client"}
+                      {p.joinedAt ? " on " + short(p.joinedAt) : ""}. No invoice has been made.
+                    </p>
+                  </div>
+                  {(canMoney || can(me, "client.manage")) && (
+                    <form action={draftInvoiceForPlacement}>
+                      <input type="hidden" name="placementId" value={p.id} />
+                      <SubmitButton id={"make-" + p.id} className={smallBtn}>Make the invoice</SubmitButton>
+                    </form>
+                  )}
+                </div>
+              ))}
+              {unreported.map((t) => {
                 const set = db.clientSets.find((s) => s.id === t.subjectId);
                 const client = set?.clientId ? clientIn(db, set.clientId) : null;
                 return (
-                  <Link
-                    key={t.id}
-                    href={`/invoices/unreported?setId=${encodeURIComponent(t.subjectId)}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
-                  >
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
-                        <Icon name="flag" size={16} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[16px] leading-[26px] text-ink">
-                          {client?.name ?? "Client"} · {set?.role ?? "Unreported hire"}
-                        </div>
-                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
-                          3-month check flagged a possible unreported hire
-                        </div>
-                      </div>
+                  <div key={t.id} className="flex flex-wrap items-center gap-[18px] rounded-[18px] bg-sunk px-5 py-4">
+                    <span className="flex w-[150px] items-center gap-2 t-label text-warn"><span className="size-2 rounded-[4px] bg-warn" />Needs you</span>
+                    <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+                      <p className="t-body-m">Possible unreported hire</p>
+                      <p className="t-small text-ink-2">{client?.name ?? "A client"} · {set?.role ?? "a role"}. The 3-month check flagged it.</p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="text-[14px] text-danger">Needs review</span>
-                      <Icon name="chevron-right" size={16} className="text-ink-faint" />
-                    </div>
-                  </Link>
+                    <Link href={`/invoices/unreported?setId=${encodeURIComponent(t.subjectId)}`} className={smallBtn}>Review</Link>
+                  </div>
                 );
               })}
-            </div>
+            </div>}
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {COLUMNS.map((col) => {
+              const rows = byColumn.get(col.key) ?? [];
+              const expanded = (sp.more ?? "").split(",").includes(col.key);
+              const shown = expanded ? rows : rows.slice(0, SHOWN);
+              return (
+                <div key={col.key} className="flex min-w-0 flex-col gap-2.5 rounded-[20px] bg-sunk px-3 py-3.5">
+                  <div className="flex items-center gap-2 px-1 pb-0.5">
+                    <span className={"size-2 rounded-[4px] " + col.dot} />
+                    <h3 className="t-body-m flex-1">{col.title}</h3>
+                    <span className="t-small text-ink-3">{rows.length}</span>
+                  </div>
+                  {rows.length === 0 && <p className="t-small px-1 text-ink-3">Nothing here.</p>}
+                  {shown.map((inv) => {
+                    const client = inv.clientId ? clientIn(db, inv.clientId) : null;
+                    const pl = placed(inv.placementId);
+                    const who = pl?.candidateName ?? inv.about ?? "";
+                    const role = pl?.positionId ? positionIn(db, pl.positionId)?.title : null;
+                    const late = inv.dueAt ? Math.floor((now - inv.dueAt) / 86_400_000) : 0;
+                    return (
+                      <article key={inv.id} className="flex flex-col gap-1.5 rounded-[16px] bg-surface p-3.5">
+                        <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className="t-body-m hover:underline">
+                          {client?.name ?? "Client"}
+                        </Link>
+                        <p className="t-small break-words text-ink-3">{inv.number}{who ? " · " + who : ""}{role && !who ? " · " + role : ""}</p>
+                        <p className="text-[16px] font-medium leading-6">{money(balanceOf(inv) > 0 && col.key !== "to_send" ? balanceOf(inv) : inv.amount, inv.currency)}</p>
+                        {col.key === "to_send" && <p className="t-small text-ink-3">{pl?.joinedAt ? "Joined " + short(pl.joinedAt) : "Draft, not sent"}</p>}
+                        {col.key === "sent" && <p className="t-small text-info">{inv.disputed ? "Disputed · " : ""}{inv.sentAt ? "Sent " + short(inv.sentAt) : "Sent"}{inv.dueAt ? " · due " + longDay(inv.dueAt) : ""}</p>}
+                        {col.key === "late" && <p className="t-small text-danger">Late · {late} day{late === 1 ? "" : "s"}</p>}
+                        {col.key === "paid" && <p className="t-small text-brand">Paid {inv.paidAt ? short(inv.paidAt) : ""}</p>}
+                        {canMoney && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {col.key === "to_send" && (
+                              <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallInk}>Approve and send</Link>
+                            )}
+                            {col.key === "sent" && (
+                              <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallBtn}>Record a payment</Link>
+                            )}
+                            {col.key === "late" && (
+                              <>
+                                <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallBtn}>Copy a reminder</Link>
+                                <Link href={panelHref(PATH, sp, "write-off", inv.id)} scroll={false} className={smallBtn}>Write off</Link>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                  {rows.length > SHOWN && !expanded && (
+                    <Link
+                      href={{ pathname: PATH, query: { ...sp, more: [...(sp.more ? sp.more.split(",") : []), col.key].join(",") } }}
+                      scroll={false}
+                      className="t-small px-1 text-ink-3 hover:text-ink"
+                    >
+                      {rows.length - SHOWN} more
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
+        </Card>
 
-        {view === "refunds" && refundGuarantees.length > 0 && (
-          <div className={cardShell}>
-            <div className="px-4 pb-2 pt-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-              Guarantee refunds ({refundGuarantees.length})
-            </div>
-            <div className="flex flex-col gap-2">
-              {refundGuarantees.map((g) => {
-                const placement = placementIn(db, g.placementId);
-                const client = placement?.clientId ? clientIn(db, placement.clientId) : null;
-                const posTitle = placement?.positionId
-                  ? positionIn(db, placement.positionId)?.title
-                  : null;
-                return (
-                  <Link
-                    key={g.id}
-                    href={`/guarantees/${g.id}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
-                  >
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
-                        <Icon name="shield" size={16} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[16px] leading-[26px] text-ink">
-                          {client?.name ?? "Client"} · {g.candidateName}
-                        </div>
-                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
-                          {posTitle ?? "Placement"} ·{" "}
-                          {g.refundAmount != null ? money(g.refundAmount, placementIn(db, g.placementId)?.currency ?? "LKR") : "Refund case"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span
-                        className={`text-[14px] font-medium ${g.state === "refunded" ? "text-ok" : "text-warn"
-                          }`}
-                      >
-                        {g.state === "refunded" ? "Refunded" : "Refund pending"}
-                      </span>
-                      <Icon name="chevron-right" size={16} className="text-ink-faint" />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div>
-          {visibleInvoices.length === 0 ? (
-            <div className="rounded-[20px] bg-sunk px-5 py-6 text-[14px] text-ink-soft">
-              Nothing in this view right now.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {visibleInvoices.map((inv) => {
-                const client = inv.clientId ? clientIn(db, inv.clientId) : null;
-                const owner = memberIn(db, inv.ownerId);
-                const bal = balanceOf(inv);
-                const paid = paidSoFar(inv);
-                const overdue = Boolean(
-                  inv.dueAt &&
-                  inv.dueAt < now &&
-                  inv.state !== "paid" &&
-                  inv.state !== "written_off",
-                );
-                const rightText =
-                  inv.state === "paid"
-                    ? "Paid"
-                    : inv.state === "written_off"
-                      ? "Written off"
-                      : inv.disputed
-                        ? "Disputed"
-                        : inv.state === "draft"
-                          ? "Draft, not sent"
-                        : overdue
-                          ? `${money(bal, inv.currency)} overdue`
-                          : bal > 0
-                            ? `${money(bal, inv.currency)} owed`
-                            : invoiceInWords(inv);
-
-                // Which job it is for (owner, 17 Nov): the position and the candidate placed, for a fee invoice.
-                const jobPlacement = inv.placementId ? placementIn(db, inv.placementId) : null;
-                const jobLine = jobPlacement
-                  ? [positionIn(db, jobPlacement.positionId ?? "")?.title, jobPlacement.candidateName].filter(Boolean).join(" · ")
-                  : inv.about;
-
-                return (
-                  <Link
-                    key={inv.id}
-                    href={`/invoices/${inv.id}`}
-                    className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
-                  >
-                    <div className="flex min-w-0 items-center gap-3.5">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
-                        <Icon name={inv.kind === "surcharge" ? "flag" : "wallet"} size={16} />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="truncate text-[16px] leading-[26px] text-ink">
-                          {client?.name ?? "Client"} · {inv.number}
-                        </div>
-                        <div className="truncate text-[14px] leading-[21px] text-ink-faint">
-                          {jobLine}
-                          {inv.dueAt ? ` · due ${day(inv.dueAt)}` : ""}
-                          {paid > 0 && inv.state !== "paid"
-                            ? ` · ${money(paid, inv.currency)} paid`
-                            : ""}
-                          {owner ? ` · ${owner.name}` : ""}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span
-                        className={`text-[14px] ${statusTone(inv.state, overdue)}`}
-                      >
-                        {rightText}
-                      </span>
-                      <Icon name="chevron-right" size={16} className="text-ink-faint" />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* The two exports had a home in the page's old header; the frame has none, so they sit here. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <a href="/api/exports/invoices.csv" className={pillGhost}>
-            Invoices CSV
-          </a>
-          <a href="/api/exports/payments.csv" className={pillGhost}>
-            Payments CSV
-          </a>
-        </div>
+        <aside className="flex flex-col gap-5">
+          <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
+            <p className="t-micro flex items-center gap-2 text-ink-3"><Icon name="sparkle" size={16} />Where it stands</p>
+            <p className="text-[20px] font-medium leading-7 text-surface">
+              {sum.late === 0 && sum.toSend === 0 ? "All clear." : `${sum.late} late, ${sum.toSend} to send.`}
+            </p>
+            <p className="t-small text-ink-3">
+              {sum.late > 0 && oldestLateClient ? `${oldestLateClient} is the oldest, ${sum.oldestLateDays} day${sum.oldestLateDays === 1 ? "" : "s"}.` : "Nothing is late."}
+              {sum.toSend > 0 ? ` Send the ${sum.toSend} draft${sum.toSend === 1 ? "" : "s"} today so their clock starts.` : ""}
+            </p>
+          </section>
+          <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
+            <p className="t-micro text-ink-3">This month · {month}</p>
+            {rail.map((r) => (
+              <div key={r.label} className="flex flex-col gap-1.5">
+                <p className="t-small flex"><span className="flex-1 text-ink">{r.label}</span><span className="text-ink-2">{moneyWhole(r.value, "LKR")}</span></p>
+                <div className="h-2 rounded bg-sunk"><div className={"h-2 rounded " + r.bar} style={{ width: Math.round((r.value / railMax) * 100) + "%" }} /></div>
+              </div>
+            ))}
+          </section>
+        </aside>
       </div>
-    </PageBox>
+
+      {open && sp.panel === "invoice" && (
+        <InvoicePanel db={db} inv={open} now={now} canMoney={canMoney} closeHref={close} msg={sp.msg} latePct={numberOf(db, "invoice.latePctPerMonth", 5)} />
+      )}
+      {open && sp.panel === "write-off" && (
+        <WriteOffPanel db={db} inv={open} now={now} me={me} closeHref={close} msg={sp.msg} writeOffDays={numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS)} />
+      )}
+    </div>
   );
 }

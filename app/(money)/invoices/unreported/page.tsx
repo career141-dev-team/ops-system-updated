@@ -5,12 +5,10 @@ import {
   dismissUnreportedHire,
   sendInvoice,
 } from "@/app/actions";
-import { clientIn, clientSetIn, desk, invoiceIn, numberOf, unreportedToAsk } from "@/data/desk";
+import { clientIn, clientSetIn, desk, invoiceIn, numberOf, positionForOpening, unreportedToAsk } from "@/data/desk";
+import StepCard from "../StepCard";
 import {
-  BackBar,
-  ClockPill,
-  NextStepCard,
-  PageBox,
+  PageTitle,
   figmaField,
   figmaLabel,
   pillDanger,
@@ -60,21 +58,16 @@ export default async function UnreportedHirePage({
   const pct = numberOf(db, "hire.surchargePct", 50);
   const months = numberOf(db, "hire.unreportedMonths", 3);
   const canMoney = can(me, "money.manage");
-  const cardShell = "rounded-[24px] border border-rule bg-surface p-5";
+  const cardShell = "rounded-[20px] bg-surface p-5 shadow-card";
+  // The same question, asked on the role page's Sets tab (Package G2).
+  const rolePage = set ? positionForOpening(db, set.openingTaId) : null;
 
   return (
-    <PageBox width="1080">
-      <div className="flex flex-col gap-6">
-        <BackBar href="/invoices?view=surcharges" label="Finance" />
-
-        <div>
-          <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-            Unreported hire · surcharge invoice
-          </p>
-          <h1 className="mt-1 text-[40px] font-light leading-[50px] text-ink">
-            {client?.name ?? "Client"}
-          </h1>
-        </div>
+      <div className="flex flex-col gap-[22px]">
+        <PageTitle
+          title={client?.name ?? "Client"}
+          sub={<>Unreported hire · surcharge invoice · <Link href="/invoices" className="underline">Back to Invoices</Link></>}
+        />
 
         {sp.msg && (
           <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
@@ -84,9 +77,9 @@ export default async function UnreportedHirePage({
 
         {inv ? (
           <>
-            <NextStepCard
-              eyebrow="UP NEXT"
-              clock={<ClockPill tone="danger" label="Surcharge draft" />}
+            <StepCard
+              chip="Surcharge draft"
+              tone="danger"
               title={`Approve the ${pct}% surcharge invoice`}
               body="Review the evidence and amount below before sending this surcharge invoice to the client."
               actions={
@@ -109,7 +102,7 @@ export default async function UnreportedHirePage({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className={cardShell}>
-                <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+                <div className="t-micro text-ink-3">
                   EVIDENCE
                 </div>
                 <p className="mt-2 text-[14px] font-medium text-ink">{inv.about}</p>
@@ -120,7 +113,7 @@ export default async function UnreportedHirePage({
                 </p>
               </div>
               <div className={cardShell}>
-                <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+                <div className="t-micro text-ink-3">
                   AMOUNT
                 </div>
                 <p className="mt-2 text-[26px] font-light text-ink">
@@ -135,21 +128,27 @@ export default async function UnreportedHirePage({
         ) : (
           set && (
             <>
-              <NextStepCard
-                eyebrow="UP NEXT"
-                clock={<ClockPill tone="warn" label={`${months}-month check`} />}
+              <StepCard
+                chip={`${months}-month check`}
                 title={`Confirm or dismiss the unreported hire for ${set.role}`}
                 body="If the client hired someone from this CV set without notifying Career 141, draft the surcharge invoice. Otherwise record their explanation."
                 actions={
-                  <Link href={`/sets/${set.id}`} className={pillSecondary}>
-                    Open CV set
-                  </Link>
+                  <>
+                    {rolePage && (
+                      <Link href={`/positions/${rolePage.id}?view=sets&panel=unreported-hire&on=${encodeURIComponent(set.id)}`} className={pillSecondary}>
+                        Open on the role page
+                      </Link>
+                    )}
+                    <Link href={`/sets/${set.id}`} className={pillSecondary}>
+                      Open CV set
+                    </Link>
+                  </>
                 }
               />
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className={cardShell}>
-                  <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+                  <div className="t-micro text-ink-3">
                     EVIDENCE
                   </div>
                   <p className="mt-2 text-[14px] font-medium text-ink">
@@ -160,7 +159,7 @@ export default async function UnreportedHirePage({
                   </p>
                 </div>
                 <div className={cardShell}>
-                  <div className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+                  <div className="t-micro text-ink-3">
                     SURCHARGE BASIS
                   </div>
                   <p className="mt-2 text-[22px] font-light text-ink">
@@ -252,11 +251,10 @@ export default async function UnreportedHirePage({
           )
         )}
 
-        <div className="rounded-[18px] border border-danger/25 bg-danger-soft px-4 py-3 text-[13px] text-ink">
+        <div className="rounded-[18px] bg-sunk px-4 py-3 t-small text-ink-2">
           Surcharge invoices and unreported-hire decisions are always logged in the client and
           finance audit trail.
         </div>
       </div>
-    </PageBox>
   );
 }
