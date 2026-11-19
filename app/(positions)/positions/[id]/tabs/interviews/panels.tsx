@@ -5,6 +5,7 @@ import {
   recordCandidateFeedbackByHand,
   recordCandidateOut,
   recordCandidatePick,
+  recordCandidateReconfirm,
   recordClientBooking,
   recordInterviewSlots,
   recordReferenceDecision,
@@ -240,17 +241,24 @@ function Reconfirm({ c, iv, first, sub, close, hidden, candidatePerson }: P) {
       </PanelSection>
       {live ? (
         <PanelSection title="Log it here">
-          <p className="t-small text-ink-3">The TA System asks the candidate and tells us when they reconfirm. Recording a reconfirmation by hand is not connected yet.</p>
-          <form action={recordCandidateOut} className="flex flex-col gap-3">
+          <form action={recordCandidateReconfirm} className="flex flex-col gap-3 border-b border-rule pb-4">
             {hidden}
-            <PanelField label={`If ${first} cannot come, say why`}>
-              <input name="reason" className={panelInput} placeholder={`Note: what ${first} said, and how (call or WhatsApp)`} />
+            <PanelField label={`If ${first} confirmed, add an optional note`}>
+              <input name="note" className={panelInput} placeholder="e.g. Confirmed by WhatsApp" />
             </PanelField>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" disabled title="not connected yet: recording a reconfirmation by hand" className={pillPrimary + " opacity-40"}>
+            <div>
+              <button type="submit" className={pillPrimary}>
                 Reconfirmed
               </button>
-              <button className={pillSecondary}>Cannot come</button>
+            </div>
+          </form>
+          <form action={recordCandidateOut} className="flex flex-col gap-3 pt-1">
+            {hidden}
+            <PanelField label={`If ${first} cannot come, say why`}>
+              <input name="reason" required className={panelInput} placeholder={`Note: what ${first} said, and how (call or WhatsApp)`} />
+            </PanelField>
+            <div>
+              <button type="submit" className={pillSecondary}>Cannot come</button>
             </div>
           </form>
         </PanelSection>

@@ -65,9 +65,52 @@ export interface NewsItem {
   href: string | null;
 }
 
-/** The team's own feed. Nothing stores it yet, so this is empty; the screen then says so. */
-export function teamNewsView(_db: OpsDatabase): NewsItem[] {
-  return [];
+const MILESTONES: Record<string, { kind: string; tone: "good" | "info" | "warn"; verb: string }> = {
+  "esa.signed": { kind: "Signed", tone: "good", verb: "Agreement signed" },
+  "esa.countersigned": { kind: "Signed", tone: "good", verb: "Agreement countersigned" },
+  "interview.booked": { kind: "Interview", tone: "info", verb: "Interview booked" },
+  "placement.created": { kind: "Offer", tone: "good", verb: "Placement recorded" },
+  "placement.joined": { kind: "Joined", tone: "good", verb: "Candidate joined" },
+  "invoice.paid": { kind: "Paid", tone: "good", verb: "Invoice paid" },
+  "vacancy.created": { kind: "Hiring", tone: "info", verb: "Internal vacancy opened" },
+  "applicant.decided": { kind: "Hiring", tone: "good", verb: "Hiring decision recorded" },
+};
+
+/** The team's live feed: posted team notes merged with major desk milestones, newest first. */
+export function teamNewsView(db: OpsDatabase): NewsItem[] {
+  const nameOf = (id: string | null) =>
+    id ? (db.members.find((m) => m.id === id)?.name.split(" ")[0] ?? "Team") : "System";
+
+  const notes: NewsItem[] = (db.teamNotes ?? []).map((n) => ({
+    id: n.id,
+    kind: "Note",
+    tone: "info",
+    by: nameOf(n.authorId),
+    at: n.createdAt,
+    text: n.body,
+    about: null,
+    href: null,
+  }));
+
+  const events: NewsItem[] = (db.audit ?? [])
+    .filter((a) => Boolean(MILESTONES[a.action]))
+    .slice(-40)
+    .map((a) => {
+      const meta = MILESTONES[a.action]!;
+      const detail = a.reason || a.after || "";
+      return {
+        id: a.id,
+        kind: meta.kind,
+        tone: meta.tone,
+        by: nameOf(a.actorId),
+        at: a.at,
+        text: detail ? `${meta.verb}: ${detail}` : meta.verb,
+        about: a.subjectType,
+        href: null,
+      };
+    });
+
+  return [...notes, ...events].sort((a, b) => b.at - a.at);
 }
 
 /** Items grouped by Colombo day, newest first. `label` is for the caller to turn into words. */

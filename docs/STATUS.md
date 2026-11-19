@@ -471,6 +471,15 @@ and accuracy machinery, and the priority order. It is **built and switched off**
   Settings. Either key alone is enough; with none the layer is off and every
   screen says which of the two reasons it is.
 
+## Built: Ops v6 backend gaps closed (19 Nov)
+
+| Piece | Where | Proved by |
+|---|---|---|
+| **Quick panel actions** (snooze task to Later, per-candidate call decisions, manual chase logging on ESA & CV sets, ESA invite-back reminder, candidate reconfirmation by hand, HR follow-up & TA CV chase logging, custom/declined refund decisions, mark client dormant on write-off) | `src/lib/panelActions.ts`, `app/actions.ts`, `app/(money)/invoices/panelActions.ts`, `src/data/desk.ts`, `src/data/store.ts`, `convex/ops/data.ts` | `tests/panelactions.test.ts` |
+| **Additive fields & append-only History corrections** (`candidatePhone` on placements, `hiredStartDate` on surcharge invoices, immutable `audit.correction` notes on R7 History) | `src/data/types.ts`, `convex/schema.ts`, `app/(positions)/positions/[id]/tabs/Offer.tsx`, `UnreportedHire.tsx`, `History.tsx` | `tests/schema.test.ts`, `tests/panelactions.test.ts` |
+| **Inbox · Team news (I3)** (`opsTeamNotes` table + audit milestone feed, live team note composer) | `src/lib/inboxChannels.ts`, `app/(inbox)/mail/ChannelViews.tsx`, `postTeamNote` in `app/actions.ts` | `tests/teamnews.test.ts` |
+| **Internal hiring (H1/H2) & Calendar K1** (`opsVacancies` + `opsApplicants` tables, add vacancy/applicant drawers, all 4 applicant panels wired, booked internal interviews surfaced in Calendar K1) | `src/lib/hiring.ts`, `app/hiring/page.tsx`, `app/hiring/[id]/page.tsx`, `app/hiring/[id]/HiringPanel.tsx`, `app/calendar/page.tsx` | `tests/hiringbackend.test.ts`, `tests/schema.test.ts` |
+
 ## Rules the code enforces, and why
 
 Each of these exists because of something that went wrong, written in

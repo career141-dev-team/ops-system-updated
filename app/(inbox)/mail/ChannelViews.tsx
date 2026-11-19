@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { postTeamNote } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { EmptyState, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { groupByDay, type NewsItem, type WhatsAppView } from "@/lib/inboxChannels";
@@ -101,14 +102,15 @@ export function NewsPanel({ items, now, name }: { items: NewsItem[]; now: number
   return (
     <div className="flex items-start gap-[22px]">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="flex items-center gap-4 rounded-[28px] bg-surface p-[18px] shadow-card">
+        <form action={postTeamNote} className="flex items-center gap-4 rounded-[28px] bg-surface p-[18px] shadow-card">
+          <input type="hidden" name="back" value="/mail?view=news" />
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-soft t-label text-brand">{initialsOf(name)}</span>
-          <input disabled aria-label="Write a note to the team" placeholder="Write a note to the team" title="not connected yet: team notes are not stored" className="min-w-0 flex-1 rounded-full bg-sunk px-4 py-3 t-body outline-none placeholder:text-ink-3 disabled:cursor-not-allowed" />
-          <button disabled title="not connected yet: team notes are not stored" className={pillPrimary + " !py-2 opacity-40 cursor-not-allowed"}>Post</button>
-        </div>
+          <input name="body" required minLength={2} maxLength={500} aria-label="Write a note to the team" placeholder="Write a note to the team" className="min-w-0 flex-1 rounded-full bg-sunk px-4 py-3 t-body outline-none placeholder:text-ink-3 focus:ring-2 focus:ring-ink/20" />
+          <button type="submit" className={pillPrimary + " !py-2"}>Post</button>
+        </form>
         {days.length === 0 ? (
           <EmptyState icon="bell" title="No team news yet">
-            Not connected yet: the team feed (signed, booked, offers, placements) is not stored anywhere. Nothing is shown rather than made up.
+            Signed agreements, booked interviews, placements, and team notes will appear here as they happen.
           </EmptyState>
         ) : (
           days.map((g) => (

@@ -224,6 +224,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     const joining = db.placements.find((pl) => pl.positionId === panelRow.id && pl.state === "placed" && !pl.joinedAt && pl.joinDate && pl.joinDate < now);
     panel = (
       <ChaseHrPanel
+        positionId={panelRow.id}
         closeHref={here}
         nextHref={nextOf("chase-hr", "chase-hr")}
         sendHref={"/positions?send=chase-hr&on=" + panelRow.id}
@@ -239,6 +240,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     const name = pos.primaryTaId ? taName(pos.primaryTaId) : null;
     panel = (
       <AskTaPanel
+        positionId={pos.id}
         closeHref={here}
         nextHref={nextOf("ask-ta", "ask-ta-cvs")}
         sendHref={"/positions?send=ask-ta&on=" + pos.id}

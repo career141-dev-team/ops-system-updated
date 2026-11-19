@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { declineAgreement, draftNextChase, recordChangesWanted } from "@/app/actions";
+import { declineAgreement, draftNextChase, logManualChase, recordChangesWanted, scheduleEsaInviteBack } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, pillPrimary, pillSecondary, panelInput } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
@@ -121,7 +121,23 @@ export function ChaseAgreementPanel({ db, esa, card, now, close, mayManage }: { 
           <Link href={"/leads/" + esa.leadId + "?step=agreement"} className="t-body-m text-brand hover:underline">
             They signed it back: record the signed copy
           </Link>
-          <p className="t-small text-ink-3">Not connected yet: writing down a chase you sent by hand. Until then, draft it above so it is on the record.</p>
+          <form action={logManualChase} className="flex flex-col gap-2.5 border-t border-rule pt-4">
+            <input type="hidden" name="subjectType" value="esa" />
+            <input type="hidden" name="subjectId" value={esa.id} />
+            <input type="hidden" name="back" value={close} />
+            <span className="t-small text-ink-3">Log a chase you sent by hand</span>
+            <div className="flex flex-wrap gap-2">
+              <select name="channel" defaultValue="whatsapp" className={panelInput + " !w-auto"}>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="call">Phone call</option>
+                <option value="email">Email</option>
+              </select>
+              <input name="note" required placeholder="What you sent or what they said" className={panelInput + " flex-1 min-w-[180px]"} />
+            </div>
+            <button type="submit" className={pillSecondary + small + " self-start"}>
+              Log manual chase
+            </button>
+          </form>
         </PanelSection>
       )}
       <PanelSection title="What happens next">
@@ -205,11 +221,6 @@ export function AgreementDeclinedPanel({ db, esa, card, close, mayManage, open }
               noteLabel="Note"
               notePlaceholder="What they said, in a line"
             />
-            <label className="flex flex-col gap-1.5">
-              <span className="t-small text-ink-3">Invite back on</span>
-              <input type="date" disabled className={panelInput + " opacity-60"} />
-              <span className="t-small text-ink-3">Not connected yet: an invite-back reminder needs its own action.</span>
-            </label>
           </PanelSection>
           <PanelSection title="What happens next">
             <p className="t-body text-ink-2">The agreement is closed as declined and the team is told the search for this client is blocked. Nothing closes without a reason, so the note is kept as written.</p>
@@ -222,6 +233,21 @@ export function AgreementDeclinedPanel({ db, esa, card, close, mayManage, open }
         <PanelSection>
           <p className="t-body text-ink-2">Only somebody who manages clients can close an agreement.</p>
         </PanelSection>
+      )}
+      {mayManage && (
+        <form action={scheduleEsaInviteBack}>
+          <input type="hidden" name="esaId" value={esa.id} />
+          <input type="hidden" name="back" value={close} />
+          <PanelSection title="Invite back later">
+            <label className="flex flex-col gap-1.5">
+              <span className="t-small text-ink-3">Invite back on</span>
+              <input type="date" name="inviteBackOn" required className={panelInput} />
+            </label>
+            <button type="submit" className={pillSecondary + small + " self-start"}>
+              Set invite-back reminder
+            </button>
+          </PanelSection>
+        </form>
       )}
     </Panel>
   );

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { recordCall } from "@/app/actions";
+import { recordCall, recordClientDecision } from "@/app/actions";
 import Icon from "@/app/Icon";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { ChoiceGroup, PanelField, initialsFor, panelInput, pillPrimary } from "@/app/ui/figma";
@@ -77,6 +77,46 @@ export default function CallPanel({ db, task, mode, now, back, close }: { db: Op
         )}
       </PanelSection>
 
+      {subject && c.open.length > 0 && (
+        <PanelSection title="Candidate answers">
+          <div className="flex flex-col gap-3">
+            {c.open.map((cand) => (
+              <div key={cand.applicationTaId} className="flex flex-col gap-2 rounded-[14px] border border-rule bg-surface p-3">
+                <p className="t-body-m">{cand.name}</p>
+                <div className="flex flex-wrap gap-2">
+                  <form action={recordClientDecision}>
+                    <input type="hidden" name="setId" value={subject.id} />
+                    <input type="hidden" name="applicationTaId" value={cand.applicationTaId} />
+                    <input type="hidden" name="decision" value="shortlisted" />
+                    <input type="hidden" name="back" value={back} />
+                    <button type="submit" className={chip}>
+                      Shortlisted
+                    </button>
+                  </form>
+                  <form action={recordClientDecision} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="setId" value={subject.id} />
+                    <input type="hidden" name="applicationTaId" value={cand.applicationTaId} />
+                    <input type="hidden" name="decision" value="rejected" />
+                    <input type="hidden" name="back" value={back} />
+                    <input name="reason" required placeholder="Reason if rejected" className="rounded-full border border-rule bg-surface px-3 py-1.5 text-[12px] text-ink outline-none focus:border-ink" />
+                    <button type="submit" className={chip}>
+                      Rejected
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+            <p className="t-small text-ink-3">
+              Or open{" "}
+              <Link href={"/sets/" + subject.id} className="underline">
+                the set&apos;s page
+              </Link>{" "}
+              to see all CVs.
+            </p>
+          </div>
+        </PanelSection>
+      )}
+
       <form action={recordCall}>
         <input type="hidden" name="taskId" value={task.id} />
         {task.subjectType && <input type="hidden" name="subjectType" value={task.subjectType} />}
@@ -86,25 +126,6 @@ export default function CallPanel({ db, task, mode, now, back, close }: { db: Op
         <input type="hidden" name="back" value={back} />
 
         <PanelSection title="Log it here">
-          {subject && c.open.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {c.open.map((cand) => (
-                <div key={cand.applicationTaId} className="flex flex-col gap-2">
-                  <p className="t-body-m">{cand.name}</p>
-                  <fieldset disabled className="opacity-60">
-                    <ChoiceGroup label={"Answer for " + cand.name} name={"answer-" + cand.applicationTaId} options={["Shortlisted", "Rejected", "No answer yet"]} value="No answer yet" />
-                  </fieldset>
-                </div>
-              ))}
-              <p className="t-small text-ink-3">
-                Not connected yet: saving each person&apos;s answer from this panel. Record it on{" "}
-                <Link href={"/sets/" + subject.id} className="underline">
-                  the set&apos;s page
-                </Link>
-                .
-              </p>
-            </div>
-          )}
           <PanelField label="Number">
             <input name="to" defaultValue={c.phone ?? ""} placeholder="077 123 4567" required className={panelInput} />
           </PanelField>

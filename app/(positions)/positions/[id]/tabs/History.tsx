@@ -1,7 +1,8 @@
 import Link from "next/link";
 
+import { recordHistoryCorrection } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { Card, EmptyState } from "@/app/ui/figma";
+import { Card, EmptyState, panelInput, pillSecondary } from "@/app/ui/figma";
 import { threadInWords } from "@/lib/mailbox";
 import { subjectsOfPosition } from "@/lib/timeline";
 
@@ -74,7 +75,7 @@ export default function History({ c, sp }: TabProps) {
             </Link>
           ))}
         </nav>
-        <p className="t-small -mt-1 text-ink-3">Undo and Send a correction are not connected yet.</p>
+        <p className="t-small -mt-1 text-ink-3">History is append-only. Use &ldquo;Add correction&rdquo; on any entry to record a follow-up note.</p>
 
         {rows.length === 0 ? (
           <EmptyState icon="clock" title="Nothing recorded yet">
@@ -90,7 +91,7 @@ export default function History({ c, sp }: TabProps) {
               return (
                 <div key={r.id}>
                   {head && <p className="t-micro border-t border-rule pb-1 pt-3.5 text-ink-3 first:border-t-0">{heading(r.at)}</p>}
-                  <div className="flex items-center gap-4 border-t border-rule py-3.5 first:border-t-0">
+                  <div className="flex items-start gap-4 border-t border-rule py-3.5 first:border-t-0">
                     <span className="t-small w-[46px] shrink-0 text-ink-3">{clock(r.at)}</span>
                     <span className={"t-small flex w-[84px] shrink-0 items-center gap-2 " + st.text}>
                       <span aria-hidden className={"size-1.5 rounded-full " + st.dot} />
@@ -99,14 +100,19 @@ export default function History({ c, sp }: TabProps) {
                     <span className="t-body-m w-[84px] shrink-0">{r.by}</span>
                     <span className="t-body min-w-0 flex-1">{r.said}</span>
                     {(r.kind === "change" || r.kind === "message") && (
-                      <button
-                        type="button"
-                        disabled
-                        title={r.kind === "change" ? "not connected yet: undoing a change" : "not connected yet: sending a correction"}
-                        className="shrink-0 cursor-not-allowed rounded-full border border-rule bg-surface px-3 py-1.5 text-[12px] font-medium leading-4 text-ink-3 opacity-60"
-                      >
-                        {r.kind === "change" ? "Undo" : "Send a correction"}
-                      </button>
+                      <details className="shrink-0">
+                        <summary className="cursor-pointer list-none rounded-full border border-rule bg-surface px-3 py-1.5 text-[12px] font-medium leading-4 text-ink hover:bg-sunk">
+                          Add correction
+                        </summary>
+                        <form action={recordHistoryCorrection} className="mt-2 flex w-64 flex-col gap-2 rounded-[14px] border border-rule bg-surface p-3 shadow-card">
+                          <input type="hidden" name="auditId" value={r.id} />
+                          <input type="hidden" name="subjectType" value="position" />
+                          <input type="hidden" name="subjectId" value={position.id} />
+                          <input type="hidden" name="back" value={hist(sp.show ?? "")} />
+                          <input name="note" required minLength={4} placeholder="Write the correction note" className={panelInput + " !py-1.5 !text-[12px]"} />
+                          <button type="submit" className={pillSecondary + " !px-3 !py-1 !text-[12px] self-start"}>Save note</button>
+                        </form>
+                      </details>
                     )}
                   </div>
                 </div>

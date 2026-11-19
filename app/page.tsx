@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { approveAllRoutine, approveAndSend, runClocksNow, startTestClock } from "@/app/actions";
+import { approveAllRoutine, approveAndSend, runClocksNow, snoozeTaskAction, startTestClock } from "@/app/actions";
 import CallPanel from "@/app/(home)/CallPanel";
 import CopyButton from "@/app/(home)/CopyButton";
 import { AttentionRow, RailCard, Slot, StandsCard, StatStrip, TONE_DOT } from "@/app/(home)/parts";
@@ -311,9 +311,13 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
                     <p className={"t-small " + (col.key === "late" ? "text-danger" : col.key === "waits" ? "text-warn" : "text-ink-3")}>{t.due}</p>
                     <div className="pt-2">
                       {col.key === "waits" ? (
-                        <button disabled title="Not connected yet: moving a task to later" className={ghost + " opacity-50"}>
-                          Later
-                        </button>
+                        <form action={snoozeTaskAction}>
+                          <input type="hidden" name="taskId" value={t.key} />
+                          <input type="hidden" name="back" value="/?view=tasks" />
+                          <button type="submit" className={ghost}>
+                            Later
+                          </button>
+                        </form>
                       ) : (
                         // Done opens the task: nothing closes without a line about what happened.
                         <Link href={"/tasks/" + t.key} className={ghost}>

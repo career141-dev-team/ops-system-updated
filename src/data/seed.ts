@@ -790,6 +790,9 @@ Career 141`,
       },
     ],
     inbound: [],
+    teamNotes: [],
+    vacancies: [],
+    applicants: [],
     audit: [],
   };
 }

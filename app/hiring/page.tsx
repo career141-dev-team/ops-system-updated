@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { Card, EmptyState, PageTitle, pillSecondary } from "@/app/ui/figma";
+import { Card, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import Panel, { PanelSection } from "@/app/ui/Panel";
 import { desk } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
-import { HIRING_BACKEND_GAPS, countOf, hiringView, totals, vacancyLine, whereItStands, type Vacancy } from "@/lib/hiring";
+import { countOf, hiringView, totals, vacancyLine, whereItStands, type Vacancy } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
+import { closeHref, panelHref } from "@/lib/panel";
+import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 /** One number of the strip: small capital label, the figure, one line under it. */
@@ -79,15 +83,17 @@ function VacancyCard({ v, first }: { v: Vacancy; first: boolean }) {
  * typed view in src/lib/hiring.ts (empty in production, invented data on a laptop) and every button
  * that would save is switched off with its reason.
  */
-export default async function HiringPage() {
-  if (!(await currentMember())) redirect("/sign-in");
+export default async function HiringPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const me = await currentMember();
+  if (!me) redirect("/sign-in");
+  const sp = await searchParams;
   const db = await desk();
   const now = Date.now();
   const view = hiringView(db, process.env.OPS_DEV_SIGNIN === "on" ? hiringSample(now) : null);
   const t = totals(view, now);
   const stand = whereItStands(view, now);
   const openCount = view.vacancies.filter((v) => v.status === "open").length;
-  const reason = `Not connected yet: ${HIRING_BACKEND_GAPS} are not stored.`;
+  const mayManage = can(me, "client.manage");
   const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const local = new Date(now + COLOMBO_OFFSET_MS);
   const toMonday = local.getUTCDay() === 0 ? -6 : 1 - local.getUTCDay();
@@ -104,17 +110,19 @@ export default async function HiringPage() {
         title="Internal hiring"
         sub={`Career141's own vacancies · ${openCount} open`}
         right={
-          <button type="button" disabled title={reason} className={pillSecondary + " disabled:cursor-not-allowed disabled:opacity-50"}>
-            <Icon name="plus" size={16} />
-            Add a vacancy
-          </button>
+          mayManage ? (
+            <Link href={panelHref("/hiring", sp, "add-vacancy")} scroll={false} className={pillSecondary}>
+              <Icon name="plus" size={16} />
+              Add a vacancy
+            </Link>
+          ) : null
         }
       />
 
       {view.vacancies.length === 0 ? (
         <Card>
           <EmptyState icon="briefcase" title="No vacancies here yet">
-            Hiring for our own team is not connected yet: {HIRING_BACKEND_GAPS} are not stored, so nothing can be added or shown.
+            Click &ldquo;Add a vacancy&rdquo; above to open a Career141 internal vacancy and start tracking applicants.
           </EmptyState>
         </Card>
       ) : (
@@ -185,6 +193,29 @@ export default async function HiringPage() {
             </aside>
           </div>
         </>
+      )}
+
+      {sp.panel === "add-vacancy" && mayManage && (
+        <Panel kicker="Internal hiring" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)}>
+          <form action={createVacancy}>
+            <input type="hidden" name="back" value="/hiring" />
+            <PanelSection title="Vacancy details">
+              <PanelField label="Role title">
+                <input name="title" required placeholder="e.g. Talent Acquisition Executive" className={panelInput} />
+              </PanelField>
+              <PanelField label="Places to fill">
+                <input name="places" type="number" min="1" max="20" defaultValue="1" required className={panelInput} />
+              </PanelField>
+              <PanelField label="Screening checks (one per line, optional)">
+                <textarea name="checks" rows={3} placeholder={"English fluency\nColombo office commute\nNotice period"} className={panelInput} />
+              </PanelField>
+            </PanelSection>
+            <PanelSection title="What happens next">
+              <p className="t-body text-ink-2">The vacancy opens immediately and you can start adding applicants and booking internal interviews.</p>
+              <button type="submit" className={pillPrimary + " self-start"}>Open vacancy</button>
+            </PanelSection>
+          </form>
+        </Panel>
       )}
     </div>
   );
