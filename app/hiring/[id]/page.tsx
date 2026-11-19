@@ -9,8 +9,10 @@ import { clockOf, dayWord } from "@/lib/calendarBoard";
 import { BOARD_COLUMNS, STAGE_ACTION, countOf, daysSince, first, hiringView, vacancyById, vacancyLine, type Applicant } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import { currentMember } from "@/lib/session";
 import HiringPanel, { type HiringPanelKind } from "./HiringPanel";
+import { HiringSendModal } from "./HiringSendModals";
 
 const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide"];
 
@@ -22,7 +24,8 @@ export default async function VacancyPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (!(await currentMember())) redirect("/sign-in");
+  const me = await currentMember();
+  if (!me) redirect("/sign-in");
   const { id } = await params;
   const sp = await searchParams;
   const db = await desk();
@@ -203,6 +206,9 @@ export default async function VacancyPage({
       </div>
 
       {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} />}
+      {typeof sp.send === "string" && on && (
+        <HiringSendModal send={sp.send} vacancy={v} applicant={on} me={me} closeHref={closeSendHref(path, sp)} />
+      )}
     </div>
   );
 }

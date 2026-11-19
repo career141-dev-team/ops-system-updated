@@ -15,6 +15,7 @@ import {
 } from "@/data/desk";
 import { contactsFor } from "@/lib/contacts";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import {
   STEPS,
   dayMonth,
@@ -31,10 +32,11 @@ import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
 
 import { AskTaPanel, ChaseHrPanel, ChooseTaPanel, WeeklyReportPanel } from "./Panels";
+import { PositionSendModal } from "./PositionSendModals";
 
 export const dynamic = "force-dynamic";
 
-type Sp = { msg?: string; q?: string; filter?: string; panel?: string; on?: string; all?: string };
+type Sp = { msg?: string; q?: string; filter?: string; panel?: string; send?: string; on?: string; all?: string };
 
 const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -224,6 +226,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       <ChaseHrPanel
         closeHref={here}
         nextHref={nextOf("chase-hr", "chase-hr")}
+        sendHref={"/positions?send=chase-hr&on=" + panelRow.id}
         title={`Chase ${panelRow.clientName} HR`}
         sub={`${panelRow.clientName} > ${panelRow.title}`}
         why={joining ? [`${joining.candidateName} was due to join on ${dayMonth(joining.joinDate!)}`, "Nobody has told us they joined"] : [panelRow.statusText]}
@@ -238,6 +241,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       <AskTaPanel
         closeHref={here}
         nextHref={nextOf("ask-ta", "ask-ta-cvs")}
+        sendHref={"/positions?send=ask-ta&on=" + pos.id}
         title={name ? `Ask ${first(name)} for CVs` : "Ask the TA for CVs"}
         sub={`${panelRow.clientName} > ${panelRow.title}`}
         why={[panelRow.statusText, `${memberIn(db, pos.ownerId)?.name ?? "Somebody"} owns this role and the client waits for the first set`]}
@@ -430,6 +434,16 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {panel}
+      {sp.send && (
+        <PositionSendModal
+          send={sp.send}
+          on={sp.on}
+          db={db}
+          me={me}
+          taPeople={taList}
+          closeHref={closeSendHref("/positions", sp)}
+        />
+      )}
     </div>
   );
 }

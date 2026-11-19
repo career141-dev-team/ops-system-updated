@@ -68,8 +68,12 @@ export default function CheckInPanel({ card, now, close, checkIn }: { card: Clie
         <div className="flex flex-col gap-1.5">
           <span className="t-small text-ink-3">Check-in message</span>
           <p className="t-body rounded-[14px] border border-rule px-4 py-3.5 text-ink-2">{checkIn}</p>
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <CopyButton text={checkIn} label="Copy check-in" tone="pill" />
+            <Link href={"/clients?send=check-in&on=" + card.id} scroll={false} className={pillSecondary + " !px-4 !py-[7px] !text-[12px]"}>
+              <Icon name="send" size={14} />
+              Preview and send
+            </Link>
           </div>
         </div>
       </PanelSection>

@@ -7,6 +7,7 @@ import { numberOf } from "@/data/desk";
 import { OWNERSHIP_WORKING_DAYS } from "@/lib/clientFeedback";
 import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel } from "@/lib/positionCandidates";
 import { panelHref } from "@/lib/panel";
+import { sendHref } from "@/lib/sendModal";
 import { answerLine, awaiting, columnOf, dayOfWindow, sentLine, shortDay } from "@/lib/setsBoard";
 
 import type { TabProps } from "./ctx";
@@ -90,9 +91,12 @@ export default function Sets({ c, sp }: TabProps) {
                           </div>
                         </div>
                       ))}
-                      <div>
+                      <div className="flex flex-wrap gap-2">
                         <Link href={open("build-set", s.id)} scroll={false} className={chipInk}>
                           Build SET {s.setNumber}
+                        </Link>
+                        <Link href={sendHref(path, sp, "send-set", s.id)} scroll={false} className={chipBtn}>
+                          Preview and send
                         </Link>
                       </div>
                     </div>
@@ -106,6 +110,9 @@ export default function Sets({ c, sp }: TabProps) {
                       </Link>
                       <Link href={open("chase-client", s.id)} scroll={false} className={chipBtn}>
                         Chase the client
+                      </Link>
+                      <Link href={sendHref(path, sp, "chase-set", s.id)} scroll={false} className={chipBtn}>
+                        Preview chase
                       </Link>
                       {s.candidates.some((x) => x.fileId) && (
                         <a href={`/api/sets/${s.id}/zip`} className={chipBtn}>

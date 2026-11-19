@@ -347,6 +347,12 @@ export function SendAgreementPanel({
     <Panel kicker="Send the agreement" title={"Send the agreement to " + lead.company} sub={[lead.company, "Agreement v" + (esa?.version ?? 1)].join(" > ")} closeHref={close}>
       <Why lines={why} />
       <Who name={signer} line={"Signatory" + (f.signatoryPhone ? " · " + f.signatoryPhone : "")} phone={f.signatoryPhone} email={f.signatoryEmail}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={"/leads?send=send-agreement&on=" + lead.id} scroll={false} className={pillSecondary + " !px-4 !py-[7px] !text-[12px]"}>
+            <Icon name="send" size={14} />
+            Preview and send
+          </Link>
+        </div>
         {newest && <DraftDocument file={newest.file} version={newest.version} />}
       </Who>
       {mayManage ? (

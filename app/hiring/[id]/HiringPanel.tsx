@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import Icon from "@/app/Icon";
@@ -162,6 +163,11 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
       <Panel kicker="Book an interview" title={`Book ${a.name}`} sub={`Internal hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a}>
+          <div className="pt-1">
+            <Link href={`/hiring/${v.id}?send=book-internal&on=${a.id}`} scroll={false} className={small}>
+              <Icon name="send" size={14} /> Preview and send
+            </Link>
+          </div>
           <Draft label="Invite message" text={invite} copy="Copy invite" missing="The invite is written once an interview time, a person and a place are chosen. Not connected yet: those are not stored." />
         </Who>
         <PanelSection title="Log it here">
@@ -237,6 +243,11 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
         </fieldset>
       </PanelSection>
       <Save happens={`Hire: the offer letter is ready to copy, and the vacancy shows ${v.filled + 1} of ${v.places} places filled. Hold keeps ${name} in Decision. Reject asks for the reason first.`} />
+      <div className="pb-2">
+        <Link href={`/hiring/${v.id}?send=offer-letter&on=${a.id}`} scroll={false} className={small}>
+          <Icon name="send" size={14} /> Preview offer letter
+        </Link>
+      </div>
       <Draft label="Offer letter" text={offer} copy="Copy offer letter" missing="The offer letter is written once a start date, a salary and a reply-by date are set. Not connected yet: they are not stored." />
       <SaveButton />
     </Panel>

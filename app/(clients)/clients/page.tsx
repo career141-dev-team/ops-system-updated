@@ -16,12 +16,14 @@ import {
 } from "@/lib/clientsView";
 import { entryInWords, gather } from "@/lib/timeline";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref, sendHref } from "@/lib/sendModal";
 import { currentMember } from "@/lib/session";
+import { CheckInSendModal } from "../ClientSendModals";
 import CopyButton from "../CopyButton";
 import { ClientsHead, Msg, RailCard, ReachIcons, StandsCard, TILE_TONE, TONE_DOT, TONE_TEXT } from "../parts";
 import CheckInPanel from "./CheckInPanel";
 
-type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; on?: string };
+type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string };
 
 /** C1 · Clients, all clients (v6 frame 177:122): a card for each client, the rail on the right. */
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -31,7 +33,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   // Old links: the lead and agreement lists have their own pages now.
   if (sp.filter === "leads") redirect("/leads");
   if (sp.filter === "agreements") redirect("/clients/agreements");
-  const { msg, q = "", f = "", all, panel, on } = sp;
+  const { msg, q = "", f = "", all, panel, send, on } = sp;
   const db = await desk();
   const now = Date.now();
 
@@ -55,6 +57,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
     return "/clients" + (s ? "?" + s : "");
   };
   const checkInCard = panel === "check-in" && on ? (cards.find((c) => c.id === on) ?? null) : null;
+  const sendCheckInCard = send === "check-in" && on ? (cards.find((c) => c.id === on) ?? null) : null;
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -147,6 +150,9 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           close={closeHref("/clients", sp)}
           checkIn={checkInText(checkInCard.person, memberIn(db, checkInCard.ownerId)?.name ?? me.name)}
         />
+      )}
+      {sendCheckInCard && (
+        <CheckInSendModal card={sendCheckInCard} me={me} closeHref={closeSendHref("/clients", sp)} />
       )}
     </div>
   );

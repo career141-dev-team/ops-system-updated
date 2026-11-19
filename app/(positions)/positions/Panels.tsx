@@ -134,6 +134,7 @@ export function ChooseTaPanel(p: {
 export function ChaseHrPanel(p: {
   closeHref: string;
   nextHref: string | null;
+  sendHref?: string;
   title: string;
   sub: string;
   why: string[];
@@ -148,6 +149,14 @@ export function ChaseHrPanel(p: {
         <PanelField label="What to ask">
           <div className="flex flex-col">{p.ask.map((l) => <p key={l} className="t-body">{l}</p>)}</div>
         </PanelField>
+        {p.sendHref && (
+          <div>
+            <Link href={p.sendHref} scroll={false} className={pillSecondary + " !px-4 !py-[7px] !text-[12px]"}>
+              <Icon name="send" size={14} />
+              Preview and send
+            </Link>
+          </div>
+        )}
       </PanelSection>
       <PanelSection title="Log it here">
         <PanelField label="The answer">
@@ -168,6 +177,7 @@ export function ChaseHrPanel(p: {
 export function AskTaPanel(p: {
   closeHref: string;
   nextHref: string | null;
+  sendHref?: string;
   title: string;
   sub: string;
   why: string[];
@@ -182,7 +192,15 @@ export function AskTaPanel(p: {
         <PanelField label="Message to copy">
           <div className="flex flex-col gap-3">
             <p className="t-body rounded-[14px] border border-rule px-4 py-3.5">{p.message}</p>
-            <CopyMessage text={p.message} />
+            <div className="flex flex-wrap items-center gap-2">
+              <CopyMessage text={p.message} />
+              {p.sendHref && (
+                <Link href={p.sendHref} scroll={false} className={pillSecondary + " !px-4 !py-[7px] !text-[12px]"}>
+                  <Icon name="send" size={14} />
+                  Preview and send
+                </Link>
+              )}
+            </div>
           </div>
         </PanelField>
       </PanelSection>
@@ -220,8 +238,12 @@ export function WeeklyReportPanel(p: {
       <form action={buildWeeklyReportNow}>
         <PanelSection title="What happens next">
           <p className="t-body text-ink-2">The system builds the list from the roles as they stand now. You read it, approve it, and only then is the email drafted for you to send.</p>
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button type="submit" className={pillPrimary}>{p.latest ? "Build it again and read it" : "Build and read it"}</button>
+            <Link href="/positions?send=weekly-report" scroll={false} className={pillSecondary}>
+              <Icon name="send" size={14} />
+              Preview and send
+            </Link>
           </div>
         </PanelSection>
       </form>

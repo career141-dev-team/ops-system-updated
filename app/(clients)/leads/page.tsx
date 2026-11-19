@@ -18,13 +18,15 @@ import { currentTemplate } from "@/lib/files";
 import { teamsFake } from "@/lib/graphCalendar";
 import { REFUND_PCT } from "@/lib/guarantee";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
+import { SendAgreementModal } from "../ClientSendModals";
 import { ClientsHead, FlowStrip, Msg, RailCard, StandsCard, TILE_TONE, TONE_TEXT } from "../parts";
 import { CheckEnquiryPanel, DuplicatePanel, IntroCallPanel, SendAgreementPanel } from "./EnquiryPanels";
 
-type SP = { msg?: string; q?: string; panel?: string; on?: string };
+type SP = { msg?: string; q?: string; panel?: string; send?: string; on?: string };
 
 const COLUMNS: { key: EnquiryColumn; label: string; dot: string }[] = [
   { key: "new", label: "New", dot: "bg-warn" },
@@ -225,6 +227,9 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       )}
       {lead && panel === "send-agreement" && (
         <SendAgreementPanel lead={lead} esa={esa} db={db} close={close} mayManage={mayManage} startFields={startFields} esaTemplate={!!currentTemplate(db.files, "esa_draft")} />
+      )}
+      {sp.send === "send-agreement" && on && (
+        <SendAgreementModal db={db} leadId={on} me={me} closeHref={closeSendHref("/leads", sp)} />
       )}
     </div>
   );

@@ -10,8 +10,10 @@ import { REFUND_PCT, refundAmount } from "@/lib/guarantee";
 import { dayShort as day } from "@/lib/accountsBoard";
 import { balanceOf, money } from "@/lib/money";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { AccountsSendModal } from "../AccountsSendModals";
 import RefundPanel from "../RefundPanel";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ const smallBtn = "inline-flex cursor-pointer items-center rounded-full border bo
 export default async function PaymentsAndRefundsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invoiceId?: string; msg?: string; panel?: string; on?: string }>;
+  searchParams: Promise<{ invoiceId?: string; msg?: string; panel?: string; send?: string; on?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -205,6 +207,9 @@ export default async function PaymentsAndRefundsPage({
           closeHref={close}
           msg={sp.msg}
         />
+      )}
+      {sp.send && (
+        <AccountsSendModal send={sp.send} on={sp.on} db={db} me={me} closeHref={closeSendHref(PATH, sp)} />
       )}
     </div>
   );

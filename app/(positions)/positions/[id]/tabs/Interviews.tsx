@@ -4,6 +4,7 @@ import { Avatar, Card, EmptyState } from "@/app/ui/figma";
 import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { ROUND_DECISIONS, slotAnswerFor } from "@/lib/interviews";
 import { panelHref } from "@/lib/panel";
+import { sendHref } from "@/lib/sendModal";
 import {
   COLUMN_TITLES,
   type BoardColumn,
@@ -55,6 +56,15 @@ export default function Interviews({ c, sp }: TabProps) {
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link scroll={false} href={open("find-a-time")} className={solid}>
                   Book an interview
+                </Link>
+                <Link scroll={false} href={sendHref(path, sp, "book-interview", c.liveIv?.id)} className={line}>
+                  Preview &amp; book
+                </Link>
+                <Link scroll={false} href={sendHref(path, sp, "reconfirm", c.liveIv?.id)} className={line}>
+                  Preview reconfirm
+                </Link>
+                <Link scroll={false} href={sendHref(path, sp, "candidate-feedback", c.liveIv?.id)} className={line}>
+                  Preview feedback
                 </Link>
                 <Link scroll={false} href={open("candidate-feedback")} className={line}>
                   Candidate feedback

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import Bell from "@/app/Bell";
-import Icon from "@/app/Icon";
+import FindOrDo from "@/app/FindOrDo";
 import ProfileMenu from "@/app/ProfileMenu";
 import QuickAdd from "@/app/QuickAdd";
 import type { Bell as BellCount } from "@/lib/bell";
@@ -128,22 +128,7 @@ export default function TopBar({
 
           <div className="min-w-4 flex-1" />
 
-          <form
-            action="/find"
-            className="mr-0.5 flex h-11 w-[200px] shrink-0 items-center gap-2.5 rounded-full bg-sunk px-4 transition-shadow focus-within:ring-1 focus-within:ring-brand/40 2xl:w-[300px]"
-          >
-            <input
-              name="q"
-              autoComplete="off"
-              placeholder="Search or ask AURA"
-              aria-label="Search the desk or ask AURA"
-              className="t-body min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-3"
-            />
-            <kbd className="t-label hidden rounded-[6px] border border-rule px-[7px] py-px font-sans text-ink-3 2xl:inline">/</kbd>
-            <button type="submit" aria-label="Search" className="2xl:hidden">
-              <Icon name="search" size={16} className="text-ink-3" />
-            </button>
-          </form>
+          <FindOrDo />
 
           <QuickAdd />
           <Bell initial={bell} round />

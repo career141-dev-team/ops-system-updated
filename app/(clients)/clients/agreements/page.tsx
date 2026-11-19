@@ -7,13 +7,15 @@ import { desk } from "@/data/desk";
 import type { AgreementColumn } from "@/lib/clientsBoard";
 import { type AgreementCard, agreementCards, chaseLadder, clientTotals, clientsLine } from "@/lib/clientsView";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { ChaseAgreementSendModal } from "../../ClientSendModals";
 import CopyButton from "../../CopyButton";
 import { ClientsHead, FlowStrip, Msg, RailCard, StandsCard, TILE_TONE, TONE_TEXT } from "../../parts";
 import { AgreementDeclinedPanel, ChaseAgreementPanel } from "./AgreementPanels";
 
-type SP = { msg?: string; q?: string; panel?: string; on?: string };
+type SP = { msg?: string; q?: string; panel?: string; send?: string; on?: string };
 
 const COLUMNS: { key: AgreementColumn; label: string; dot: string }[] = [
   { key: "send", label: "To send", dot: "bg-warn" },
@@ -180,6 +182,10 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
       </div>
       {panel === "chase-agreement" && esa && card && <ChaseAgreementPanel db={db} esa={esa} card={card} now={now} close={close} mayManage={mayManage} />}
       {panel === "agreement-declined" && <AgreementDeclinedPanel db={db} esa={esa} card={card} close={close} mayManage={mayManage} open={open} />}
+      {sp.send === "chase-agreement" && on && (() => {
+        const sc = all.find((c) => c.id === on);
+        return sc ? <ChaseAgreementSendModal db={db} card={sc} me={me} closeHref={closeSendHref("/clients/agreements", sp)} /> : null;
+      })()}
     </div>
   );
 }

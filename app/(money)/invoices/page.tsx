@@ -16,9 +16,11 @@ import { Card, PageTitle, pillGhost, pillSecondary } from "@/app/ui/figma";
 import { SubmitButton } from "@/app/ui/SubmitButton";
 import { boardSummary, columnOf, type Column } from "@/lib/accountsBoard";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref, sendHref } from "@/lib/sendModal";
 import { WRITE_OFF_DAYS, balanceOf, money, moneyWhole } from "@/lib/money";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { AccountsSendModal } from "./AccountsSendModals";
 import InvoicePanel from "./InvoicePanel";
 import WriteOffPanel from "./WriteOffPanel";
 
@@ -45,7 +47,7 @@ const smallInk = "inline-flex cursor-pointer items-center rounded-full bg-ink px
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; panel?: string; on?: string; more?: string }>;
+  searchParams: Promise<{ msg?: string; panel?: string; send?: string; on?: string; more?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -197,7 +199,10 @@ export default async function InvoicesPage({
                         {canMoney && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {col.key === "to_send" && (
-                              <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallInk}>Approve and send</Link>
+                              <>
+                                <Link href={sendHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallInk}>Preview and send</Link>
+                                <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallBtn}>Details</Link>
+                              </>
                             )}
                             {col.key === "sent" && (
                               <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className={smallBtn}>Record a payment</Link>
@@ -256,6 +261,9 @@ export default async function InvoicesPage({
       )}
       {open && sp.panel === "write-off" && (
         <WriteOffPanel db={db} inv={open} now={now} me={me} closeHref={close} msg={sp.msg} writeOffDays={numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS)} />
+      )}
+      {sp.send && (
+        <AccountsSendModal send={sp.send} on={sp.on} db={db} me={me} closeHref={closeSendHref(PATH, sp)} />
       )}
     </div>
   );

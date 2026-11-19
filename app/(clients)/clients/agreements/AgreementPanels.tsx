@@ -86,8 +86,12 @@ export function ChaseAgreementPanel({ db, esa, card, now, close, mayManage }: { 
           <div className="flex flex-col gap-1.5">
             <span className="t-small text-ink-3">Chase {copy.step} message</span>
             <p className="t-body whitespace-pre-wrap rounded-[14px] border border-rule px-4 py-3.5 text-ink-2">{copy.text}</p>
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               <CopyButton text={copy.text} label={copy.label} tone="pill" />
+              <Link href={"/clients/agreements?send=chase-agreement&on=" + esa.id} scroll={false} className={pillSecondary + small}>
+                <Icon name="send" size={14} />
+                Preview and send
+              </Link>
             </div>
           </div>
         )}

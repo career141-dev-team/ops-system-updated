@@ -428,19 +428,47 @@ export async function changeSetting(formData: FormData): Promise<void> {
   const key = String(formData.get("key") ?? "");
   const raw = String(formData.get("value") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
+  const go = (msg: string): never => redirect(landed(formData, "/settings", msg));
 
   if (!can(member, "settings.manage")) {
-    redirect("/settings?msg=" + encodeURIComponent(refusal("settings.manage")));
+    return redirect(landed(formData, "/settings", refusal("settings.manage")));
   }
   const current = (await desk()).settings.find((s) => s.key === key);
-  if (!current) redirect("/settings?msg=" + encodeURIComponent("There is no setting called " + key + "."));
+  if (!current) return redirect(landed(formData, "/settings", "There is no setting called " + key + "."));
 
   const decided = settingChange(key, current.value, raw, reason);
-  if (!decided.ok) redirect("/settings?msg=" + encodeURIComponent(decided.message));
+  if (!decided.ok) return redirect(landed(formData, "/settings", decided.message));
 
   await setSetting(key, decided.value, member.id, reason);
   revalidatePath("/settings");
-  redirect("/settings?msg=" + encodeURIComponent(key + " is now " + String(decided.value) + "."));
+  return redirect(landed(formData, "/settings", key + " is now " + String(decided.value) + "."));
+}
+
+/** Saves who covers a team member while they are on leave (S2 Settings · Templates and people). */
+export async function saveCover(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const go = (msg: string): never => redirect(landed(formData, "/settings?view=templates", msg));
+  if (!can(member, "settings.manage")) go(refusal("settings.manage"));
+
+  const awayId = String(formData.get("awayId") ?? "").trim();
+  const coverId = String(formData.get("coverId") ?? "").trim();
+  const until = String(formData.get("until") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!awayId) go("Pick who is away.");
+  if (reason.length < 3) go("Write a short reason for this cover change.");
+
+  const db = await desk();
+  const away = db.members.find((m) => m.id === awayId);
+  if (!away) go("That team member no longer exists.");
+  if (coverId && coverId === awayId) go("Somebody else has to cover.");
+  const cover = coverId ? db.members.find((m) => m.id === coverId) : null;
+  if (coverId && !cover) go("Pick a team member who is active.");
+
+  const val = cover ? JSON.stringify({ coverId: cover.id, until }) : "";
+  await setSetting("cover." + awayId, val, member.id, reason);
+  revalidatePath("/settings");
+  go(cover ? `${cover.name} now covers ${away!.name}${until ? " until " + until : ""}.` : `Cover cleared for ${away!.name}.`);
 }
 
 /** Read the Ops mailbox now. Off until the credentials exist, and it says so. */
@@ -834,15 +862,24 @@ export async function replyInThread(formData: FormData): Promise<void> {
 export async function writeNewMessage(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const backTo = String(formData.get("back") ?? "/mail");
-  const back = (msg: string) => redirect(backTo + (backTo.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  const dest = backTo(formData, "/mail");
+  const back = (msg: string) => redirect(withMsg(dest, msg));
   if (!can(member, "message.approve")) back(refusal("message.approve"));
 
-  const to = addressesFrom(String(formData.get("to") ?? ""));
+  const channelRaw = String(formData.get("channel") ?? "email");
+  const channel: "email" | "whatsapp" = channelRaw === "whatsapp" ? "whatsapp" : "email";
+  const to = channel === "whatsapp"
+    ? [String(formData.get("to") ?? "").trim()].filter(Boolean)
+    : addressesFrom(String(formData.get("to") ?? ""));
   const subject = String(formData.get("subject") ?? "");
   const body = String(formData.get("body") ?? "");
-  const problem = problemWithCompose(to, subject, body);
-  if (problem) back(problem);
+  if (channel === "email") {
+    const problem = problemWithCompose(to, subject, body);
+    if (problem) back(problem);
+  } else {
+    if (!to.length) back("Enter a phone number or WhatsApp recipient.");
+    if (!body.trim()) back("Write the message first.");
+  }
 
   const about = String(formData.get("about") ?? "");
   const [subjectType, subjectId] = about.includes("|") ? about.split("|") : [null, null];
@@ -852,7 +889,7 @@ export async function writeNewMessage(formData: FormData): Promise<void> {
     .filter(Boolean);
 
   const message = await draftMessage({
-    channel: "email",
+    channel,
     to,
     subject: subject.trim(),
     body,
@@ -863,6 +900,15 @@ export async function writeNewMessage(formData: FormData): Promise<void> {
   });
 
   revalidatePath("/mail");
+  revalidatePath(dest.split("?")[0] || "/");
+  if (formData.get("sendNow") === "1") {
+    const db = await desk();
+    const said = await approveOne(member, db, message);
+    redirect(dest + confirmed(said, dest));
+  }
+  if (formData.get("back")) {
+    redirect(withMsg(dest, "Drafted. Nothing goes until you approve it."));
+  }
   redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Drafted. Nothing goes until you approve it."));
 }
 
@@ -884,30 +930,32 @@ export async function saveTemplateWording(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const key = String(formData.get("key") ?? "");
   const here = "/templates/" + encodeURIComponent(key);
+  const go = (msg: string): never => redirect(landed(formData, here, msg));
 
   if (!can(member, "template.edit")) {
-    redirect(here + "?msg=" + encodeURIComponent(refusal("template.edit")));
+    go(refusal("template.edit"));
   }
 
   const db = await desk();
   const template = templateFor(db, key);
-  if (!template) redirect("/templates?msg=" + encodeURIComponent("That wording no longer exists."));
+  if (!template) redirect(landed(formData, "/templates", "That wording no longer exists."));
 
   const patch = {
-    name: String(formData.get("name") ?? "").trim(),
+    name: String(formData.get("name") ?? template!.name).trim(),
     // A channel with nowhere to put a subject keeps the empty one it had.
-    subject: template.channel === "email" ? String(formData.get("subject") ?? "").trim() : "",
+    subject: template!.channel === "email" ? String(formData.get("subject") ?? template!.subject).trim() : "",
     body: String(formData.get("body") ?? ""),
-    approvedForAuto: template.channel === "internal" ? true : formData.get("approvedForAuto") === "on",
+    approvedForAuto: template!.channel === "internal" ? true : formData.get("approvedForAuto") === "on",
   };
 
-  const problem = problemWith({ ...patch, channel: template.channel });
-  if (problem) redirect(here + "?msg=" + encodeURIComponent(problem));
+  const problem = problemWith({ ...patch, channel: template!.channel });
+  if (problem) go(problem);
 
   await saveTemplate(key, patch, member.id);
   revalidatePath(here);
   revalidatePath("/templates");
-  redirect(here + "?msg=" + encodeURIComponent("Saved. The next one sent uses this wording."));
+  revalidatePath("/settings");
+  go("Saved. The next one sent uses this wording.");
 }
 
 export async function finishTask(formData: FormData): Promise<void> {
@@ -2874,9 +2922,8 @@ export async function moveClientOwner(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const clientId = String(formData.get("clientId") ?? "");
-  const backUrl = String(formData.get("back") ?? "").trim();
-  const here = backUrl.startsWith("/") ? backUrl : "/clients/" + clientId;
-  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/clients/" + clientId);
+  const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "task.reassign")) back("Only the ops lead moves a client to another owner.");
   const db = await desk();
   const client = clientIn(db, clientId);
@@ -2919,9 +2966,8 @@ export async function assignLeadOwner(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
-  const backUrl = String(formData.get("back") ?? "").trim();
-  const here = backUrl.startsWith("/") ? backUrl : "/clients/owners";
-  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/clients/owners");
+  const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "task.reassign")) back("Only the ops lead assigns a lead to another owner.");
   const db = await desk();
   const lead = leadIn(db, leadId);
@@ -4201,8 +4247,8 @@ export async function setOpeningPeople(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = "/positions/" + positionId + "?view=overview";
-  const back = (msg: string) => redirect(here + "&msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/positions/" + positionId + "?view=overview");
+  const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();

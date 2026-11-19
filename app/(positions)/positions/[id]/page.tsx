@@ -5,6 +5,7 @@ import Icon from "@/app/Icon";
 import { PillTabs, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import SomethingChangedPanel from "@/app/ui/SomethingChangedPanel";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref } from "@/lib/sendModal";
 import { resolveRoleTab } from "@/lib/roleTabs";
 import { currentMember } from "@/lib/session";
 
@@ -16,6 +17,7 @@ import Interviews from "./tabs/Interviews";
 import Offer from "./tabs/Offer";
 import Overview from "./tabs/Overview";
 import Requirement from "./tabs/Requirement";
+import { RoleSendModal } from "./tabs/RoleSendModals";
 import Sets from "./tabs/Sets";
 
 /** The one word beside the title: how far this role has got, from what the desk holds. */
@@ -91,8 +93,8 @@ export default async function PositionPage({
           { label: "Candidate cannot come", href: form("interviews", "find-a-time") },
           { label: "Candidate dropped out", href: form("offer", "offer-declined") },
           { label: "No-show", href: form("offer", "did-not-join") },
-          { label: "Waits for", note: "until a date" },
-          { label: "Other" },
+          { label: "Waits for", note: "until a date", href: form("overview", "hold-close") },
+          { label: "Other", href: panelHref(path, sp, "add-note") },
         ]}
       />
     );
@@ -223,6 +225,7 @@ export default async function PositionPage({
       {tabKey === "requirement" && <Requirement c={c} sp={sp} />}
       {tabKey === "history" && <History c={c} sp={sp} />}
       {changed}
+      {sp.send && <RoleSendModal send={sp.send} on={sp.on} c={c} closeHref={closeSendHref(path, sp)} />}
     </div>
   );
 }

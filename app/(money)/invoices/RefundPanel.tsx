@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Icon from "@/app/Icon";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { SubmitButton } from "@/app/ui/SubmitButton";
@@ -95,8 +96,13 @@ export default function RefundPanel({
         )}
         <PanelField label="Email to copy">
           <p className="t-body rounded-[14px] border border-rule px-4 py-3.5 text-ink-2">{email}</p>
-          <div><CopyButton text={email} label="Copy the email" /></div>
-          <p className="t-small text-ink-3">Nothing is sent from here. Paste it into your own email.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <CopyButton text={email} label="Copy the email" />
+            <Link href={`/invoices/payment?send=ask-refund&on=${g.id}`} scroll={false} className={smallBtn}>
+              <Icon name="send" size={14} /> Preview and send
+            </Link>
+          </div>
+          <p className="t-small text-ink-3">Nothing is sent from here until you approve in Preview and send.</p>
         </PanelField>
       </PanelSection>
 

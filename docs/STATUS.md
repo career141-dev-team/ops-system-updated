@@ -372,6 +372,15 @@ The screens were redrawn to the v6 design in a first wave; later waves fill the 
   `closeHref(path, params)`, so the page's own tab and filters survive. Kit shells for the Figma
   "Something changed" and "Duplicate check" panels, and `ChoicePill` / `ChoiceGroup` / `panelInput`,
   are in `app/ui/`.
+- **Preview and send overlays** (`app/ui/PreviewAndSend.tsx`, `src/lib/sendModal.ts`, 19 Nov): the 15
+  two-column 1600px modals (`?send=<kind>&on=<id>`) across Clients (`check-in`, `send-agreement`,
+  `chase-agreement`), Positions (`ask-ta`, `chase-hr`, `weekly-report`), Role (`book-interview`,
+  `candidate-feedback`, `reconfirm`, `send-set`, `chase-set`), Internal hiring (`book-internal`,
+  `offer-letter`), and Accounts (`invoice`, `ask-refund`), all routing through the existing server
+  actions and outbound gate.
+- **Settings v6 & Global Find or do** (`app/(settings)/settings/page.tsx`, `app/FindOrDo.tsx`,
+  `app/api/find/route.ts`, 19 Nov): two-tab Rules / Templates and people card grid with right-rail
+  live template editor, leave cover (`saveCover`), and `/` instant command palette (`G1`).
 
 ## Real data, from a month of mail (9 Nov)
 

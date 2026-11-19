@@ -506,3 +506,39 @@ body:has(dialog.panel[open]) {
     animation: panel-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
   }
 }
+
+/*
+ * Preview-and-send modals (v6 `send` frames, 1600px two-column overlay): centered native <dialog>,
+ * upgraded to modal by PanelOpen (focus trap, Escape, dimmed backdrop).
+ */
+dialog.send-modal {
+  position: fixed;
+  z-index: 55;
+  inset: 0;
+  margin: auto;
+  width: min(1440px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  border: 0;
+  border-radius: 28px;
+  padding: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 20px 70px rgb(23 26 28 / 0.22);
+}
+dialog.send-modal::backdrop {
+  background: rgb(22 25 29 / 0.34);
+}
+@media (max-width: 767px) {
+  dialog.send-modal {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+  }
+}
+body:has(dialog.send-modal[open]) {
+  overflow: hidden;
+}
