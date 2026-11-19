@@ -317,7 +317,7 @@ on that page.
 | Light and green, in one place | `app/globals.css`, `app/ui.tsx` | one header, one tab bar, one table, one chip. Twenty-six screens cannot drift into twenty-six shapes if there is one of each |
 | The AI, offered while it is off | `app/AiOffer.tsx`, `aiOffReason` in `src/lib/ai.ts` | a dashed chip saying *why* it is off - no key, or the switch - rather than a disabled button that explains nothing |
 
-Nothing is a modal, a drawer or an overlay, and nothing hides behind a hover - bar the three the owner drew: the top bar called back, a file opened from To approve (`?view=approve&file=`), and the profile card over a blurred page (`app/ProfileMenu.tsx`: View as, Dark mode, Sign out).
+Nothing hides behind a hover, and the only overlays are the ones the owner drew: the top bar called back, a file opened from To approve (`?view=approve&file=`), the profile card over a blurred page (`app/ProfileMenu.tsx`), the cards from the + and the bell, and (19 Nov, the v6 design) the 680px state panels a page opens with `?panel=` (`app/ui/Panel.tsx`).
 
 ### The UX order (docs/30), all eight built 7 to 8 November
 

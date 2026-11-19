@@ -17,6 +17,23 @@ const nextConfig: NextConfig = {
     return [{ source: "/(.*)", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
   },
 
+  // v6 (19 Nov): list pages that moved. Exact paths only, so /sets/[id], /interviews/[id] and the other
+  // detail pages that stored task links point at keep working. The old list pages stay in the tree until
+  // their content has a new home.
+  async redirects() {
+    const to = (source: string, destination: string) => ({ source, destination, permanent: false });
+    return [
+      to("/calls", "/?view=calls"),
+      to("/interviews", "/calendar"),
+      to("/sets", "/positions"),
+      to("/placements", "/positions"),
+      to("/guarantees", "/positions"),
+      to("/holds", "/positions"),
+      to("/adverts", "/positions"),
+      to("/money", "/invoices"),
+    ];
+  },
+
   experimental: {
     agentUpgrade: "security",
   },

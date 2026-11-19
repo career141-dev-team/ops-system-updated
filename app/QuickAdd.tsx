@@ -1,156 +1,188 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { quickAdd } from "@/app/actions";
-import Icon from "@/app/Icon";
+import Icon, { type IconName } from "@/app/Icon";
+import Panel from "@/app/ui/Panel";
+import Popover from "@/app/ui/Popover";
 import { LEAD_SOURCES, SOURCE_MEANINGS } from "@/lib/leads";
+import { closeHref, panelHref } from "@/lib/panel";
 
 /**
- * Quick-add from anywhere (7 Nov, UX order 5).
+ * Add, from anywhere (v6 frame G3, 19 Nov; first made 7 Nov, UX order 5).
  *
- * Three small forms in the sidebar: a call, a note, an enquiry. Each saves
- * through the same action the full screen uses and sends you back to the
- * page you were on, with the three-second line saying so. No overlay and no
- * drawer (the owner's rule): it is a `details` that opens in the sidebar's
- * own column and pushes the menu down while it is open.
+ * The round black + opens a card of what can be added. The three that save on the spot - a note,
+ * a call note and an enquiry - open a state panel (`?panel=add-note`, `add-call`, `add-enquiry`)
+ * drawn by <AddPanel> in the layout, so they work from any page. They post to the same
+ * `quickAdd` action as before, which sends you back to the page you were on with the
+ * three-second line. The rest are links to where that thing is added.
  *
- * In the top bar (16 Nov, the owner) it works like the profile card: the page behind
- * is blurred, and Esc, a click outside or going to another page closes it. On a phone
- * it stays a `details` inside the menu.
- *
- * The browser refuses an empty required field before anything is sent, so
- * the only round trip is a save. The server's own rules stand behind it,
- * and a refusal from there comes back as the same three-second line.
+ * The browser refuses an empty required field before anything is sent; the server's own rules
+ * stand behind it, and a refusal comes back as the same three-second line.
  */
-export default function QuickAdd({ clients, inBar = false }: { clients: { id: string; name: string }[]; inBar?: boolean }) {
+export default function QuickAdd({ phone = false }: { phone?: boolean }) {
   const path = usePathname() ?? "/";
-  const [open, setOpen] = useState(false);
-  // Where the card hangs: its right edge under the +'s right edge, wherever the bar has put it.
-  const plus = useRef<HTMLButtonElement>(null);
-  const [right, setRight] = useState(24);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  useEffect(() => setOpen(false), [path]);
-  const field =
-    "w-full rounded-md border border-shell-rule bg-surface px-2 py-1.5 text-[12.5px] text-ink outline-none placeholder:text-ink-faint focus:border-brand";
-  const save = "mt-1.5 self-start rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-ink-inverse active:scale-[0.98]";
-  const row = "flex flex-col gap-1.5 px-2 pb-2 pt-1";
-  const sub = "cursor-pointer select-none px-2 py-1 text-[12.5px] text-ink-soft hover:text-ink";
+  const params = useSearchParams();
+  const open = (name: string) => panelHref(path, params, name);
 
-  // In the top bar (13 Nov, Figma "Create"): the round black + and the three forms in a card
-  // under it, drawn into <body> over a blurred page, as the profile card is (16 Nov).
-  const plain = (
-    <summary className="flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-soft hover:bg-shell-sunk hover:text-ink">
-      <Icon name="plus" size={16} />
-      <span className="flex-1">Add</span>
-      <span className="text-[11px] text-ink-faint group-open:hidden">a call, a note, an enquiry</span>
-    </summary>
+  const items: ({ icon: IconName; what: string; href: string } | "line")[] = [
+    { icon: "pen", what: "Note", href: open("add-note") },
+    { icon: "chat", what: "Call note", href: open("add-call") },
+    { icon: "check", what: "Task", href: "/?view=tasks" },
+    { icon: "calendar", what: "Meeting", href: "/calendar" },
+    { icon: "file", what: "File", href: "/files" },
+    { icon: "inbox", what: "Enquiry", href: open("add-enquiry") },
+    { icon: "briefcase", what: "Role", href: "/positions" },
+    { icon: "user", what: "Candidate", href: "/candidates/add" },
+    "line",
+    { icon: "clients", what: "Vacancy (internal)", href: "/hiring" },
+  ];
+
+  return (
+    <Popover
+      label="Add a note, a call, an enquiry and more"
+      width={400}
+      above={phone}
+      triggerClass={
+        phone
+          ? "flex flex-1 cursor-pointer flex-col items-center gap-[3px] text-ink-3"
+          : "flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ink text-ink-inverse transition-transform active:scale-[0.96]"
+      }
+      trigger={
+        phone ? (
+          <>
+            <Icon name="plus" size={22} />
+            <span className="t-micro !normal-case">Add</span>
+          </>
+        ) : (
+          <Icon name="plus" size={20} />
+        )
+      }
+    >
+      <div className="flex flex-col gap-0.5 p-3">
+        <p className="t-micro pb-1.5 text-ink-3">Add</p>
+        {items.map((one, i) =>
+          one === "line" ? (
+            <div key={i} className="px-3.5 py-1.5">
+              <div className="h-px bg-rule" />
+            </div>
+          ) : (
+            <Link key={one.what} href={one.href} scroll={false} className="t-body flex items-center gap-3.5 rounded-[12px] px-3.5 py-3 hover:bg-sunk">
+              <Icon name={one.icon} size={20} className="shrink-0" />
+              <span className="flex-1">{one.what}</span>
+            </Link>
+          ),
+        )}
+      </div>
+    </Popover>
+  );
+}
+
+const field =
+  "w-full rounded-[10px] bg-sunk px-3.5 py-3 text-[14px] leading-[22px] text-ink outline-none placeholder:text-ink-3 focus:ring-2 focus:ring-brand";
+const label = "t-small text-ink-3";
+const save = "t-body-m inline-flex w-fit cursor-pointer items-center rounded-full bg-ink px-5 py-[11px] text-ink-inverse active:scale-[0.98]";
+
+/**
+ * The three Add panels, for the layout to draw: it reads `?panel=` and shows one of `add-note`,
+ * `add-call`, `add-enquiry`, or nothing. Pages never use these names, so they keep their own.
+ */
+export function AddPanel({ clients }: { clients: { id: string; name: string }[] }) {
+  const path = usePathname() ?? "/";
+  const params = useSearchParams();
+  const which = params.get("panel");
+  if (which !== "add-note" && which !== "add-call" && which !== "add-enquiry") return null;
+  const close = closeHref(path, params);
+
+  const about = (
+    <label className="flex flex-col gap-1.5">
+      <span className={label}>Which client (optional)</span>
+      <input name="about" list="quick-clients" className={field} />
+    </label>
   );
 
-  const body = (
-    <>
-      <Link
-        href="/leads/new"
-        className="flex items-center justify-between rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-brand hover:bg-sunk"
-      >
-        <span>Capture a lead</span>
-        <Icon name="arrow-right" size={14} />
-      </Link>
+  const title = which === "add-note" ? "A note" : which === "add-call" ? "A call note" : "An enquiry";
+  const sub =
+    which === "add-note"
+      ? "It becomes a task for you, due tomorrow morning."
+      : which === "add-call"
+        ? "Write down a call you made or took."
+        : "A company that has asked about us. The two checks wait on its page.";
 
+  return (
+    <Panel kicker="Add" closeHref={close} title={title} sub={sub}>
       <datalist id="quick-clients">
         {clients.map((c) => (
           <option key={c.id} value={c.name} />
         ))}
       </datalist>
-
-      {/* A call: the same call log as /calls, without the task. */}
-      <details className="mt-1">
-        <summary className={sub}>A call</summary>
-        <form action={quickAdd} className={row}>
-          <input type="hidden" name="kind" value="call" />
-          <input type="hidden" name="back" value={path} />
-          <input name="to" required placeholder="077 123 4567" aria-label="Their number" className={field} />
-          <input name="spokeTo" required placeholder="who you spoke to" aria-label="Who you spoke to" className={field} />
-          <input name="about" list="quick-clients" placeholder="which client (optional)" aria-label="Which client" className={field} />
-          <textarea name="outcome" required rows={2} placeholder="what was said" aria-label="What was said" className={field} />
-          <button type="submit" className={save}>Write it down</button>
-        </form>
-      </details>
-
-      {/* A note: a task to yourself, on Your day tomorrow morning. */}
-      <details>
-        <summary className={sub}>A note</summary>
-        <form action={quickAdd} className={row}>
-          <input type="hidden" name="kind" value="note" />
-          <input type="hidden" name="back" value={path} />
-          <textarea name="text" required rows={3} placeholder="the first line is the title" aria-label="The note" className={field} />
-          <input name="about" list="quick-clients" placeholder="which client (optional)" aria-label="Which client" className={field} />
-          <button type="submit" className={save}>Keep it</button>
-        </form>
-      </details>
-
-      {/* An enquiry: the same lead as /leads, with the two checks waiting on its page. */}
-      <details>
-        <summary className={sub}>An enquiry</summary>
-        <form action={quickAdd} className={row}>
-          <input type="hidden" name="kind" value="enquiry" />
-          <input type="hidden" name="back" value={path} />
-          <input name="company" required placeholder="the company" aria-label="The company" className={field} />
-          <input name="contactName" placeholder="who rang" aria-label="Who rang" className={field} />
-          <input name="contactPhone" placeholder="their number" aria-label="Their number" className={field} />
-          <input name="contactEmail" placeholder="or their email" aria-label="Their email" className={field} />
-          <select name="source" defaultValue="call" aria-label="Where it came from" className={field}>
-            {LEAD_SOURCES.map((s) => (
-              <option key={s} value={s}>
-                {SOURCE_MEANINGS[s]}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className={save}>Save the enquiry</button>
-        </form>
-      </details>
-    </>
-  );
-
-  if (!inBar) {
-    return (
-      <details className="group rounded-lg">
-        {plain}
-        {body}
-      </details>
-    );
-  }
-
-  return (
-    <>
-      <button
-        ref={plus}
-        type="button"
-        onClick={() => {
-          if (plus.current) setRight(Math.max(16, window.innerWidth - plus.current.getBoundingClientRect().right));
-          setOpen((o) => !o);
-        }}
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-label="Add a call, a note or an enquiry"
-        title="Add a call, a note or an enquiry"
-        className="flex size-11 cursor-pointer items-center justify-center rounded-full bg-ink text-ink-inverse transition-transform active:scale-[0.96]"
-      >
-        <Icon name="plus" size={20} />
-      </button>
-      {open &&
-        mounted &&
-        createPortal(
+      <form action={quickAdd} className="flex flex-col gap-4">
+        <input type="hidden" name="back" value={path} />
+        {which === "add-note" && (
           <>
-            <button type="button" data-close onClick={() => setOpen(false)} aria-label="Close" className="fixed inset-0 z-[60] cursor-default bg-veil backdrop-blur-[4px]" />
-            <div style={{ right }} className="fixed top-[96px] z-[70] max-h-[calc(100dvh/0.9-112px)] w-[300px] overflow-y-auto rounded-panel bg-surface p-2 shadow-float">{body}</div>
-          </>,
-          document.body,
+            <input type="hidden" name="kind" value="note" />
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>The note (the first line is the title)</span>
+              <textarea name="text" required rows={5} className={field} />
+            </label>
+            {about}
+            <button type="submit" className={save}>Keep it</button>
+          </>
         )}
-    </>
+        {which === "add-call" && (
+          <>
+            <input type="hidden" name="kind" value="call" />
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Their number</span>
+              <input name="to" required placeholder="077 123 4567" className={field} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Who you spoke to</span>
+              <input name="spokeTo" required className={field} />
+            </label>
+            {about}
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>What was said</span>
+              <textarea name="outcome" required rows={4} className={field} />
+            </label>
+            <button type="submit" className={save}>Write it down</button>
+          </>
+        )}
+        {which === "add-enquiry" && (
+          <>
+            <input type="hidden" name="kind" value="enquiry" />
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>The company</span>
+              <input name="company" required className={field} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Who rang</span>
+              <input name="contactName" className={field} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Their number</span>
+              <input name="contactPhone" className={field} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Or their email</span>
+              <input name="contactEmail" className={field} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={label}>Where it came from</span>
+              <select name="source" defaultValue="call" className={field}>
+                {LEAD_SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {SOURCE_MEANINGS[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className={save}>Save the enquiry</button>
+          </>
+        )}
+      </form>
+    </Panel>
   );
 }

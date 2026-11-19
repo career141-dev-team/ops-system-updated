@@ -30,12 +30,18 @@ meant to work, so the designs fit the flow. Nothing here is a design.
 - **The same look as the TA System.** Same fonts, colours, buttons and plain wording as
   ta-system.career141.com, and the same components where they fit, so the team recognises it
   and we do not design twice.
-- **Minimal, and no overlays.** No pop-up dialogs, no modals, no drawers over the page, no
-  nested pop-ups. A thing opens as its own page or expands in place. A confirmation is a
-  line with a button, not a box over the screen.
-  Three exceptions the owner drew: the top bar called back over the page, and a PDF or picture
-  opened from a draft in My Work's To approve, and the card that opens from the profile with
-  the page blurred behind it (decisions, 13 and 16 Nov).
+- **Minimal, and overlays only where drawn.** No pop-up dialogs, no nested pop-ups. A thing opens
+  as its own page or expands in place. A confirmation is a line with a button, not a box over
+  the screen. Four exceptions the owner drew:
+  1. the top bar called back over the page (13 Nov);
+  2. a PDF or picture opened from a draft in My Work's To approve (16 Nov);
+  3. the card that opens from the profile, with the page blurred behind it (16 Nov);
+  4. **state panels (19 Nov, the v6 design): a screen's own states - find a time, write a
+     result, add a payment - open as a 680px drawer on the right, driven by `?panel=`**
+     (`app/ui/Panel.tsx`, `src/lib/panel.ts`). It is a native `<dialog>`: focus stays inside,
+     Escape and the X close it, the address says which one is open, and with no script the same
+     links open and close it. Forms in a panel post to the existing server actions with a hidden
+     `back`. The small cards from the + and the bell in the top bar are the same kind of thing.
 - **One thing now (18 Nov).** A record page says the step the work is at, once, and the rest stays
   quiet: a second current step is a small "also happening" card, finished steps are one line each,
   and the exceptions sit under "Something different?". **No progress bar (owner, 18 Nov):** a

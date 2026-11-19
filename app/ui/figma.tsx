@@ -6,9 +6,9 @@ import Icon, { type IconName } from "@/app/Icon";
 /**
  * Shared Figma components from "Ops System" (ACJZ96veiBLHJhUTfOt9tu).
  *
- * Every screen sits inside `PageBox` (the rounded-sheet white surface inside
- * the desktop's fixed `100dvh - 116px` main box) so the outer window never
- * scrolls on desktop and nothing ever opens as a modal or drawer over the page.
+ * The older screens sit inside `PageBox` (a rounded white sheet). The v6 screens (19 Nov) are
+ * canvas with cards on it: use `PageTitle`, `Card`, `DataTable`, `EmptyState`, `PanelField` at
+ * the foot of this file. A state panel is `app/ui/Panel.tsx`; nothing else opens over a page.
  */
 
 export type Tone =
@@ -135,7 +135,7 @@ export function PageBox({
             ? "max-w-[1160px]"
             : "max-w-none";
   return (
-    <div className="relative rounded-sheet bg-surface px-5 pb-10 pt-9 shadow-card max-md:overflow-hidden md:flex md:flex-col md:overflow-y-auto md:px-12 md:pt-[68px]">
+    <div className="relative rounded-sheet bg-surface px-5 pb-10 pt-9 shadow-card max-md:overflow-hidden md:flex md:flex-col md:px-12 md:pt-9">
       <div className={`rise mx-auto flex w-full flex-col ${maxCls} ${className}`}>
         {msg && (
           <p className="mb-5 rounded-panel border border-rule bg-sunk/60 px-4 py-2.5 text-[14px] leading-[21px] text-ink">
@@ -778,3 +778,177 @@ export const figmaField =
 
 export const figmaLabel =
   "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
+
+/* ---- v6 kit (19 Nov, frames W1 128:2 and R1 116:283) ---------------------------------------- */
+
+/**
+ * The white card of the v6 frames: 28px corners, the soft drop shadow, 28px of padding. With a
+ * title it draws the h2 and the small line under it, and `right` sits at the far end of that row.
+ */
+export function Card({
+  title,
+  sub,
+  right,
+  className = "",
+  children,
+}: {
+  title?: string;
+  sub?: string;
+  right?: ReactNode;
+  className?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className={"flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card " + className}>
+      {(title || right) && (
+        <div className="flex items-center gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {title && <h2 className="t-h2">{title}</h2>}
+            {sub && <p className="t-small text-ink-3">{sub}</p>}
+          </div>
+          {right}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/**
+ * The page heading of the v6 frames: the light 40px display line, the small line under it, and
+ * the pill tabs below when the page has views. The tabs are links, so a view is an address.
+ */
+export function PageTitle({
+  title,
+  sub,
+  tabs,
+  active,
+  right,
+}: {
+  title: string;
+  sub?: ReactNode;
+  tabs?: { key: string; label: string; href: string; count?: number }[];
+  active?: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex items-center gap-4 p-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <h1 className="t-display">{title}</h1>
+          {sub && <p className="t-small text-ink-3">{sub}</p>}
+        </div>
+        {right}
+      </div>
+      {tabs && tabs.length > 0 && <PillTabs items={tabs} active={active ?? tabs[0].key} />}
+    </div>
+  );
+}
+
+/** The pill tabs of W1: the open one is solid ink, the rest white with a hairline; counts in small type. */
+export function PillTabs({
+  items,
+  active,
+}: {
+  items: { key: string; label: string; href: string; count?: number }[];
+  active: string;
+}) {
+  return (
+    <nav className="flex flex-wrap items-center gap-2">
+      {items.map((item) => {
+        const on = item.key === active;
+        return (
+          <Link
+            key={item.key}
+            href={item.href}
+            scroll={false}
+            aria-current={on ? "page" : undefined}
+            className={
+              "t-body-m inline-flex items-center gap-2 rounded-full px-4 py-2.5 transition-colors " +
+              (on ? "bg-ink text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")
+            }
+          >
+            {item.label}
+            {typeof item.count === "number" && <span className={"t-label " + (on ? "text-ink-inverse" : "text-ink-3")}>{item.count}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * A table in a card: small capital column heads over hairline rows. `rows` carry their cells;
+ * give a row `href` and its first cell becomes the link, so a row is reachable with no script.
+ * With no rows, `empty` shows instead (use <EmptyState>), never an empty frame.
+ */
+export function DataTable({
+  columns,
+  rows,
+  empty,
+}: {
+  columns: { label: string; align?: "left" | "right"; className?: string }[];
+  rows: { key: string; cells: ReactNode[]; href?: string }[];
+  empty?: ReactNode;
+}) {
+  if (rows.length === 0 && empty) return <>{empty}</>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c.label} scope="col" className={"t-micro border-b border-rule px-3 pb-3 text-ink-3 first:pl-0 last:pr-0 " + (c.align === "right" ? "text-right " : "") + (c.className ?? "")}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key} className="border-b border-rule last:border-b-0 hover:bg-sunk/50">
+              {row.cells.map((cell, i) => (
+                <td key={i} className={"t-body px-3 py-3.5 first:pl-0 last:pr-0 " + (columns[i]?.align === "right" ? "text-right " : "") + (columns[i]?.className ?? "")}>
+                  {i === 0 && row.href ? (
+                    <Link href={row.href} className="t-body-m hover:underline">
+                      {cell}
+                    </Link>
+                  ) : (
+                    cell
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * The honest empty state: a quiet icon, a title, one sentence. Used where a screen has no data
+ * yet (nothing saved, or the feed is not connected), so it says so rather than inventing rows.
+ */
+export function EmptyState({ icon = "sparkle", title, children }: { icon?: IconName; title: string; children?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-[18px] bg-sunk px-6 py-10 text-center">
+      <span className="flex size-11 items-center justify-center rounded-full bg-surface text-ink-3">
+        <Icon name={icon} size={20} />
+      </span>
+      <p className="t-body-m">{title}</p>
+      {children && <p className="t-small max-w-[420px] text-ink-3">{children}</p>}
+    </div>
+  );
+}
+
+/** A labelled value in a panel or card: the small grey label over the content (a field, text, chips). */
+export function PanelField({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="t-small text-ink-3">{label}</span>
+      {children}
+      {hint && <span className="t-small text-ink-3">{hint}</span>}
+    </div>
+  );
+}

@@ -242,20 +242,16 @@ test("a client's card points at the work, or at what the record is missing", () 
   assert.match(clientNextStep(client({ stage: "dormant" }), theirs()).waiting, /this client is dormant/);
 });
 
-test("the top bar's five workspaces and six behind the profile, and every page under one", () => {
-  // From twenty-seven (25, section 3), then eight in the sidebar, then the
-  // approved Figma top bar (13 Nov). A hold, a set and an advert are faces of
-  // a position, so they are reached through it and marked against it.
-  const [workspaces, more] = NAV;
+test("the top bar's eight workspaces, and every page under one", () => {
+  // From twenty-seven (25, section 3), then eight in the sidebar, then the Figma top bars (13 Nov),
+  // and the v6 bar of eight (19 Nov). A hold, a set and an advert are faces of a position, so they
+  // are reached through it and marked against it.
+  const [workspaces] = NAV;
   assert.deepEqual(
     workspaces.pages.map((page) => page.href),
-    ["/", "/clients", "/positions", "/interviews", "/placements"],
+    ["/", "/mail", "/calendar", "/clients", "/positions", "/hiring", "/invoices", "/settings"],
   );
-  assert.deepEqual(
-    more.pages.map((page) => page.href),
-    ["/candidates", "/work", "/mail", "/invoices", "/reports", "/settings"],
-  );
-  assert.equal(NAV.length, 2, "the bar and the profile, nothing else");
+  assert.equal(NAV.length, 1, "the bar, nothing else");
   const entries = NAV.flatMap((section) => section.pages);
 
   // Every page in the app is under exactly one entry.
@@ -339,16 +335,16 @@ test("a path finds the entry it belongs under", () => {
   assert.equal(pageAndSectionFor("/holds/h1")?.page.href, "/positions");
   assert.equal(pageAndSectionFor("/leads/l1")?.page.href, "/clients");
   assert.equal(pageAndSectionFor("/invoices/i1")?.page.href, "/invoices");
-  assert.equal(pageAndSectionFor("/guarantees/g1")?.page.href, "/placements");
-  assert.equal(pageAndSectionFor("/interviews/i1")?.page.href, "/interviews");
+  assert.equal(pageAndSectionFor("/guarantees/g1")?.page.href, "/positions");
+  assert.equal(pageAndSectionFor("/interviews/i1")?.page.href, "/calendar");
   assert.equal(pageAndSectionFor("/templates/x")?.page.href, "/settings");
-  assert.equal(pageAndSectionFor("/work")?.page.href, "/work");
+  assert.equal(pageAndSectionFor("/work")?.page.href, "/positions");
   assert.equal(pageAndSectionFor("/")?.page.href, "/");
   assert.equal(pageAndSectionFor("/nowhere"), null);
 
   // And the sidebar marks that entry, not some other one.
   assert.equal(isHere("/sets/set_1", "/positions"), true);
-  assert.equal(isHere("/sets/set_1", "/placements"), false);
+  assert.equal(isHere("/sets/set_1", "/clients"), false);
   assert.equal(isHere("/", "/"), true);
   assert.equal(isHere("/leads", "/"), false, "the day is only the day");
 });

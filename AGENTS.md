@@ -17,7 +17,7 @@ still not built. What is left of size is the server and pilot half of phase 8, w
 a person's work ([`docs/22-GO-LIVE.md`](docs/22-GO-LIVE.md) is the order).
 
 Every feature ships with its screen (owner, 2 Nov): minimal, the TA System's look, and
-**no overlays, modals or drawers** — one page per thing, edit in place. The rules are in
+**overlays only where the owner drew them** — one page per thing, edit in place, and a screen's own states open as a 680px drawer driven by `?panel=` (19 Nov, the v6 design). The rules are in
 [`docs/07-SCREENS.md`](docs/07-SCREENS.md).
 
 ## Hard rules
