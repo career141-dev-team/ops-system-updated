@@ -13,6 +13,7 @@ import type {
 } from "@/data/types";
 import { nameKey } from "@/lib/leads";
 import { SAMPLE_FEE_RULES, SAMPLE_TA_MONEY } from "@/data/samplePlacements";
+import { SAMPLE_TA_DESK } from "@/data/sampleDesk";
 
 /**
  * The Openings sample (18 Nov, the owner: "dummy data with real values" to test Openings on a laptop).
@@ -101,7 +102,7 @@ const OPENINGS = [
 /* ── What the stand-in TA System answers ─────────────────────────── */
 
 export const SAMPLE_TA = {
-  clients: COMPANIES.map((c) => ({
+  clients: [...COMPANIES.map((c) => ({
     id: "ta_smp_c_" + c.key,
     name: c.name,
     nameKey: nameKey(c.name),
@@ -110,7 +111,7 @@ export const SAMPLE_TA = {
     status: "active",
     opsOwnerId: null,
     contacts: [{ name: c.hr, email: c.hrEmail, role: "hr", phone: "+94 77 000 " + String(1000 + c.key.length * 37).slice(0, 4) }],
-  })),
+  })), ...SAMPLE_TA_DESK.clients],
   openings: [...OPENINGS.filter((o) => !("noOpening" in o)).map((o) => ({
     id: "ta_smp_j" + o.n,
     title: o.title,
@@ -120,8 +121,8 @@ export const SAMPLE_TA = {
     taLeadId: "ta_u1",
     headcount: 1,
     assignedAt: Date.UTC(2026, 9, 20),
-  })), ...SAMPLE_TA_MONEY.openings],
-  sets: OPENINGS.flatMap((o) =>
+  })), ...SAMPLE_TA_MONEY.openings, ...SAMPLE_TA_DESK.openings],
+  sets: [...OPENINGS.flatMap((o) =>
     o.sets.map((s) => ({
       id: "ta_smp_round" + o.n + "_" + s.n,
       setNumber: s.n,
@@ -133,10 +134,11 @@ export const SAMPLE_TA = {
       sentAt: null,
       receivedAt: null,
     })),
-  ),
+  ), ...SAMPLE_TA_DESK.sets],
   /** Each opening's pipeline, before anything the tester does moves a stage (see src/lib/fakeTaState.ts). */
   pipelines: Object.fromEntries([
     ...Object.entries(SAMPLE_TA_MONEY.pipelines),
+    ...Object.entries(SAMPLE_TA_DESK.pipelines),
     ...OPENINGS.filter((o) => !("noOpening" in o)).map((o) => [
       "ta_smp_j" + o.n,
       o.sets.flatMap((s) =>
@@ -151,7 +153,7 @@ export const SAMPLE_TA = {
     ]),
   ]) as Record<string, { id: string; candidateName: string; currentStage: string; setNumber: number | null; backupForApplicationId: null }[]>,
   /** Who has a prepared CV, for the stand-in's file answer. */
-  cvs: Object.fromEntries(OPENINGS.flatMap((o) => o.sets.flatMap((s) => s.people.map((p) => [p.id, { name: p.name, preparedCv: p.preparedCv }])))) as Record<
+  cvs: { ...SAMPLE_TA_DESK.cvs, ...Object.fromEntries(OPENINGS.flatMap((o) => o.sets.flatMap((s) => s.people.map((p) => [p.id, { name: p.name, preparedCv: p.preparedCv }])))) } as Record<
     string,
     { name: string; preparedCv: boolean }
   >,
@@ -225,6 +227,9 @@ export function sampleOpenings(now: number, ownerId: string): SampleRows {
       // A real fee rule, as a signed agreement carries one (18 Nov: only words, so every fee was the code's default).
       fields: {
         company: c.name,
+        companyName: c.name,
+        signatoryName: c.hr,
+        signatoryEmail: c.hrEmail,
         feeMonths: String(SAMPLE_FEE_RULES[c.key].feeMonths),
         feeBasis: SAMPLE_FEE_RULES[c.key].feeBasis,
         fee: SAMPLE_FEE_RULES[c.key].feeMonths + (SAMPLE_FEE_RULES[c.key].feeMonths === 1 ? " month" : " months") + " of " + SAMPLE_FEE_RULES[c.key].feeBasis + " salary",

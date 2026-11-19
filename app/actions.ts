@@ -687,7 +687,7 @@ export async function devLoadOpeningsSample(): Promise<void> {
   const { loadOpeningsSample } = await import("@/data/desk");
   const done = await loadOpeningsSample(member.id);
   revalidatePath("/positions");
-  devTaBack(done.ok ? "The sample is loaded: five clients, six openings, and seventeen placed jobs with their invoices and guarantees. Your data before it is copied to " + done.backup : done.why);
+  devTaBack(done.ok ? "The staged dummy data is loaded: " + Object.entries(done.counts).filter(([, n]) => n > 0).map(([key, n]) => n + " " + key).join(", ") + ". Your data before it is copied to " + done.backup : done.why);
 }
 
 /** Takes the sample out again. */
@@ -698,7 +698,7 @@ export async function devRemoveOpeningsSample(): Promise<void> {
   const { removeOpeningsSample } = await import("@/data/desk");
   const done = await removeOpeningsSample();
   revalidatePath("/positions");
-  devTaBack(done.ok ? "The Openings sample is out (" + done.gone + " rows)." : done.why);
+  devTaBack(done.ok ? "The staged dummy data is out (" + done.gone + " rows)." : done.why);
 }
 
 /** A clock comes due now, so its step happens without waiting days. */
