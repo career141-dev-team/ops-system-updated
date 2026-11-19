@@ -1,28 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+
 import { approveWeeklyReport } from "@/app/actions";
+import Icon from "@/app/Icon";
+import { Card, EmptyState, PageTitle, StatTile, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { desk, member as memberIn, reportIn } from "@/data/desk";
-import {
-  BackBar,
-  FoldRow,
-  PageBox,
-  StatTile,
-  StatusChip,
-  pillPrimary,
-  pillSecondary,
-} from "@/app/ui/figma";
-import {
-  REPORT_MEANINGS,
-  type ReportState,
-  problemWithReport,
-  reportText,
-  rowInWords,
-} from "@/lib/reports";
+import { REPORT_MEANINGS, type ReportState, problemWithReport, reportText, rowInWords } from "@/lib/reports";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+/** The weekly report to read and approve (v6: reached from Positions > Weekly report; nothing else links here). */
 export default async function ReportPage({
   params,
   searchParams,
@@ -40,131 +29,81 @@ export default async function ReportPage({
   if (!report) notFound();
 
   const problem = problemWithReport(report.rows);
-  const whenLocal = (at: number) =>
-    new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
-  const clients = [...new Set(report.rows.map((r) => r.client))].sort((a, b) =>
-    a.localeCompare(b),
-  );
-  const cardShell = "rounded-[24px] border border-edge bg-surface p-5";
+  const built = new Date(report.builtAt + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  const clients = [...new Set(report.rows.map((r) => r.client))].sort((a, b) => a.localeCompare(b));
+  const readBy = report.approvedBy ? memberIn(db, report.approvedBy)?.name : null;
 
   return (
-    <PageBox width="1080">
-      <div className="flex flex-col gap-6">
-        <BackBar href="/reports" label="Reports" />
+    <div className="flex flex-col gap-6">
+      <Link href="/positions" className="t-body-m inline-flex items-center gap-2 self-start text-ink-2 hover:text-ink">
+        <Icon name="chevron-left" size={16} />
+        All roles
+      </Link>
+      <PageTitle
+        title={`Weekly report, week of ${report.weekOf}`}
+        sub={`Built ${built}${readBy ? ` · read by ${readBy}` : ""}`}
+        right={<StatusChip tone={report.state === "sent" ? "ok" : "warn"}>{REPORT_MEANINGS[report.state as ReportState] ?? report.state}</StatusChip>}
+      />
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-              Weekly TA report
-            </p>
-            <h1 className="mt-1 text-[30px] font-light leading-[1.15] tracking-[-0.02em] text-ink">
-              Week of {report.weekOf}
-            </h1>
-            <p className="mt-1 text-[13.5px] text-ink-soft">
-              Built {whenLocal(report.builtAt)}
-              {report.approvedBy
-                ? ` · read by ${memberIn(db, report.approvedBy)?.name ?? "somebody"}`
-                : ""}
-            </p>
-          </div>
-          <StatusChip tone={report.state === "sent" ? "ok" : "warn"}>
-            {REPORT_MEANINGS[report.state as ReportState] ?? report.state}
-          </StatusChip>
-        </div>
+      {msg && <p className="t-small rounded-[14px] bg-bg-brand px-4 py-3 text-ink">{msg}</p>}
+      {report.note && <p className="t-small rounded-[14px] bg-warn-soft px-4 py-3 text-ink">{report.note}</p>}
 
-        {report.note && (
-          <div className="rounded-[18px] border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-ink">
-            {report.note}
-          </div>
-        )}
-
-        {msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-bg-brand px-4 py-3 text-[13px] font-medium text-ink">
-            {msg}
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <StatTile value={String(report.rows.length)} label="positions covered" />
-          <StatTile value={String(clients.length)} label="clients" />
-          <StatTile
-            value={report.state === "sent" ? "Sent" : "In review"}
-            label="Director email"
-          />
-        </div>
-
-        {report.state === "review" && can(me, "report.read") && (
-          <div className={cardShell}>
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">
-              READ &amp; APPROVE
-            </div>
-            <p className="mt-1.5 text-[13.5px] text-ink-soft">
-              Approving drafts the Director&rsquo;s email. If a line is wrong, fix it on the
-              position or set and rebuild the report.
-            </p>
-            {problem ? (
-              <p className="mt-2 text-[13px] font-medium text-warn">{problem}</p>
-            ) : (
-              <form action={approveWeeklyReport} className="mt-4">
-                <input type="hidden" name="reportId" value={report.id} />
-                <button type="submit" className={pillPrimary}>
-                  Approve, and draft the Director&apos;s email
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-
-        {report.messageId && (
-          <div>
-            <Link href={`/messages/${report.messageId}`} className={pillSecondary}>
-              Open Director&apos;s email draft
-            </Link>
-          </div>
-        )}
-
-        <div className={cardShell}>
-          <h2 className="text-[18px] font-light text-ink">
-            {report.rows.length} {report.rows.length === 1 ? "position" : "positions"}
-          </h2>
-          {report.rows.length === 0 ? (
-            <p className="mt-2 text-[13.5px] text-ink-soft">
-              No position was open in this week, so there is nothing to send.
-            </p>
-          ) : (
-            <div className="mt-3 divide-y divide-edge/60">
-              {clients.map((client) => (
-                <div key={client} className="py-3 first:pt-0 last:pb-0">
-                  <div className="text-[14px] font-medium text-ink">{client}</div>
-                  <div className="mt-1.5 flex flex-col gap-1.5">
-                    {report.rows
-                      .filter((r) => r.client === client)
-                      .map((line) => (
-                        <div key={line.positionId} className="text-[13px] text-ink-soft">
-                          <Link
-                            href={`/positions/${line.positionId}`}
-                            className="font-medium text-brand hover:underline"
-                          >
-                            {line.title}
-                          </Link>{" "}
-                          ({line.primaryTa}) — {rowInWords(line)}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <FoldRow title="Plain-text email preview" summary="Exact body sent to Director">
-          <div className={cardShell}>
-            <pre className="whitespace-pre-wrap font-sans text-[13px] leading-[1.6] text-ink-soft">
-              {reportText(report.weekOf, report.rows)}
-            </pre>
-          </div>
-        </FoldRow>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile value={String(report.rows.length)} label="roles covered" outline />
+        <StatTile value={String(clients.length)} label="clients" outline />
+        <StatTile value={report.state === "sent" ? "Sent" : "In review"} label="Director email" outline />
       </div>
-    </PageBox>
+
+      {report.state === "review" && can(me, "report.read") && (
+        <Card title="Read, then approve" sub="Approving drafts the Director's email. If a line is wrong, fix it on the role or the set, then build the report again.">
+          {problem ? (
+            <p className="t-body-m text-warn">{problem}</p>
+          ) : (
+            <form action={approveWeeklyReport}>
+              <input type="hidden" name="reportId" value={report.id} />
+              <button type="submit" className={pillPrimary}>
+                Approve, and draft the Director&apos;s email
+              </button>
+            </form>
+          )}
+        </Card>
+      )}
+
+      {report.messageId && (
+        <div>
+          <Link href={`/messages/${report.messageId}`} className={pillSecondary}>
+            Open the Director&apos;s email draft
+          </Link>
+        </div>
+      )}
+
+      <Card title={`${report.rows.length} ${report.rows.length === 1 ? "role" : "roles"}`}>
+        {report.rows.length === 0 ? (
+          <EmptyState icon="check" title="Nothing to send">No role was open that week.</EmptyState>
+        ) : (
+          <div className="flex flex-col">
+            {clients.map((client) => (
+              <div key={client} className="flex flex-col gap-2 border-t border-rule py-4 first:border-t-0 first:pt-0">
+                <h3 className="t-body-m">{client}</h3>
+                {report.rows
+                  .filter((r) => r.client === client)
+                  .map((line) => (
+                    <p key={line.positionId} className="t-small text-ink-2">
+                      <Link href={`/positions/${line.positionId}?view=overview`} className="t-small font-medium text-ink underline">
+                        {line.title}
+                      </Link>{" "}
+                      ({line.primaryTa}): {rowInWords(line)}
+                    </p>
+                  ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="The email, as it will read" sub="The exact text for the Director">
+        <pre className="t-small whitespace-pre-wrap rounded-[14px] bg-sunk p-4 font-sans text-ink-2">{reportText(report.weekOf, report.rows)}</pre>
+      </Card>
+    </div>
   );
 }
