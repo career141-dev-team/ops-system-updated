@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
 import LeadCaptureForm from "@/app/(clients)/leads/new/LeadCaptureForm";
-import { BackBar, PageBox } from "@/app/ui/figma";
+import { BackBar } from "@/app/ui/figma";
+import Sheet from "@/app/(clients)/Sheet";
 import { clientsNewestFirst, desk, leadIn, leadsNewestFirst, member as memberIn } from "@/data/desk";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -58,7 +59,7 @@ export default async function NewLeadPage({
     });
 
   return (
-    <PageBox width="880" className="gap-7">
+    <Sheet width={880}>
       <BackBar href="/clients" label="Clients" />
 
       <div className="flex flex-col gap-1">
@@ -79,6 +80,6 @@ export default async function NewLeadPage({
           {refusal("client.manage")}
         </p>
       )}
-    </PageBox>
+    </Sheet>
   );
 }
