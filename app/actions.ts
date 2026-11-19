@@ -317,6 +317,8 @@ import {
   nextDraftVersion,
   startingFields,
   ESA_FIELDS,
+  WORDED_HOLES,
+  holeValues,
   problemWithChanges,
   problemWithDraft,
   problemWithSigned,
@@ -2154,8 +2156,11 @@ async function fillAgreementDraft(
   }
   const templateBytes = await readBytes(template.key);
   if (!templateBytes) return { error: "The template file is registered but its bytes are gone. Upload it again on the Files screen." };
-  const fill = await fillDocx(Buffer.from(templateBytes), { ...esa.fields, effectiveDate: colomboDateInWords(now) });
-  const holeProblem = problemWithFill(fill.missing, (key) => ESA_FIELDS.find((f) => f.key === key)?.label ?? key);
+  const fill = await fillDocx(Buffer.from(templateBytes), { ...holeValues(esa.fields), effectiveDate: colomboDateInWords(now) });
+  const holeProblem = problemWithFill(
+    fill.missing,
+    (key) => ESA_FIELDS.find((f) => f.key === (WORDED_HOLES[key] ?? key))?.label ?? key,
+  );
   if (holeProblem) return { error: holeProblem };
 
   const base = "Agreement - " + safeName(String(esa.fields.companyName ?? "client")) + " - v" + version;
