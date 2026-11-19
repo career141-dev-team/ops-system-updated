@@ -112,6 +112,48 @@ export function problemWithDraft(fields: EsaFields): string | null {
   return "Still blank: " + missing.map((f) => f.label.toLowerCase()).join(", ") + ".";
 }
 
+const NUMBER_WORDS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+
+/** The holes worded from other fields, and the field a person fixes when one is blank. */
+export const WORDED_HOLES: Record<string, string> = {
+  feeText: "feeMonths",
+  guaranteeText: "guaranteeDays",
+  replacementText: "replacementWorkingDays",
+};
+
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+
+/** 1 to 99 in words, lower case ("sixty", "forty-five"); blank for anything else. */
+function inWords(n: number): string {
+  if (!Number.isInteger(n) || n < 1 || n > 99) return "";
+  if (n < 10) return NUMBER_WORDS[n].toLowerCase();
+  if (n < 20) return TEENS[n - 10];
+  return TENS[Math.floor(n / 10)] + (n % 10 ? "-" + NUMBER_WORDS[n % 10].toLowerCase() : "");
+}
+
+/**
+ * What the template is filled with (18 Nov): the fields, plus the two lines the
+ * owner's draft words in full - "One Month Gross Salary", "90 calendar days
+ * (3 months)", "sixty (60) working days". The template had "1 month(s) gross salary" instead, which is not
+ * how the agreement reads. A number that cannot be worded leaves the hole blank,
+ * so the fill refuses rather than guess.
+ */
+export function holeValues(fields: EsaFields): EsaFields {
+  const months = Number(fields.feeMonths);
+  const days = Number(fields.guaranteeDays);
+  const basis = (fields.feeBasis ?? "").trim().toLowerCase() === "basic" ? "Basic" : "Gross";
+  const feeText =
+    Number.isInteger(months) && NUMBER_WORDS[months] ? `${NUMBER_WORDS[months]} ${months === 1 ? "Month" : "Months"} ${basis} Salary` : "";
+  const guaranteeText =
+    Number.isInteger(days) && days > 0
+      ? `${days} calendar days` + (days % 30 === 0 ? ` (${days / 30} ${days === 30 ? "month" : "months"})` : "")
+      : "";
+  const replacement = Number(fields.replacementWorkingDays);
+  const replacementText = inWords(replacement) ? `${inWords(replacement)} (${replacement})` : "";
+  return { ...fields, feeText, guaranteeText, replacementText };
+}
+
 /** The numbers every agreement starts from, out of the settings. */
 export function defaultFields(settings: {
   guaranteeDays: number;
