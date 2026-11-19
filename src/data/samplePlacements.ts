@@ -54,6 +54,10 @@ const JOBS: Job[] = [
   { n: 21, company: "kelani", title: "Quality Manager", candidate: "Shehani Liyanage", salary: 310_000, joinIn: -150, offerLetter: true, placement: "joined", invoice: { state: "paid" }, guarantee: { state: "refund_pending", paid: true, leftDaysAgo: 100 } },
   { n: 22, company: "sunrise", title: "Sales Executive", candidate: "Lakmal Senaratne", salary: 180_000, joinIn: -160, offerLetter: true, placement: "joined", invoice: { state: "paid" }, guarantee: { state: "refunded", paid: true, leftDaysAgo: 110, refundPct: 25 } },
   { n: 23, company: "bluewater", title: "Accountant", candidate: "Nadeeka Kariyawasam", salary: 200_000, joinIn: -130, offerLetter: true, placement: "joined", invoice: { state: "written_off", writtenOff: true }, guarantee: { state: "void", paid: false }, close: "open" },
+  // 19 Nov: the guarantee that ended in a replacement (24 left, 25 replaced them), and an invoice old enough to be a write-off candidate (26).
+  { n: 24, company: "meridian", title: "Packing Supervisor", candidate: "Sandun Weerakoon", salary: 190_000, joinIn: -70, offerLetter: true, placement: "joined", invoice: { state: "paid" }, guarantee: { state: "replaced", paid: true, leftDaysAgo: 40 } },
+  { n: 25, company: "meridian", title: "Packing Supervisor", candidate: "Oshadi Ratnayake", salary: 190_000, joinIn: -8, offerLetter: true, placement: "joined", guarantee: { state: "running", paid: true }, replacementOf: 24 },
+  { n: 26, company: "sunrise", title: "Cashier Supervisor", candidate: "Janaka Mudalige", salary: 170_000, joinIn: -150, offerLetter: true, placement: "joined", invoice: { state: "sent", lateMonths: 3 }, guarantee: { state: "void", paid: false } },
 ];
 
 export const SAMPLE_JOB_NUMBERS = JOBS.map((j) => j.n);
@@ -256,10 +260,10 @@ export function samplePlacements(now: number, ownerId: string): PlacementSampleR
         endsAt: joinedAt + guaranteeDays * DAY,
         feePaidAt: g.paid ? joinedAt + 25 * DAY : null,
         leftAt,
-        reason: leftAt ? "Resigned for a role abroad." : g.state === "void" ? "The fee was written off." : null,
+        reason: leftAt ? "Resigned for a role abroad." : g.state === "void" ? (j.invoice?.writtenOff ? "The fee was written off." : "The fee was not paid in full.") : null,
         // Sixty working days is about twelve weeks.
         deadlineAt: leftAt ? leftAt + 84 * DAY : null,
-        replacedByPlacementId: j.n === 19 ? P + "pl_20" : null,
+        replacedByPlacementId: j.n === 19 ? P + "pl_20" : j.n === 24 ? P + "pl_25" : null,
         refundPct: refunded ? (g.refundPct ?? 25) : null,
         refundAmount: refunded ? Math.round(fee * ((g.refundPct ?? 25) / 100)) : null,
         decidedBy: refunded ? ownerId : null,

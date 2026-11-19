@@ -3,6 +3,7 @@ import "server-only";
 import { convexMutation, convexQuery, usingConvex } from "./convexClient";
 import { samplePlacements } from "@/data/samplePlacements";
 import { SAMPLE_PREFIX, sampleOpenings } from "./sampleOpenings";
+import { sampleDesk } from "./sampleDesk";
 import { repo } from "./store";
 import { seed } from "./seed";
 import type {
@@ -2130,7 +2131,7 @@ export async function takeReplacement(
  * Loads the invented Openings desk (src/data/sampleOpenings.ts) into the laptop's store and starts the clocks its
  * states imply, through the same starters the real flow uses. The JSON store only: the file is copied aside first.
  */
-export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise<{ ok: true; backup: string } | { ok: false; why: string }> {
+export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise<{ ok: true; backup: string; counts: Record<string, number> } | { ok: false; why: string }> {
   if (usingConvex()) return { ok: false, why: "The Openings sample is for the laptop run (sh deploy/local/start-ui.sh), not the Convex backend." };
   if (repo.all().clients.some((c) => c.id.startsWith(SAMPLE_PREFIX))) return { ok: false, why: "The Openings sample is already loaded." };
   const rows = sampleOpenings(now, ownerId);
@@ -2138,13 +2139,33 @@ export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise
   const money = samplePlacements(now, ownerId);
   rows.positions.push(...money.positions);
   rows.closeChecklists.push(...money.closeChecklists);
-  const backup = repo.addSample({
-    ...(rows as unknown as Partial<Record<keyof OpsDatabase, unknown[]>>),
+  // The staged desk (19 Nov): leads at every step, agreements in every state, every interview and hold state, the inbox.
+  const staged = sampleDesk(now, ownerId, repo.all().holidays.map((h) => h.date));
+  const { clockSetIds, ...stagedRows } = staged;
+  const merged: Record<string, unknown[]> = {
+    ...(rows as unknown as Record<string, unknown[]>),
     placements: money.placements,
     invoices: money.invoices,
     guarantees: money.guarantees,
-  });
+  };
+  for (const [key, list] of Object.entries(stagedRows)) merged[key] = [...(merged[key] ?? []), ...list];
+  const backup = repo.addSample(merged as Partial<Record<keyof OpsDatabase, unknown[]>>);
+  const counts = Object.fromEntries(Object.entries(merged).map(([key, list]) => [key, list.length]));
   const db = repo.all();
+  // Agreements that were sent and are being chased have their next chase clock, as chasing one by hand would start.
+  for (const esa of staged.agreements) {
+    if ((esa.state !== "sent" && esa.state !== "chasing") || !esa.sentAt) continue;
+    // A client who replied is not chased (the staged "client replied" example).
+    if (staged.inbound.some((m) => m.subjectId === esa.id)) continue;
+    const next = nextChaseAt(esa.chaseStep, esa.chaseStep ? esa.updatedAt : esa.sentAt);
+    if (next) await startTimer({ kind: "esa.chase", subjectType: "esa", subjectId: esa.id, startsAt: esa.sentAt, dueAt: next.dueAt, warnAt: null, ownerId, payload: { label: String(esa.fields.companyName ?? ""), step: String(next.step) } });
+  }
+  for (const set of staged.clientSets) {
+    if (clockSetIds.includes(set.id) && set.receivedAt) await startReceiptClocks(db, set, set.receivedAt);
+    if (set.state === "reviewing" && set.dueAt) {
+      await startTimer({ kind: "set.due", subjectType: "clientSet", subjectId: set.id, startsAt: now, dueAt: set.dueAt, warnAt: set.dueAt - 86_400_000, ownerId, payload: { label: set.name } });
+    }
+  }
   for (const set of rows.clientSets) {
     if (set.state === "sent" && set.receivedAt) await startReceiptClocks(db, set, set.receivedAt);
     if (set.state === "ready" && set.dueAt) {
@@ -2177,7 +2198,7 @@ export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise
       await startTimer({ kind: "ad.close", subjectType: "ad", subjectId: ad.id, startsAt: ad.liveAt ?? now, dueAt: ad.closesAt, warnAt: null, ownerId, payload: { label: ad.title } });
     }
   }
-  return { ok: true, backup };
+  return { ok: true, backup, counts };
 }
 
 /** Takes the sample out again, and everything that hung off it; the stand-in TA forgets what it remembered. */

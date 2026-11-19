@@ -81,18 +81,20 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
       <section className="flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
         <span className={figmaLabel}>SAMPLE DATA · LAPTOP ONLY</span>
         <p className="text-[14px] text-ink-soft">
-          Five invented clients and six openings, one in each state (JD to approve, searching, a set ready, a set with
-          the client, hold at five, waiting for TA, closed), with their adverts, interviews and clocks. Your data is
-          copied aside first; removing the sample takes out only its rows.
+          The staged dummy data: leads at every step, agreements in every state, clients at every stage, positions at every
+          stage with their sets, interviews, references and holds, placements with every invoice and guarantee state, and
+          the inbox (mail, WhatsApp, drafts, tasks, calls, Talent Pulse, the weekly report). Each example is named for
+          its state. Your data is copied aside first; removing it takes out only its rows. The same thing from a
+          terminal: node deploy/local/seed-ui.mjs (add --remove to take it out).
         </p>
         <div className="flex flex-wrap items-center gap-3">
           {sampleIn ? (
             <form action={devRemoveOpeningsSample}>
-              <button type="submit" className={pillSecondary}>Remove the Openings sample</button>
+              <button type="submit" className={pillSecondary}>Remove the staged dummy data</button>
             </form>
           ) : (
             <form action={devLoadOpeningsSample}>
-              <button type="submit" className={pillPrimary}>Load the Openings sample</button>
+              <button type="submit" className={pillPrimary}>Load the staged dummy data</button>
             </form>
           )}
           <form action={devTaPushQueue}>
