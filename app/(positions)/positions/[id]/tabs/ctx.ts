@@ -1,3 +1,4 @@
+import { roleNumbers } from "@/lib/roleNumbers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -146,8 +147,22 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
     (thread) => thread.about !== null && aboutIds.has(thread.about.id),
   );
 
+  // The number strip at the head of every tab (v6 R0).
+  const headcount = Number.parseInt(requirement?.fields.headcount ?? "", 10);
+  const numbers = roleNumbers({
+    now,
+    headcount: Number.isFinite(headcount) ? headcount : null,
+    candidates: allCandidates.map((cand) => ({ setId: cand.setId ?? null, out: cand.level === "out" })),
+    sets: itsSets.map((s) => ({ ...s, name: "SET " + s.setNumber })),
+    interviews: itsInterviews,
+    placements: itsPlacements,
+    guarantees: db.guarantees.filter((g) => itsPlacements.some((pl) => pl.id === g.placementId)),
+  });
+
+
+  const addressMissing = Boolean(client) && !(client?.billingAddress ?? "").trim();
   const daysOpen = Math.max(1, Math.floor((now - (position.handedOverAt ?? position.createdAt)) / 86_400_000));
-  return { stage, me, db, position, now, mayManage, mayAdvert, client, clientName, requirement, queued, taSide, taPeopleList, primaryTaPerson, taName, opsOwner, opsOwnerName, ad, hold, checklist, itsSets, sentSets, waitingSet, readySet, itsInterviews, liveIv, placement, guarantee, itsPlacements, step, allCandidates, related, whenDateOf, waitingOn, history, whenLocal, whenDate, itsThreads, daysOpen };
+  return { stage, me, db, position, now, mayManage, mayAdvert, client, clientName, requirement, queued, taSide, taPeopleList, primaryTaPerson, taName, opsOwner, opsOwnerName, ad, hold, checklist, itsSets, sentSets, waitingSet, readySet, itsInterviews, liveIv, placement, guarantee, itsPlacements, step, allCandidates, related, whenDateOf, waitingOn, history, whenLocal, whenDate, itsThreads, daysOpen, numbers, addressMissing };
 }
 
 export type RoleCtx = NonNullable<Awaited<ReturnType<typeof buildRoleCtx>>>;

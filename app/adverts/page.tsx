@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { BackBar, PageBox, StatusChip } from "@/app/ui/figma";
+import { BackBar, StatusChip } from "@/app/ui/figma";
 import { adsNewestFirst, desk, member as memberIn, runClocks } from "@/data/desk";
 import { adInWords } from "@/lib/adverts";
 import { day, foundInWords, listed, type Listed } from "@/lib/listing";
@@ -43,7 +43,7 @@ export default async function AdvertsPage({
   const shown = listed(rows, q, sort);
 
   return (
-    <PageBox width="1080" className="gap-6">
+    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6 rounded-[28px] bg-surface px-7 py-8 shadow-card">
       <BackBar href="/positions" label="Openings" />
 
       {msg && (
@@ -109,6 +109,6 @@ export default async function AdvertsPage({
           ))}
         </div>
       )}
-    </PageBox>
+    </div>
   );
 }

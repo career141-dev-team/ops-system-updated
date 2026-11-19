@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { BackBar, PageBox, RecordCard } from "@/app/ui/figma";
+import { BackBar, RecordCard } from "@/app/ui/figma";
 import { clientIn, desk, holdsNewestFirst, member as memberIn, runClocks } from "@/data/desk";
 import { HOLD_MEANINGS, type HoldState } from "@/lib/clientFeedback";
 import { currentMember } from "@/lib/session";
 
 /**
- * Held positions directory inside PageBox.
+ * Held positions directory.
  */
 export default async function HoldsPage({
   searchParams,
@@ -33,7 +33,7 @@ export default async function HoldsPage({
   const days = (from: number) => Math.max(1, Math.round((now - from) / 86_400_000));
 
   return (
-    <PageBox width="full" className="gap-7">
+    <div className="mx-auto flex w-full flex-col gap-7 rounded-[28px] bg-surface px-7 py-8 shadow-card">
       <BackBar href="/clients?filter=hold" label="Clients" />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -108,6 +108,6 @@ export default async function HoldsPage({
           })}
         </div>
       )}
-    </PageBox>
+    </div>
   );
 }

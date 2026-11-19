@@ -5,8 +5,7 @@ import Icon from "@/app/Icon";
 import {
   BackBar,
   FoldRow,
-  NextStepCard,
-  PageBox,
+  NextStepCard,
   StatTile,
   StatusChip,
   ViewPills,
@@ -99,7 +98,7 @@ export default async function PositionCandidatePage({
             : { eyebrow: "WHOSE MOVE · THE TA’S", title: `${firstName} is in the TA's search`, body: candidate.statusLabel, clock: null };
 
   return (
-    <PageBox width="1080" className="gap-6">
+    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6 rounded-[28px] bg-surface px-7 py-8 shadow-card">
       <BackBar
         href={`/positions/${position.id}?view=candidates`}
         label={`${position.title} · Candidates`}
@@ -379,6 +378,6 @@ export default async function PositionCandidatePage({
           {!candidate.manual && !candidate.setName && candInterviews.length === 0 && <p>• In the TA System&rsquo;s search: {candidate.statusLabel}</p>}
         </div>
       )}
-    </PageBox>
+    </div>
   );
 }
