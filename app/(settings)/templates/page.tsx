@@ -31,13 +31,18 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="flex flex-col gap-[22px]">
-      <div className="flex flex-col gap-1.5 p-1">
-        <h1 className="t-display">What we send</h1>
-        <p className="t-small text-ink-3">
-        {mayEdit
-          ? "The wording of every message, in one place. Change it here and the next one sent uses it."
-          : "The wording of every message. Only the ops lead can change it."}
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4 p-1">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="t-display">What we send</h1>
+          <p className="t-small text-ink-3">
+          {mayEdit
+            ? "The wording of every message, in one place. Change it here and the next one sent uses it."
+            : "The wording of every message. Only the ops lead can change it."}
+          </p>
+        </div>
+        <Link href="/settings?view=templates" className="t-body-m inline-flex items-center rounded-full border border-rule bg-surface px-4 py-2 text-ink hover:bg-sunk">
+          Open in Settings · Templates and people
+        </Link>
       </div>
 
       {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}

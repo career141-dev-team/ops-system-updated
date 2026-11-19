@@ -360,9 +360,11 @@ The screens were redrawn to the v6 design in a first wave; later waves fill the 
   are in the avatar menu (`app/ProfileMenu.tsx`), so nothing is unreachable.
 - **New routes**: `/calendar` (the week of interviews), `/hiring` and `/hiring/[id]` (our own
   vacancies), `/clients/agreements`.
-- **Redirects** (`next.config.ts`): `/sets`, `/placements`, `/guarantees`, `/holds`, `/adverts` go to
-  `/positions`; `/money` goes to `/invoices`. `/calls` and `/interviews` are **temporarily not
-  redirected**: they return when My work's calls view and the calendar's start-interview form land.
+- **Redirects** (`next.config.ts` and in-page redirects): `/sets`, `/placements`, `/guarantees`,
+  `/holds`, `/adverts` go to `/positions`; `/money` goes to `/invoices`; `/calls` redirects to
+  `/?view=calls` and `/interviews` redirects to `/calendar` (preserving `?msg=`). Calendar (`K1`)
+  now renders real client interviews, booked meetings, and joining days, plus a 680px
+  `?panel=start-interview` drawer.
 - **Role-tab aliases** (`src/lib/roleTabs.ts`): a role page has seven tabs, and an old `?view=` or
   `?tab=` (jd, adverts, placements, activity, messages, candidates) resolves to the tab that holds it,
   because stored tasks, mail and `back` fields still carry them.

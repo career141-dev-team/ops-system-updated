@@ -485,7 +485,7 @@ dialog.panel::backdrop {
     max-width: none;
     height: 100dvh;
     border-radius: 0;
-    padding: 20px;
+    padding: 20px 20px 96px;
   }
 }
 body:has(dialog.panel[open]) {
