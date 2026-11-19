@@ -126,6 +126,7 @@ import {
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
+import { safeBack, withMsg } from "@/lib/back";
 import { doNotContactFrom, gate, isRoutine, needsApproval, sentToday } from "@/lib/messages";
 import {
   addressesFrom,
@@ -370,7 +371,7 @@ function leadMoved(here: string, msg: string, formData: FormData): string {
 function answerBack(url: string, msg: string, formData: FormData): string {
   const at = String(formData.get("at") ?? "");
   const ok = /^[a-z0-9-]{1,64}$/.test(at);
-  return url + (url.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg) + (ok ? "&at=" + at + "#" + at : "");
+  return withMsg(backTo(formData, url), msg) + (ok ? "&at=" + at + "#" + at : "");
 }
 
 export async function startTestClock(): Promise<void> {
@@ -443,7 +444,7 @@ export async function changeSetting(formData: FormData): Promise<void> {
 }
 
 /** Read the Ops mailbox now. Off until the credentials exist, and it says so. */
-export async function readMailNow(): Promise<void> {
+export async function readMailNow(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const r = await readTheMailboxes(member.id);
@@ -455,7 +456,7 @@ export async function readMailNow(): Promise<void> {
     (r.ignored ? ", " + r.ignored + " newsletters and automatic messages left out" : "") + ".";
   const said = r.ok ? counted : (r.reason ?? "The mailboxes could not be read.") + " " + counted;
   revalidatePath("/mail");
-  redirect("/mail?msg=" + encodeURIComponent(said));
+  redirect(landed(formData, "/mail", said));
 }
 
 /* ── The stand-in TA System panel (/dev/ta, 17 Nov) ─────────────────────────
@@ -733,7 +734,7 @@ export async function devTaPushQueue(): Promise<void> {
 export async function pretendMailArrives(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  if (!devSignInAllowed()) redirect("/mail?msg=" + encodeURIComponent("Pretend mail is for development only."));
+  if (!devSignInAllowed()) redirect(landed(formData, "/mail", "Pretend mail is for development only."));
 
   const kind = String(formData.get("kind") ?? "reply");
   const db = await desk();
@@ -746,8 +747,11 @@ export async function pretendMailArrives(formData: FormData): Promise<void> {
   const r = await takeInbound([fakeArrival({ subject })], member.id);
   revalidatePath("/mail");
   redirect(
-    "/mail?msg=" +
-      encodeURIComponent(r.filed ? "Filed by its reference. " + r.chasesStopped + " chases stopped." : "It arrived, and is waiting for you to file it."),
+    landed(
+      formData,
+      "/mail",
+      r.filed ? "Filed by its reference. " + r.chasesStopped + " chases stopped." : "It arrived, and is waiting for you to file it.",
+    ),
   );
 }
 
@@ -911,10 +915,10 @@ export async function finishTask(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const taskId = String(formData.get("taskId") ?? "");
   const outcome = String(formData.get("outcome") ?? "");
-  if (!can(member, "task.do")) redirect("/tasks/" + taskId + "?msg=" + encodeURIComponent(refusal("task.do")));
+  if (!can(member, "task.do")) redirect(landed(formData, "/tasks/" + taskId, refusal("task.do")));
   // The owner's rule: what happened is written down before it is closed.
   if (!outcome.trim()) {
-    redirect("/tasks/" + taskId + "?msg=" + encodeURIComponent("Write one line about what happened first."));
+    redirect(landed(formData, "/tasks/" + taskId, "Write one line about what happened first."));
   }
   await finishTaskWrite(taskId, member.id, outcome);
   revalidatePath("/");
@@ -1046,9 +1050,12 @@ function confirmed(said: string, after = ""): string {
 
 /** Where a form came from, so the person lands back where they were standing. */
 function backTo(formData: FormData, fallback: string): string {
-  const back = String(formData.get("back") ?? "").trim();
-  // Only our own paths: a redirect to wherever a form said is an open door.
-  return back.startsWith("/") && !back.startsWith("//") && !back.includes("\\") ? back : fallback;
+  return safeBack(formData.get("back"), fallback);
+}
+
+/** The page an action answers on: where the form stood (`back`), else `fallback`, with the message joined on. */
+function landed(formData: FormData, fallback: string, msg: string): string {
+  return withMsg(backTo(formData, fallback), msg);
 }
 
 export async function approveAndSend(formData: FormData): Promise<void> {
@@ -1219,7 +1226,7 @@ export async function makePdfOfFile(formData: FormData): Promise<void> {
 export async function recordCall(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const back = (msg: string) => redirect("/calls?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, "/calls", msg));
   if (!can(member, "task.do")) back(refusal("task.do"));
 
   const input = {
@@ -1618,7 +1625,7 @@ export async function closeLead(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const state = String(formData.get("state") ?? "closed_other") as LeadState;
@@ -2807,7 +2814,7 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const clientId = String(formData.get("clientId") ?? "");
   const here = "/clients/" + clientId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   if (!clientIn(db, clientId)) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
@@ -2838,7 +2845,7 @@ export async function moveClientStage(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const clientId = String(formData.get("clientId") ?? "");
   const here = "/clients/" + clientId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const client = clientIn(db, clientId);
@@ -2965,7 +2972,7 @@ export async function reviewClientSet(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3036,7 +3043,7 @@ export async function sendClientSet(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3165,7 +3172,7 @@ export async function recordSetReceived(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3196,7 +3203,7 @@ export async function dropFromClientSet(formData: FormData): Promise<void> {
   const setId = String(formData.get("setId") ?? "");
   const who = String(formData.get("applicationTaId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3243,9 +3250,8 @@ export async function recordInternalInterview(formData: FormData): Promise<void>
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
   const who = String(formData.get("applicationTaId") ?? "");
-  // Back to the page the form was on, but only to one of our own two pages, never to an address a form made up.
-  const from = String(formData.get("back") ?? "");
-  const here = /^\/(positions|sets)\/[A-Za-z0-9_-]+(\/candidates\/[^?#\s]+)?(\?tab=[a-z]+)?$/.test(from) ? from : "/sets/" + setId;
+  // Back to the page the form was on (own paths only, see backTo).
+  const here = backTo(formData, "/sets/" + setId);
   const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
@@ -3299,7 +3305,7 @@ export async function recordCvClaim(formData: FormData): Promise<void> {
   const setId = String(formData.get("setId") ?? "");
   const who = String(formData.get("applicationTaId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3383,7 +3389,7 @@ export async function recordClientDecision(formData: FormData): Promise<void> {
   const setId = String(formData.get("setId") ?? "");
   const who = String(formData.get("applicationTaId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -3442,7 +3448,7 @@ export async function approveTheHold(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const holdId = String(formData.get("holdId") ?? "");
   const here = "/holds/" + holdId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const hold = holdIn(db, holdId);
@@ -3520,7 +3526,7 @@ export async function liftTheHold(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const holdId = String(formData.get("holdId") ?? "");
   const here = "/holds/" + holdId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const hold = holdIn(db, holdId);
@@ -4498,7 +4504,7 @@ export async function approveWeeklyReport(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const reportId = String(formData.get("reportId") ?? "");
   const here = "/reports/" + reportId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "report.read")) back(refusal("report.read"));
   const db = await desk();
   const report = reportIn(db, reportId);
@@ -4564,7 +4570,7 @@ export async function approveWeeklyReport(formData: FormData): Promise<void> {
 export async function startInterview(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const back = (msg: string) => redirect("/interviews?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, "/interviews", msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const applicationTaId = String(formData.get("applicationTaId") ?? "").trim();
@@ -4640,7 +4646,7 @@ export async function requestInterviewSlots(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -4712,7 +4718,7 @@ export async function recordInterviewSlots(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -4750,7 +4756,7 @@ export async function recordCandidatePick(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -4776,7 +4782,7 @@ export async function recordSlotAnswers(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -4801,7 +4807,7 @@ export async function recordClientBooking(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -4871,7 +4877,7 @@ export async function bookInterview(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5037,7 +5043,7 @@ export async function markInterviewAttendance(formData: FormData): Promise<void>
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5080,7 +5086,7 @@ export async function recordCandidateOut(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const reason = String(formData.get("reason") ?? "").trim();
@@ -5110,7 +5116,7 @@ export async function rescheduleInterview(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5203,7 +5209,7 @@ export async function cancelInterview(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5243,7 +5249,7 @@ export async function recordRoundDecision(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5310,7 +5316,7 @@ export async function requestReference(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const interview = interviewIn(db, interviewId);
@@ -5362,7 +5368,7 @@ export async function recordReferenceReport(formData: FormData): Promise<void> {
   const referenceId = String(formData.get("referenceId") ?? "");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const reference = referenceIn(db, referenceId);
@@ -5385,7 +5391,7 @@ export async function relayReference(formData: FormData): Promise<void> {
   const referenceId = String(formData.get("referenceId") ?? "");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const reference = referenceIn(db, referenceId);
@@ -5428,7 +5434,7 @@ export async function recordReferenceDecision(formData: FormData): Promise<void>
   const referenceId = String(formData.get("referenceId") ?? "");
   const interviewId = String(formData.get("interviewId") ?? "");
   const here = "/interviews/" + interviewId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const reference = referenceIn(db, referenceId);
@@ -5471,7 +5477,7 @@ export async function markJoined(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -5502,7 +5508,7 @@ export async function markNoShow(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const placement = placementIn(db, placementId);
@@ -5559,7 +5565,7 @@ export async function recordNoShowChoice(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const placement = placementIn(db, placementId);
@@ -5596,7 +5602,7 @@ export async function changeJoinDate(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const placement = placementIn(db, placementId);
@@ -5654,7 +5660,7 @@ export async function correctSalarySplit(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
   const db = await desk();
   const placement = placementIn(db, placementId);
@@ -5692,7 +5698,7 @@ export async function cancelPlacement(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const placementId = String(formData.get("placementId") ?? "");
   const here = "/placements/" + placementId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const placement = placementIn(db, placementId);
@@ -5883,7 +5889,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const here = "/invoices/" + invoiceId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage")) back(refusal("money.manage"));
   const db = await desk();
   const invoice = invoiceIn(db, invoiceId);
@@ -5999,7 +6005,7 @@ export async function recordPayment(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const here = "/invoices/" + invoiceId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage")) back(refusal("money.manage"));
   const db = await desk();
   const invoice = invoiceIn(db, invoiceId);
@@ -6091,7 +6097,7 @@ export async function markInvoiceDisputed(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const here = "/invoices/" + invoiceId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage")) back(refusal("money.manage"));
 
   const reason = String(formData.get("reason") ?? "").trim();
@@ -6129,7 +6135,7 @@ export async function writeOffInvoice(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const here = "/invoices/" + invoiceId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "refund.decide") && !can(member, "money.manage")) back(refusal("money.manage"));
   const db = await desk();
   const invoice = invoiceIn(db, invoiceId);
@@ -6184,7 +6190,7 @@ export async function recordLeaver(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const guaranteeId = String(formData.get("guaranteeId") ?? "");
   const here = "/guarantees/" + guaranteeId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const guarantee = guaranteeIn(db, guaranteeId);
@@ -6214,7 +6220,7 @@ export async function decideRefund(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const guaranteeId = String(formData.get("guaranteeId") ?? "");
   const here = "/guarantees/" + guaranteeId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "refund.decide")) back(refusal("refund.decide"));
   const db = await desk();
   const guarantee = guaranteeIn(db, guaranteeId);
@@ -6283,7 +6289,7 @@ export async function markRefunded(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const guaranteeId = String(formData.get("guaranteeId") ?? "");
   const here = "/guarantees/" + guaranteeId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage")) back(refusal("money.manage"));
   const db = await desk();
   const guarantee = guaranteeIn(db, guaranteeId);
@@ -6304,7 +6310,7 @@ export async function tickCloseItem(formData: FormData): Promise<void> {
   const checklistId = String(formData.get("checklistId") ?? "");
   const key = String(formData.get("key") ?? "");
   const here = "/closes/" + checklistId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const checklist = checklistIn(db, checklistId);
@@ -6340,7 +6346,7 @@ export async function completeClose(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const checklistId = String(formData.get("checklistId") ?? "");
   const here = "/closes/" + checklistId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const checklist = checklistIn(db, checklistId);
@@ -6388,7 +6394,7 @@ export async function openCloseByHand(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
   const here = "/positions/" + positionId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   const position = positionIn(db, positionId);
@@ -6404,7 +6410,7 @@ export async function openCloseByHand(formData: FormData): Promise<void> {
   redirect(
     checklist
       ? "/closes/" + checklist.id + "?msg=" + encodeURIComponent("The close list is open. Nothing closes until every item is ticked.")
-      : here + "?msg=" + encodeURIComponent("Nothing to close."),
+      : landed(formData, here, "Nothing to close."),
   );
 }
 
@@ -6522,7 +6528,7 @@ export async function requestAd(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
   const here = "/positions/" + positionId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
   const db = await desk();
   const position = positionIn(db, positionId);
@@ -6589,7 +6595,7 @@ export async function recordAdFlyer(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const adId = String(formData.get("adId") ?? "");
   const here = "/adverts/" + adId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
   const db = await desk();
   const ad = adIn(db, adId);
@@ -6612,7 +6618,7 @@ export async function orderAd(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const adId = String(formData.get("adId") ?? "");
   const here = "/adverts/" + adId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
   const db = await desk();
   const ad = adIn(db, adId);
@@ -6671,7 +6677,7 @@ export async function markAdLive(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const adId = String(formData.get("adId") ?? "");
   const here = "/adverts/" + adId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
   const db = await desk();
   const ad = adIn(db, adId);
@@ -6713,7 +6719,7 @@ export async function markAdClosed(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const adId = String(formData.get("adId") ?? "");
   const here = "/adverts/" + adId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
   const db = await desk();
   const ad = adIn(db, adId);
@@ -6749,7 +6755,7 @@ export async function dropAd(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const adId = String(formData.get("adId") ?? "");
   const here = "/adverts/" + adId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "advert.manage")) back("TopJobs is for ops or marketing.");
 
   const reason = String(formData.get("reason") ?? "").trim();
@@ -6799,7 +6805,7 @@ export async function dismissUnreportedHire(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const setId = String(formData.get("setId") ?? "");
   const here = "/sets/" + setId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const reason = String(formData.get("reason") ?? "").trim();
@@ -6817,7 +6823,7 @@ export async function raiseCreditNote(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const here = "/invoices/" + invoiceId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage")) back(refusal("money.manage"));
 
   const amount = Number(formData.get("amount") ?? 0);
@@ -6971,7 +6977,7 @@ export async function improveDraft(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const messageId = String(formData.get("messageId") ?? "");
   const here = "/messages/" + messageId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "message.approve")) back(refusal("message.approve"));
   const db = await desk();
   const message = db.messages.find((m) => m.id === messageId);
@@ -7010,7 +7016,7 @@ export async function useImprovedDraft(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const messageId = String(formData.get("messageId") ?? "");
   const here = "/messages/" + messageId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "message.approve")) back(refusal("message.approve"));
 
   const runId = String(formData.get("runId") ?? "");
@@ -7104,7 +7110,7 @@ export async function summariseClient(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const clientId = String(formData.get("clientId") ?? "");
   const here = "/clients/" + clientId;
-  const back = (msg: string) => redirect(here + "?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "report.read")) back(refusal("report.read"));
   const db = await desk();
   const client = clientIn(db, clientId);
@@ -7297,8 +7303,10 @@ export async function quickAdd(formData: FormData): Promise<void> {
     createdBy: member.id,
   });
   revalidatePath("/leads");
+  // A company we already know goes straight to the check that decides it (package D, 19 Nov).
+  const known = duplicateMatch(input.company, db.clients.map((c) => ({ id: c.id, name: c.name, nameKey: c.nameKey, esaSignedAt: null })));
+  if (known.exact || known.near.length) redirect("/leads?panel=duplicate-check&on=" + lead.id);
   said("Saved. " + input.company + " is on the leads list with its two checks waiting.");
-  void lead;
 }
 
 /**

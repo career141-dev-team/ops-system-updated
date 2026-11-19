@@ -236,7 +236,7 @@ the invoices screen instead, which is where somebody would act on it.
 
 The weekly report (step 9) was built on 3 November and is above.
 
-| The numbers | `src/lib/numbers.ts`, screen `app/(reports)/numbers` | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
+| The numbers | `src/lib/numbers.ts` (its screen, `app/(reports)/numbers`, was deleted in the v6 UI; the Reports menu entry is gone too, and `/reports` redirects to `/positions`) | how long an agreement takes to come back, how long a client sits on a set, how long a position takes to fill, how long the money takes, joining days that moved, guarantees kept. Every line says how many finished things it is made of, and the ones still waiting are **not** in the average - a slow month must not look fast because the slowest clients never answered |
 
 Still to come in phase 7: the credit note **document**, which waits on the same
 template work as the invoice.
