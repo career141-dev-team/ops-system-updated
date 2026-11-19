@@ -4,8 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { dropAd, markAdClosed, markAdLive, orderAd, recordAdFlyer } from "@/app/actions";
 import {
   BackBar,
-  FoldRow,
-  PageBox,
+  FoldRow,
   StatusChip,
   figmaField,
   pillPrimary,
@@ -44,7 +43,7 @@ export default async function AdvertPage({
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   return (
-    <PageBox width="1080" className="gap-6">
+    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6 rounded-[28px] bg-surface px-7 py-8 shadow-card">
       <BackBar
         href={position ? `/positions/${position.id}?view=advertising` : "/adverts"}
         label={position ? `${position.title} · Advertising` : "Paid adverts"}
@@ -230,6 +229,6 @@ export default async function AdvertPage({
           ))}
         </div>
       </FoldRow>
-    </PageBox>
+    </div>
   );
 }

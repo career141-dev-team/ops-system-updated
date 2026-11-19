@@ -1,5 +1,5 @@
 /**
- * The sidebar points at pages that exist (6 Nov).
+ * The bar points at pages that exist (6 Nov, kept for the v6 bar).
  *
  * Money was in the sidebar with `href: "/money"` and no page behind it, so
  * clicking it gave a 404. Nothing caught it: the walk-throughs always reached
@@ -12,7 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, pageAndSectionFor, tabFor, workspaceTitle } from "@/lib/nav";
+import { COVERS, NAV, PHONE_ONLY, PHONE_PAGES, isHere, pageAndSectionFor } from "@/lib/nav";
 
 const APP = join(process.cwd(), "app");
 
@@ -31,7 +31,7 @@ function hasPage(href: string): boolean {
   return [".", ...groups].some((group) => existsSync(join(APP, group, ...rest, "page.tsx")));
 }
 
-test("every sidebar entry has a page behind it", () => {
+test("every bar entry has a page behind it", () => {
   for (const section of NAV) {
     for (const entry of section.pages) {
       assert.equal(hasPage(entry.href), true, entry.what + " points at " + entry.href + ", which has no page");
@@ -39,20 +39,30 @@ test("every sidebar entry has a page behind it", () => {
   }
 });
 
-test("every sidebar entry knows which pages it covers", () => {
-  for (const section of NAV) {
-    for (const entry of section.pages) {
-      if (entry.href === "/") continue;
-      assert.ok(COVERS[entry.href], entry.what + " is in the sidebar with nothing in COVERS, so it can never count its work");
-    }
+test("the bar is the eight of the v6 design, in its order", () => {
+  assert.equal(NAV.length, 1);
+  assert.deepEqual(
+    NAV[0].pages.map((p) => p.what),
+    ["My work", "Inbox", "Calendar", "Clients", "Positions", "Internal hiring", "Accounts", "Settings"],
+  );
+  assert.deepEqual(
+    NAV[0].pages.filter((p) => p.needs).map((p) => [p.href, p.needs]),
+    [
+      ["/invoices", "money.manage"],
+      ["/settings", "settings.manage"],
+    ],
+  );
+});
+
+test("every bar entry knows which pages it covers", () => {
+  for (const entry of NAV.flatMap((s) => s.pages)) {
+    assert.ok(COVERS[entry.href], entry.what + " is in the bar with nothing in COVERS, so it can never count its work");
   }
 });
 
 test("a covered page belongs to the entry that covers it", () => {
   for (const [href, covered] of Object.entries(COVERS)) {
     for (const path of covered) {
-      // /messages and /tasks are reached from the thing they are about, so
-      // they are covered for the counts without being pages of their own.
       const found = pageAndSectionFor(path);
       assert.ok(found, path + " is covered by " + href + " but belongs to no entry");
       assert.equal(found.page.href, href, path + " counts against " + found.page.href + ", not " + href);
@@ -60,35 +70,32 @@ test("a covered page belongs to the entry that covers it", () => {
   }
 });
 
-test("every page on the phone's bar is a real sidebar entry", () => {
+test("an old route stays attached to an entry", () => {
+  for (const [path, entry] of [
+    ["/sets/abc", "/positions"],
+    ["/placements/p1", "/positions"],
+    ["/guarantees/g1", "/positions"],
+    ["/reports", "/positions"],
+    ["/interviews/i1", "/calendar"],
+    ["/calls", "/"],
+    ["/tasks/t1", "/"],
+    ["/messages/m1", "/mail"],
+    ["/closes/c1", "/invoices"],
+    ["/money", "/invoices"],
+    ["/templates", "/settings"],
+    ["/leads/new", "/clients"],
+  ] as const) {
+    assert.equal(pageAndSectionFor(path)?.page.href, entry, path);
+    assert.equal(isHere(path, entry), true, path);
+  }
+  assert.equal(isHere("/leads", "/"), false, "the day is only the day");
+});
+
+test("the phone's bar is My work, Inbox, Search and Add (PH1)", () => {
   const hrefs = NAV.flatMap((s) => s.pages.map((p) => p.href));
   for (const href of PHONE_PAGES) {
-    // The chat is the column on the desk, not a ninth sidebar entry (docs/25: eight, never more).
-    assert.ok(hrefs.includes(href) || PHONE_ONLY[href], href + " is on the phone bar but not in the sidebar, and not named as phone-only");
+    assert.ok(hrefs.includes(href) || PHONE_ONLY[href], href + " is on the phone bar but not in the bar, and not named as phone-only");
   }
-  assert.equal(PHONE_PAGES.length, 4, "four fit a thumb; five do not");
-});
-
-test("the tab above the page names the entry the bar marks, or the page itself", () => {
-  assert.equal(workspaceTitle("/"), "My Work");
-  assert.equal(workspaceTitle("/clients/abc"), "Clients");
-  assert.equal(workspaceTitle("/sets/abc"), "Openings", "a CV set is a face of a position");
-  assert.equal(workspaceTitle("/guarantees/x"), "Placements");
-  assert.equal(workspaceTitle("/invoices"), "Finance");
-  assert.equal(workspaceTitle("/account"), "Profile");
-  assert.equal(workspaceTitle("/notifications"), "Notifications");
-  assert.equal(workspaceTitle("/chat"), "AURA");
-  assert.equal(workspaceTitle("/sign-in"), null);
-  for (const section of NAV) for (const page of section.pages) assert.equal(workspaceTitle(page.href), page.what === "Reports" ? "Report" : page.what, "the frames call it Report");
-});
-
-test("the tab is only drawn where a frame has one", () => {
-  assert.equal(tabFor("/clients/abc"), "Clients");
-  assert.equal(tabFor("/leads/new"), "Lead", "the form says Lead, though it is a Clients page");
-  assert.equal(tabFor("/notifications"), null);
-  assert.equal(tabFor("/account"), "Profile");
-  assert.equal(tabFor("/settings"), null);
-  assert.equal(tabFor("/templates"), null, "a Settings face");
-  assert.equal(tabFor("/find"), null);
-  assert.equal(tabFor("/leads/ld1"), "Clients", "a lead is still a Clients page");
+  // Three pages and the Add button make the four tabs the frame draws.
+  assert.equal(PHONE_PAGES.length, 3);
 });

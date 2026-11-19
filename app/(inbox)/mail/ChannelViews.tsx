@@ -1,0 +1,156 @@
+import Link from "next/link";
+
+import Icon from "@/app/Icon";
+import { EmptyState, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { groupByDay, type NewsItem, type WhatsAppView } from "@/lib/inboxChannels";
+import { bubbleWhen, initialsOf, shortWhen } from "@/lib/myWork";
+import CopyButton from "./CopyButton";
+
+const row = "flex items-center gap-4 rounded-[22px] bg-surface px-[22px] py-[18px] shadow-card";
+
+function Section({ tone, label, count }: { tone: "warn" | "info" | "ink"; label: string; count: number }) {
+  const c = tone === "warn" ? ["bg-warn", "text-warn"] : tone === "info" ? ["bg-info", "text-info"] : ["bg-ink", "text-ink"];
+  return (
+    <div className="flex items-center gap-2.5 px-2 pb-1 pt-3.5">
+      <span className={"size-2 rounded-[4px] " + c[0]} />
+      <span className={"t-body-m " + c[1]}>{label}</span>
+      <span className="t-small text-ink-3">{count}</span>
+    </div>
+  );
+}
+
+const bubble = (
+  <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-2">
+    <Icon name="chat" size={18} />
+  </span>
+);
+
+/** I2 (132:2). Ops cannot read or send WhatsApp: replies are recorded by a person, messages are copied by hand. */
+export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }) {
+  const { replies, ready } = view;
+  if (replies.length === 0 && ready.length === 0) {
+    return (
+      <EmptyState icon="chat" title="Nothing on WhatsApp right now">
+        No client replies are waiting to be recorded and no WhatsApp messages are waiting to be copied. The system cannot read WhatsApp: when a client writes in their group, record the reply from the role page.
+      </EmptyState>
+    );
+  }
+  return (
+    <div className="flex items-start gap-[22px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <Section tone="warn" label="Client replies to record" count={replies.length} />
+        {replies.length === 0 && <p className="t-small px-2 text-ink-3">No replies waiting.</p>}
+        {replies.map((r) => (
+          <div key={r.id} className={row}>
+            {bubble}
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <p className="t-body-m">
+                {r.who} <span className="t-small font-normal text-ink-3">{bubbleWhen(r.at, now)}</span>
+              </p>
+              <p className="t-body break-words">&ldquo;{r.quote}&rdquo;</p>
+              {r.about && <span className="t-label self-start rounded-full bg-info-soft px-3 py-1 text-info">{r.about}</span>}
+            </div>
+            {r.recordHref ? (
+              <Link href={r.recordHref} className={pillPrimary + " !py-2"}>Record</Link>
+            ) : (
+              <span title="Not filed to a set yet: file it from its role page" className={pillSecondary + " !py-2 opacity-50"}>Record</span>
+            )}
+          </div>
+        ))}
+        <Section tone="info" label="Messages ready to copy" count={ready.length} />
+        {ready.length === 0 && <p className="t-small px-2 text-ink-3">Nothing waiting to be copied.</p>}
+        {ready.map((m) => (
+          <div key={m.id} className={row}>
+            {bubble}
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <p className="t-body-m">
+                {m.who} <span className="t-small font-normal text-ink-3">{shortWhen(m.at, now)}</span>
+              </p>
+              <p className="t-body whitespace-pre-wrap break-words">{m.text}</p>
+              <span className={"t-label self-start rounded-full px-3 py-1 " + (m.state === "approved" ? "bg-bg-ok text-success" : "bg-sunk text-ink-2")}>
+                {m.state === "approved" ? "Approved" : "Draft: waits for approval"}
+              </span>
+            </div>
+            <CopyButton text={m.text} />
+          </div>
+        ))}
+      </div>
+      <aside className="flex w-[300px] shrink-0 flex-col gap-4">
+        <div className="flex flex-col gap-1.5 rounded-[22px] bg-ink px-5 py-5 text-ink-inverse">
+          <p className="t-micro opacity-70">WAITING FOR YOU</p>
+          <p className="t-h2">{replies.length} {replies.length === 1 ? "reply" : "replies"} to record</p>
+        </div>
+        <p className="rounded-[22px] bg-surface px-5 py-5 t-body shadow-card">The system cannot read WhatsApp. Record each client reply here.</p>
+      </aside>
+    </div>
+  );
+}
+
+const TONE = { good: "bg-bg-ok text-success", info: "bg-info-soft text-info", warn: "bg-warn-soft text-warn" } as const;
+
+/** I3 (133:384). No team feed is stored yet, so the post box is disabled and the list says so unless items exist. */
+export function NewsPanel({ items, now, name }: { items: NewsItem[]; now: number; name: string }) {
+  const days = groupByDay(items);
+  const dayLabel = (d: string) => {
+    const today = new Date(now + 5.5 * 3_600_000).toISOString().slice(0, 10);
+    const days = Math.round((Date.parse(today) - Date.parse(d)) / 86_400_000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    return new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  };
+  return (
+    <div className="flex items-start gap-[22px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex items-center gap-4 rounded-[28px] bg-surface p-[18px] shadow-card">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-soft t-label text-brand">{initialsOf(name)}</span>
+          <input disabled aria-label="Write a note to the team" placeholder="Write a note to the team" title="not connected yet: team notes are not stored" className="min-w-0 flex-1 rounded-full bg-sunk px-4 py-3 t-body outline-none placeholder:text-ink-3 disabled:cursor-not-allowed" />
+          <button disabled title="not connected yet: team notes are not stored" className={pillPrimary + " !py-2 opacity-40 cursor-not-allowed"}>Post</button>
+        </div>
+        {days.length === 0 ? (
+          <EmptyState icon="bell" title="No team news yet">
+            Not connected yet: the team feed (signed, booked, offers, placements) is not stored anywhere. Nothing is shown rather than made up.
+          </EmptyState>
+        ) : (
+          days.map((g) => (
+            <div key={g.day} className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5 px-2 pb-1 pt-3.5">
+                <span className="size-2 rounded-[4px] bg-ink" />
+                <span className="t-body-m">{dayLabel(g.day)}</span>
+                <span className="t-small text-ink-3">{g.items.length}</span>
+              </div>
+              {g.items.map((n) => (
+                <div key={n.id} className={row}>
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk t-body-m text-ink-2">{initialsOf(n.by)}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <p className="flex items-center gap-2">
+                      <span className={"t-label rounded-full px-2.5 py-0.5 " + TONE[n.tone]}>{n.kind}</span>
+                      <span className="t-small text-ink-3">{n.by} · {bubbleWhen(n.at, now)}</span>
+                    </p>
+                    <p className="t-body-m">{n.text}</p>
+                    {n.about && (n.href ? <Link href={n.href} className="t-small text-brand hover:underline">{n.about}</Link> : <span className="t-small text-brand">{n.about}</span>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+      <aside className="flex w-[300px] shrink-0 flex-col gap-3 rounded-[22px] bg-surface p-5 shadow-card">
+        <p className="t-micro text-ink-3">FOLLOW</p>
+        {[
+          ["My clients", "Their events show here"],
+          ["All", "Every client and role"],
+          ["Placements only", "Joining"],
+        ].map(([t, s]) => (
+          <div key={t} className="flex items-center gap-3" title="not connected yet: the team feed is not stored">
+            <div className="flex-1">
+              <p className="t-body-m">{t}</p>
+              <p className="t-small text-ink-3">{s}</p>
+            </div>
+            <span aria-disabled className="h-6 w-10 rounded-full bg-sunk opacity-60" />
+          </div>
+        ))}
+      </aside>
+    </div>
+  );
+}

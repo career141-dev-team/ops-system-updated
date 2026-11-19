@@ -7,7 +7,6 @@ import { createPortal } from "react-dom";
 
 import { setTheme, signOutAction, toggleChat, viewAs } from "@/app/actions";
 import { NAV, isHere } from "@/lib/nav";
-import type { WorkCount } from "@/lib/sectionWork";
 
 /**
  * The profile and what is behind it (16 Nov, the owner's screenshot): a card under the avatar,
@@ -21,7 +20,7 @@ import type { WorkCount } from "@/lib/sectionWork";
  */
 export default function ProfileMenu({
   may,
-  counts,
+  phone = false,
   who,
   viewing,
   chips,
@@ -29,7 +28,8 @@ export default function ProfileMenu({
   chatOpen,
 }: {
   may: Record<string, boolean>;
-  counts: Record<string, WorkCount>;
+  /** The phone's avatar (PH1): a 36px circle, and the card carries the eight pages the bar does not. */
+  phone?: boolean;
   who: { name: string; role: string };
   /** The role being previewed, in words, or null. */
   viewing: string | null;
@@ -54,8 +54,6 @@ export default function ProfileMenu({
   useEffect(() => setMounted(true), []);
   useEffect(() => setOpen(false), [path]);
 
-  const more = NAV[1];
-  const mayShow = (needs?: string) => !needs || may[needs];
   const initials = who.name
     .split(/\s+/)
     .filter(Boolean)
@@ -73,12 +71,12 @@ export default function ProfileMenu({
         aria-expanded={open}
         aria-haspopup="true"
         title={who.name + " · " + who.role}
-        className="flex shrink-0 cursor-pointer items-center gap-2.5 text-left"
+        className={"flex shrink-0 cursor-pointer items-center text-left " + (phone ? "" : "gap-2.5 pl-1 pr-1.5")}
       >
-        <span className="flex size-10 items-center justify-center rounded-full bg-bg-brand text-[14px] font-medium text-brand">{initials}</span>
-        <span className="hidden flex-col 2xl:flex">
-          <span className="text-[14px] font-medium leading-[21px] text-ink">{who.name}</span>
-          <span className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">{viewing ? "Viewing as " + viewing : who.role}</span>
+        <span className={"t-label flex items-center justify-center rounded-full bg-bg-brand text-brand " + (phone ? "size-9" : "size-10")}>{initials}</span>
+        <span className={"flex-col " + (phone ? "hidden" : "hidden 2xl:flex")}>
+          <span className="t-body-m text-ink">{who.name}</span>
+          <span className="t-small text-ink-3">{viewing ? "Viewing as " + viewing : who.role}</span>
         </span>
       </button>
 
@@ -87,7 +85,7 @@ export default function ProfileMenu({
         createPortal(
           <>
             <button type="button" data-close onClick={() => setOpen(false)} aria-label="Close the menu" className="fixed inset-0 z-[60] cursor-default bg-veil backdrop-blur-[4px]" />
-            <div role="menu" className="fixed right-6 top-[96px] z-[70] flex max-h-[calc(100dvh/0.9-112px)] w-[300px] flex-col gap-0.5 overflow-y-auto rounded-panel bg-surface p-2 shadow-float">
+            <div role="menu" className="fixed right-4 top-[72px] md:right-10 md:top-[108px] z-[70] flex max-h-[calc(100dvh-124px)] w-[300px] flex-col gap-0.5 overflow-y-auto rounded-[24px] bg-surface p-2 shadow-float">
               {/* The name and role open the profile (Figma 283:3530). */}
               <Link href="/account" aria-label="Open your profile" className="rounded-lg px-3 pb-2 pt-2 hover:bg-sunk">
                 <p className="text-[16px] font-medium leading-[26px] text-ink">{who.name}</p>
@@ -99,19 +97,29 @@ export default function ProfileMenu({
               <Link href="/notifications" aria-current={isHere(path, "/notifications") ? "page" : undefined} className={item}>
                 <span className="flex-1">Notifications</span>
               </Link>
-              {more.pages
-                .filter((page) => mayShow(page.needs))
-                .map((page) => {
-                  const count = counts[page.href];
-                  return (
-                    <Link key={page.href} href={page.href} title={page.about} aria-current={isHere(path, page.href) ? "page" : undefined} className={item}>
-                      <span className="flex-1">{page.what}</span>
-                      {count && count.waiting > 0 && <span className={"text-[12px] " + (count.late ? "text-danger" : "text-ink-faint")}>{count.waiting}</span>}
+              {/* Pages with no bar entry of their own: reachable from here so none is a dead end (v6, 19 Nov). */}
+              {[
+                { href: "/work", what: "Work" },
+                { href: "/candidates", what: "Candidates" },
+                ...(may["report.read"] ? [{ href: "/reports", what: "Reports" }] : []),
+              ].map((page) => (
+                <Link key={page.href} href={page.href} aria-current={isHere(path, page.href) ? "page" : undefined} className={item}>
+                  {page.what}
+                </Link>
+              ))}
+              {phone &&
+                NAV[0].pages
+                  .filter((page) => !page.needs || may[page.needs])
+                  .map((page) => (
+                    <Link key={page.href} href={page.href} aria-current={isHere(path, page.href) ? "page" : undefined} className={item}>
+                      {page.what}
                     </Link>
-                  );
-                })}
+                  ))}
               {/* AURA's column, open or shut (docs/31). */}
-              <form action={toggleChat}>
+              <Link href="/chat" aria-current={isHere(path, "/chat") ? "page" : undefined} className={item + " lg:hidden"}>
+                Open AURA
+              </Link>
+              <form action={toggleChat} className="max-lg:hidden">
                 <input type="hidden" name="back" value={path} />
                 <button aria-pressed={chatOpen} className={item}>
                   {chatOpen ? "Close AURA" : "Open AURA"}

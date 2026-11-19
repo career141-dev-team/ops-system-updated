@@ -1,12 +1,14 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { desk } from "@/data/desk";
-import { timeLeft } from "@/lib/timers";
-import { currentMember } from "@/lib/session";
 import { finishTask } from "@/app/actions";
-import { BackBar, PageBox, figmaField, figmaLabel, pillPrimary } from "@/app/ui/figma";
+import { Card, PageTitle, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
+import { desk } from "@/data/desk";
+import { contextOf, firstLines } from "@/lib/myWorkView";
+import { currentMember } from "@/lib/session";
+import { timeLeft } from "@/lib/timers";
 
-/** One task, on its own page: what it is, when it is due, what happened. */
+/** One task, on its own page: what it is, when it is due, and the one line that closes it. */
 export default async function TaskPage({
   params,
   searchParams,
@@ -18,39 +20,51 @@ export default async function TaskPage({
   if (!member) redirect("/sign-in");
   const { id } = await params;
   const { msg } = await searchParams;
-  const task = (await desk()).tasks.find((t) => t.id === id);
+  const db = await desk();
+  const task = db.tasks.find((t) => t.id === id);
   if (!task) notFound();
 
   const left = timeLeft(task.dueAt, Date.now());
+  const about = contextOf(db, task);
+  const sub = [about.client, about.role].filter(Boolean).join(" · ");
 
   return (
-    // Drawn like the other record pages (17 Nov): it was the last page still in the first skeleton's style.
-    <PageBox width="880" className="gap-5">
-      <BackBar href="/" label="My Work" />
-      <div className="flex flex-col gap-1">
-        <p className="text-[14px] leading-[21px] text-ink-faint">
-          Task · <span className={left.tone === "late" ? "text-danger" : ""}>{left.text}</span> · {task.state}
-        </p>
-        <h1 className="text-[32px] font-light leading-[42px] text-ink">{task.title}</h1>
-      </div>
-      <p className="whitespace-pre-wrap text-[16px] leading-[26px] text-ink-soft">{task.body}</p>
-
-      {msg && (
-        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
-      )}
-
-      {task.state === "open" ? (
-        <form action={finishTask} className="flex flex-col gap-3 rounded-[24px] bg-surface p-6 shadow-float">
-          <input type="hidden" name="taskId" value={task.id} />
-          <label className={figmaLabel}>
-            What happened?
-            <input name="outcome" placeholder="Will send slots on Friday" className={figmaField} />
-          </label>
-          <button className={pillPrimary + " self-start"}>Done</button>
-        </form>
-      ) : (
-        <p className="rounded-[20px] bg-sunk px-5 py-4 text-[16px] leading-[26px] text-ink-soft">{task.outcome ?? "Closed."}</p>
-      )}
-    </PageBox>
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title={task.title}
+        sub={
+          <>
+            {sub ? sub + " · " : ""}
+            <span className={left.tone === "late" ? "text-danger" : ""}>{left.text}</span> · {task.state}
+          </>
+        }
+        right={
+          <Link href="/?view=tasks" className="t-body-m rounded-full border border-rule bg-surface px-4 py-2.5 hover:bg-sunk">
+            All tasks
+          </Link>
+        }
+      />
+      {msg && <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>}
+      <Card title="What to do" sub={firstLines(task.body) || undefined} className="max-w-[880px]">
+        {task.body && <p className="t-body whitespace-pre-wrap text-ink-2">{task.body}</p>}
+        {task.link && (
+          <Link href={task.link} className="t-body-m self-start underline">
+            Open the record
+          </Link>
+        )}
+        {task.state === "open" ? (
+          <form action={finishTask} className="flex flex-col gap-3">
+            <input type="hidden" name="taskId" value={task.id} />
+            <input type="hidden" name="back" value="/?view=tasks" />
+            <PanelField label="What happened?" hint="Nothing closes without a line about what happened.">
+              <input name="outcome" placeholder="Will send slots on Friday" className={panelInput} />
+            </PanelField>
+            <button className={pillPrimary + " self-start"}>Done</button>
+          </form>
+        ) : (
+          <p className="rounded-[18px] bg-sunk px-5 py-4 text-[14px] text-ink-2">{task.outcome ?? "Closed."}</p>
+        )}
+      </Card>
+    </div>
   );
 }

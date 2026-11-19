@@ -1,0 +1,206 @@
+/**
+ * Internal hiring (v6 H1 and H2, 19 Nov): Career141's own vacancies and the people applying.
+ *
+ * There is NO backend for this yet: the desk holds no vacancies, applicants, calls, interviews,
+ * results or decisions. So the screens draw from this typed view-model, and `hiringView` returns it
+ * empty (the screens then show their honest empty state). `hiringSample.ts` fills it in invented-data
+ * mode only, to check the layout against the frames. Nothing here saves anything.
+ *
+ * When the backend exists, `hiringView` is the one place that reads it; everything below is pure.
+ */
+import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
+import { dayWord } from "@/lib/calendarBoard";
+
+export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
+
+/** The columns of the board, left to right, with the words on them. */
+export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
+  { stage: "call", label: "To call" },
+  { stage: "fits", label: "Called · fits" },
+  { stage: "interview", label: "Interview" },
+  { stage: "decision", label: "Decision" },
+];
+
+/** The panel a card's button opens, by the column it sits in. */
+export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" }>> = {
+  new: { label: "Call", panel: "call" },
+  call: { label: "Call", panel: "call" },
+  fits: { label: "Book an interview", panel: "book-interview" },
+  interview: { label: "Add the result", panel: "add-result" },
+  decision: { label: "Decide", panel: "decide" },
+};
+
+export interface Applicant {
+  id: string;
+  name: string;
+  source: string;
+  phone: string | null;
+  stage: ApplicantStage;
+  /** When the CV came, or the last step happened: how long they have waited counts from here. */
+  since: number;
+  /** The one line on the card ("CV came 18 Nov", "No answer 17 Nov · try 2 of 3"). */
+  detail: string;
+  /** Called and tried so far, of 3. */
+  tries?: number;
+  /** What the later panels draw their messages from; absent until it is known. */
+  draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
+}
+
+export interface Vacancy {
+  id: string;
+  title: string;
+  places: number;
+  filled: number;
+  postedAt: number;
+  status: "open" | "on_hold";
+  /** On hold: since when, who restarts it, and the CVs kept meanwhile. */
+  hold?: { since: number; who: string; keptCvs: number };
+  applicants: Applicant[];
+  /** The 6 things to check on the first call. */
+  checks: string[];
+  /** Who is free to interview and when, per round, as the team entered it. */
+  freeTimes?: { who: string; round: string; times: number[] }[];
+}
+
+export interface InternalSlot {
+  at: number;
+  name: string;
+  line: string;
+}
+
+export interface HiringView {
+  vacancies: Vacancy[];
+  slots: InternalSlot[];
+  hiredThisMonth: { title: string; at: number }[];
+}
+
+export const EMPTY_HIRING: HiringView = { vacancies: [], slots: [], hiredThisMonth: [] };
+
+/**
+ * The view of internal hiring. The desk has nothing to read yet, so this is empty unless a sample is
+ * handed in (invented-data mode). Keep the parameter: it is how the sample gets in, and where the
+ * real read will go.
+ */
+export function hiringView(_db: unknown, sample: HiringView | null): HiringView {
+  return sample ?? EMPTY_HIRING;
+}
+
+export function countOf(v: Vacancy, stage: ApplicantStage): number {
+  return v.applicants.filter((a) => a.stage === stage).length;
+}
+
+export function vacancyById(view: HiringView, id: string): Vacancy | null {
+  return view.vacancies.find((v) => v.id === id) ?? null;
+}
+
+/** The CVs nobody has looked at, the calls to make (new and called-but-no-answer), the rest as they stand. */
+export function totals(view: HiringView, now: number) {
+  const open = view.vacancies.filter((v) => v.status === "open");
+  const all = open.flatMap((v) => v.applicants);
+  const toCallList = all.filter((a) => a.stage === "call" || a.stage === "new");
+  const oldest = toCallList.length ? Math.max(...toCallList.map((a) => daysSince(a.since, now))) : 0;
+  const interviews = all.filter((a) => a.stage === "interview");
+  const monthStart = startOfMonth(now);
+  const hired = view.hiredThisMonth.filter((h) => h.at >= monthStart).sort((a, b) => b.at - a.at);
+  return {
+    newCvs: all.filter((a) => a.stage === "new").length,
+    newCvVacancies: open.filter((v) => countOf(v, "new") > 0).length,
+    toCall: toCallList.length,
+    oldestDays: oldest,
+    interview: interviews.length,
+    decision: all.filter((a) => a.stage === "decision").length,
+    hiredThisMonth: hired.length,
+    lastHire: hired[0] ?? null,
+  };
+}
+
+/** Whole Colombo days from `from` to `to`, never negative. */
+export function daysSince(from: number, to: number): number {
+  const day = (t: number) => Math.floor((t + COLOMBO_OFFSET_MS) / DAY);
+  return Math.max(0, day(to) - day(from));
+}
+
+function startOfMonth(now: number): number {
+  const d = new Date(now + COLOMBO_OFFSET_MS);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - COLOMBO_OFFSET_MS;
+}
+
+/** The dark card on the right of the vacancies: the one thing that stands, in a sentence. */
+export function whereItStands(view: HiringView, now: number): { headline: string; body: string; open: { id: string; title: string } | null } {
+  const t = totals(view, now);
+  if (view.vacancies.length === 0) return { headline: "No vacancies yet.", body: "Add a vacancy and the people applying for it will wait here.", open: null };
+  const open = view.vacancies.filter((v) => v.status === "open");
+  const busiest = [...open].sort((a, b) => countOf(b, "call") + countOf(b, "new") - (countOf(a, "call") + countOf(a, "new")))[0] ?? null;
+  const onHold = view.vacancies.filter((v) => v.status === "on_hold");
+  const parts: string[] = [];
+  if (busiest && t.toCall > 0) parts.push(`${countOf(busiest, "call") + countOf(busiest, "new")} of them applied for ${busiest.title}.`);
+  if (t.decision > 0) parts.push(`${t.decision} ${t.decision === 1 ? "decision is" : "decisions are"} waiting for you.`);
+  if (onHold.length) parts.push(`${onHold.map((v) => v.title).join(" and ")} ${onHold.length === 1 ? "is" : "are"} on hold.`);
+  return {
+    headline: t.toCall === 0 ? "Nobody waits for a call." : `${t.toCall} ${t.toCall === 1 ? "person waits" : "people wait"} for a call.`,
+    body: parts.join(" "),
+    open: busiest ? { id: busiest.id, title: busiest.title } : null,
+  };
+}
+
+/** The "Why now" lines of a panel, from what is known. Only things that are true are said. */
+export function whyNow(v: Vacancy, a: Applicant, now: number): string[] {
+  const lines: string[] = [];
+  const waited = daysSince(a.since, now);
+  if (a.stage === "new" || a.stage === "call") {
+    lines.push(`The CV came in on ${dayWord(a.since)}, through ${a.source}`);
+    lines.push(a.tries ? `Try ${a.tries} of 3` : "Try 1 of 3. Nobody has called yet");
+    if (v.checks.length) lines.push(`The role needs ${v.checks.length} things checked before an interview`);
+  } else if (a.stage === "fits") {
+    lines.push(`Called on ${dayWord(a.since)} and fits`);
+    lines.push(waited === 0 ? "No interview time yet" : `Has waited ${waited} ${waited === 1 ? "day" : "days"} with no interview time yet`);
+  } else if (a.stage === "interview") {
+    lines.push(`Add this after the interview on ${dayWord(a.since)}`);
+    lines.push("Add the result the same day so the next step is not lost");
+  } else if (a.stage === "decision") {
+    lines.push(`Waiting for a decision for ${waited} ${waited === 1 ? "day" : "days"}`);
+  }
+  lines.push(`${v.title} has ${v.places} ${v.places === 1 ? "place" : "places"} and ${v.filled === 0 ? "none is" : v.filled + " " + (v.filled === 1 ? "is" : "are")} filled`);
+  return lines;
+}
+
+/** The words on the first line of a vacancy card: "2 places · 28 applicants · posted 3 Nov". */
+export function vacancyLine(v: Vacancy): string {
+  const places = `${v.places} ${v.places === 1 ? "place" : "places"}`;
+  if (v.status === "on_hold" && v.hold) return `${places} · ${v.hold.keptCvs} CVs kept · on hold since ${dayWord(v.hold.since).slice(4)}`;
+  return `${places} · ${v.applicants.length} applicants · posted ${dayWord(v.postedAt).slice(4)}`;
+}
+
+/** Drafts the team copies by hand. A draft is only made when every fact in it is known; otherwise null. */
+export function inviteMessage(a: Applicant, role: string): string | null {
+  const d = a.draft;
+  if (!d?.interviewAt || !d.interviewer || !d.place) return null;
+  const when = `${dayWord(d.interviewAt)} at ${new Date(d.interviewAt + COLOMBO_OFFSET_MS).toISOString().slice(11, 16)}`;
+  return `Hello ${first(a.name)}, we would like to meet you for an interview for ${role}, with ${d.interviewer} on ${when} at ${d.place}. Please reply to confirm. Thank you`;
+}
+
+export function rejectMessage(a: Applicant, role: string): string {
+  return `Hello ${first(a.name)}, thank you for meeting us for ${role}. We will not go further this time. We wish you well. Thank you`;
+}
+
+export function offerLetter(a: Applicant, role: string): string | null {
+  const d = a.draft;
+  if (!d?.startDate || !d.salary || !d.replyBy) return null;
+  return `Dear ${first(a.name)}, we are pleased to offer you the post of ${role} at Career141, starting ${d.startDate}, at ${d.salary}. Please sign and return this letter by ${d.replyBy}. Thank you`;
+}
+
+export function first(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
+export function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join("");
+}
+
+/** The fields the real backend must hold; the screens' forms stay disabled until then. */
+export const HIRING_BACKEND_GAPS = "vacancies, applicants, calls, interviews, results and decisions";

@@ -25,6 +25,7 @@ import {
   startAgreement,
 } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
+import Sheet from "@/app/(clients)/Sheet";
 import Dictate from "@/app/Dictate";
 import Icon from "@/app/Icon";
 import RequirementDecisionClient from "@/app/(clients)/leads/[id]/RequirementDecisionClient";
@@ -33,7 +34,7 @@ import {
   BackBar,
   FoldRow,
   NextStepCard,
-  PageBox,
+  
   RelatedLinks,
   StatusChip,
   ViewPills,
@@ -324,7 +325,7 @@ export default async function LeadPage({
   const defaultTargetDate = new Date(now + 21 * 86_400_000).toISOString().slice(0, 10);
 
   return (
-    <PageBox width="1080" className="gap-7">
+    <Sheet width={1080}>
       {/* Top BackBar */}
       <BackBar
         href={activeView === "agreement" || activeView === "requirement" ? `/leads/${lead.id}` : "/clients"}
@@ -1811,6 +1812,6 @@ export default async function LeadPage({
           </div>
         </>
       )}
-    </PageBox>
+    </Sheet>
   );
 }

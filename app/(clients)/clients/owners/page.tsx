@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 
 import { LeadAssignRow, MoveClientCard } from "@/app/(clients)/clients/owners/OwnersClient";
 import Icon from "@/app/Icon";
-import { Avatar, BackBar, PageBox, figmaLabel } from "@/app/ui/figma";
+import { Avatar, BackBar, figmaLabel } from "@/app/ui/figma";
+import Sheet from "@/app/(clients)/Sheet";
 import {
   activeMembers,
   clientsNewestFirst,
@@ -73,7 +74,7 @@ export default async function ClientOwnersPage({
   }));
 
   return (
-    <PageBox width="1160" className="gap-7">
+    <Sheet width={1160}>
       <BackBar href="/clients" label="Clients" />
 
       <div className="flex flex-col gap-1">
@@ -179,6 +180,6 @@ export default async function ClientOwnersPage({
           />
         )}
       </section>
-    </PageBox>
+    </Sheet>
   );
 }

@@ -12,8 +12,8 @@
  *
  * Nothing here is decoration. Every token below is used to tell one thing
  * from another: what is a surface, what is a rule, what is late, what is
- * done. No overlays anywhere in this app, so there are no dialog or backdrop
- * styles to define.
+ * done. Overlays are allowed in two places only (19 Nov, the v6 design): the small
+ * popovers from the top bar, and the 680px state panels (app/ui/Panel.tsx).
  *
  * 13 Nov: the values now come from the approved Figma design's variables
  * (file "Ops System", 01 · Foundations). The names stayed, so every page took
@@ -47,7 +47,9 @@
   /* Ink, in three weights and no more (24, section 6). */
   --color-ink: #16191d; /* color/ink */
   --color-ink-soft: #4e5862; /* color/ink-2 */
-  --color-ink-faint: #646d78; /* color/ink-3 */
+  /* 19 Nov: Figma's ink-3 (#8a939c), lighter than the #646d78 this was. About 3:1 on white at 12px, which is
+     below AA; it is the design's value and the owner's call, flagged in docs/09. */
+  --color-ink-faint: #8a939c; /* color/ink-3 */
   --color-ink-inverse: #ffffff; /* color/ink-inverse */
 
   /* Hairlines. The whole layout is made of these. */
@@ -74,18 +76,25 @@
   --color-warn-soft: #fcf5e3; /* color/warn-soft */
   --color-violet: #6e4fe8; /* color/violet */
   --color-violet-soft: #f0ecfe; /* color/violet-soft */
-  --color-info: #167ca9; /* color/info */
-  --color-info-soft: #eaf7fe; /* color/info-soft */
+  --color-info: #1f6fb5; /* color/info */
+  --color-info-soft: #e7f1fa; /* color/info-soft */
   --color-ok: var(--color-success);
   --color-success: #1e8a4c; /* color/success: "is free", a held interview */
 
   /* The design's two shadows and its large radii (WB/Shadow/*, radius/*).
      New names, so Tailwind's own rounded-md and shadow-md keep their sizes
      on the pages that already use them. */
-  --shadow-card: 0 1px 2px rgb(15 23 31 / 0.04), 0 6px 18px -4px rgb(15 23 31 / 0.05);
+  --shadow-card: 0 8px 14px rgb(23 26 28 / 0.06); /* the v6 drop shadow */
   --shadow-float: 0 2px 6px rgb(15 23 31 / 0.06), 0 18px 40px -8px rgb(15 23 31 / 0.1);
   --radius-panel: 16px; /* radius/md */
   --radius-sheet: 32px; /* radius/xl */
+
+  /* The v6 names for the same colours, so new code can write what the Figma file says. */
+  --color-ink-2: var(--color-ink-soft);
+  --color-ink-3: var(--color-ink-faint);
+  --color-surface-2: var(--color-sunk);
+  --color-canvas: var(--color-paper);
+  --color-border: var(--color-rule);
 
   /* The soft chips on a row, as the reference screens use them. */
   --color-chip-a: #eef2ff;
@@ -101,11 +110,6 @@
   --color-aside-shadow: rgb(22 24 26 / 0.38);
   /* The dots on the page behind the bar and the cards: the FigJam default board (16 Nov). */
   --color-grid: #dde0e6;
-}
-
-/* The top bar (116px) and the tab that names the workspace (44px): where the page's own box starts. */
-:root {
-  --page-top: 148px;
 }
 
 /*
@@ -153,22 +157,17 @@ html[data-theme="dark"] {
   --color-veil: rgb(14 17 20 / 0.6);
   --color-aside-shadow: rgb(0 0 0 / 0.6);
   --color-grid: #232a31;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px -4px rgb(0 0 0 / 0.35);
+  --shadow-card: 0 8px 14px rgb(0 0 0 / 0.3);
   --shadow-float: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -8px rgb(0 0 0 / 0.55);
 }
 
 html {
-  /* The screens were drawn to be read at a 90% browser zoom (16 Nov, the owner): 100% now looks like that. Heights written as 100dvh/0.9 make up for it. */
-  zoom: 0.9;
+  scrollbar-gutter: stable;
 }
 
 html,
 body {
   background: var(--color-paper);
-  /* A quiet dot grid, as the Figma frames and FigJam draw the board. Fixed, so it stays put when a page scrolls. */
-  background-image: radial-gradient(circle, var(--color-grid) 1px, transparent 1.4px);
-  background-size: 22px 22px;
-  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
   /* Tabular figures, so counts line up in a column. */
@@ -404,4 +403,142 @@ body.welcome [data-welcome="page"] {
   .slide-in {
     animation: none;
   }
+}
+
+/*
+ * The v6 type styles (Figma variables display, num, h2, body, body-m, label, small, plus the
+ * micro caption). Poppins. Written as utilities so a page says t-h2 and not four numbers.
+ */
+@utility t-display {
+  font-size: 40px;
+  line-height: 52px;
+  font-weight: 300;
+}
+@utility t-num {
+  font-size: 36px;
+  line-height: 44px;
+  font-weight: 500;
+}
+@utility t-h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+}
+@utility t-body {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+@utility t-body-m {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+@utility t-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+@utility t-small {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+}
+/* The small capital caption over a block: "LATE", "WHERE IT STANDS", "ADD". */
+@utility t-micro {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * State panels (19 Nov, docs/07): a native <dialog> drawn as a 680px drawer on the right. Open
+ * with no script is a plain open dialog in this same place; Panel's client child upgrades it to a
+ * modal (focus held, Escape, backdrop). The page behind stops scrolling while one is open.
+ */
+dialog.panel {
+  position: fixed;
+  z-index: 50; /* above the z-20 top bar even before the script makes it modal */
+  inset: 12px 12px 12px auto;
+  margin: 0;
+  width: 680px;
+  max-width: calc(100vw - 24px);
+  height: calc(100dvh - 24px);
+  max-height: none;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 28px;
+  padding: 32px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-float);
+}
+dialog.panel::backdrop {
+  background: rgb(22 25 29 / 0.28);
+}
+@media (max-width: 767px) {
+  dialog.panel {
+    inset: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    border-radius: 0;
+    padding: 20px;
+  }
+}
+body:has(dialog.panel[open]) {
+  overflow: hidden;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.panel[open] {
+    animation: panel-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+}
+
+/*
+ * Preview-and-send modals (v6 `send` frames, 1600px two-column overlay): centered native <dialog>,
+ * upgraded to modal by PanelOpen (focus trap, Escape, dimmed backdrop).
+ */
+dialog.send-modal {
+  position: fixed;
+  z-index: 55;
+  inset: 0;
+  margin: auto;
+  width: min(1440px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  border: 0;
+  border-radius: 28px;
+  padding: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 20px 70px rgb(23 26 28 / 0.22);
+}
+dialog.send-modal::backdrop {
+  background: rgb(22 25 29 / 0.34);
+}
+@media (max-width: 767px) {
+  dialog.send-modal {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+  }
+}
+body:has(dialog.send-modal[open]) {
+  overflow: hidden;
 }

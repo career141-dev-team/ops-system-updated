@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import Icon from "@/app/Icon";
+import Popover from "@/app/ui/Popover";
 import { bellInWords, type Bell as BellCount } from "@/lib/bell";
 
 /** How often the sidebar asks. Half a minute is a client's reply arriving, not a stock ticker. */
@@ -17,9 +18,10 @@ const EVERY_MS = 30_000;
  * when the number goes up it pulses once, so a reply landing while you are
  * three pages away is seen rather than found later.
  *
- * It is a link to Your day and nothing more. No dropdown, no list behind it:
- * the app has no overlays, and the list it would show is the page it goes
- * to. The number going red means something of yours is late.
+ * 19 Nov (v6 frame G4): on the desk it opens a card under the bell saying what is waiting, in
+ * the three things the number is made of, with a link to the full page. The feed of "what
+ * changed on my clients" has no source yet, so the card says only what the number knows; there
+ * is no "Mark all read" until something can be read. On a phone it is a link to /notifications.
  */
 export default function Bell({ initial, round = false }: { initial: BellCount; round?: boolean }) {
   const [bell, setBell] = useState<BellCount>(initial);
@@ -61,47 +63,65 @@ export default function Bell({ initial, round = false }: { initial: BellCount; r
   }, [initial.waiting]);
 
   const words = bellInWords(bell);
-  const tone = bell.late ? "bg-bg-danger text-danger" : bell.waiting ? "bg-bg-brand text-brand" : "bg-shell-sunk text-ink-faint";
 
-  // The top bar's bell (13 Nov, Figma): a round button with a dot, the
-  // number in its label. Red when something is late, green when only waiting.
+  // The top bar's bell (v6 128:32): a 44px round button, a dot when something waits. Red when
+  // something is late, green when only waiting.
   if (round) {
+    const later = bell.late;
+    const drafts = Math.max(0, bell.waiting - bell.late - bell.inbox);
+    const line = "flex gap-3 rounded-[12px] py-1 hover:bg-sunk";
+    const lines: { dot: string; text: string; href: string }[] = [];
+    if (later > 0) lines.push({ dot: "bg-danger", text: later === 1 ? "1 thing of yours is late" : later + " things of yours are late", href: "/" });
+    if (drafts > 0) lines.push({ dot: "bg-warn", text: drafts === 1 ? "1 thing needs you today" : drafts + " things need you today", href: "/" });
+    if (bell.inbox > 0) lines.push({ dot: "bg-info", text: bell.inbox === 1 ? "1 email nobody has filed" : bell.inbox + " emails nobody has filed", href: "/mail" });
     return (
-      <Link
-        href="/notifications"
-        title={words}
-        aria-label={words}
-        className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell"
+      <Popover
+        label={words}
+        width={480}
+        triggerClass="relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell"
+        trigger={
+          <>
+            <Icon name="bell" size={18} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
+            {bell.waiting > 0 && (
+              <span aria-hidden="true" className={"absolute right-[10px] top-[10px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")} />
+            )}
+          </>
+        }
       >
-        <Icon name="bell" size={20} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
-        {bell.waiting > 0 && (
-          <span
-            aria-hidden="true"
-            className={"absolute right-[9px] top-[10px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")}
-          />
-        )}
-      </Link>
+        <div className="flex flex-col gap-[18px] p-7">
+          <div>
+            <p className="t-h2">Notifications</p>
+            <p className="t-small text-ink-faint">What is waiting on you now</p>
+          </div>
+          <div className="h-px bg-rule" />
+          {lines.length === 0 && <p className="t-body text-ink-2">Nothing is waiting. A client's reply or a late task shows here.</p>}
+          {lines.map((one) => (
+            <Link key={one.text} href={one.href} className={line}>
+              <span className="flex pt-[6px]">
+                <span className={"size-2 rounded-full " + one.dot} />
+              </span>
+              <span className="t-body min-w-0 flex-1">{one.text}</span>
+            </Link>
+          ))}
+          <Link href="/notifications" className="t-label text-brand">
+            Open all notifications
+          </Link>
+        </div>
+      </Popover>
     );
   }
 
+  // The phone's bell (v6 PH1): a 36px white circle in the top row, with the number when something waits.
   return (
     <Link
-      href="/"
+      href="/notifications"
       title={words}
       aria-label={words}
-      className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-ink-soft transition-colors hover:bg-shell-sunk hover:text-ink"
+      className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-ink"
     >
-      <Icon name="bell" size={16} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
+      <Icon name="bell" size={18} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
       {bell.waiting > 0 && (
-        <span
-          className={
-            "min-w-[20px] rounded-full px-1.5 text-center text-[11.5px] font-medium tabular-nums " +
-            tone +
-            (rose ? " motion-safe:animate-[toast_220ms_ease-out]" : "")
-          }
-        >
-          {bell.waiting}
-        </span>
+        <span aria-hidden="true" className={"absolute right-[8px] top-[8px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")} />
       )}
     </Link>
   );
