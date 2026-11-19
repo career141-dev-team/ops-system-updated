@@ -97,6 +97,16 @@ export default function ProfileMenu({
               <Link href="/notifications" aria-current={isHere(path, "/notifications") ? "page" : undefined} className={item}>
                 <span className="flex-1">Notifications</span>
               </Link>
+              {/* Pages with no bar entry of their own: reachable from here so none is a dead end (v6, 19 Nov). */}
+              {[
+                { href: "/work", what: "Work" },
+                { href: "/candidates", what: "Candidates" },
+                ...(may["report.read"] ? [{ href: "/reports", what: "Reports" }] : []),
+              ].map((page) => (
+                <Link key={page.href} href={page.href} aria-current={isHere(path, page.href) ? "page" : undefined} className={item}>
+                  {page.what}
+                </Link>
+              ))}
               {phone &&
                 NAV[0].pages
                   .filter((page) => !page.needs || may[page.needs])
@@ -106,7 +116,10 @@ export default function ProfileMenu({
                     </Link>
                   ))}
               {/* AURA's column, open or shut (docs/31). */}
-              <form action={toggleChat}>
+              <Link href="/chat" aria-current={isHere(path, "/chat") ? "page" : undefined} className={item + " lg:hidden"}>
+                Open AURA
+              </Link>
+              <form action={toggleChat} className="max-lg:hidden">
                 <input type="hidden" name="back" value={path} />
                 <button aria-pressed={chatOpen} className={item}>
                   {chatOpen ? "Close AURA" : "Open AURA"}

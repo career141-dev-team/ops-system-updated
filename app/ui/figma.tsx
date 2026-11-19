@@ -942,13 +942,82 @@ export function EmptyState({ icon = "sparkle", title, children }: { icon?: IconN
   );
 }
 
-/** A labelled value in a panel or card: the small grey label over the content (a field, text, chips). */
+/** A labelled value in a panel or card: the small grey label over the content (a field, text, chips). Style fields with `panelInput`. */
 export function PanelField({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <span className="t-small text-ink-3">{label}</span>
       {children}
       {hint && <span className="t-small text-ink-3">{hint}</span>}
+    </div>
+  );
+}
+
+/** A panel's own field: white with a hairline, as in the Figma panels (the page fields are grey-filled). */
+export const panelInput =
+  "w-full rounded-[10px] border border-rule bg-surface px-3.5 py-3 text-[14px] leading-[22px] text-ink placeholder:text-ink-faint outline-none focus:border-ink focus:ring-2 focus:ring-brand";
+
+/**
+ * One radio-style pill ("Time to book", "Place", frame 116:283). A real <input type="radio"> sits first
+ * so the label can style from `peer-checked`; no script. `tone` makes it a status pill (yes / no / not
+ * asked): green or red tint when chosen instead of the black pill.
+ */
+export function ChoicePill({
+  name,
+  value,
+  label,
+  defaultChecked,
+  required,
+  tone = "ink",
+}: {
+  name: string;
+  value: string;
+  label: string;
+  defaultChecked?: boolean;
+  required?: boolean;
+  tone?: "ink" | "good" | "bad";
+}) {
+  const on =
+    tone === "good"
+      ? "peer-checked:border-transparent peer-checked:bg-bg-ok peer-checked:text-success"
+      : tone === "bad"
+        ? "peer-checked:border-transparent peer-checked:bg-bg-danger peer-checked:text-danger"
+        : "peer-checked:border-ink peer-checked:bg-ink peer-checked:text-ink-inverse";
+  return (
+    <label className="relative inline-flex">
+      <input type="radio" name={name} value={value} defaultChecked={defaultChecked} required={required} className="peer sr-only" />
+      <span
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-rule bg-surface px-4 py-[9px] text-[14px] font-medium leading-[22px] text-ink peer-focus-visible:ring-2 peer-focus-visible:ring-brand [&>svg]:hidden peer-checked:[&>svg]:block ${on}`}
+      >
+        <Icon name="check" size={14} />
+        {label}
+      </span>
+    </label>
+  );
+}
+
+/** A row of `ChoicePill`s sharing one name. `options` are plain strings or {value,label}. */
+export function ChoiceGroup({
+  name,
+  options,
+  value,
+  required,
+  tone,
+  label,
+}: {
+  name: string;
+  options: (string | { value: string; label: string; tone?: "ink" | "good" | "bad" })[];
+  value?: string;
+  required?: boolean;
+  tone?: "ink" | "good" | "bad";
+  label: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const one = typeof o === "string" ? { value: o, label: o, tone } : { tone, ...o };
+        return <ChoicePill key={one.value} name={name} value={one.value} label={one.label} tone={one.tone} required={required} defaultChecked={value === one.value} />;
+      })}
     </div>
   );
 }

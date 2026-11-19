@@ -53,7 +53,10 @@ export type IconName =
   | "shield"
   | "wallet"
   | "flag"
-  | "link";
+  | "link"
+  | "phone"
+  | "copy"
+  | "building";
 
 /** 24x24, stroked, never filled. The paths are the whole of each icon. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -138,6 +141,19 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   // Messages: what a conversation is filed to (Figma icon/link).
+  phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h8" />
+    </>
+  ),
+  building: (
+    <>
+      <path d="M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17M15 9h3a1 1 0 0 1 1 1v11M3 21h18" />
+      <path d="M9 7h2M9 11h2M9 15h2" />
+    </>
+  ),
   link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   // The menu: three lines, the one picture everybody already reads.
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

@@ -67,6 +67,7 @@ export default function Popover({
               role="dialog"
               aria-label={label}
               style={{ top: at.top, bottom: at.bottom, right: at.right, width }}
+              onClick={() => setOpen(false)} // a panel opens by a query change only, so the path never changes
               className="fixed z-[70] max-h-[calc(100dvh-120px)] max-w-[calc(100vw-32px)] overflow-y-auto rounded-[24px] bg-surface shadow-float"
             >
               {children}

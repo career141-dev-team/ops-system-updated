@@ -10,10 +10,10 @@ import { currentMember } from "@/lib/session";
  * K1 · Calendar. The week board of interviews the desk already holds; other meetings
  * and a month view have no backend yet and are not drawn.
  */
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ weekOffset?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ weekOffset?: string; msg?: string }> }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { weekOffset: raw = "0" } = await searchParams;
+  const { weekOffset: raw = "0", msg } = await searchParams;
   const offset = Number.parseInt(raw, 10) || 0;
 
   const db = await desk();
@@ -25,7 +25,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   });
 
   return (
-    <PageBox width="1160" className="gap-6">
+    <PageBox width="1160" msg={msg} className="gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-[40px] font-light leading-[50px] text-ink">Calendar</h1>

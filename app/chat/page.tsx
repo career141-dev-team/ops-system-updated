@@ -21,7 +21,7 @@ export default async function ChatPage() {
   const db = await desk();
   const open = chatOpen(db, member.id, (await cookies()).get(CHAT_COOKIE)?.value);
   return (
-    <div className="flex h-[calc(100vh/0.9-9rem)] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[0_1px_2px_rgba(22,24,26,0.05),0_18px_40px_-24px_rgba(22,24,26,0.3)] md:h-auto">
+    <div className="flex h-[calc(100dvh-10rem)] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-rule bg-gradient-to-b from-shell to-shell-sunk shadow-[0_1px_2px_rgba(22,24,26,0.05),0_18px_40px_-24px_rgba(22,24,26,0.3)] md:h-auto">
       <div className="border-b border-rule px-4 py-3">
         <h1 className="text-[15px] font-medium">AURA</h1>
         <p className="text-[12.5px] text-ink-soft">Ask, and get it done. Every action waits for your button.</p>

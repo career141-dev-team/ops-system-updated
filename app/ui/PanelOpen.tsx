@@ -16,16 +16,21 @@ export default function PanelOpen({ closeHref }: { closeHref: string }) {
   useEffect(() => {
     const me = mark.current?.closest("dialog");
     if (!me) return;
+    const before = document.activeElement as HTMLElement | null;
     me.removeAttribute("open");
     me.showModal();
-    // Escape: stay in the page's own history, so Back is still the page before.
+    // The browser focuses the first focusable thing, which is the title's X on a form-less panel and
+    // sometimes nothing useful; put the cursor in the first field, falling back to the X.
+    const field = me.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])");
+    (field ?? me.querySelector<HTMLElement>("a[aria-label=Close]"))?.focus();
+    // Escape: replace the panel's entry, so Back is the page before and never reopens the panel.
     const onCancel = (e: Event) => {
       e.preventDefault();
-      router.push(closeHref, { scroll: false });
+      router.replace(closeHref, { scroll: false });
     };
     // A click on ::backdrop lands on the dialog itself, not on anything inside it.
     const onClick = (e: MouseEvent) => {
-      if (e.target === me) router.push(closeHref, { scroll: false });
+      if (e.target === me) router.replace(closeHref, { scroll: false });
     };
     me.addEventListener("cancel", onCancel);
     me.addEventListener("click", onClick);
@@ -33,6 +38,7 @@ export default function PanelOpen({ closeHref }: { closeHref: string }) {
       me.removeEventListener("cancel", onCancel);
       me.removeEventListener("click", onClick);
       if (me.open) me.close();
+      if (before?.isConnected) before.focus();
     };
   }, [closeHref, router]);
   return <span ref={mark} hidden />;

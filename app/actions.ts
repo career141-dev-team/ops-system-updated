@@ -1048,7 +1048,7 @@ function confirmed(said: string, after = ""): string {
 function backTo(formData: FormData, fallback: string): string {
   const back = String(formData.get("back") ?? "").trim();
   // Only our own paths: a redirect to wherever a form said is an open door.
-  return back.startsWith("/") && !back.startsWith("//") ? back : fallback;
+  return back.startsWith("/") && !back.startsWith("//") && !back.includes("\\") ? back : fallback;
 }
 
 export async function approveAndSend(formData: FormData): Promise<void> {
@@ -7227,7 +7227,7 @@ export async function quickAdd(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const back = backTo(formData, "/");
-  const said = (line: string) => redirect(back + confirmed(line));
+  const said = (line: string) => redirect(back + confirmed(line, back));
   const kind = String(formData.get("kind") ?? "") as QuickKind;
   if (!(QUICK_KINDS as readonly string[]).includes(kind)) said("Not saved: that is not a thing the desk keeps.");
 

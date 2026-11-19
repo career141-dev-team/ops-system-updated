@@ -42,8 +42,9 @@ export default function Panel({
           <Link
             href={closeHref}
             scroll={false}
+            replace
             aria-label="Close"
-            className="mt-8 flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink hover:bg-shell"
+            className="mt-8 flex size-10 shrink-0 items-center justify-center rounded-full border border-rule bg-surface text-ink hover:bg-sunk"
           >
             <Icon name="x" size={18} />
           </Link>

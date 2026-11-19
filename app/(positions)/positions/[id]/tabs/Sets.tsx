@@ -10,12 +10,7 @@ export default function Sets({ c }: { c: RoleCtx }) {
   return (
 <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className={figmaLabel}>CV SETS ON THIS OPENING · {itsSets.length}</p>
-            <Link href="/sets" className={pillSecondary}>
-              All CV sets
-            </Link>
-          </div>
+          <p className={figmaLabel}>CV SETS ON THIS OPENING · {itsSets.length}</p>
           {itsSets.length === 0 ? (
             <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
               No CV set has gone yet. One appears here the moment the TA System says five CVs are ready, with its due

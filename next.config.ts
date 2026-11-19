@@ -23,8 +23,8 @@ const nextConfig: NextConfig = {
   async redirects() {
     const to = (source: string, destination: string) => ({ source, destination, permanent: false });
     return [
-      to("/calls", "/?view=calls"),
-      to("/interviews", "/calendar"),
+      // /calls -> /?view=calls and /interviews -> /calendar return when My work's calls view and the calendar's
+      // startInterview form land; until then those two list pages stay as they are.
       to("/sets", "/positions"),
       to("/placements", "/positions"),
       to("/guarantees", "/positions"),

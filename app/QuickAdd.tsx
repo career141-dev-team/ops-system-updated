@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 import { quickAdd } from "@/app/actions";
 import Icon, { type IconName } from "@/app/Icon";
+import { panelInput } from "@/app/ui/figma";
 import Panel from "@/app/ui/Panel";
 import Popover from "@/app/ui/Popover";
 import { LEAD_SOURCES, SOURCE_MEANINGS } from "@/lib/leads";
@@ -29,7 +30,7 @@ export default function QuickAdd({ phone = false }: { phone?: boolean }) {
 
   const items: ({ icon: IconName; what: string; href: string } | "line")[] = [
     { icon: "pen", what: "Note", href: open("add-note") },
-    { icon: "chat", what: "Call note", href: open("add-call") },
+    { icon: "phone", what: "Call note", href: open("add-call") },
     { icon: "check", what: "Task", href: "/?view=tasks" },
     { icon: "calendar", what: "Meeting", href: "/calendar" },
     { icon: "file", what: "File", href: "/files" },
@@ -37,7 +38,7 @@ export default function QuickAdd({ phone = false }: { phone?: boolean }) {
     { icon: "briefcase", what: "Role", href: "/positions" },
     { icon: "user", what: "Candidate", href: "/candidates/add" },
     "line",
-    { icon: "clients", what: "Vacancy (internal)", href: "/hiring" },
+    { icon: "building", what: "Vacancy (internal)", href: "/hiring" },
   ];
 
   return (
@@ -80,8 +81,7 @@ export default function QuickAdd({ phone = false }: { phone?: boolean }) {
   );
 }
 
-const field =
-  "w-full rounded-[10px] bg-sunk px-3.5 py-3 text-[14px] leading-[22px] text-ink outline-none placeholder:text-ink-3 focus:ring-2 focus:ring-brand";
+const field = panelInput;
 const label = "t-small text-ink-3";
 const save = "t-body-m inline-flex w-fit cursor-pointer items-center rounded-full bg-ink px-5 py-[11px] text-ink-inverse active:scale-[0.98]";
 
@@ -119,7 +119,7 @@ export function AddPanel({ clients }: { clients: { id: string; name: string }[] 
         ))}
       </datalist>
       <form action={quickAdd} className="flex flex-col gap-4">
-        <input type="hidden" name="back" value={path} />
+        <input type="hidden" name="back" value={close} />
         {which === "add-note" && (
           <>
             <input type="hidden" name="kind" value="note" />

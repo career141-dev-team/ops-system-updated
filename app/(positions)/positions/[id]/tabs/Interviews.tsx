@@ -1,18 +1,13 @@
 import Link from "next/link";
 import Icon from "@/app/Icon";
-import { Avatar, StatusChip, figmaLabel, pillSecondary } from "@/app/ui/figma";
+import { Avatar, StatusChip, figmaLabel } from "@/app/ui/figma";
 
 import type { RoleCtx } from "./ctx";
 export default function Interviews({ c }: { c: RoleCtx }) {
   const { client, itsInterviews, whenLocal } = c;
   return (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className={figmaLabel}>INTERVIEWS ON THIS OPENING · {itsInterviews.length}</p>
-            <Link href="/interviews" className={pillSecondary}>
-              All interviews
-            </Link>
-          </div>
+          <p className={figmaLabel}>INTERVIEWS ON THIS OPENING · {itsInterviews.length}</p>
           {itsInterviews.length === 0 ? (
             <div className="rounded-[24px] bg-sunk px-6 py-8 text-[14px] text-ink-soft">
               Nobody has been interviewed yet. An interview appears here when the client shortlists somebody from a CV set.

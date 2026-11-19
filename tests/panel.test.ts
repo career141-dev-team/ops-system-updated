@@ -25,3 +25,8 @@ test("it reads search params and repeated values", () => {
   assert.equal(closeHref("/clients", params), "/clients?stage=a&stage=b");
   assert.equal(closeHref("/clients", { stage: ["a", "b"], q: undefined }), "/clients?stage=a&stage=b");
 });
+
+test("one-time banners are not carried into panel links", () => {
+  assert.equal(panelHref("/x", { msg: "Saved", did: "d", at: "1", view: "v" }, "a"), "/x?view=v&panel=a");
+  assert.equal(closeHref("/x", { msg: "Saved", panel: "a" }), "/x");
+});

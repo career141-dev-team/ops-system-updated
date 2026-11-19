@@ -335,7 +335,7 @@ walks found something the tests had passed.
 | 4 The timeline | `src/lib/timeline.ts`, the History tab on a client and a position | everything under a client or a position, as plain sentences, newest day first. Every action the desk writes has words; an unnamed state move still reads "went from X to Y" |
 | 5 Quick-add | `app/QuickAdd.tsx`, `src/lib/quickAdd.ts` | a call, a note or an enquiry from the sidebar on any page, saved through the same writes and leaving you where you were; a note is a task to yourself due the next nine in the morning. Its walk found and fixed the JSON store's stale-cache overwrite in `next dev` (`src/data/store.ts` re-reads when the file's mtime moved) |
 | 6 What first | `src/lib/whatFirst.ts`, `dayItems` in `src/data/desk.ts`, the "First today" card on Your day - since 13 Nov the Up next card on My Work | the rules choose the first thing (late, a draft a person must read, due today, a clock, routine); the AI writes one line only when a person asks, kept per person, day and first thing |
-| 7 The phone | `app/Sidebar.tsx`, `PHONE_PAGES` in `src/lib/nav.ts` | under 768px a top bar, an in-flow menu and a bottom bar with Your day · Inbox · The work · Clients; the desk unchanged |
+| 7 The phone | `app/PhoneNav.tsx`, `PHONE_ONLY` in `src/lib/nav.ts` | under 768px a top bar, an in-flow menu and a bottom bar with Your day · Inbox · The work · Clients; the desk unchanged |
 | 8 The keyboard | `src/lib/keys.ts`, `app/Keys.tsx` | J/K move, A approves, Enter opens, / finds; nothing while typing; pages mark their rows with `data-row`, `data-open`, `data-approve` |
 
 ### The desk assistant (docs/31), begun 8 November
@@ -349,6 +349,29 @@ walks found something the tests had passed.
 | The missing-field turn, and yesterday | `pendingMark` / `answerPending` / `yesterdayInWords` in `src/lib/agent.ts`, `chatSay` | one question at a time, the next words are the answer, no model between; yesterday's line counted from the thread; a pressed proposal is the ledger's "used", one left behind is "ignored" |
 | The feed | `src/lib/feed.ts`, `app/api/chat/route.ts` | what arrived by itself - new mail (with *Mark it done*), your clock that ran out, a task made or passed to you, a TA event - as lines in the thread, kept once each; the column polls every 30 s like the bell. Mail reading runs in the clock pass (`app/api/clock/route.ts`) every five minutes; until 8 Nov it ran only from the button on /mail while the page said "every two minutes" |
 | The column and the page | `app/Chat.tsx`, `app/layout.tsx`, `app/chat/page.tsx`, the toggle behind the profile in the top bar (the sidebar's header until 13 Nov); named AURA since 13 Nov | the owner's reference shape: a label not a bubble for the assistant, a dark pill for the person, "Here is what I will do" rows, "Does this look right?", a result card; the desk's state pinned on top; on the phone it replaces Clients in the bottom bar |
+
+## Built: the v6 interface (19 Nov)
+
+The screens were redrawn to the v6 design in a first wave; later waves fill the pages in.
+
+- **The bar of eight**: My work, Inbox, Calendar, Clients, Positions, Internal hiring, Accounts,
+  Settings (`NAV` in `src/lib/nav.ts`). Work, Candidates and Reports have no entry of their own and
+  are in the avatar menu (`app/ProfileMenu.tsx`), so nothing is unreachable.
+- **New routes**: `/calendar` (the week of interviews), `/hiring` and `/hiring/[id]` (our own
+  vacancies), `/clients/agreements`.
+- **Redirects** (`next.config.ts`): `/sets`, `/placements`, `/guarantees`, `/holds`, `/adverts` go to
+  `/positions`; `/money` goes to `/invoices`. `/calls` and `/interviews` are **temporarily not
+  redirected**: they return when My work's calls view and the calendar's start-interview form land.
+- **Role-tab aliases** (`src/lib/roleTabs.ts`): a role page has seven tabs, and an old `?view=` or
+  `?tab=` (jd, adverts, placements, activity, messages, candidates) resolves to the tab that holds it,
+  because stored tasks, mail and `back` fields still carry them.
+- **Gone**: the page zoom, the fixed page box and the notch. Pages scroll normally.
+- **The Panel drawer** (`app/ui/Panel.tsx`, `src/lib/panel.ts`): a state is `?panel=<name>&on=<id>`, a
+  680px native dialog on the right. Escape, the X and the dimmed page replace the history entry, so
+  Back never reopens it; focus goes to the first field and returns on close. Forms post a `back` that is
+  `closeHref(path, params)`, so the page's own tab and filters survive. Kit shells for the Figma
+  "Something changed" and "Duplicate check" panels, and `ChoicePill` / `ChoiceGroup` / `panelInput`,
+  are in `app/ui/`.
 
 ## Real data, from a month of mail (9 Nov)
 

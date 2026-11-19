@@ -26,9 +26,13 @@ const link = (path: string, query: URLSearchParams) => {
   return text ? path + "?" + text : path;
 };
 
+/** One-time banners ride on the address they redirect to; a link to the same page must not carry them. */
+const spent = ["msg", "did", "at"];
+
 /** The link that opens `panel` on this page, about the record `on` if there is one. */
 export function panelHref(path: string, params: Params, panel: string, on?: string): string {
   const query = copy(params);
+  spent.forEach((key) => query.delete(key));
   query.set("panel", panel);
   if (on) query.set("on", on);
   else query.delete("on");
@@ -38,6 +42,7 @@ export function panelHref(path: string, params: Params, panel: string, on?: stri
 /** The link that closes whatever panel is open: the same page, `panel` and `on` gone. */
 export function closeHref(path: string, params: Params): string {
   const query = copy(params);
+  spent.forEach((key) => query.delete(key));
   query.delete("panel");
   query.delete("on");
   return link(path, query);
