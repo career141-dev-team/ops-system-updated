@@ -3,7 +3,7 @@ import PreviewAndSend, { SendLeftSection } from "@/app/ui/PreviewAndSend";
 import { agreementForLead, textOf } from "@/data/desk";
 import type { OpsDatabase, OpsMember } from "@/data/types";
 import { checkInText, type AgreementCard, type ClientCard } from "@/lib/clientsView";
-import { coverDraft, missingFields } from "@/lib/esa";
+import { agreementVersions, coverDraft, missingFields } from "@/lib/esa";
 
 /**
  * C1 send · Check in with the client (Figma 3:12906)
@@ -114,7 +114,13 @@ export function SendAgreementModal({
     "problem" in filled
       ? `Dear ${lead.contactName || "there"},\n\nPlease find attached our Executive Search Agreement for ${lead.company}.\n\nKind regards,\n${me.name}`
       : filled.body;
-  const draftFile = esa?.draftFileId ? db.files.find((f) => f.id === esa.draftFileId) : null;
+  const esaFiles = esa
+    ? db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.draftFileId || f.id === esa.signedFileId || f.id === esa.countersignedFileId)
+    : [];
+  const draftFile =
+    agreementVersions(esaFiles)[0]?.file ??
+    (esa?.draftFileId ? db.files.find((f) => f.id === esa.draftFileId) : null) ??
+    null;
   const to = lead.contactEmail ?? "";
   const disabledReason = !esa
     ? "Save the agreement details first in the Send the agreement panel."

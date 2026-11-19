@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { approveTheHold, liftTheHold, moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
-import { AgreementVersions } from "@/app/ui/AgreementVersions";
+import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
@@ -13,7 +13,7 @@ import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
 import { lastTalkWords } from "@/lib/clientsBoard";
 import { checkInText, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
-import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
+import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import { panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
@@ -312,16 +312,26 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   </EmptyState>
                 )}
               </Card>
-              {esa && (
-                <Card title="Agreement record" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} />}>
-                  <AgreementVersions esa={esa} files={db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId)} />
-                  {lead && (
-                    <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
-                      Open the full agreement view
-                    </Link>
-                  )}
-                </Card>
-              )}
+              {esa && (() => {
+                const esaFiles = db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId);
+                const newest = agreementVersions(esaFiles)[0] ?? null;
+                const activeDoc =
+                  (esa.countersignedFileId ? db.files.find((f) => f.id === esa.countersignedFileId) : null) ??
+                  (esa.signedFileId ? db.files.find((f) => f.id === esa.signedFileId) : null) ??
+                  newest?.file ??
+                  null;
+                return (
+                  <Card title="Agreement document" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} />}>
+                    {activeDoc && <DraftDocument file={activeDoc} version={newest?.version ?? esa.version} />}
+                    <AgreementVersions esa={esa} files={esaFiles} />
+                    {lead && (
+                      <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
+                        Open the full agreement view
+                      </Link>
+                    )}
+                  </Card>
+                );
+              })()}
             </>
           )}
 

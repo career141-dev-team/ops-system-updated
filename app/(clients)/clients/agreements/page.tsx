@@ -106,6 +106,14 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
                     {shown.map((c) => {
                       const toLead = "/leads/" + c.leadId + "?step=agreement";
                       const pill = "t-label inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] hover:bg-sunk";
+                      const rowEsa = db.agreements.find((a) => a.id === c.id);
+                      const docFile = rowEsa
+                        ? (rowEsa.countersignedFileId ? db.files.find((f) => f.id === rowEsa.countersignedFileId) : null) ??
+                          (rowEsa.signedFileId ? db.files.find((f) => f.id === rowEsa.signedFileId) : null) ??
+                          (rowEsa.draftFileId ? db.files.find((f) => f.id === rowEsa.draftFileId) : null) ??
+                          db.files.filter((f) => f.subjectType === "esa" && f.subjectId === rowEsa.id).at(-1) ??
+                          null
+                        : null;
                       return (
                         <article key={c.id} className="flex flex-col gap-2 rounded-[16px] bg-surface p-3.5">
                           <div className="flex items-center gap-2.5">
@@ -122,7 +130,7 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
                           </div>
                           <p className={"t-small " + TONE_TEXT[c.state.tone]}>{c.state.text}</p>
                           {c.extra && <p className="t-small text-ink-3">{c.extra}</p>}
-                          <div>
+                          <div className="flex flex-wrap gap-1.5">
                             {col.key === "send" && (
                               <Link href={panelHref("/leads", {}, "send-agreement", c.leadId)} className={pill}>
                                 <Icon name="mail" size={14} />
@@ -149,6 +157,12 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
                                 <Icon name="check" size={14} />
                                 Countersigned
                               </Link>
+                            )}
+                            {docFile && (
+                              <a href={`/api/files/${docFile.id}/view`} target="_blank" rel="noreferrer" className={pill}>
+                                <Icon name="file" size={14} />
+                                View ESA
+                              </a>
                             )}
                           </div>
                         </article>
