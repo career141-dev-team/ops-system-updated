@@ -6,8 +6,7 @@ import {
   Avatar,
   BackBar,
   FoldRow,
-  NextStepCard,
-  PageBox,
+  NextStepCard,
   StatusChip,
   figmaField,
   figmaLabel,
@@ -58,7 +57,7 @@ export default async function HoldPage({
   const position = db.positions.find((p) => p.openingTaId === hold.openingTaId) ?? null;
 
   return (
-    <PageBox width="1080" className="gap-7">
+    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-7 rounded-[28px] bg-surface px-7 py-8 shadow-card">
       <BackBar
         href="/clients?filter=hold"
         label="Clients"
@@ -258,6 +257,6 @@ export default async function HoldPage({
           </div>
         </FoldRow>
       </div>
-    </PageBox>
+    </div>
   );
 }
