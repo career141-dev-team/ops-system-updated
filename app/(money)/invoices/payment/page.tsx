@@ -1,27 +1,28 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
-import { recordPayment } from "@/app/actions";
-import { clientIn, desk, invoiceIn, invoicesNewestFirst } from "@/data/desk";
-import {
-  BackBar,
-  PageBox,
-  figmaField,
-  figmaLabel,
-  pillPrimary,
-  pillSecondary,
-} from "@/app/ui/figma";
-import { day } from "@/lib/listing";
+import { markRefunded, recordPayment } from "@/app/actions";
+import { clientIn, desk, guaranteeIn, invoiceIn, invoicesNewestFirst, numberOf, placementIn, positionIn } from "@/data/desk";
+import { Card, ChoiceGroup, EmptyState, PageTitle, PanelField, panelInput } from "@/app/ui/figma";
+import { SubmitButton } from "@/app/ui/SubmitButton";
+import { colomboDate } from "@/lib/calendar";
+import { REFUND_PCT, refundAmount } from "@/lib/guarantee";
+import { dayShort as day } from "@/lib/accountsBoard";
 import { balanceOf, money } from "@/lib/money";
+import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import RefundPanel from "../RefundPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function LogPaymentPage({
+const PATH = "/invoices/payment";
+const smallBtn = "inline-flex cursor-pointer items-center rounded-full border border-rule bg-surface px-3 py-[7px] t-label text-ink hover:bg-sunk";
+
+export default async function PaymentsAndRefundsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invoiceId?: string; msg?: string }>;
+  searchParams: Promise<{ invoiceId?: string; msg?: string; panel?: string; on?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -31,205 +32,180 @@ export default async function LogPaymentPage({
 
   const sp = await searchParams;
   const db = await desk();
-  const openInvoices = invoicesNewestFirst(db).filter(
-    (inv) =>
-      inv.kind !== "credit_note" &&
-      inv.state !== "paid" &&
-      inv.state !== "written_off" &&
-      balanceOf(inv) > 0,
-  );
-  const selected = sp.invoiceId
-    ? invoiceIn(db, sp.invoiceId)
-    : openInvoices.length === 1
-      ? openInvoices[0]
-      : null;
-
   const now = Date.now();
-  const todayIso = new Date(now).toISOString().slice(0, 10);
+  const canMoney = can(me, "money.manage");
+  const open = invoicesNewestFirst(db).filter(
+    (i) => i.kind !== "credit_note" && i.state !== "paid" && i.state !== "written_off" && i.state !== "draft" && balanceOf(i) > 0,
+  );
+  const selected = sp.invoiceId ? invoiceIn(db, sp.invoiceId) : open.length === 1 ? open[0] : null;
+  const selectedClient = selected?.clientId ? clientIn(db, selected.clientId) : null;
+
+  // Refunds: decided by the Director while a replacement is being looked for, then paid by accounts.
+  const toDecide = db.guarantees.filter((g) => g.state === "replacing");
+  const toPay = db.guarantees.filter((g) => g.state === "refund_pending");
+  const director = db.members.find((m) => m.active && m.role === "director_ops");
+  const directorFirst = (director?.name ?? "the Director").replace(/^Mr\.?\s+/i, "Mr ");
+  const waited = (at: number | null) => (at ? Math.max(0, Math.floor((now - at) / 86_400_000)) : 0);
+  const refundCount = toDecide.length + toPay.length;
+
+  const pct = numberOf(db, "refund.pct", REFUND_PCT);
+  const close = closeHref(PATH, sp);
+  const openGuarantee = sp.panel === "refund-decision" && sp.on ? guaranteeIn(db, sp.on) : null;
+
+  const card = (g: (typeof db.guarantees)[number], pay: boolean) => {
+    const placement = placementIn(db, g.placementId);
+    const client = g.clientId ? clientIn(db, g.clientId) : placement?.clientId ? clientIn(db, placement.clientId) : null;
+    const role = placement?.positionId ? positionIn(db, placement.positionId)?.title : null;
+    const inv = placement?.invoiceId ? invoiceIn(db, placement.invoiceId) : null;
+    const paid = inv ? inv.payments.reduce((s, p) => s + p.amount, 0) : 0;
+    const amount = pay ? g.refundAmount ?? 0 : refundAmount(paid, pct);
+    return (
+      <div key={g.id} className="flex min-w-0 flex-col gap-1.5 rounded-[16px] bg-sunk p-3.5">
+        <p className="t-body-m">{[client?.name, role].filter(Boolean).join(" > ") || g.candidateName}</p>
+        <p className="t-small text-ink-3">
+          {g.candidateName}{g.leftAt ? " left " + day(g.leftAt) : ""}
+        </p>
+        <p className="text-[16px] font-medium leading-6">{money(amount, inv?.currency ?? "LKR")}</p>
+        <p className="t-small text-warn">
+          {pay
+            ? "Refund to pay" + (g.decidedAt ? ", decided " + day(g.decidedAt) : "")
+            : g.deadlineAt && g.deadlineAt < now
+              ? `Waits for ${directorFirst}, ${waited(g.deadlineAt)} day${waited(g.deadlineAt) === 1 ? "" : "s"}`
+              : `Replacement window open until ${day(g.deadlineAt)}`}
+        </p>
+        <div className="pt-1">
+          {pay ? (
+            canMoney && (
+              <form action={markRefunded}>
+                <input type="hidden" name="guaranteeId" value={g.id} />
+                <input type="hidden" name="back" value={close} />
+                <SubmitButton id={"paid-" + g.id} className={smallBtn}>Refund paid</SubmitButton>
+              </form>
+            )
+          ) : (
+            <Link href={panelHref(PATH, sp, "refund-decision", g.id)} scroll={false} className={smallBtn}>Record his answer</Link>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const heading = (title: string, n: number) => (
+    <div className="flex items-center gap-2.5 px-1 pt-1.5">
+      <span className="size-2 rounded-[4px] bg-warn" />
+      <h3 className="t-body-m">{title}</h3>
+      <span className="t-small text-ink-3">{n}</span>
+    </div>
+  );
 
   return (
-    <PageBox width="880">
-      <div className="flex flex-col gap-6">
-        <BackBar href="/invoices" label="Finance" />
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title="Payments and refunds"
+        sub={`${toDecide.length} refund${toDecide.length === 1 ? "" : "s"} wait${toDecide.length === 1 ? "s" : ""} for ${directorFirst} · ${toPay.length} to pay`}
+      />
+      {sp.msg && !openGuarantee && <p role="status" className="t-body rounded-[18px] bg-brand-tint px-4 py-3">{sp.msg}</p>}
 
-        <div>
-          <h1 className="text-[40px] font-light leading-[50px] text-ink">
-            Log a payment
-          </h1>
-          <p className="mt-1.5 text-[14px] text-ink-soft">
-            Payments stay with their invoice, so the history is always in one place.
-          </p>
-        </div>
+      <div className="grid grid-cols-1 items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card title="Payments and refunds" sub="Match each payment. Record each answer.">
+          {heading("Payments to match", 0)}
+          <EmptyState icon="wallet" title="No payments to match">
+            Not connected yet: a bank feed. Until it is, record each payment against its invoice with the form on the right.
+          </EmptyState>
 
-        {sp.msg && (
-          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
-            {sp.msg}
-          </div>
-        )}
-
-        {!selected ? (
-          <div className="rounded-[24px] border border-rule bg-surface p-5">
-            <div className="mb-3 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-              Choose an open invoice
+          {heading("Refunds", refundCount)}
+          {refundCount === 0 ? (
+            <EmptyState icon="shield" title="No refunds waiting">
+              A refund appears here when somebody leaves inside the guarantee and no replacement is placed.
+            </EmptyState>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {toDecide.map((g) => card(g, false))}
+              {toPay.map((g) => card(g, true))}
             </div>
-            {openInvoices.length === 0 ? (
-              <p className="text-[14px] text-ink-soft">
-                There are no open invoices waiting for payment.
-              </p>
+          )}
+        </Card>
+
+        <aside className="flex flex-col gap-5">
+          <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
+            <p className="t-micro flex items-center gap-2 text-ink-3"><Icon name="sparkle" size={16} />Where it stands</p>
+            <p className="text-[20px] font-medium leading-7 text-surface">
+              {open.length} open invoice{open.length === 1 ? "" : "s"}, {refundCount} refund{refundCount === 1 ? "" : "s"}.
+            </p>
+            <p className="t-small text-ink-3">
+              {toDecide[0]?.deadlineAt && toDecide[0].deadlineAt < now
+                ? `The ${(clientIn(db, toDecide[0].clientId ?? "")?.name ?? "oldest")} refund has waited ${waited(toDecide[0].deadlineAt)} day${waited(toDecide[0].deadlineAt) === 1 ? "" : "s"} for ${directorFirst}.`
+                : "Nothing is waiting on a decision."}
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
+            <p className="t-micro text-ink-3">Record a payment</p>
+            {!canMoney ? (
+              <p className="t-small text-ink-3">Only accounts record payments.</p>
+            ) : !selected ? (
+              open.length === 0 ? (
+                <p className="t-small text-ink-3">There are no sent invoices waiting for payment.</p>
+              ) : (
+                <>
+                  <p className="t-small text-ink-3">Choose the invoice it pays.</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {open.map((i) => (
+                      <li key={i.id}>
+                        <Link href={{ pathname: PATH, query: { invoiceId: i.id } }} className="flex items-center justify-between gap-3 rounded-[14px] border border-rule px-4 py-3 hover:bg-sunk">
+                          <span className="t-body min-w-0 truncate">{i.number} · {(i.clientId ? clientIn(db, i.clientId)?.name : null) ?? "Client"}</span>
+                          <span className="t-small shrink-0 text-ink-3">{money(balanceOf(i), i.currency)}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )
             ) : (
-              <div className="divide-y divide-rule">
-                {openInvoices.map((inv) => {
-                  const client = inv.clientId ? clientIn(db, inv.clientId) : null;
-                  const bal = balanceOf(inv);
-                  return (
-                    <Link
-                      key={inv.id}
-                      href={`/invoices/payment?invoiceId=${encodeURIComponent(inv.id)}`}
-                      className="flex items-center justify-between gap-4 rounded-[14px] px-3 py-3 transition hover:bg-sunk/60"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sunk text-ink-soft">
-                          <Icon name="wallet" size={16} />
-                        </span>
-                        <div>
-                          <div className="text-[14px] font-medium text-ink">
-                            {inv.number} · {client?.name ?? "Client"}
-                          </div>
-                          <div className="text-[12px] text-ink-soft">
-                            {money(bal, inv.currency)}
-                            {inv.dueAt ? ` · due ${day(inv.dueAt)}` : ""}
-                          </div>
-                        </div>
-                      </div>
-                      <Icon name="chevron-right" size={16} className="text-ink-faint" />
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          (() => {
-            const client = selected.clientId ? clientIn(db, selected.clientId) : null;
-            const bal = balanceOf(selected);
-            return (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-[24px] border-[1.5px] border-success bg-brand-tint p-4">
-                  <div className="flex items-center gap-3.5">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-brand">
-                      <Icon name="wallet" size={18} />
-                    </span>
-                    <div>
-                      <div className="text-[16px] font-medium leading-[26px] text-ink">
-                        {selected.number} · {client?.name ?? "Client"}
-                      </div>
-                      <div className="text-[14px] leading-[21px] text-ink-faint">
-                        {money(bal, selected.currency)}
-                        {selected.dueAt ? ` · due ${day(selected.dueAt)}` : ""}
-                      </div>
-                    </div>
+              <form action={recordPayment} className="flex flex-col gap-3.5">
+                <input type="hidden" name="invoiceId" value={selected.id} />
+                <input type="hidden" name="back" value={PATH} />
+                <PanelField label="Invoice">
+                  <div className="flex items-center gap-2 rounded-[14px] border border-rule px-4 py-3">
+                    <span className="t-body min-w-0 flex-1 truncate">{selected.number} · {selectedClient?.name ?? "Client"}</span>
+                    {open.length > 1 && <Link href={PATH} className="t-small text-ink underline">Change</Link>}
                   </div>
-                  {openInvoices.length > 1 && (
-                    <Link href="/invoices/payment" className="px-3 text-[14px] leading-[21px] text-ink underline">
-                      Change
-                    </Link>
-                  )}
-                </div>
-
+                </PanelField>
+                <PanelField label={`Amount (${selected.currency})`} hint={`Owed: ${money(balanceOf(selected), selected.currency)}`}>
+                  <input name="amount" type="number" step="0.01" defaultValue={balanceOf(selected)} required className={panelInput} />
+                </PanelField>
+                <PanelField label="Date">
+                  <input name="receivedAt" type="date" defaultValue={colomboDate(now)} required className={panelInput} />
+                </PanelField>
+                <PanelField label="How">
+                  <ChoiceGroup name="method" label="How it was paid" value="bank" options={[{ value: "bank", label: "Bank" }, { value: "cheque", label: "Cheque" }, { value: "cash", label: "Cash" }]} />
+                </PanelField>
+                <PanelField label="Reference">
+                  <input name="reference" type="text" placeholder="Bank slip or transfer reference" className={panelInput} />
+                </PanelField>
                 <div>
-                  <form action={recordPayment} className="flex flex-col gap-5">
-                    <input type="hidden" name="invoiceId" value={selected.id} />
-                    <input type="hidden" name="back" value={`/invoices/${selected.id}`} />
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className={figmaLabel} htmlFor="amount">
-                          Amount received ({selected.currency})
-                        </label>
-                        <input
-                          id="amount"
-                          name="amount"
-                          type="number"
-                          step="0.01"
-                          defaultValue={bal}
-                          required
-                          className={figmaField}
-                        />
-                      </div>
-                      <div>
-                        <label className={figmaLabel} htmlFor="receivedAt">
-                          Date
-                        </label>
-                        <input
-                          id="receivedAt"
-                          name="receivedAt"
-                          type="date"
-                          defaultValue={todayIso}
-                          required
-                          className={figmaField}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className={figmaLabel}>How it was paid</div>
-                      <div className="mt-1.5 flex flex-wrap gap-2">
-                        {[
-                          { value: "bank", label: "Bank transfer" },
-                          { value: "cheque", label: "Cheque" },
-                          { value: "cash", label: "Cash" },
-                        ].map((opt, idx) => (
-                          <label
-                            key={opt.value}
-                            className="inline-flex cursor-pointer items-center rounded-full px-4 py-2 text-[14px] leading-[21px] text-ink-soft has-[:checked]:bg-sunk has-[:checked]:font-medium has-[:checked]:text-ink"
-                          >
-                            <input
-                              type="radio"
-                              name="method"
-                              value={opt.value}
-                              defaultChecked={idx === 0}
-                              className="sr-only"
-                            />
-                            <span>{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={figmaLabel} htmlFor="reference">
-                        Reference
-                      </label>
-                      <input
-                        id="reference"
-                        name="reference"
-                        type="text"
-                        placeholder="Bank slip or transfer reference"
-                        className={figmaField}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-2.5 rounded-[16px] bg-brand-soft px-4 py-3 text-[14px] leading-[21px] text-ink">
-                      <Icon name="check" size={16} className="shrink-0 text-success" />
-                      Saving this payment updates {selected.number} immediately and records it in the
-                      invoice history.
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button type="submit" className={pillPrimary}>
-                        Save payment
-                      </button>
-                      <Link href="/invoices" className="px-4 py-2 text-[16px] leading-[26px] text-ink-soft hover:text-ink">
-                        Cancel
-                      </Link>
-                    </div>
-                  </form>
+                  <SubmitButton id="record-payment" className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-ink px-[18px] py-[11px] text-[14px] font-medium leading-[22px] text-ink-inverse">
+                    <Icon name="check" size={16} />Record
+                  </SubmitButton>
                 </div>
-              </>
-            );
-          })()
-        )}
+              </form>
+            )}
+          </section>
+        </aside>
       </div>
-    </PageBox>
+
+      {openGuarantee && (
+        <RefundPanel
+          db={db}
+          g={openGuarantee}
+          now={now}
+          me={me}
+          director={director ?? null}
+          pct={pct}
+          closeHref={close}
+          msg={sp.msg}
+        />
+      )}
+    </div>
   );
 }

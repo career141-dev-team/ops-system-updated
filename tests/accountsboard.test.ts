@@ -1,0 +1,60 @@
+/** The Accounts board (v6 A1): which column an invoice is in, and the numbers beside it. */
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { boardSummary, columnOf, reminderText, type BoardInvoice } from "@/lib/accountsBoard";
+
+const DAY = 86_400_000;
+const now = Date.parse("2026-11-19T10:00:00+05:30");
+const inv = (o: Partial<BoardInvoice>): BoardInvoice => ({
+  id: "i", number: "INV-1", kind: "fee", state: "sent", amount: 100, lateCharge: 0, payments: [],
+  dueAt: now + 10 * DAY, sentAt: now - DAY, paidAt: null, disputed: false, ...o,
+});
+
+test("a draft is to send, even when its due date has passed", () => {
+  assert.equal(columnOf(inv({ state: "draft", dueAt: now - 5 * DAY }), now), "to_send");
+});
+
+test("late, sent, disputed and closed ones land where they stand", () => {
+  assert.equal(columnOf(inv({ dueAt: now - DAY }), now), "late");
+  assert.equal(columnOf(inv({ dueAt: now - DAY, disputed: true }), now), "sent");
+  assert.equal(columnOf(inv({}), now), "sent");
+  assert.equal(columnOf(inv({ kind: "credit_note" }), now), null);
+  assert.equal(columnOf(inv({ state: "written_off" }), now), null);
+});
+
+test("paid shows only for the month it was paid", () => {
+  assert.equal(columnOf(inv({ state: "paid", paidAt: now - DAY }), now), "paid");
+  assert.equal(columnOf(inv({ state: "paid", paidAt: now - 40 * DAY }), now), null);
+});
+
+test("the numbers add up", () => {
+  const s = boardSummary(
+    [
+      inv({ id: "a", state: "draft" }),
+      inv({ id: "b", dueAt: now + 3 * DAY, amount: 50 }),
+      inv({ id: "c", dueAt: now - 9 * DAY, amount: 200, payments: [{ amount: 50, paidAt: now - 2 * DAY }] }),
+      inv({ id: "d", state: "paid", paidAt: now - DAY, payments: [{ amount: 100, paidAt: now - DAY }] }),
+    ],
+    now,
+  );
+  assert.equal(s.toSend, 1);
+  assert.equal(s.sent, 1);
+  assert.equal(s.dueThisWeek, 1);
+  assert.equal(s.late, 1);
+  assert.equal(s.oldestLateDays, 9);
+  assert.equal(s.lateSum, 150);
+  assert.equal(s.paidCount, 1);
+  assert.equal(s.paidSum, 150);
+});
+
+test("the reminder names the invoice and the late charge", () => {
+  const t = reminderText({ firstName: "Sunil", number: "INV-9", amount: "LKR 1", due: "17 Dec", pctPerMonth: 5 });
+  assert.match(t, /^Hello Sunil, invoice INV-9 for LKR 1 was due on 17 Dec\. A late charge of 5% a month/);
+});
+
+test("a day is written as 17 Nov, in Colombo", async () => {
+  const { dayShort } = await import("@/lib/accountsBoard");
+  assert.equal(dayShort(Date.parse("2026-11-17T23:00:00+05:30")), "17 Nov");
+  assert.equal(dayShort(null), "no date");
+});

@@ -20,12 +20,9 @@ import {
   positionIn,
 } from "@/data/desk";
 import {
-  BackBar,
-  ClockPill,
-  FoldRow,
+  Card,
+  PageTitle,
   RelatedLinks,
-  NextStepCard,
-  PageBox,
   StatTile,
   StatusChip,
   figmaField,
@@ -34,6 +31,7 @@ import {
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
+import StepCard from "../StepCard";
 import { DraftDocument } from "@/app/ui/AgreementVersions";
 import { FieldList } from "@/app/ui/FieldList";
 import { SubmitButton } from "@/app/ui/SubmitButton";
@@ -55,6 +53,15 @@ import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+/** One block of the record: a v6 card with a title and a small line. */
+function Section({ title, summary, children }: { title: string; summary?: string; children: React.ReactNode }) {
+  return (
+    <Card title={title} sub={summary}>
+      {children}
+    </Card>
+  );
+}
 
 export default async function InvoiceDetailPage({
   params,
@@ -129,62 +136,38 @@ export default async function InvoiceDetailPage({
     .filter((e) => e.subjectType === "invoice" && e.subjectId === inv.id)
     .sort((a, b) => b.at - a.at);
 
-  const cardShell = "rounded-[24px] border border-rule bg-surface p-5";
+  const cardShell = "flex flex-col gap-3";
+  const status = (
+    <StatusChip tone={inv.state === "paid" ? "ok" : inv.state === "disputed" || overdue ? "danger" : inv.state === "sent" || inv.state === "partly_paid" ? "warn" : "quiet"}>
+      {invoiceInWords(inv)}
+    </StatusChip>
+  );
 
   return (
-    <PageBox width="1080">
-      <div className="flex flex-col gap-6">
-        <BackBar href="/invoices" label="Finance" />
-
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
+    <div className="flex flex-col gap-[22px]">
+        <PageTitle
+          title={client?.name ?? "Client"}
+          sub={
+            <>
               Invoice {inv.number} ·{" "}
-              {placementRole
-                ? `${placementRole} placement`
-                : inv.kind === "surcharge"
-                  ? "surcharge invoice"
-                  : inv.kind === "credit_note"
-                    ? "credit note"
-                    : inv.about}
-            </p>
-            <h1 className="mt-1 text-[40px] font-light leading-[50px] text-ink">
-              {client?.name ?? "Client"}
-            </h1>
-          </div>
-          <StatusChip
-            tone={
-              inv.state === "paid"
-                ? "ok"
-                : inv.state === "disputed" || overdue
-                  ? "danger"
-                  : inv.state === "sent" || inv.state === "partly_paid"
-                    ? "warn"
-                    : "quiet"
-            }
-          >
-            {invoiceInWords(inv)}
-          </StatusChip>
-        </div>
+              {placementRole ? `${placementRole} placement` : inv.kind === "surcharge" ? "surcharge invoice" : inv.kind === "credit_note" ? "credit note" : inv.about} ·{" "}
+              <Link href="/invoices" className="underline">Back to Invoices</Link>
+            </>
+          }
+          right={status}
+        />
 
         {placement && <RelatedLinks items={relatedWork(db, { placementId: placement.id })} active="invoice" />}
 
         {sp.msg && !sp.at && (
-          <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-4 py-3 text-[13px] font-medium text-ink">
+          <div className="t-body rounded-[18px] bg-brand-tint px-4 py-3">
             {sp.msg}
           </div>
         )}
 
-        <NextStepCard
-          eyebrow="UP NEXT"
-          clock={
-            inv.dueAt && inv.state !== "paid" && inv.state !== "written_off" ? (
-              <ClockPill
-                tone={overdue ? "danger" : "warn"}
-                label={overdue ? `Overdue · due ${day(inv.dueAt)}` : `Due ${day(inv.dueAt)}`}
-              />
-            ) : undefined
-          }
+        <StepCard
+          tone={overdue ? "danger" : "warn"}
+          chip={inv.dueAt && inv.state !== "paid" && inv.state !== "written_off" ? (overdue ? `Overdue · due ${day(inv.dueAt)}` : `Due ${day(inv.dueAt)}`) : undefined}
           title={step.where}
           body={step.waiting}
           actions={
@@ -240,7 +223,7 @@ export default async function InvoiceDetailPage({
 
         <div className="flex flex-col gap-3">
           {(placement || guarantee) && (
-            <FoldRow title="Guarantee & placement" summary={placementRole ?? ""}>
+            <Section title="Guarantee & placement" summary={placementRole ?? ""}>
               <div className={cardShell}>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="text-[14px] text-ink-soft">
@@ -275,13 +258,10 @@ export default async function InvoiceDetailPage({
                   </div>
                 </div>
               </div>
-            </FoldRow>
+            </Section>
           )}
 
-          <div className={cardShell + " flex flex-col gap-3"}>
-            <p className="text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-              THE INVOICE, AS THE CLIENT WILL GET IT
-            </p>
+          <Card title="The invoice, as the client will get it">
             {newest ? (
               <DraftDocument file={newest.file} version={newest.version} />
             ) : (
@@ -338,12 +318,11 @@ export default async function InvoiceDetailPage({
                 No signed agreement on record for this client, so the standard fee (one month of gross salary) was used. Check it against what was agreed.
               </p>
             )}
-          </div>
+          </Card>
 
-          <FoldRow
+          <Section
             title="As the client reads it"
             summary={inv.number}
-            defaultOpen={inv.state === "draft"}
           >
             <div className={cardShell}>
               <p className="mb-3 text-[13px] text-ink-soft">
@@ -364,16 +343,15 @@ export default async function InvoiceDetailPage({
                 </form>
               )}
             </div>
-          </FoldRow>
+          </Section>
 
-          <FoldRow
+          <Section
             title="Money in & log payment"
             summary={
               inv.payments.length > 0
                 ? `${inv.payments.length} payment${inv.payments.length === 1 ? "" : "s"}`
                 : "none yet"
             }
-            defaultOpen={inv.payments.length > 0}
           >
             <div className={cardShell}>
               {inv.payments.length > 0 && (
@@ -465,13 +443,13 @@ export default async function InvoiceDetailPage({
                 </p>
               )}
             </div>
-          </FoldRow>
+          </Section>
 
           {inv.kind !== "credit_note" &&
             inv.state !== "paid" &&
             inv.state !== "written_off" &&
             canMoney && (
-              <FoldRow
+              <Section
                 title="Dispute & write-off"
                 summary={`Write-off after ${writeOffDays} days`}
               >
@@ -518,11 +496,11 @@ export default async function InvoiceDetailPage({
                     </form>
                   </div>
                 </div>
-              </FoldRow>
+              </Section>
             )}
 
           {inv.kind !== "credit_note" && canMoney && (
-            <FoldRow title="Credit note" summary="Raise a credit note against this invoice">
+            <Section title="Credit note" summary="Raise a credit note against this invoice">
               <div className={cardShell}>
                 <form action={raiseCreditNote} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <input type="hidden" name="invoiceId" value={inv.id} />
@@ -560,10 +538,10 @@ export default async function InvoiceDetailPage({
                   </div>
                 </form>
               </div>
-            </FoldRow>
+            </Section>
           )}
 
-          <FoldRow
+          <Section
             title="What happened to it"
             summary={`${history.length} event${history.length === 1 ? "" : "s"}`}
           >
@@ -590,9 +568,8 @@ export default async function InvoiceDetailPage({
                 </div>
               )}
             </div>
-          </FoldRow>
+          </Section>
         </div>
       </div>
-    </PageBox>
   );
 }
