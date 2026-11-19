@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { compileTalentPulseNow, markTalentPulsePosted, saveTalentPulseLine } from "@/app/actions";
-import { BackBar, PageBox, StatusChip, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { BackBar, Card, PageTitle, StatusChip, figmaField, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { desk, issuesNewestFirst, member as memberIn, runClocks } from "@/data/desk";
 import { ISSUE_MEANINGS, type IssueState, issueInWords, problemWithIssue, weekOf } from "@/lib/adverts";
 import { can } from "@/lib/roles";
@@ -23,25 +23,19 @@ export default async function TalentPulsePage({ searchParams }: { searchParams: 
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   return (
-    <PageBox width="1080" className="gap-6">
+    <div className="flex flex-col gap-[22px]">
       <BackBar href="/positions" label="Openings" />
 
       {msg && (
-        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
+        <div className="rounded-[18px] bg-sunk px-4 py-3 t-small">
           {msg}
         </div>
       )}
 
-      <div className="flex flex-col gap-1 border-b border-rule pb-[18px]">
-        <span className="text-[14px] leading-[22px] text-ink-faint">
-          Weekly newsletter · compiled Tuesday, posted Wednesday by marketing
-        </span>
-        <h1 className="text-[40px] font-light leading-[50px] text-ink">Talent Pulse</h1>
-      </div>
+      <PageTitle title="Talent Pulse" sub="Weekly newsletter · compiled Tuesday, posted Wednesday by marketing" />
 
       {!thisWeek && (
-        <div className="flex flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <h2 className="text-[18px] font-medium text-ink">This week ({weekOf(now)})</h2>
+        <Card title={`This week (${weekOf(now)})`}>
           <p className="text-[14px] text-ink-soft">
             Nothing compiled for the week of {weekOf(now)} yet. It happens by itself on Tuesday morning; you can also
             compile it now.
@@ -53,21 +47,15 @@ export default async function TalentPulsePage({ searchParams }: { searchParams: 
               </button>
             </form>
           )}
-        </div>
+        </Card>
       )}
 
       {thisWeek && (
-        <div className="flex flex-col gap-4 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className={figmaLabel}>THIS TUESDAY’S LIST</p>
-              <h2 className="mt-1 text-[20px] font-medium text-ink">Week of {thisWeek.weekOf}</h2>
-            </div>
-            <StatusChip
-              label={issueInWords(thisWeek)}
-              tone={thisWeek.state === "posted" ? "ok" : "warn"}
-            />
-          </div>
+        <Card
+          title={`Week of ${thisWeek.weekOf}`}
+          sub="This Tuesday’s list"
+          right={<StatusChip label={issueInWords(thisWeek)} tone={thisWeek.state === "posted" ? "ok" : "warn"} />}
+        >
 
           {thisWeek.lines.length === 0 && (
             <p className="text-[14px] text-ink-soft">
@@ -136,13 +124,12 @@ export default async function TalentPulsePage({ searchParams }: { searchParams: 
               {thisWeek.postedBy ? ` by ${memberIn(db, thisWeek.postedBy)?.name ?? "somebody"}` : ""}.
             </p>
           )}
-        </div>
+        </Card>
       )}
 
       {earlier.length > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <p className={figmaLabel}>EARLIER WEEKS</p>
-          <div className="flex flex-col divide-y divide-rule rounded-[20px] bg-sunk px-5 py-2">
+        <Card title="Earlier weeks">
+          <div className="flex flex-col divide-y divide-rule">
             {earlier.map((issue) => (
               <div key={issue.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span className="text-[14px] font-medium text-ink">Week of {issue.weekOf}</span>
@@ -155,8 +142,8 @@ export default async function TalentPulsePage({ searchParams }: { searchParams: 
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
-    </PageBox>
+    </div>
   );
 }

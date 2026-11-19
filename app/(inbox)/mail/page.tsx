@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { aiSwitches, desk } from "@/data/desk";
 import Icon from "@/app/Icon";
-import { aboutWhom } from "@/app/MessagesView";
+import { aboutWhom } from "@/lib/aboutWhom";
 import { EmptyState, PageTitle, figmaField, figmaLabel, pillPrimary } from "@/app/ui/figma";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { teamNewsView, whatsappView } from "@/lib/inboxChannels";

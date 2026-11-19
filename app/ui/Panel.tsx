@@ -36,7 +36,7 @@ export default function Panel({
       <div className="flex flex-col gap-0.5">
         {kicker && <p className="t-micro text-ink-faint">{kicker}</p>}
         <div className="flex items-start gap-4 pt-1">
-          <h2 id="panel-title" className="t-display min-w-0 flex-1 [overflow-wrap:anywhere]">
+          <h2 id="panel-title" className="t-display min-w-0 flex-1 [overflow-wrap:anywhere] max-md:!text-[24px] max-md:!leading-8">
             {title}
           </h2>
           <Link
@@ -44,7 +44,7 @@ export default function Panel({
             scroll={false}
             replace
             aria-label="Close"
-            className="mt-8 flex size-10 shrink-0 items-center justify-center rounded-full border border-rule bg-surface text-ink hover:bg-sunk"
+            className="mt-8 flex size-10 shrink-0 max-md:mt-0 items-center justify-center rounded-full border border-rule bg-surface text-ink hover:bg-sunk"
           >
             <Icon name="x" size={18} />
           </Link>

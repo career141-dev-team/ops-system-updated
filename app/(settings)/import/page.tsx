@@ -28,26 +28,26 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
   };
   const mayImport = can(me, "settings.manage");
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13px] font-mono";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-ink-inverse hover:opacity-90";
-  const plain = "self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  const card = "rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
+  const field = "w-full rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px] font-mono";
+  const button = "self-start rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium text-ink-inverse";
+  const plain = "self-start rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk";
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
-      <div>
-        <h1 className="text-[17px] font-medium">The first day</h1>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">The first day</h1>
+        <p className="t-small text-ink-3">
           Everything the team already knows, pasted in from the sheets: the clients we have and who owns each one, the
           holiday list so a working-day clock means what the TA System means, and the ops people with their roles.
           Copy the rows straight out of the sheet — commas or tabs, header row and all.
         </p>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
       {!mayImport && (
-        <p className="rounded-lg border border-warning bg-surface px-3 py-2 text-[13px]">
+        <p className="rounded-[18px] border border-warning bg-surface px-4 py-3 t-small">
           Only the ops lead imports: these rows become the client list, the roles and the holidays everything else
           counts from.
         </p>
@@ -56,7 +56,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
       {(Object.keys(IMPORT_KINDS) as ImportKind[]).map((kind) => (
         <section key={kind} className={card}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-[14.5px] font-medium">{kind}</h2>
+            <h2 className="t-h2">{kind}</h2>
             <span className="text-[12.5px] text-ink-soft">{counts[kind]} here now</span>
           </div>
           <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">{IMPORT_KINDS[kind].what}</p>

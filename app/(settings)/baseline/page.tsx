@@ -26,20 +26,22 @@ export default async function BaselinePage({ searchParams }: { searchParams: Pro
 
   const db = await desk();
   const rows = [...db.baseline].sort((a, b) => b.at - a.at);
-  const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
+  const field = "rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px]";
   const nameOf = (id: string) => db.members.find((m) => m.id === id)?.name ?? "somebody";
 
   return (
-    <div className="max-w-[860px]">
-      <h1 className="text-[17px] font-medium">Today&apos;s numbers</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">Today&apos;s numbers</h1>
+        <p className="t-small text-ink-3">
         What the last six months really looked like, from the archive. The weekly report compares against these.
       </p>
+      </div>
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Record a number</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">Record a number</h2>
         {mayRecord ? (
           <form action={recordBaseline} className="mt-3 flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
@@ -66,7 +68,7 @@ export default async function BaselinePage({ searchParams }: { searchParams: Pro
               Where it came from
               <input name="note" placeholder="counted from the ESA folder, 14 clients" className={field} />
             </label>
-            <button className="self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+            <button className="self-start rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk">
               Record it
             </button>
           </form>
@@ -75,8 +77,8 @@ export default async function BaselinePage({ searchParams }: { searchParams: Pro
         )}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">What is measured, and why</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">What is measured, and why</h2>
         {Object.entries(MEASURES).map(([key, measure]) => {
           const known = rows.filter((r) => r.measure === key);
           return (

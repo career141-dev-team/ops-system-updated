@@ -687,7 +687,7 @@ export async function devLoadOpeningsSample(): Promise<void> {
   const { loadOpeningsSample } = await import("@/data/desk");
   const done = await loadOpeningsSample(member.id);
   revalidatePath("/positions");
-  devTaBack(done.ok ? "The sample is loaded: five clients, six openings, and seventeen placed jobs with their invoices and guarantees. Your data before it is copied to " + done.backup : done.why);
+  devTaBack(done.ok ? "The staged dummy data is loaded: " + Object.entries(done.counts).filter(([, n]) => n > 0).map(([key, n]) => n + " " + key).join(", ") + ". Your data before it is copied to " + done.backup : done.why);
 }
 
 /** Takes the sample out again. */
@@ -698,7 +698,7 @@ export async function devRemoveOpeningsSample(): Promise<void> {
   const { removeOpeningsSample } = await import("@/data/desk");
   const done = await removeOpeningsSample();
   revalidatePath("/positions");
-  devTaBack(done.ok ? "The Openings sample is out (" + done.gone + " rows)." : done.why);
+  devTaBack(done.ok ? "The staged dummy data is out (" + done.gone + " rows)." : done.why);
 }
 
 /** A clock comes due now, so its step happens without waiting days. */
@@ -1438,9 +1438,8 @@ export async function queueTestWrite(): Promise<void> {
 export async function createLead(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const backPath = String(formData.get("back") ?? "").trim();
-  const here = backPath.startsWith("/") ? backPath : "/leads";
-  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  const here = backTo(formData, "/leads");
+  const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   // "Direct client" (Figma 331:2976): the company is one of our own clients, picked from the list. The name
@@ -7223,7 +7222,7 @@ export async function askTheDesk(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const question = String(formData.get("question") ?? "").trim();
-  const back = (msg: string) => redirect("/ai?msg=" + encodeURIComponent(msg));
+  const back = (msg: string) => redirect(landed(formData, "/ai", msg));
   if (!can(member, "inbox.read")) back(refusal("inbox.read"));
   if (question.length < 5) back("What is the question?");
 

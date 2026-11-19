@@ -47,7 +47,7 @@ export function LeadAssignRow({
       <input type="hidden" name="ownerId" value={selectedId} />
       <input type="hidden" name="back" value="/clients/owners" />
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
         <span className="text-[16px] font-medium leading-[26px] text-ink">
           {lead.company}
         </span>

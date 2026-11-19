@@ -173,6 +173,7 @@ Also built on 17 Nov (supervisor review; each is a decision in 09):
 | Pretend to be the TA System (`/dev/ta`) | development only, never against the real TA: opens when `OPS_DEV_SIGNIN` and `OPS_TA_FAKE` are both on (`sh deploy/local/start-ui.sh`). Buttons make TA create an opening, send a set of five CVs, send interview events, place a candidate and say they joined, through the same handlers as real events (`devTa*` in `app/actions.ts`) |
 | Testing Openings on a laptop (18 Nov) | `src/data/sampleOpenings.ts`, `src/lib/fakeTaState.ts`, `src/data/fakeTa.ts`, `/dev/ta` | "Load the Openings sample" adds five invented clients and six openings, one per state, after copying `.data-ui/ops.json` to `ops.before-sample-<time>.json`; "Remove" takes out only `smp_` rows. The stand-in TA answers each sample opening by id and keeps the stages Ops' pushed decisions set (`.data-ui/fake-ta.json`). Per opening: TA approves the JD, TA closes it, TA moves a candidate, move a clock to now, TA reads the queue |
 | Testing Placements on a laptop (18 Nov) | `src/data/samplePlacements.ts`, `/dev/ta` | the same "Load the sample" adds seventeen placed jobs, one per placement, invoice and guarantee state (invoices numbered `SMP-`), with the clocks those states run; the stand-in TA answers each placement by id. `/dev/ta` moves the joining, invoice, guarantee and replacement clocks to now, and "TA places" can make an offer with no date or letter yet. No bank details are written: put test ones in Settings to draw an invoice |
+| Staged dummy data (19 Nov) | `src/data/sampleDesk.ts` (with `sampleOpenings.ts`, `samplePlacements.ts`), `deploy/local/seed-ui.mjs`, `tests/sampledesk.test.ts` | Load it with `node deploy/local/seed-ui.mjs` (into `OPS_DATA_DIR`, default `.data-ui`; `--remove` takes it out) or the "Load the staged dummy data" button on `/dev/ta`. One named example of every state: leads at all eight steps and the meeting states, agreements draft to countersigned (chasing 1/2/3, one client who replied), clients at every stage, positions at every stage with 0-3 sets, claimed CVs, holds, interviews and references in every state, placements, guarantees and invoices in every state, and the inbox (mail, WhatsApp, drafts, tasks, calls, Talent Pulse, weekly report). Names carry the state, e.g. "Sample Ceylon Tea (chasing 2)". Every id is `smp_`, dates are relative to today, the real clock starters run; your own rows are never touched. JSON store only |
 | The requirement from a Teams transcript | `src/lib/transcript.ts`, `fetchTranscript`, `readRequirementFromCall` |
 
 Not done from that review, each with its reason:
@@ -359,9 +360,11 @@ The screens were redrawn to the v6 design in a first wave; later waves fill the 
   are in the avatar menu (`app/ProfileMenu.tsx`), so nothing is unreachable.
 - **New routes**: `/calendar` (the week of interviews), `/hiring` and `/hiring/[id]` (our own
   vacancies), `/clients/agreements`.
-- **Redirects** (`next.config.ts`): `/sets`, `/placements`, `/guarantees`, `/holds`, `/adverts` go to
-  `/positions`; `/money` goes to `/invoices`. `/calls` and `/interviews` are **temporarily not
-  redirected**: they return when My work's calls view and the calendar's start-interview form land.
+- **Redirects** (`next.config.ts` and in-page redirects): `/sets`, `/placements`, `/guarantees`,
+  `/holds`, `/adverts` go to `/positions`; `/money` goes to `/invoices`; `/calls` redirects to
+  `/?view=calls` and `/interviews` redirects to `/calendar` (preserving `?msg=`). Calendar (`K1`)
+  now renders real client interviews, booked meetings, and joining days, plus a 680px
+  `?panel=start-interview` drawer.
 - **Role-tab aliases** (`src/lib/roleTabs.ts`): a role page has seven tabs, and an old `?view=` or
   `?tab=` (jd, adverts, placements, activity, messages, candidates) resolves to the tab that holds it,
   because stored tasks, mail and `back` fields still carry them.

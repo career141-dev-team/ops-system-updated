@@ -14,7 +14,7 @@ import {
   devTaSendSet,
   devTaStage,
 } from "@/app/actions";
-import { PageBox, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { PageTitle, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { clientIn, desk, liveTimers, outboxWaiting, positionsNewestFirst } from "@/data/desk";
 import { SAMPLE_PREFIX } from "@/data/sampleOpenings";
 import { fakeTa, pipeline } from "@/lib/ta";
@@ -72,34 +72,29 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
   };
 
   return (
-    <PageBox width="1080" className="gap-6">
-      <div className="flex flex-col gap-1">
-        <span className={figmaLabel}>DEVELOPMENT ONLY</span>
-        <h1 className="text-[32px] font-light leading-[40px] text-ink">Pretend to be the TA System</h1>
-        <p className="max-w-[70ch] text-[14px] text-ink-soft">
-          Everything here is invented and goes through the same handlers as a real TA event. Do the Ops steps on the
-          real screens, then press what TA would say here. It cannot run against the real TA System.
-        </p>
-      </div>
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle title="Pretend to be the TA System" sub="Development only. Everything here is invented and goes through the same handlers as a real TA event. Do the Ops steps on the real screens, then press what TA would say here. It cannot run against the real TA System." />
 
-      {msg && <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</div>}
+      {msg && <div className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</div>}
 
       {/* The Openings sample and the queue (18 Nov). */}
-      <section className="flex flex-col gap-3 rounded-[24px] border border-rule px-6 py-5">
+      <section className="flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
         <span className={figmaLabel}>SAMPLE DATA · LAPTOP ONLY</span>
         <p className="text-[14px] text-ink-soft">
-          Five invented clients and six openings, one in each state (JD to approve, searching, a set ready, a set with
-          the client, hold at five, waiting for TA, closed), with their adverts, interviews and clocks. Your data is
-          copied aside first; removing the sample takes out only its rows.
+          The staged dummy data: leads at every step, agreements in every state, clients at every stage, positions at every
+          stage with their sets, interviews, references and holds, placements with every invoice and guarantee state, and
+          the inbox (mail, WhatsApp, drafts, tasks, calls, Talent Pulse, the weekly report). Each example is named for
+          its state. Your data is copied aside first; removing it takes out only its rows. The same thing from a
+          terminal: node deploy/local/seed-ui.mjs (add --remove to take it out).
         </p>
         <div className="flex flex-wrap items-center gap-3">
           {sampleIn ? (
             <form action={devRemoveOpeningsSample}>
-              <button type="submit" className={pillSecondary}>Remove the Openings sample</button>
+              <button type="submit" className={pillSecondary}>Remove the staged dummy data</button>
             </form>
           ) : (
             <form action={devLoadOpeningsSample}>
-              <button type="submit" className={pillPrimary}>Load the Openings sample</button>
+              <button type="submit" className={pillPrimary}>Load the staged dummy data</button>
             </form>
           )}
           <form action={devTaPushQueue}>
@@ -121,7 +116,7 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
         const placements = db.placements.filter((p) => p.positionId === position.id);
         const people = sets.flatMap((s) => s.candidates);
         return (
-          <section key={position.id} className="flex flex-col gap-4 rounded-[24px] bg-sunk px-6 py-5">
+          <section key={position.id} className="flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <Link href={"/positions/" + position.id} className="text-[18px] font-medium text-ink hover:text-brand">
                 {client?.name ?? position.clientTaId} · {position.title}
@@ -299,6 +294,6 @@ export default async function DevTaPage({ searchParams }: { searchParams: Promis
           </section>
         );
       })}
-    </PageBox>
+    </div>
   );
 }

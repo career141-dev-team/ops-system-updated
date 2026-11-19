@@ -5,11 +5,13 @@ import { approveTheHold, liftTheHold } from "@/app/actions";
 import {
   Avatar,
   BackBar,
+  Card,
+  PageTitle,
   FoldRow,
-  NextStepCard,
+  NextStepCard,
+
   StatusChip,
   figmaField,
-  figmaLabel,
   pillPrimary,
   pillSecondary,
 } from "@/app/ui/figma";
@@ -57,7 +59,7 @@ export default async function HoldPage({
   const position = db.positions.find((p) => p.openingTaId === hold.openingTaId) ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-7 rounded-[28px] bg-surface px-7 py-8 shadow-card">
+    <div className="flex flex-col gap-[22px]">
       <BackBar
         href="/clients?filter=hold"
         label="Clients"
@@ -78,20 +80,19 @@ export default async function HoldPage({
         }
       />
 
-      <div className="flex flex-col gap-1">
-        <span className={figmaLabel}>Client · {ownerName}</span>
-        <h1 className="text-[40px] font-light leading-[50px] text-ink">
-          {client?.name ?? hold.openingTaId}
-        </h1>
-        <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
-          {HOLD_MEANINGS[hold.state as HoldState] ?? hold.state}
-          {position ? ` · 1 opening (${position.title})` : ` · Opening ${hold.openingTaId}`}
-          {set ? ` · ${set.name}` : ""}
-        </p>
-      </div>
+      <PageTitle
+        title={client?.name ?? hold.openingTaId}
+        sub={
+          <>
+            Client · {ownerName} · {HOLD_MEANINGS[hold.state as HoldState] ?? hold.state}
+            {position ? ` · 1 opening (${position.title})` : ` · Opening ${hold.openingTaId}`}
+            {set ? ` · ${set.name}` : ""}
+          </>
+        }
+      />
 
       {msg && (
-        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+        <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
 
       {/* Hero NextStepCard (Figma 1:3529) */}
@@ -171,7 +172,7 @@ export default async function HoldPage({
       </NextStepCard>
 
       {/* Collapsible Folds (Figma 1:3542, 1:3543) */}
-      <div className="flex flex-col gap-2.5">
+      <Card>
         <FoldRow
           title={`Opening · ${position?.title ?? hold.openingTaId}`}
           summary={
@@ -256,7 +257,7 @@ export default async function HoldPage({
             ))}
           </div>
         </FoldRow>
-      </div>
+      </Card>
     </div>
   );
 }

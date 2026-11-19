@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { signOutAction } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { activeMembers, desk } from "@/data/desk";
-import { PageBox, pillSecondary } from "@/app/ui/figma";
+import { PageTitle, pillSecondary } from "@/app/ui/figma";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -18,24 +18,17 @@ export default async function AccountPage() {
   const members = activeMembers(db).filter((m) => m.id !== me.id);
   const coverMember = members[0] ?? null;
 
-  const cardShell = "rounded-[24px] bg-sunk p-5";
+  const cardShell = "flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
   const helpRow = "flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk";
   const caption = "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
 
   return (
-    <PageBox width="880">
-      <div className="flex flex-col gap-7">
-        <div className="flex items-center gap-5">
-          <span className="flex size-[70px] shrink-0 items-center justify-center rounded-full bg-brand-tint text-[26px] text-brand">{me.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}</span>
-          <div>
-            <h1 className="text-[40px] font-light leading-[50px] text-ink">
-              {me.name}
-            </h1>
-            <p className="text-[16px] leading-[26px] text-ink-soft">
-              {me.role} · {myClients.length} client{myClients.length === 1 ? "" : "s"}
-            </p>
-          </div>
-        </div>
+    <div className="flex flex-col gap-[22px]">
+        <PageTitle
+          title={me.name}
+          sub={`${me.role} · ${myClients.length} client${myClients.length === 1 ? "" : "s"}`}
+          right={<span className="flex size-[56px] shrink-0 items-center justify-center rounded-full bg-brand-tint text-[22px] text-brand">{me.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}</span>}
+        />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className={cardShell}>
@@ -81,8 +74,8 @@ export default async function AccountPage() {
           </div>
         </div>
 
-        <div>
-          <div className={caption + " mb-2"}>
+        <div className={cardShell}>
+          <div className={caption}>
             HELP
           </div>
           <div className="flex flex-col gap-2">
@@ -155,7 +148,6 @@ export default async function AccountPage() {
             <button className={pillSecondary}>Sign out</button>
           </form>
         </div>
-      </div>
-    </PageBox>
+    </div>
   );
 }

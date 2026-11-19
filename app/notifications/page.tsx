@@ -1,39 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import Icon, { type IconName } from "@/app/Icon";
 import { desk, member as memberIn, runClocks } from "@/data/desk";
-import { PageBox, pillGhost } from "@/app/ui/figma";
+import { hrefForSubject } from "@/lib/notificationLink";
 import { day } from "@/lib/listing";
 import { currentMember } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
-
-function hrefForSubject(subjectType: string, subjectId: string): string {
-  switch (subjectType) {
-    case "client":
-      return `/clients/${subjectId}`;
-    case "lead":
-      return `/leads/${subjectId}`;
-    case "position":
-      return `/positions/${subjectId}`;
-    case "clientSet":
-      return `/sets/${subjectId}`;
-    case "interview":
-      return `/interviews/${subjectId}`;
-    case "placement":
-      return `/placements/${subjectId}`;
-    case "invoice":
-      return `/invoices/${subjectId}`;
-    case "guarantee":
-      return `/guarantees/${subjectId}`;
-    case "report":
-      return `/reports/${subjectId}`;
-    case "message":
-      return `/messages/${subjectId}`;
-    default:
-      return "/";
-  }
-}
 
 /** "client.created" as "Client created": the action's own code is for the audit, not for a person. */
 const sentence = (code: string) => {
@@ -41,24 +13,18 @@ const sentence = (code: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-function iconForKind(kind: string): IconName {
-  if (kind.includes("reply") || kind.includes("message")) return "mail";
-  if (kind.includes("interview")) return "calendar";
-  if (kind.includes("invoice") || kind.includes("payment") || kind.includes("refund")) return "wallet";
-  if (kind.includes("late") || kind.includes("overdue")) return "alert";
-  return "check";
+/** The dot's colour says what kind of thing it is (frame G4): red late, amber a chase or a move, blue a reply. */
+function dotFor(kind: string): string {
+  if (kind.includes("late") || kind.includes("overdue")) return "bg-danger";
+  if (kind.includes("reply") || kind.includes("message") || kind.includes("interview")) return "bg-info";
+  if (kind.includes("chase") || kind.includes("invoice") || kind.includes("refund")) return "bg-warn";
+  if (kind.includes("signed") || kind.includes("placed")) return "bg-brand";
+  return "bg-ink-3";
 }
 
-export default async function NotificationsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ read?: string }>;
-}) {
+export default async function NotificationsPage() {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-
-  const sp = await searchParams;
-  const markedAll = sp.read === "all";
 
   await runClocks();
   const db = await desk();
@@ -66,20 +32,12 @@ export default async function NotificationsPage({
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayMs = todayStart.getTime();
+  const href = (type: string, id: string) => hrefForSubject(db, type, id);
 
   const items = [
     ...db.timers
       .filter((t) => t.state === "running" && t.dueAt <= now)
-      .map((t) => ({
-        id: `timer:${t.id}`,
-        title: sentence(t.kind),
-        subtitle: "A clock came due",
-        href: hrefForSubject(t.subjectType, t.subjectId),
-        at: t.dueAt,
-        urgent: true,
-        unread: !markedAll,
-        icon: "alert" as IconName,
-      })),
+      .map((t) => ({ id: `timer:${t.id}`, title: sentence(t.kind) + ": a clock came due", href: href(t.subjectType, t.subjectId), at: t.dueAt, dot: "bg-danger" })),
     ...db.audit
       .slice()
       .sort((a, b) => b.at - a.at)
@@ -88,76 +46,40 @@ export default async function NotificationsPage({
         const actor = e.actorId ? memberIn(db, e.actorId) : null;
         return {
           id: `audit:${e.id}`,
-          title: e.reason || sentence(e.action),
-          subtitle: actor ? actor.name : "The system",
-          href: hrefForSubject(e.subjectType, e.subjectId),
+          title: (e.reason || sentence(e.action)) + (actor ? " (" + actor.name + ")" : ""),
+          href: href(e.subjectType, e.subjectId),
           at: e.at,
-          urgent: false,
-          unread: !markedAll && e.at >= todayMs,
-          icon: iconForKind(e.action),
+          dot: dotFor(e.action),
         };
       }),
-  ].sort((a, b) => b.at - a.at);
+  ].sort((a, b) => b.at - a.at).slice(0, 30);
 
-  const todayItems = items.filter((i) => i.at >= todayMs);
-  const earlierItems = items.filter((i) => i.at < todayMs);
-
-  const formatClockTime = (at: number) => {
-    if (at >= todayMs) {
-      return new Date(at + 5.5 * 3_600_000).toISOString().slice(11, 16);
-    }
-    return day(at);
-  };
-
-  const row = (item: (typeof items)[number]) => (
-    <Link
-      key={item.id}
-      href={item.href}
-      className={`flex items-center justify-between gap-4 rounded-[16px] px-3 py-3 transition-colors hover:bg-sunk ${item.unread ? "bg-brand-tint" : ""}`}
-    >
-      <div className="flex min-w-0 items-center gap-3.5">
-        <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${item.unread ? "bg-surface text-ink" : "bg-sunk text-ink-soft"}`}>
-          <Icon name={item.icon} size={16} />
-        </span>
-        <div className="min-w-0">
-          <div className="truncate text-[16px] leading-[26px] text-ink">{item.title}</div>
-          <div className="truncate text-[14px] leading-[21px] text-ink-faint">{item.subtitle}</div>
-        </div>
-      </div>
-      <span className={`shrink-0 text-[14px] leading-[21px] ${item.urgent ? "text-danger" : "text-ink-faint"}`}>{formatClockTime(item.at)}</span>
-    </Link>
-  );
-  const caption = "text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint";
+  const when = (at: number) =>
+    (at >= todayMs ? "Today " : day(at) + " ") + new Date(at + 5.5 * 3_600_000).toISOString().slice(11, 16);
 
   return (
-    <PageBox width="880">
-      <div className="flex flex-col gap-6">
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h1 className="text-[40px] font-light leading-[50px] text-ink">Notifications</h1>
-            <Link href="/notifications?read=all" className={pillGhost}>
-              Mark all read
+    <div className="mx-auto w-full max-w-[480px] pb-10 pt-2 md:pt-6">
+      <div className="flex flex-col gap-[18px] rounded-[28px] bg-surface p-7 shadow-card">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="t-h2">Notifications</h1>
+          {/* No "Mark all read": nothing stores what was read yet (see Bell.tsx). */}
+          <p className="t-small text-ink-3">What changed on the desk, newest first</p>
+        </div>
+        <div className="h-px bg-rule" />
+        {items.length === 0 ? (
+          <p className="t-body text-ink-3">Nothing has changed yet.</p>
+        ) : (
+          items.map((item) => (
+            <Link key={item.id} href={item.href} className="-mx-2 flex items-start gap-3 rounded-[12px] px-2 py-1 hover:bg-sunk">
+              <span className="flex pt-[14px]"><span aria-hidden className={"size-2 rounded-[4px] " + item.dot} /></span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="t-body text-ink">{item.title}</span>
+                <span className="t-small text-ink-3">{when(item.at)}</span>
+              </span>
             </Link>
-          </div>
-          <p className="mt-1 text-[14px] leading-[21px] text-ink-soft">Each one opens the thing it is about. Back brings you here.</p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className={caption}>Today</div>
-          {todayItems.length === 0 ? (
-            <div className="px-3 py-4 text-[14px] text-ink-soft">Nothing new today.</div>
-          ) : (
-            <div className="flex flex-col gap-1">{todayItems.map(row)}</div>
-          )}
-        </div>
-
-        {earlierItems.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <div className={caption}>Earlier</div>
-            <div className="flex flex-col gap-1">{earlierItems.slice(0, 15).map(row)}</div>
-          </div>
+          ))
         )}
       </div>
-    </PageBox>
+    </div>
   );
 }

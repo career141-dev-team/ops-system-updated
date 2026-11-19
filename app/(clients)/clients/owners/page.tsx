@@ -2,8 +2,7 @@ import { redirect } from "next/navigation";
 
 import { LeadAssignRow, MoveClientCard } from "@/app/(clients)/clients/owners/OwnersClient";
 import Icon from "@/app/Icon";
-import { Avatar, BackBar, figmaLabel } from "@/app/ui/figma";
-import Sheet from "@/app/(clients)/Sheet";
+import { Avatar, BackBar, Card, PageTitle } from "@/app/ui/figma";
 import {
   activeMembers,
   clientsNewestFirst,
@@ -74,27 +73,17 @@ export default async function ClientOwnersPage({
   }));
 
   return (
-    <Sheet width={1160}>
+    <div className="flex flex-col gap-[22px]">
       <BackBar href="/clients" label="Clients" />
 
-      <div className="flex flex-col gap-1">
-        <h1 className="text-[40px] font-light leading-[50px] text-ink">
-          Who owns what
-        </h1>
-        <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
-          Every client has one Ops owner, and Ops owners see only the clients you give them.
-        </p>
-      </div>
+      <PageTitle title="Who owns what" sub="Every client has one Ops owner, and Ops owners see only the clients you give them." />
 
       {msg && (
-        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+        <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
 
       {/* Section 1: WAITING FOR AN OWNER (Figma 1:3786) */}
-      <section className="flex flex-col gap-3">
-        <span className={figmaLabel}>
-          WAITING FOR AN OWNER · {openLeads.length}
-        </span>
+      <Card title="Waiting for an owner" sub={`${openLeads.length} open`}>
 
         {openLeads.length === 0 ? (
           <p className="rounded-[24px] bg-sunk px-6 py-5 text-[14px] text-ink-soft">
@@ -129,11 +118,10 @@ export default async function ClientOwnersPage({
             Suggested: the owner with the fewest clients. The number is how many clients each one has.
           </span>
         </p>
-      </section>
+      </Card>
 
       {/* Section 2: YOUR TEAM (Figma 1:3833) */}
-      <section className="flex flex-col gap-3">
-        <span className={figmaLabel}>YOUR TEAM</span>
+<Card title="Your team">
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           {ownerStats.map((owner) => (
             <div
@@ -163,11 +151,10 @@ export default async function ClientOwnersPage({
             </div>
           ))}
         </div>
-      </section>
+      </Card>
 
       {/* Section 3: MOVE A CLIENT (Figma 1:3854) */}
-      <section className="flex flex-col gap-3">
-        <span className={figmaLabel}>MOVE A CLIENT</span>
+<Card title="Move a client">
         {clientRows.length === 0 ? (
           <p className="rounded-[24px] bg-sunk px-6 py-5 text-[14px] text-ink-soft">
             No active clients to move yet.
@@ -179,7 +166,7 @@ export default async function ClientOwnersPage({
             canAssign={canAssign}
           />
         )}
-      </section>
-    </Sheet>
+      </Card>
+    </div>
   );
 }

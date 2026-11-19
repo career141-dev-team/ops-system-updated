@@ -4,7 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { dropAd, markAdClosed, markAdLive, orderAd, recordAdFlyer } from "@/app/actions";
 import {
   BackBar,
-  FoldRow,
+  Card,
+  PageTitle,
+  FoldRow,
+
   StatusChip,
   figmaField,
   pillPrimary,
@@ -43,40 +46,26 @@ export default async function AdvertPage({
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6 rounded-[28px] bg-surface px-7 py-8 shadow-card">
+    <div className="flex flex-col gap-[22px]">
       <BackBar
         href={position ? `/positions/${position.id}?view=advertising` : "/adverts"}
         label={position ? `${position.title} · Advertising` : "Paid adverts"}
       />
 
       {msg && (
-        <div className="rounded-[16px] border border-rule bg-sunk px-4 py-3 text-[14px] text-ink">
+        <div className="rounded-[18px] bg-sunk px-4 py-3 t-small">
           {msg}
         </div>
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-[18px]">
-        <div className="flex flex-col gap-1">
-          <span className="text-[14px] leading-[22px] text-ink-faint">
-            TopJobs · {ad.kind === "hr_and_marketing" ? "HR & marketing" : "Single advert"} ·{" "}
-            {money(AD_PRICES[ad.kind] ?? 0, "LKR")}
-            {client ? ` · ${client.name}` : ""}
-          </span>
-          <h1 className="text-[40px] font-light leading-[50px] text-ink">{ad.title}</h1>
-          <span className="text-[14px] text-ink-soft">
-            {adInWords(ad, now)} · {memberIn(db, ad.ownerId)?.name ?? "nobody"} owns it
-          </span>
-        </div>
-
-        <StatusChip
-          label={ad.state}
-          tone={ad.state === "live" ? "ok" : ad.state === "closed" ? "neutral" : "warn"}
-        />
-      </div>
+      <PageTitle
+        title={ad.title}
+        sub={`TopJobs · ${ad.kind === "hr_and_marketing" ? "HR & marketing" : "Single advert"} · ${money(AD_PRICES[ad.kind] ?? 0, "LKR")}${client ? ` · ${client.name}` : ""} · ${adInWords(ad, now)} · ${memberIn(db, ad.ownerId)?.name ?? "nobody"} owns it`}
+        right={<StatusChip label={ad.state} tone={ad.state === "live" ? "ok" : ad.state === "closed" ? "neutral" : "warn"} />}
+      />
 
       {ad.state === "requested" && mayManage && (
-        <div className="flex flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <h2 className="text-[18px] font-medium text-ink">1. Attach the marketing flyer</h2>
+        <Card title="1. Attach the marketing flyer">
           <p className="text-[14px] text-ink-soft">
             TopJobs takes an image, not a job description. Marketing keeps the flyer on the{" "}
             <Link href="/files" className="text-brand hover:underline">
@@ -106,12 +95,11 @@ export default async function AdvertPage({
               The flyer is ready
             </button>
           </form>
-        </div>
+        </Card>
       )}
 
       {ad.state === "flyer" && mayManage && (
-        <div className="flex flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <h2 className="text-[18px] font-medium text-ink">2. Send the order to TopJobs</h2>
+        <Card title="2. Send the order to TopJobs">
           <p className="text-[14px] text-ink-soft">
             The order goes as a drafted email with the flyer attached. What they charge is recorded on the advert.
           </p>
@@ -142,12 +130,11 @@ export default async function AdvertPage({
               Draft the order
             </button>
           </form>
-        </div>
+        </Card>
       )}
 
       {ad.state === "ordered" && mayManage && (
-        <div className="flex flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <h2 className="text-[18px] font-medium text-ink">3. TopJobs says it is live</h2>
+        <Card title="3. TopJobs says it is live">
           <form action={markAdLive} className="flex flex-wrap items-end gap-3 pt-1">
             <input type="hidden" name="adId" value={ad.id} />
             <label className="flex min-w-[170px] flex-col gap-1 text-[12px] font-medium text-ink-soft">
@@ -161,12 +148,11 @@ export default async function AdvertPage({
           <p className="text-[12px] text-ink-faint">
             Two weeks start from that day, and the TA System is told so the advert shows on their opening.
           </p>
-        </div>
+        </Card>
       )}
 
       {ad.state === "live" && mayManage && (
-        <div className="flex flex-col gap-3 rounded-[28px] bg-surface px-[30px] py-[26px] shadow-float">
-          <h2 className="text-[18px] font-medium text-ink">4. Closing the advert</h2>
+        <Card title="4. Closing the advert">
           <p className="text-[14px] text-ink-soft">
             Live since {ad.liveAt ? day(ad.liveAt) : "—"}, down on {ad.closesAt ? day(ad.closesAt) : "—"}.
           </p>
@@ -180,7 +166,7 @@ export default async function AdvertPage({
               It has come down
             </button>
           </form>
-        </div>
+        </Card>
       )}
 
       {(ad.state === "requested" || ad.state === "flyer" || ad.state === "ordered") && mayManage && (

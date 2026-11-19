@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { PageBox } from "@/app/ui/figma";
+import { Card, DataTable, PageTitle } from "@/app/ui/figma";
 import {
   agreementForLead,
   clientIn,
@@ -162,24 +162,15 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
   const done = rowsInStage(rows, "closed");
 
   return (
-    <PageBox width="full" className="gap-6">
-      <div>
-        <p className="text-[12px] font-medium uppercase tracking-[0.84px] text-ink-faint">EVERY STAGE</p>
-        <h1 className="mt-1 text-[32px] font-light leading-[40px] text-ink">The work</h1>
-        <p className="mt-1 max-w-[80ch] text-[14px] text-ink-soft">
-          Every enquiry and every position, in the stage it is really in. {rows.length}{" "}
-          {rows.length === 1 ? "thing" : "things"} in all, {mine} of them yours. A stage is where the work has got
-          to, not something you drag: it moves when the thing itself moves.
-        </p>
-      </div>
+    <div className="flex flex-col gap-[22px]">
+      <PageTitle
+        title="The work"
+        sub={`Every enquiry and every position, in the stage it is really in. ${rows.length} ${rows.length === 1 ? "thing" : "things"} in all, ${mine} of them yours. A stage is where the work has got to, not something you drag: it moves when the thing itself moves.`}
+      />
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-2.5 t-small">{msg}</p>}
 
-      <section>
-        <h2 className="text-[13px] font-medium text-ink-soft">
-          In progress <span className="ml-1 text-ink-faint">{rows.length - done.length}</span>
-        </h2>
-
+      <Card title="In progress" sub={`${rows.length - done.length} in a stage`}>
         {/* The board. It scrolls sideways rather than wrapping: eleven stages
             in a fixed order is the point, and a wrapped column is a column
             somebody stops trusting the order of. */}
@@ -206,10 +197,10 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
                 <div
                   key={stage.key}
                   title={stage.about}
-                  className="flex w-[128px] shrink-0 flex-col rounded-xl bg-shell px-3 py-2.5"
+                  className="flex w-[128px] shrink-0 flex-col rounded-[18px] bg-sunk px-3 py-2.5"
                 >
                   <div className="flex items-baseline gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-shell-rule" aria-hidden="true" />
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-rule-strong" aria-hidden="true" />
                     <span className="truncate text-[12.5px] text-ink-soft">{stage.what}</span>
                   </div>
                   <p className="mt-1 text-[11px] text-ink-faint">—</p>
@@ -217,7 +208,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
               );
             }
             return (
-              <div key={stage.key} className="flex w-[264px] shrink-0 flex-col gap-2 rounded-xl bg-shell p-2">
+              <div key={stage.key} className="flex w-[264px] shrink-0 flex-col gap-2 rounded-[18px] bg-sunk p-2">
                 <div className="px-1.5 pt-1 pb-0.5">
                   <div className="flex items-baseline gap-2">
                     <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
@@ -231,7 +222,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
                   <Link
                     key={row.id}
                     href={row.href}
-                    className="block rounded-lg bg-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(22,24,26,0.06)] transition-shadow hover:shadow-[0_2px_6px_rgba(22,24,26,0.10)]"
+                    className="block rounded-[14px] border border-rule bg-surface px-3 py-2.5 hover:border-rule-strong"
                   >
                     <p className="text-[13px] font-medium leading-snug">{row.title}</p>
                     <p className={"mt-1 text-[12px] leading-snug " + (row.late ? "text-danger" : "text-ink-soft")}>
@@ -246,27 +237,16 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
             );
           })}
         </div>
-      </section>
+      </Card>
 
       {done.length > 0 && (
-        <section>
-          <h2 className="text-[13px] font-medium text-ink-soft">
-            Closed <span className="ml-1 text-ink-faint">{done.length}</span>
-          </h2>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {done.map((row) => (
-              <Link
-                key={row.id}
-                href={row.href}
-                className="block rounded-xl border border-rule bg-paper px-3 py-2.5 hover:border-rule-strong"
-              >
-                <p className="text-[13px] leading-snug text-ink-soft">{row.title}</p>
-                <p className="mt-1 text-[11.5px] text-ink-faint">{row.waiting}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <Card title="Closed" sub={`${done.length} finished`}>
+          <DataTable
+            columns={[{ label: "Thing" }, { label: "How it ended" }]}
+            rows={done.map((row) => ({ key: row.id, href: row.href, cells: [row.title, <span key="w" className="text-ink-3">{row.waiting}</span>] }))}
+          />
+        </Card>
       )}
-    </PageBox>
+    </div>
   );
 }
