@@ -51,24 +51,26 @@ export default async function TemplatePage({
   const mayEdit = can(member, "template.edit");
   const holes = holesNeeded(template);
   const example = fill(template, EXAMPLE);
-  const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
+  const field = "w-full rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px]";
 
   return (
-    <div className="max-w-[760px]">
-      <Link href="/templates" className="text-[12.5px] text-brand hover:underline">
+    <div className="flex flex-col gap-[22px]">
+      <Link href="/templates" className="t-small text-brand hover:underline">
         Back to what we send
       </Link>
-      <h1 className="mt-2 text-[17px] font-medium">{template.name}</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
-        {template.key} · {template.channel === "internal" ? "a notice to our own people" : template.channel}
-        {template.updatedAt
-          ? " · last changed " + new Date(template.updatedAt).toISOString().slice(0, 10)
-          : " · never changed"}
-      </p>
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">{template.name}</h1>
+        <p className="t-small text-ink-3">
+          {template.key} · {template.channel === "internal" ? "a notice to our own people" : template.channel}
+          {template.updatedAt
+            ? " · last changed " + new Date(template.updatedAt).toISOString().slice(0, 10)
+            : " · never changed"}
+        </p>
+      </div>
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
-      <form action={saveTemplateWording} className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
+      <form action={saveTemplateWording} className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
         <input type="hidden" name="key" value={template.key} />
 
         <label className="block text-[12.5px] text-ink-soft" htmlFor="name">
@@ -122,7 +124,7 @@ export default async function TemplatePage({
         )}
 
         {mayEdit ? (
-          <button className="mt-4 rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+          <button className="mt-4 rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk">
             Save the wording
           </button>
         ) : (
@@ -130,8 +132,8 @@ export default async function TemplatePage({
         )}
       </form>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">The blanks it uses</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">The blanks it uses</h2>
         {holes.length === 0 && (
           <p className="mt-2 text-[13px] text-ink-soft">None. It goes out exactly as written.</p>
         )}
@@ -146,8 +148,8 @@ export default async function TemplatePage({
         </p>
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">What it looks like going out</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">What it looks like going out</h2>
         <p className="mt-1 text-[12px] text-ink-faint">Filled with stand-ins, so nothing here is a real client.</p>
         {template.channel === "email" && (
           <p className="mt-3 text-[13.5px] font-medium">{example.subject}</p>

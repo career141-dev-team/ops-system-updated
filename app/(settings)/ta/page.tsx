@@ -33,13 +33,15 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
   const cursor = settingValue(db, EVENTS_CURSOR);
   const readAt = settingValue(db, EVENTS_READ_AT);
   const calls = [...db.taCalls].sort((a, b) => b.at - a.at).slice(0, 8);
-  const card = "mt-4 rounded-2xl border border-rule bg-surface px-5 py-4";
-  const button = "rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper";
+  const card = "rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
+  const button = "rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk";
 
   return (
-    <div className="max-w-[860px]">
-      <h1 className="text-[17px] font-medium">The TA System</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">{windowInWords()}</p>
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">The TA System</h1>
+        <p className="t-small text-ink-3">{windowInWords()}</p>
+      </div>
       {fakeTa() && (
         <p className="mt-2 text-[12.5px] text-ink-faint">
           Nothing on this page is real: a stand-in is answering. The TA side exists now (its endpoints are in
@@ -63,10 +65,10 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
         </p>
       )}
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Reading</h2>
+        <h2 className="t-h2">Reading</h2>
         <p className="mt-2 text-[13.5px]">Reads: {readsEnabled() || fakeTa() ? "on" : "switched off"}</p>
         <p className="mt-1 text-[13.5px]">
           {read.ok ? read.data.length + " people read in " + read.ms + " ms" : read.reason}
@@ -82,7 +84,7 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Waiting to be written</h2>
+        <h2 className="t-h2">Waiting to be written</h2>
         <p className="mt-2 text-[13.5px]">Writes: {writesEnabled() || fakeTa() ? "on" : "switched off"}</p>
         {waiting.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing waiting.</p>}
         {waiting.map((item) => (
@@ -111,7 +113,7 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What the TA System has told us</h2>
+        <h2 className="t-h2">What the TA System has told us</h2>
         <p className="mt-2 text-[13.5px]">{cursorAgeInWords(readAt ? Number(readAt) : null)}</p>
         <p className="mt-1 text-[12.5px] text-ink-faint">
           {cursor ? "We have read up to " + cursor + "." : "We have not read any event yet."} The place we have read to
@@ -136,7 +138,7 @@ export default async function TaPage({ searchParams }: { searchParams: Promise<{
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The last few calls across</h2>
+        <h2 className="t-h2">The last few calls across</h2>
         {calls.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {calls.map((call) => (
           <div key={call.id} className="flex flex-wrap items-baseline gap-x-3 border-t border-rule py-2 first:border-t-0">

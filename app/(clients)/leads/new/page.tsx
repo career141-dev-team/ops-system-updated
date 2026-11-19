@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
 import LeadCaptureForm from "@/app/(clients)/leads/new/LeadCaptureForm";
-import { BackBar } from "@/app/ui/figma";
-import Sheet from "@/app/(clients)/Sheet";
+import { BackBar, Card, PageTitle } from "@/app/ui/figma";
 import { clientsNewestFirst, desk, leadIn, leadsNewestFirst, member as memberIn } from "@/data/desk";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -59,27 +58,24 @@ export default async function NewLeadPage({
     });
 
   return (
-    <Sheet width={880}>
+    <div className="flex flex-col gap-[22px]">
       <BackBar href="/clients" label="Clients" />
 
-      <div className="flex flex-col gap-1">
-        <h1 className="text-[40px] font-light leading-[50px] text-ink">New lead</h1>
-        <p className="text-[16px] font-normal leading-[26px] text-ink-soft">
-          Say it or paste the email — AURA fills the form for you to check.
-        </p>
-      </div>
+      <PageTitle title="New lead" sub="Say it or paste the email — AURA fills the form for you to check." />
 
       {msg && (
-        <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-ink">{msg}</p>
+        <p className="rounded-[18px] bg-warn-soft px-4 py-3 t-small">{msg}</p>
       )}
 
       {mayManage ? (
-        <LeadCaptureForm existingCompanies={existingCompanies} directClients={directClients} />
+        <Card>
+          <LeadCaptureForm existingCompanies={existingCompanies} directClients={directClients} />
+        </Card>
       ) : (
-        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink-soft">
+        <p className="rounded-[18px] bg-sunk px-4 py-3 t-small text-ink-3">
           {refusal("client.manage")}
         </p>
       )}
-    </Sheet>
+    </div>
   );
 }

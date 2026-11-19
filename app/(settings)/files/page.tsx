@@ -58,19 +58,21 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
     }
   }
   const invoiceCheck = invoiceHoles ? checkInvoiceTemplate(invoiceHoles) : null;
-  const field = "rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
+  const field = "rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px]";
 
   return (
-    <div className="max-w-[860px]">
-      <h1 className="text-[17px] font-medium">Files</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">Files</h1>
+        <p className="t-small text-ink-3">
         Agreements, signed copies, CVs as they went out, invoices and offer letters. Nothing here is public.
       </p>
+      </div>
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Keep a file</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">Keep a file</h2>
         {mayKeep ? (
           <form action={keepFile} className="mt-3 flex flex-col gap-3">
             <input type="file" name="file" required className={field} />
@@ -94,7 +96,7 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
                 <input name="subjectId" placeholder="its id" className={field} />
               </label>
             </div>
-            <button className="self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+            <button className="self-start rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk">
               Keep it
             </button>
             <p className="text-[12px] text-ink-faint">
@@ -107,8 +109,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         )}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">The agreement template</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">The agreement template</h2>
         {templates.length === 0 ? (
           <p className="mt-2 text-[13px] text-ink-soft">
             None yet. Keep the ESA as a Word file above, as &ldquo;Agreement, drafted&rdquo; with nothing it belongs to.
@@ -153,8 +155,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         )}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">The invoice template</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">The invoice template</h2>
         {invoiceTemplates.length === 0 ? (
           <p className="mt-2 text-[13px] text-ink-soft">
             None yet. Keep the invoice as a Word file above, as &ldquo;Invoice template&rdquo; with nothing it belongs to. Write each
@@ -195,8 +197,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         )}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">What we keep</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">What we keep</h2>
         {files.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {files.map((file) => (
           <div key={file.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0">
@@ -222,8 +224,8 @@ export default async function FilesPage({ searchParams }: { searchParams: Promis
         ))}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Where they are kept</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">Where they are kept</h2>
         <p className="mt-2 text-[13.5px]">{fileStoreInWords()}</p>
         {!usingR2() && (
           <p className="mt-1 text-[12.5px] text-ink-faint">
