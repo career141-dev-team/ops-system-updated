@@ -30,19 +30,21 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
   ].filter((g) => g.of.length > 0);
 
   return (
-    <div className="max-w-[760px]">
-      <h1 className="text-[17px] font-medium">What we send</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">What we send</h1>
+        <p className="t-small text-ink-3">
         {mayEdit
           ? "The wording of every message, in one place. Change it here and the next one sent uses it."
           : "The wording of every message. Only the ops lead can change it."}
       </p>
+      </div>
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
       {groups.map((group) => (
-        <section key={group.title} className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-          <h2 className="text-[14.5px] font-medium">{group.title}</h2>
+        <section key={group.title} className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+          <h2 className="t-h2">{group.title}</h2>
           {group.of.map((template) => (
             <div key={template.key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule py-3 first:border-t-0">
               <Link href={"/templates/" + template.key} className="text-[13.5px] text-brand hover:underline">

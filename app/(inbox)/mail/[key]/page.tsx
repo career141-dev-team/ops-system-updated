@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { aiSwitches, desk } from "@/data/desk";
-import { aboutWhom } from "@/app/MessagesView";
+import { aboutWhom } from "@/lib/aboutWhom";
 import { PageTitle, pillSecondary } from "@/app/ui/figma";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { buildThreads } from "@/lib/mailbox";

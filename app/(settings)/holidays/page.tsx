@@ -30,25 +30,27 @@ export default async function HolidaysPage({ searchParams }: { searchParams: Pro
   const all = [...db.holidays].sort((a, b) => a.date.localeCompare(b.date));
   const ahead = fromTodayOn(all, today);
   const gap = gapInTheList(all, today);
-  const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
+  const field = "w-full rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px]";
 
   return (
-    <div className="max-w-[760px]">
-      <h1 className="text-[17px] font-medium">Holidays</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">Holidays</h1>
+        <p className="t-small text-ink-3">
         The days Sri Lanka is shut. Every clock counted in working days skips them, as the TA System does.
       </p>
+      </div>
 
-      {msg && <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
       {gap && (
-        <p className="mt-3 rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">
+        <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">
           <span className="font-medium">Not finished:</span> {gap}
         </p>
       )}
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">Add the list</h2>
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">Add the list</h2>
         {mayEdit ? (
           <form action={addHolidayList} className="mt-3 flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-[12.5px] text-ink-soft">
@@ -60,7 +62,7 @@ export default async function HolidaysPage({ searchParams }: { searchParams: Pro
                 className={field + " font-mono text-[12.5px]"}
               />
             </label>
-            <button className="self-start rounded-full border border-rule-strong px-3.5 py-1.5 text-[12.5px] hover:bg-paper">
+            <button className="self-start rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk">
               Add them
             </button>
             <p className="text-[12px] text-ink-faint">
@@ -72,8 +74,8 @@ export default async function HolidaysPage({ searchParams }: { searchParams: Pro
         )}
       </section>
 
-      <section className="mt-4 rounded-2xl border border-rule bg-surface px-5 py-4">
-        <h2 className="text-[14.5px] font-medium">
+      <section className="rounded-[28px] bg-surface px-7 py-[26px] shadow-card">
+        <h2 className="t-h2">
           Still to come
           <span className="ml-2 text-[12px] font-normal text-ink-faint">
             {ahead.length} days{holidayYears(all).length ? " · " + holidayYears(all).join(", ") : ""}

@@ -9,7 +9,7 @@ import { approveAndSend, improveDraft, recordReply, saveDraft, useImprovedDraft 
 import AiOffer from "@/app/AiOffer";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { IMPROVE_WORDS, type ImprovedDraft } from "@/lib/aiTasks";
-import { BackBar, PageBox, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { BackBar, PageTitle, figmaField, figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
 
 /** One message, on its own page. Read it, change it, approve it. */
 export default async function MessagePage({
@@ -35,22 +35,17 @@ export default async function MessagePage({
   const whyAiOff = aiOffReason(anyKeySet(), aiSwitches(db).on);
 
   const input = figmaField;
-  const card = "rounded-[24px] bg-surface p-6 shadow-float";
+  const card = "flex flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
   const small = "rounded-full border border-rule-strong px-4 py-2 text-[14px] font-medium hover:bg-sunk";
 
   return (
     // Drawn like the other record pages (17 Nov): it was still in the first skeleton's style.
-    <PageBox width="880" className="gap-5">
+    <div className="flex flex-col gap-[22px]">
       <BackBar href="/" label="My Work" />
-      <div className="flex flex-col gap-1">
-        <p className="text-[14px] leading-[21px] text-ink-faint">
-          {messageInWords(message)} · {message.state}
-        </p>
-        <h1 className="text-[32px] font-light leading-[42px] text-ink">{message.subject || message.templateKey || "Message"}</h1>
-      </div>
+      <PageTitle title={message.subject || message.templateKey || "Message"} sub={`${messageInWords(message)} · ${message.state}`} />
 
       {msg && (
-        <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{msg}</p>
+        <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
 
       {carries.length > 0 && (
@@ -126,7 +121,7 @@ export default async function MessagePage({
       )}
 
       {proposed && (
-        <div className="rounded-[24px] border-[1.5px] border-brand bg-surface p-6">
+        <div className="rounded-[28px] border-[1.5px] border-brand bg-surface px-7 py-[26px]">
           <p className="text-[13.5px] font-medium">The model&rsquo;s version</p>
           <p className="mt-1 text-[12.5px] text-ink-soft">{proposed.changed}</p>
           <p className="mt-3 text-[13.5px] font-medium">{proposed.subject}</p>
@@ -170,7 +165,7 @@ export default async function MessagePage({
       )}
 
       {message.state === "draft" && (
-        <form action={approveAndSend} className="flex flex-col gap-3 border-t border-rule pt-5">
+        <form action={approveAndSend} className={card}>
           <input type="hidden" name="messageId" value={message.id} />
           <p className="text-[14px] leading-[21px] text-ink-soft">
             {message.channel === "group_post"
@@ -182,6 +177,6 @@ export default async function MessagePage({
           </button>
         </form>
       )}
-    </PageBox>
+    </div>
   );
 }

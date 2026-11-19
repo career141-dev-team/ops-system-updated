@@ -4,13 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import SettingsNav from "@/app/(settings)/SettingsNav";
-import { PageBox } from "@/app/ui/figma";
 
 /**
  * Settings area layout (v6 S1/S2, 19 Nov):
- * On `/settings` itself, render the full-width v6 card grid without the pre-v6 left sidebar.
- * On admin sub-pages (`/files`, `/ta`, `/holidays`, `/import`, `/ai`, `/health`, `/templates`, `/baseline`),
- * keep the SettingsNav rail so every operational screen remains cleanly reachable.
+ * `/settings` itself is the full-width v6 card grid. The admin sub-pages (`/files`, `/ta`, `/holidays`,
+ * `/import`, `/ai`, `/health`, `/templates`, `/baseline`) sit on the canvas like every v6 page, with a way
+ * back and pill tabs so every operational screen stays reachable. The window scrolls, no sheet.
  */
 export default function SettingsAreaLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname() ?? "/settings";
@@ -18,16 +17,14 @@ export default function SettingsAreaLayout({ children }: { children: React.React
     return <div className="w-full">{children}</div>;
   }
   return (
-    <PageBox width="full" className="md:flex-1">
-      <div className="mb-4">
-        <Link href="/settings" className="t-label text-ink-3 hover:text-ink">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-3">
+        <Link href="/settings" className="t-small text-ink-3 hover:text-ink">
           ← Back to Settings
         </Link>
-      </div>
-      <div className="flex flex-col gap-6 md:min-h-full md:flex-row md:items-stretch md:gap-0">
         <SettingsNav />
-        <div className="min-w-0 flex-1 md:pl-12">{children}</div>
       </div>
-    </PageBox>
+      {children}
+    </div>
   );
 }

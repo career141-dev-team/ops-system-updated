@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { activeMembers, desk } from "@/data/desk";
-import { buttonClass } from "@/app/ui";
 import { ROLE_LABEL } from "@/lib/roles";
 import {
   devSignInAllowed,
@@ -22,6 +21,10 @@ import {
  * The two are never both offered. A machine with a real door does not keep a
  * second one that needs no password.
  */
+// Was in the old app/ui.tsx (removed 19 Nov); the one class the sign-in page used.
+const buttonClass =
+  "inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium text-ink-inverse transition-transform active:scale-[0.98]";
+
 export default async function SignInPage({
   searchParams,
 }: {

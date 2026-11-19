@@ -23,14 +23,16 @@ export default async function HealthPage() {
   const db = await desk();
   const audit = [...db.audit].sort((a, b) => b.at - a.at).slice(0, 10);
   const lastClockPass = parsePass(db.settings.find((s) => s.key === CLOCK_PASS_KEY)?.value);
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
+  const card = "rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-3">
-      <h1 className="text-[17px] font-medium">Health</h1>
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">Health</h1>
+      </div>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The window to the TA System</h2>
+        <h2 className="t-h2">The window to the TA System</h2>
         <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
           <p>Reading: {readsEnabled() ? "on" : "switched off"}</p>
           <p>Writing: {writesEnabled() ? "on" : "switched off"}</p>
@@ -43,7 +45,7 @@ export default async function HealthPage() {
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What can leave the building</h2>
+        <h2 className="t-h2">What can leave the building</h2>
         <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
           <p>Sending: {sendingEnabled() ? "on" : "switched off"}</p>
           <p>Outreach to real clients: {outreachInWords(outreachLiveInEnv(), switchedOn(db, "switch.outreachLive"))}</p>
@@ -68,14 +70,14 @@ export default async function HealthPage() {
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Where the desk is kept</h2>
+        <h2 className="t-h2">Where the desk is kept</h2>
         <p className="mt-2 text-[13.5px]">
           {usingConvex() ? "The Ops backend." : "A file on this machine, with invented sample data."}
         </p>
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Clocks</h2>
+        <h2 className="t-h2">Clocks</h2>
         <p className="mt-2 text-[13.5px]">
           {liveTimers(db).length} running, {db.timers.length} in all.
         </p>
@@ -86,7 +88,7 @@ export default async function HealthPage() {
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">The last ten changes</h2>
+        <h2 className="t-h2">The last ten changes</h2>
         {audit.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing yet.</p>}
         {audit.map((entry) => (
           <div key={entry.id} className="border-t border-rule py-2 text-[13px] first:border-t-0">

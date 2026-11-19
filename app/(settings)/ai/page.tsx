@@ -34,34 +34,34 @@ export default async function AiPage({
   const runs = aiRunsNewestFirst(db).slice(0, 12);
   const got: Answer | null = answer ? (JSON.parse(answer) as Answer) : null;
 
-  const card = "rounded-2xl border border-rule bg-surface px-5 py-4";
-  const field = "w-full rounded-lg border border-rule bg-paper px-3 py-2 text-[13.5px]";
-  const button = "self-start rounded-full bg-brand px-4 py-1.5 text-[13px] text-ink-inverse hover:opacity-90";
-  const plain = "rounded-full border border-rule-strong px-3 py-1 text-[12px] hover:bg-paper";
+  const card = "rounded-[28px] bg-surface px-7 py-[26px] shadow-card";
+  const field = "w-full rounded-[10px] border border-rule bg-surface px-3.5 py-2.5 text-[14px]";
+  const button = "self-start rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium text-ink-inverse";
+  const plain = "rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium hover:bg-sunk";
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   return (
-    <div className="flex max-w-[820px] flex-col gap-4">
-      <div>
-        <h1 className="text-[17px] font-medium">The AI layer</h1>
-        <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-soft">
+    <div className="flex flex-col gap-[22px]">
+      <div className="flex flex-col gap-1.5 p-1">
+        <h1 className="t-display">The AI layer</h1>
+        <p className="t-small text-ink-3">
           It proposes; a person decides. Nothing it writes reaches a client, the TA System or a money field without
           the approval this system already asks for. Every run is written down here with what it cost and what you did
           with it.
         </p>
       </div>
 
-      {msg && <p className="rounded-lg border border-rule bg-surface px-3 py-2 text-[13px]">{msg}</p>}
+      {msg && <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>}
 
       {!anyKeySet() && (
-        <p className="rounded-lg border border-warning bg-surface px-3 py-2 text-[13px]">
+        <p className="rounded-[18px] border border-warning bg-surface px-4 py-3 t-small">
           No model key is set, so the layer cannot ask anything. The owner puts an Anthropic or a DeepSeek key in the
           server&rsquo;s environment; the desk works exactly as it does now without one.
         </p>
       )}
 
       {!switches.on && anyKeySet() && (
-        <p className="rounded-lg border border-warning bg-surface px-3 py-2 text-[13px]">
+        <p className="rounded-[18px] border border-warning bg-surface px-4 py-3 t-small">
           A key is set, but the layer is switched off. The ops lead turns on{" "}
           <Link href="/settings" className="text-brand hover:underline">
             switch.aiEnabled
@@ -71,7 +71,7 @@ export default async function AiPage({
       )}
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">Ask about the desk</h2>
+        <h2 className="t-h2">Ask about the desk</h2>
         <p className="mt-1 max-w-[70ch] text-[13px] text-ink-soft">
           It answers from our own rows and names what it used. It is read-only: it runs nothing, writes nothing and
           never touches money.
@@ -114,7 +114,7 @@ export default async function AiPage({
       </section>
 
       <section className={card}>
-        <h2 className="text-[14.5px] font-medium">What it costs, and whether it is any good</h2>
+        <h2 className="t-h2">What it costs, and whether it is any good</h2>
         <p className="mt-1 text-[13px]">
           {money(spent, "LKR")} today, against a cap of {money(switches.dailyBudget, "LKR")}. At the cap the layer
           stops rather than quietly spending.
@@ -136,7 +136,7 @@ export default async function AiPage({
 
       {can(me, "report.read") && (
         <section className={card}>
-          <h2 className="text-[14.5px] font-medium">The last few runs</h2>
+          <h2 className="t-h2">The last few runs</h2>
           {runs.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing has been asked yet.</p>}
           {runs.map((run) => (
             <div key={run.id} className="border-t border-rule py-2 first:border-t-0">
