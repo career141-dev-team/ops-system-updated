@@ -9,8 +9,8 @@ import { depthInWords } from "@/lib/depth";
 import { handoverInWords } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 
-import type { RoleCtx } from "./ctx";
-export default function Overview({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function Overview({ c, sp }: TabProps) {
   const { db, position, now, mayManage, client, clientName, queued, taPeopleList, primaryTaPerson, taName, ad, hold, checklist, itsSets, waitingSet, readySet, guarantee, step, allCandidates, related, waitingOn, whenDate, daysOpen, stage } = c;
   return (
         <div className="flex flex-col gap-6">

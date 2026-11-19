@@ -7,8 +7,8 @@ import { weekOf } from "@/lib/adverts";
 import { REQUIREMENT_FIELDS, briefText, requirementLocked } from "@/lib/requirements";
 import { TA_STRATEGIES, resolveStrategyOwner, taOwnerId } from "@/lib/strategies";
 
-import type { RoleCtx } from "./ctx";
-export default function Requirement({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function Requirement({ c, sp }: TabProps) {
   const { me, db, position, now, mayManage, mayAdvert, client, clientName, requirement, taPeopleList, primaryTaPerson, taName, ad, allCandidates, whenDate } = c;
   return (
 <div className="flex flex-col gap-6">

@@ -151,3 +151,6 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
 }
 
 export type RoleCtx = NonNullable<Awaited<ReturnType<typeof buildRoleCtx>>>;
+
+/** What every role tab receives: the data loaded once, and the page's search params (for ?panel= and ?on=). */
+export type TabProps = { c: RoleCtx; sp: Record<string, string | undefined> };

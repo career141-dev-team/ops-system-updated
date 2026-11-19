@@ -2,9 +2,9 @@ import Link from "next/link";
 
 import { StatusChip } from "@/app/ui/figma";
 
-import type { RoleCtx } from "./ctx";
+import type { RoleCtx, TabProps } from "./ctx";
 
-export default function Guarantee({ c }: { c: RoleCtx }) {
+export default function Guarantee({ c, sp }: TabProps) {
   const { db, itsPlacements } = c;
   const rows = itsPlacements
     .map((pl) => ({ pl, g: db.guarantees.find((row) => row.placementId === pl.id) ?? null }))

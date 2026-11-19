@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import type { RoleCtx } from "./ctx";
-export default function Offer({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function Offer({ c, sp }: TabProps) {
   const { db, itsPlacements, whenDateOf } = c;
   return (
         <div className="flex flex-col gap-4">

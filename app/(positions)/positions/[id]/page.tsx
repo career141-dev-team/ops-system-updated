@@ -24,12 +24,13 @@ export default async function PositionPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; view?: string; tab?: string; stage?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const { id } = await params;
-  const { msg, view, tab, stage = "all" } = await searchParams;
+  const sp = await searchParams;
+  const { msg, view, tab, stage = "all" } = sp;
 
   const c = await buildRoleCtx(id, stage, me);
   if (!c) notFound();
@@ -105,13 +106,13 @@ export default async function PositionPage({
         />
       </div>
 
-      {tabKey === "overview" && <Overview c={c} />}
-      {tabKey === "interviews" && <Interviews c={c} />}
-      {tabKey === "sets" && <Sets c={c} />}
-      {tabKey === "offer" && <Offer c={c} />}
-      {tabKey === "guarantee" && <Guarantee c={c} />}
-      {tabKey === "requirement" && <Requirement c={c} />}
-      {tabKey === "history" && <History c={c} />}
+      {tabKey === "overview" && <Overview c={c} sp={sp} />}
+      {tabKey === "interviews" && <Interviews c={c} sp={sp} />}
+      {tabKey === "sets" && <Sets c={c} sp={sp} />}
+      {tabKey === "offer" && <Offer c={c} sp={sp} />}
+      {tabKey === "guarantee" && <Guarantee c={c} sp={sp} />}
+      {tabKey === "requirement" && <Requirement c={c} sp={sp} />}
+      {tabKey === "history" && <History c={c} sp={sp} />}
     </PageBox>
   );
 }

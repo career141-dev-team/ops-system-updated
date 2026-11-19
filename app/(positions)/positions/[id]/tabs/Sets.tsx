@@ -4,8 +4,8 @@ import Icon from "@/app/Icon";
 import { Avatar, StatusChip, ViewPills, figmaField, figmaLabel, pillSecondary } from "@/app/ui/figma";
 import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel } from "@/lib/positionCandidates";
 
-import type { RoleCtx } from "./ctx";
-export default function Sets({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function Sets({ c, sp }: TabProps) {
   const { db, position, mayManage, client, itsSets, guarantee, allCandidates, stage } = c;
   return (
 <div className="flex flex-col gap-6">

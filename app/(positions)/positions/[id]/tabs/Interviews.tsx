@@ -2,8 +2,8 @@ import Link from "next/link";
 import Icon from "@/app/Icon";
 import { Avatar, StatusChip, figmaLabel } from "@/app/ui/figma";
 
-import type { RoleCtx } from "./ctx";
-export default function Interviews({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function Interviews({ c, sp }: TabProps) {
   const { client, itsInterviews, whenLocal } = c;
   return (
         <div className="flex flex-col gap-4">

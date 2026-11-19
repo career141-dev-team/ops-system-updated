@@ -3,8 +3,8 @@ import Icon from "@/app/Icon";
 import { figmaLabel } from "@/app/ui/figma";
 import { threadInWords } from "@/lib/mailbox";
 
-import type { RoleCtx } from "./ctx";
-export default function History({ c }: { c: RoleCtx }) {
+import type { RoleCtx, TabProps } from "./ctx";
+export default function History({ c, sp }: TabProps) {
   const { now, history, itsThreads } = c;
   return (
         <div className="flex flex-col gap-6">
