@@ -1,269 +1,108 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import AuraMark from "@/app/AuraMark";
-import Icon, { type IconName } from "@/app/Icon";
-import {
-  clientsNewestFirst,
-  desk,
-  leadsNewestFirst,
-  member as memberIn,
-  positionsNewestFirst,
-} from "@/data/desk";
-import { PageBox, figmaField, pillPrimary } from "@/app/ui/figma";
-import { day, listed, type Listed } from "@/lib/listing";
+
+import Icon from "@/app/Icon";
+import { findAll, type FindItem } from "@/app/find/search";
+import { desk, leadsNewestFirst } from "@/data/desk";
+import { listed, type Listed } from "@/lib/listing";
 import { currentMember } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-type KindKey =
-  | "client"
-  | "enquiry"
-  | "position"
-  | "CV set"
-  | "interview"
-  | "placement"
-  | "invoice";
-
-const GROUP_META: { key: KindKey; heading: string; icon: IconName }[] = [
-  { key: "client", heading: "CLIENT", icon: "clients" },
-  { key: "enquiry", heading: "ENQUIRIES", icon: "clients" },
-  { key: "position", heading: "OPENINGS", icon: "briefcase" },
-  { key: "CV set", heading: "CV SETS", icon: "send" },
-  { key: "interview", heading: "INTERVIEWS", icon: "calendar" },
-  { key: "placement", heading: "PLACEMENTS", icon: "user" },
-  { key: "invoice", heading: "INVOICES", icon: "wallet" },
-];
-
-export default async function FindPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string; sort?: string }>;
-}) {
+/**
+ * Find or do as a page (frame G1, 145:2): the same four groups as the popover (Actions, People, Roles,
+ * Recent) from `findAll`, on the canvas, 720 wide. The popover links here with `?q=` for "see all", and
+ * the top bar's search lands here too. Enquiries and invoices are not in the popover's groups, so a
+ * typed search adds them below.
+ */
+export default async function FindPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { q, sort } = await searchParams;
+  const { q = "" } = await searchParams;
+  const asked = q.trim();
 
   const db = await desk();
-  const who = (id: string) => memberIn(db, id)?.name ?? "nobody";
-  const rows: (Listed & { kind: KindKey })[] = [];
+  const found = findAll(me, db, asked);
 
-  for (const lead of leadsNewestFirst(db)) {
-    rows.push({
-      id: "lead:" + lead.id,
-      kind: "enquiry",
-      href: "/leads/" + lead.id,
-      title: lead.company,
-      words: [who(lead.ownerId), lead.contactEmail ?? "", lead.source],
-      says: "An enquiry, " + lead.state.replace(/_/g, " "),
-      at: lead.createdAt,
-      late: false,
-      who: who(lead.ownerId),
-      chips: [{ what: "enquiry", tone: "quiet" }],
-    });
+  const extra: FindItem[] = [];
+  if (asked) {
+    const rows: (Listed & { sub: string })[] = [
+      ...leadsNewestFirst(db).map((l) => ({
+        id: l.id, href: "/leads/" + l.id, title: l.company, words: [l.contactEmail ?? "", l.source],
+        says: "", at: l.createdAt, late: false, who: "", chips: [], sub: "Enquiry · " + l.state.replace(/_/g, " "),
+      })),
+      ...db.invoices.map((i) => ({
+        id: i.id, href: "/invoices/" + i.id, title: i.number, words: [i.kind, i.about ?? ""],
+        says: "", at: i.sentAt ?? i.createdAt, late: false, who: "", chips: [], sub: "Invoice · " + i.state,
+      })),
+    ];
+    for (const r of listed(rows, asked, undefined) as typeof rows) extra.push({ id: r.id, title: r.title, sub: r.sub, href: r.href });
   }
 
-  for (const client of clientsNewestFirst(db)) {
-    rows.push({
-      id: "client:" + client.id,
-      kind: "client",
-      href: "/clients/" + client.id,
-      title: client.name,
-      words: [who(client.ownerId), client.billingEmail, client.nameKey],
-      says: "A client, " + client.stage,
-      at: client.updatedAt ?? client.createdAt,
-      late: false,
-      who: who(client.ownerId),
-      chips: [{ what: "client", tone: "brand" }],
-    });
-  }
-
-  for (const position of positionsNewestFirst(db)) {
-    rows.push({
-      id: "position:" + position.id,
-      kind: "position",
-      href: "/positions/" + position.id,
-      title: position.title,
-      words: [who(position.ownerId), position.clientTaId, position.openingTaId ?? ""],
-      says: "A position, " + position.stage.replace(/_/g, " "),
-      at: position.updatedAt ?? position.createdAt,
-      late: false,
-      who: who(position.ownerId),
-      chips: [{ what: "position", tone: "quiet" }],
-    });
-  }
-
-  for (const set of db.clientSets) {
-    rows.push({
-      id: "set:" + set.id,
-      kind: "CV set",
-      href: "/sets/" + set.id,
-      title: set.name,
-      words: [who(set.ownerId), set.openingTaId, set.role],
-      says: "A CV set, " + set.state,
-      at: set.updatedAt ?? set.createdAt,
-      late: false,
-      who: who(set.ownerId),
-      chips: [{ what: "CV set", tone: "quiet" }],
-    });
-  }
-
-  for (const interview of db.interviews) {
-    rows.push({
-      id: "interview:" + interview.id,
-      kind: "interview",
-      href: "/interviews/" + interview.id,
-      title: interview.candidateName,
-      words: [who(interview.ownerId), interview.openingTaId, interview.applicationTaId],
-      says: "An interview, round " + interview.round + ", " + interview.state,
-      at: interview.at ?? interview.createdAt,
-      late: false,
-      who: who(interview.ownerId),
-      chips: [{ what: "interview", tone: "quiet" }],
-    });
-  }
-
-  for (const placement of db.placements) {
-    rows.push({
-      id: "placement:" + placement.id,
-      kind: "placement",
-      href: "/placements/" + placement.id,
-      title: placement.candidateName,
-      words: [who(placement.ownerId), placement.openingTaId, placement.placementTaId],
-      says: "A placement, " + placement.state.replace(/_/g, " "),
-      at: placement.updatedAt ?? placement.createdAt,
-      late: false,
-      who: who(placement.ownerId),
-      chips: [{ what: "placement", tone: "quiet" }],
-    });
-  }
-
-  for (const invoice of db.invoices) {
-    rows.push({
-      id: "invoice:" + invoice.id,
-      kind: "invoice",
-      href: "/invoices/" + invoice.id,
-      title: invoice.number,
-      words: [who(invoice.ownerId), invoice.kind, invoice.about ?? ""],
-      says: "An invoice, " + invoice.state,
-      at: invoice.sentAt ?? invoice.createdAt,
-      late: false,
-      who: who(invoice.ownerId),
-      chips: [{ what: "invoice", tone: "quiet" }],
-    });
-  }
-
-  const asked = (q ?? "").trim();
-  const shown = asked ? (listed(rows, q, sort) as (Listed & { kind: KindKey })[]) : [];
-  const topHit = shown[0];
+  const groups: { label: string; items: FindItem[]; kind: "action" | "person" | "role" | "recent" }[] = [
+    { label: "Actions", items: found.actions, kind: "action" },
+    { label: "People", items: found.people, kind: "person" },
+    { label: "Roles", items: found.roles, kind: "role" },
+    { label: asked ? "Clients and sets" : "Recent", items: found.recent, kind: "recent" },
+    { label: "Enquiries and invoices", items: extra.slice(0, 6), kind: "recent" },
+  ];
+  const shown = groups.filter((g) => g.items.length);
+  let first = true;
 
   return (
-    <PageBox width="1080">
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-4">
-          <div className="flex flex-wrap items-baseline gap-3">
-            <h1 className="text-[40px] font-light leading-[50px] text-ink">
-              {asked ? `“${asked}”` : "Find anything"}
-            </h1>
-            <span className="text-[16px] leading-[26px] text-ink-faint">
-              {asked
-                ? `${shown.length} result${shown.length === 1 ? "" : "s"} on the desk`
-                : `${rows.length} records on the desk`}
-            </span>
-          </div>
-          {/* The bar's own search brings you here, so the frame has no second box once there is a result (249:13500). */}
-          {!asked && <form action="/find" className="flex items-center gap-2">
-            <input
-              name="q" autoComplete="off"
-              defaultValue={asked}
-              placeholder="Search clients, openings, sets, invoices..."
-              className={figmaField + " w-[280px]"}
-            />
-            <button type="submit" className={pillPrimary}>
-              Search
-            </button>
-          </form>}
-        </div>
+    <div className="mx-auto mt-6 w-full max-w-[720px] pb-10 md:mt-[72px]">
+      <div className="flex flex-col rounded-[24px] bg-surface pb-2 shadow-card">
+        <form action="/find" className="flex items-center gap-3.5 border-b border-rule px-[26px] py-5">
+          <Icon name="search" size={20} className="shrink-0 text-ink-3" />
+          <input
+            name="q"
+            defaultValue={asked}
+            autoComplete="off"
+            aria-label="Find or do"
+            placeholder="Search clients, people, roles, or type an action"
+            className="t-body-m min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-3"
+          />
+          {asked && (
+            <Link href="/find" className="t-label shrink-0 rounded-[6px] border border-rule px-2 py-[3px] text-ink-3 hover:bg-sunk">
+              clear
+            </Link>
+          )}
+        </form>
 
-        {asked && shown.length > 0 && (
-          <Link
-            href={topHit.href}
-            className="flex items-center gap-3.5 rounded-[24px] bg-sunk px-5 py-4 transition hover:bg-sunk/80"
-          >
-            <AuraMark size={40} />
-            <div className="min-w-0 flex-1">
-              <p className="text-[16px] leading-[26px] text-ink">
-                Top match: <strong className="font-medium">{topHit.title}</strong> ({topHit.says}).
-                {shown.length > 1
-                  ? ` ${shown.length - 1} other matching record${shown.length - 1 === 1 ? "" : "s"} below.`
-                  : ""}
-              </p>
-              <p className="text-[12px] font-medium leading-4 tracking-[0.4px] text-ink-faint">
-                AURA · from across the desk
-              </p>
-            </div>
-            <Icon name="chevron-right" size={16} className="shrink-0 text-ink-faint" />
-          </Link>
-        )}
-
-        {!asked ? (
-          <div className="rounded-[24px] border border-rule bg-surface p-6">
-            <p className="text-[14px] text-ink-soft">
-              Type a client name, role, candidate, invoice number, or owner above. The search looks
-              across enquiries, clients, openings, CV sets, interviews, placements, and invoices at
-              once.
-            </p>
-          </div>
-        ) : shown.length === 0 ? (
-          <div className="rounded-[24px] border border-rule bg-surface p-6">
-            <p className="text-[14px] text-ink-soft">
-              Nothing matched “{asked}” across {rows.length} records.
-            </p>
-          </div>
+        {shown.length === 0 ? (
+          <p className="t-body px-[26px] py-6 text-ink-3">Nothing matched &ldquo;{asked}&rdquo;. Try a client, a person, a role or an invoice number.</p>
         ) : (
-          <div className="flex flex-col gap-5">
-            {GROUP_META.map((group) => {
-              const items = shown.filter((r) => r.kind === group.key);
-              if (items.length === 0) return null;
-              return (
-                <div key={group.key}>
-                  <div className="mb-2 text-[12px] font-medium uppercase leading-4 tracking-[0.4px] text-ink-faint">
-                    {group.heading}
-                  </div>
-                  <div>
-                    <div className="flex flex-col gap-2">
-                      {items.map((row) => (
-                        <Link
-                          key={row.id}
-                          href={row.href}
-                          className="flex items-center justify-between gap-4 rounded-[16px] border border-rule bg-surface px-4 py-3 transition-colors hover:bg-sunk"
-                        >
-                          <div className="flex min-w-0 items-center gap-3.5">
-                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-soft">
-                              <Icon name={group.icon} size={16} />
-                            </span>
-                            <div className="min-w-0">
-                              <div className="truncate text-[16px] leading-[26px] text-ink">
-                                {row.title}
-                              </div>
-                              <div className="truncate text-[14px] leading-[21px] text-ink-faint">
-                                {row.says} · {row.who}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <span className="text-[14px] leading-[21px] text-ink-faint">{day(row.at)}</span>
-                            <Icon name="chevron-right" size={16} className="text-ink-faint" />
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          shown.map((g) => (
+            <div key={g.label} className="flex flex-col gap-0.5 px-2 pb-1 pt-2">
+              <p className="t-micro px-4 pb-0.5 text-ink-3">{g.label.toUpperCase()}</p>
+              {g.items.map((item) => {
+                const hot = first && g.kind === "action";
+                first = false;
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    scroll={false}
+                    className={"flex items-center gap-3.5 rounded-[14px] px-4 py-2.5 hover:bg-sunk " + (hot ? "bg-sunk" : "")}
+                  >
+                    {g.kind === "person" ? (
+                      <span className="t-label flex size-9 shrink-0 items-center justify-center rounded-full bg-sunk text-ink-2">{item.initials || "?"}</span>
+                    ) : (
+                      <span className={"flex size-9 shrink-0 items-center justify-center rounded-[12px] " + (g.kind === "action" ? "bg-bg-brand text-brand" : "bg-sunk text-ink-2")}>
+                        <Icon name={g.kind === "action" ? "calendar" : g.kind === "role" ? "briefcase" : "clock"} size={18} />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="t-body-m block truncate text-ink">{item.title}</span>
+                      <span className="t-small block truncate text-ink-3">{item.sub}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))
         )}
       </div>
-    </PageBox>
+    </div>
   );
 }

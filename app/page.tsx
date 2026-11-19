@@ -6,11 +6,13 @@ import CallPanel from "@/app/(home)/CallPanel";
 import CopyButton from "@/app/(home)/CopyButton";
 import { AttentionRow, RailCard, Slot, StandsCard, StatStrip, TONE_DOT } from "@/app/(home)/parts";
 import { Card, EmptyState, PageTitle } from "@/app/ui/figma";
+import PhoneToday from "@/app/ui/phone/PhoneToday";
 import { dayItems, desk, runClocks } from "@/data/desk";
 import { testToolsShown } from "@/lib/clockPass";
 import { draftKind, DRAFT_KINDS } from "@/lib/messages";
 import { firstName, greetingFor } from "@/lib/myWork";
 import { clockOf, dayBounds, dayShort, draftCounts, draftLine, standsLine, workView } from "@/lib/myWorkView";
+import { hrefForSubject } from "@/lib/notificationLink";
 import { closeHref, panelHref } from "@/lib/panel";
 import { currentMember } from "@/lib/session";
 
@@ -349,9 +351,28 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="flex flex-col gap-[22px]">
-      <PageTitle title={titles[view]} sub={subs[view]} tabs={tabs} active={view} />
       {sp.msg && <p className="rounded-[16px] bg-sunk px-4 py-3 text-[14px] text-ink">{sp.msg}</p>}
-      {view === "today" ? today : view === "approve" ? approve : view === "calls" ? calls : tasks}
+      {/* Phone (PH1): Today is "Do first" and three cards; the other views keep the desktop's own page. */}
+      {view === "today" && (
+        <div className="flex flex-col gap-2.5 md:hidden">
+          <div className="px-1 pt-1">
+            <h1 className="text-[32px] font-normal leading-10 text-ink">Do first</h1>
+            <p className="t-small text-ink-3">{subs.today}</p>
+          </div>
+          <PhoneToday
+            rows={w.doFirst}
+            counts={{ approve: w.counts.approve, calls: w.counts.calls, tasks: w.counts.tasks }}
+            roleHref={(r) => {
+              const t = r.taskId ? db.tasks.find((x) => x.id === r.taskId) : null;
+              return t?.subjectType && t.subjectId ? hrefForSubject(db, t.subjectType, t.subjectId) : null;
+            }}
+          />
+        </div>
+      )}
+      <div className={"flex flex-col gap-[22px] " + (view === "today" ? "max-md:hidden" : "")}>
+        <PageTitle title={titles[view]} sub={subs[view]} tabs={tabs} active={view} />
+        {view === "today" ? today : view === "approve" ? approve : view === "calls" ? calls : tasks}
+      </div>
       {open && onTask && <CallPanel db={db} task={onTask} mode={open} now={now} back={here} close={closeHref(path, sp as Record<string, string | undefined>)} />}
       {testToolsShown() && (
         <div className="hidden justify-center gap-2 md:flex">

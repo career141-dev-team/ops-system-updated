@@ -161,8 +161,8 @@ export default function Overview({ c, sp }: TabProps) {
             ) : (
               <div className="flex flex-col gap-3">
                 {needs.map((x) => (
-                  <div key={x.key} className="flex items-center gap-4 rounded-[18px] bg-sunk px-[18px] py-4">
-                    <span className={"flex w-[120px] shrink-0 items-center gap-2 text-[13px] font-medium " + (x.tone === "danger" ? "text-danger" : "text-warn")}>
+                  <div key={x.key} className="flex items-center gap-4 rounded-[18px] bg-sunk px-[18px] py-4 max-md:gap-3 max-md:rounded-none max-md:bg-transparent max-md:px-0 max-md:py-3 max-md:[&:not(:first-child)]:border-t max-md:border-rule">
+                    <span className={"flex w-[120px] shrink-0 items-center gap-2 text-[13px] font-medium max-md:hidden " + (x.tone === "danger" ? "text-danger" : "text-warn")}>
                       <span aria-hidden className={"size-2 rounded-full " + (x.tone === "danger" ? "bg-danger" : "bg-warn")} />
                       {x.label}
                     </span>
@@ -177,9 +177,9 @@ export default function Overview({ c, sp }: TabProps) {
                 ))}
               </div>
             )}
-          </Card>
+          </Card></div>
 
-          <Card title="Where each person is now">
+          <div className="max-md:hidden"><Card title="Where each person is now">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
               {columns.map((col) => (
                 <div key={col.label} className="flex flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-3">
@@ -210,7 +210,7 @@ export default function Overview({ c, sp }: TabProps) {
           </Card>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-[18px] xl:w-[380px]">
+        <aside className="flex w-full shrink-0 flex-col gap-[18px] max-md:hidden xl:w-[380px]">
           <section className="flex flex-col gap-3 rounded-[28px] bg-ink px-6 py-[22px] text-ink-inverse shadow-card">
             <p className="t-micro flex items-center gap-2 text-ink-faint">
               <Icon name="sparkle" size={13} />

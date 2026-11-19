@@ -117,10 +117,10 @@ export default function BuildSet({ c, sp }: TabProps) {
         )}
         <p className="t-small text-ink-3">
           The email and the group post are drafted, not sent. You read them on the{" "}
-          <Link href="/messages" className="underline">
-            Messages
+          <Link href="/?view=approve" className="underline">
+            To approve
           </Link>{" "}
-          screen and approve them there.
+          list on My work and approve them there.
         </p>
       </PanelSection>
       <WhatNext
