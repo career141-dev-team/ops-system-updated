@@ -1,10 +1,12 @@
 "use client";
 
+import gsap from "gsap";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import Icon, { type IconName } from "@/app/Icon";
 import PanelOpen from "@/app/ui/PanelOpen";
+import { EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 
 export type SendTabKind = "invite" | "email" | "whatsapp" | "pdf";
 
@@ -96,6 +98,20 @@ export default function PreviewAndSend({
   const [activeKey, setActiveKey] = useState(tabs[0]?.key ?? "");
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el || prefersReducedMotion()) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        el,
+        { y: 6, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.2, ease: EASE_OUT, clearProps: "transform,opacity" },
+      );
+    }, el);
+    return () => ctx.revert();
+  }, [activeKey, editing]);
 
   const active = tabs.find((t) => t.key === activeKey) ?? tabs[0];
   const primaryEmail = active?.email ?? active?.alsoEmail ?? tabs.find((t) => t.email)?.email;
@@ -183,7 +199,7 @@ export default function PreviewAndSend({
 
           {/* Preview body */}
           <div className="flex-1 overflow-y-auto p-6 md:p-8">
-            <div className="flex flex-col gap-5 rounded-[20px] bg-sunk p-5">
+            <div ref={previewRef} className="flex flex-col gap-5 rounded-[20px] bg-sunk p-5">
               {active?.invite && <InviteCard invite={active.invite} />}
 
               {active?.alsoEmail && (

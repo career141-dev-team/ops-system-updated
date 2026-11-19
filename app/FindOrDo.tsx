@@ -1,10 +1,12 @@
 "use client";
 
+import gsap from "gsap";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import Icon from "@/app/Icon";
 import type { FindItem } from "@/app/api/find/route";
+import { EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 
 interface FindResponse {
   ok: boolean;
@@ -25,6 +27,8 @@ export default function FindOrDo() {
   const [data, setData] = useState<FindResponse | null>(null);
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Global `/` shortcut opens G1 when not typing in an input.
   useEffect(() => {
@@ -45,14 +49,28 @@ export default function FindOrDo() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Focus input when opened.
+  // Focus input and animate palette entrance when opened.
   useEffect(() => {
-    if (open) {
-      window.setTimeout(() => inputRef.current?.focus(), 10);
-    } else {
+    if (!open) {
       setQ("");
       setCursor(0);
+      return;
     }
+    window.setTimeout(() => inputRef.current?.focus(), 10);
+    if (prefersReducedMotion()) return;
+    const ctx = gsap.context(() => {
+      if (backdropRef.current) {
+        gsap.fromTo(backdropRef.current, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: EASE_OUT });
+      }
+      if (dialogRef.current) {
+        gsap.fromTo(
+          dialogRef.current,
+          { y: -14, scale: 0.97, opacity: 0 },
+          { y: 0, scale: 1, opacity: 1, duration: 0.24, ease: EASE_OUT, clearProps: "transform,opacity" },
+        );
+      }
+    });
+    return () => ctx.revert();
   }, [open]);
 
   // Fetch matching items whenever open or query changes.
@@ -174,6 +192,7 @@ export default function FindOrDo() {
 
       {open && (
         <div
+          ref={backdropRef}
           role="dialog"
           aria-modal="true"
           aria-label="Find or do"
@@ -182,7 +201,7 @@ export default function FindOrDo() {
           }}
           className="fixed inset-0 z-50 flex items-start justify-center bg-ink/25 px-4 pt-[12vh]"
         >
-          <div className="flex w-full max-w-[680px] flex-col overflow-hidden rounded-[24px] bg-surface shadow-float">
+          <div ref={dialogRef} className="flex w-full max-w-[680px] flex-col overflow-hidden rounded-[24px] bg-surface shadow-float">
             <div className="flex items-center gap-3 border-b border-rule px-5 py-4">
               <Icon name="search" size={18} className="shrink-0 text-ink-3" />
               <input

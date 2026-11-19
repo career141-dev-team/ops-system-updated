@@ -8,6 +8,7 @@ import { Poppins } from "next/font/google";
 import { AddPanel } from "@/app/QuickAdd";
 import PhoneNav from "@/app/PhoneNav";
 import TopBar from "@/app/TopBar";
+import MotionStage from "@/app/ui/MotionStage";
 import { cookies } from "next/headers";
 
 import Chat from "@/app/Chat";
@@ -144,7 +145,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. On the desk the
               page starts 22px under the bar, with the frames' 40px at the sides. */}
             <main data-welcome="page" className="min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
-              {children}
+              <Suspense fallback={children}>
+                <MotionStage>{children}</MotionStage>
+              </Suspense>
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
                 over; it never floats over it (the owner's rule). On a phone it is
