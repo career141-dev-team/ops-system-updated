@@ -77,12 +77,83 @@ export interface HiringView {
 export const EMPTY_HIRING: HiringView = { vacancies: [], slots: [], hiredThisMonth: [] };
 
 /**
- * The view of internal hiring. The desk has nothing to read yet, so this is empty unless a sample is
- * handed in (invented-data mode). Keep the parameter: it is how the sample gets in, and where the
- * real read will go.
+ * The view of internal hiring (19 Nov).
+ *
+ * Reads real `db.vacancies` and `db.applicants` when present; falls back to `sample` only when
+ * no real vacancies exist yet (so dev preview and existing tests continue working cleanly).
  */
-export function hiringView(_db: unknown, sample: HiringView | null): HiringView {
+export function hiringView(db: unknown, sample: HiringView | null): HiringView {
+  const snap = db as { vacancies?: import("@/data/types").OpsVacancy[]; applicants?: import("@/data/types").OpsApplicant[] } | null;
+  if (snap?.vacancies && snap.vacancies.length > 0) {
+    const apps = snap.applicants ?? [];
+    const vacancies: Vacancy[] = snap.vacancies.map((v) => {
+      const mine = apps.filter((a) => a.vacancyId === v.id);
+      return {
+        id: v.id,
+        title: v.title,
+        places: v.places,
+        filled: v.filled,
+        postedAt: v.postedAt,
+        status: v.status,
+        checks: v.checks,
+        applicants: mine.map((a) => ({
+          id: a.id,
+          name: a.name,
+          source: a.source,
+          phone: a.phone,
+          stage: a.stage,
+          since: a.updatedAt,
+          detail: a.detail,
+          tries: a.tries,
+          draft: {
+            interviewAt: a.interviewAt ?? undefined,
+            interviewer: a.interviewer ?? undefined,
+            place: a.place ?? undefined,
+            startDate: a.startDate ?? undefined,
+            salary: a.salary ?? undefined,
+          },
+        })),
+      };
+    });
+    const slots: InternalSlot[] = apps
+      .filter((a) => a.stage === "interview" && a.interviewAt)
+      .map((a) => {
+        const v = snap.vacancies!.find((x) => x.id === a.vacancyId);
+        return {
+          at: a.interviewAt!,
+          name: a.name,
+          line: [v?.title, a.place, a.interviewer].filter(Boolean).join(" · "),
+          vacancyId: a.vacancyId,
+        };
+      })
+      .sort((a, b) => a.at - b.at);
+    const hiredThisMonth = apps
+      .filter((a) => a.stage === "hired")
+      .map((a) => {
+        const v = snap.vacancies!.find((x) => x.id === a.vacancyId);
+        return { title: v?.title ?? a.name, at: a.updatedAt };
+      });
+    return { vacancies, slots, hiredThisMonth };
+  }
   return sample ?? EMPTY_HIRING;
+}
+
+export function problemWithVacancy(title: string, places: number): string | null {
+  if (title.trim().length < 2) return "Write the vacancy title.";
+  if (!Number.isInteger(places) || places < 1 || places > 50) return "Places must be a whole number from 1 to 50.";
+  return null;
+}
+
+export function problemWithApplicant(name: string, source: string): string | null {
+  if (name.trim().length < 2) return "Write the applicant's full name.";
+  if (!source.trim()) return "Say where this CV came from.";
+  return null;
+}
+
+export function problemWithHiringDecision(decision: string, reason: string): string | null {
+  if (!["hire", "hold", "reject"].includes(decision)) return "Pick Hire, Hold, or Reject.";
+  if (decision === "reject" && reason.trim().length < 4) return "Write the reason before rejecting.";
+  return null;
 }
 
 export function countOf(v: Vacancy, stage: ApplicantStage): number {

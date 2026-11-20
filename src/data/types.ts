@@ -770,6 +770,8 @@ export interface OpsReferenceRequest {
   applicationTaId: string;
   openingTaId: string;
   candidateName: string;
+  /** Optional candidate phone number recorded for joining/offer calls (19 Nov). */
+  candidatePhone?: string | null;
   state: string;
   /** What the TA reported, in the TA's own words. */
   report: string | null;
@@ -799,6 +801,8 @@ export interface OpsPlacement {
   positionId: Id | null;
   clientId: Id | null;
   candidateName: string;
+  /** Optional candidate phone number recorded for joining/offer calls (19 Nov). */
+  candidatePhone?: string | null;
   state: string;
   /** What the client agreed to pay them, a month. */
   monthlySalary: number | null;
@@ -849,6 +853,8 @@ export interface OpsInvoice {
   placementId: Id | null;
   /** What it is about, when there is no placement to read it from. */
   about: string | null;
+  /** Start date of an unreported hire when confirmed (19 Nov). */
+  hiredStartDate?: string | null;
   /** The set an unreported hire came from, and the invoice a credit note is against. */
   setId: Id | null;
   againstInvoiceId: Id | null;
@@ -886,6 +892,8 @@ export interface OpsGuarantee {
   openingTaId: string;
   clientId: Id | null;
   candidateName: string;
+  /** Optional candidate phone number recorded for joining/offer calls (19 Nov). */
+  candidatePhone?: string | null;
   state: string;
   startsAt: number;
   endsAt: number;
@@ -1030,6 +1038,53 @@ export interface OpsChatThread {
   at: number;
 }
 
+/** One team note posted in Inbox -> Team news (19 Nov). */
+export interface OpsTeamNote {
+  id: Id;
+  authorId: Id;
+  body: string;
+  createdAt: number;
+}
+
+/** One internal Career141 vacancy (H1/H2, 19 Nov). */
+export interface OpsVacancy {
+  id: Id;
+  title: string;
+  places: number;
+  filled: number;
+  status: "open" | "on_hold";
+  checks: string[];
+  ownerId: Id;
+  postedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One applicant to an internal Career141 vacancy (H2, 19 Nov). */
+export interface OpsApplicant {
+  id: Id;
+  vacancyId: Id;
+  name: string;
+  source: string;
+  phone: string | null;
+  email: string | null;
+  stage: "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
+  tries: number;
+  detail: string;
+  checkResults: Record<string, string>;
+  interviewAt: number | null;
+  interviewer: string | null;
+  place: string | null;
+  score: number | null;
+  notes: string | null;
+  salary: string | null;
+  startDate: string | null;
+  rejectReason: string | null;
+  cvFileId: Id | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface OpsDatabase {
   members: OpsMember[];
   settings: OpsSetting[];
@@ -1065,5 +1120,8 @@ export interface OpsDatabase {
   taCalls: OpsTaCall[];
   outbox: OpsOutboxItem[];
   events: OpsEvent[];
+  teamNotes: OpsTeamNote[];
+  vacancies: OpsVacancy[];
+  applicants: OpsApplicant[];
   audit: OpsAuditEntry[];
 }

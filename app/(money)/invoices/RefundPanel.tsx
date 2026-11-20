@@ -118,10 +118,10 @@ export default function RefundPanel({
             <PanelField label="Record his answer">
               <div className="flex flex-wrap gap-2">
                 <ChoicePill name="answer" value="yes" label={`Yes, ${pct}% = ${money(amount, currency)}`} defaultChecked required />
-                <span aria-disabled="true" className="inline-flex items-center rounded-full border border-rule px-4 py-[9px] text-[14px] font-medium leading-[22px] text-ink-3">Other amount</span>
-                <span aria-disabled="true" className="inline-flex items-center rounded-full border border-rule px-4 py-[9px] text-[14px] font-medium leading-[22px] text-ink-3">No</span>
+                <ChoicePill name="answer" value="other" label="Other amount" />
+                <ChoicePill name="answer" value="no" label="No" />
               </div>
-              <span className="t-small text-ink-3">Not connected yet: another amount, and a No answer. Only the {pct}% decision is saved today.</span>
+              <input name="customAmount" type="number" min="1" step="0.01" placeholder={`If Other amount, enter amount in ${currency}`} className={panelInput} />
             </PanelField>
             <PanelField label="Date of his answer">
               <input name="answeredOn" type="date" defaultValue={colomboDate(now)} max={colomboDate(now)} required className={panelInput} />

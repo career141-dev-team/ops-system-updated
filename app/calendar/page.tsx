@@ -128,7 +128,23 @@ export default async function CalendarPage({
       };
     });
 
-  const all: CalendarEvent[] = [...interviewItems, ...meetingItems, ...joiningItems];
+  // 4. Internal hiring interviews (H2 booked applicants)
+  const internalItems: CalendarEvent[] = (db.applicants ?? [])
+    .filter((a) => a.stage === "interview" && a.interviewAt !== null)
+    .map((a) => {
+      const vac = (db.vacancies ?? []).find((v) => v.id === a.vacancyId);
+      return {
+        id: "ih_" + a.id,
+        kind: "internal",
+        ownerId: vac?.ownerId ?? null,
+        when: a.interviewAt,
+        title: a.name,
+        sub: [vac?.title ?? "Internal hiring", a.place].filter(Boolean).join(" · "),
+        href: `/hiring/${a.vacancyId}`,
+      };
+    });
+
+  const all: CalendarEvent[] = [...interviewItems, ...meetingItems, ...joiningItems, ...internalItems];
   const cards = filterCards(all, filter, me.id);
   const booked = cards.filter((c) => c.when !== null).sort((a, b) => (a.when as number) - (b.when as number));
   const notBooked = cards.filter((c) => c.iv && c.status?.needsTime && c.when === null);

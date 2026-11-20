@@ -62,6 +62,9 @@ export default function UnreportedHire({ c, sp }: TabProps) {
                 <PanelField label="Their salary a month (LKR)" hint="The surcharge is a share of the fee, so a number is needed.">
                   <input name="monthlySalary" type="number" min="1" step="1000" required className={panelInput} />
                 </PanelField>
+                <PanelField label="When they started (optional)">
+                  <input name="hiredStartDate" type="date" className={panelInput} />
+                </PanelField>
                 <div>
                   <button type="submit" className={pillPrimary}>
                     Hire found: draft the surcharge
@@ -79,7 +82,6 @@ export default function UnreportedHire({ c, sp }: TabProps) {
                   </button>
                 </div>
               </form>
-              <p className="t-small text-ink-3">not connected yet: the start date of the hire is not stored, so it is not asked.</p>
             </>
           ) : (
             <p className="t-body text-ink-2">Only a person who manages clients can record this.</p>

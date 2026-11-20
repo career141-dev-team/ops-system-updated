@@ -33,11 +33,19 @@ import {
   patchPosition,
   patchRequirement,
   addAd,
+  addAiRun,
+  addApplicant,
+  addAuditNote,
   addClient,
   addInterview,
   addMember,
   addInvoice,
   addReference,
+  addTeamNote,
+  addVacancy,
+  patchApplicant,
+  patchVacancy,
+  snoozeTask as snoozeTaskInDesk,
   buildWeeklyReport,
   adIn,
   aiRunIn,
@@ -127,6 +135,14 @@ import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chat
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
+import { problemWithApplicant, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import {
+  problemWithHistoryCorrection,
+  problemWithInviteBack,
+  problemWithManualChase,
+  problemWithRefundDecision,
+  problemWithTeamNote,
+} from "@/lib/panelActions";
 import { doNotContactFrom, gate, isRoutine, needsApproval, sentToday } from "@/lib/messages";
 import {
   addressesFrom,
@@ -6835,12 +6851,13 @@ export async function confirmUnreportedHire(formData: FormData): Promise<void> {
 
   const who = String(formData.get("candidateName") ?? "").trim();
   const salary = Number(formData.get("monthlySalary") ?? 0);
+  const hiredStartDate = String(formData.get("hiredStartDate") ?? "").trim() || null;
   if (!who) back("Which candidate were they?");
   if (!Number.isFinite(salary) || salary <= 0) {
     back("What are they being paid a month? The surcharge is a share of the fee, so a number is needed - the requirement's salary if nobody knows better.");
   }
 
-  const answer = await draftSurchargeInvoice(setId, who, salary, member.id);
+  const answer = await draftSurchargeInvoice(setId, who, salary, member.id, Date.now(), hiredStartDate);
   revalidatePath(here);
   revalidatePath("/invoices");
   if (!answer.ok) back(answer.what);
@@ -7722,4 +7739,439 @@ export async function toggleChat(formData: FormData): Promise<void> {
   const open = jar.get("ops_chat_open")?.value === "1";
   jar.set("ops_chat_open", open ? "0" : "1", { path: "/", sameSite: "lax", maxAge: 365 * 24 * 60 * 60 });
   redirect(backTo(formData, "/"));
+}
+
+/* ── Backend gap actions (19 Nov): snooze, manual chases, invite-back, reconfirm, HR/TA logs, refunds, dormant, phone, history, team news, internal hiring ── */
+
+/** Snooze an open task to 09:00 tomorrow (Colombo) (W4 Tasks -> Later). */
+export async function snoozeTaskAction(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const dest = backTo(formData, "/?view=tasks");
+  if (!taskId) redirect(withMsg(dest, "Which task?"));
+  const db = await desk();
+  const task = db.tasks.find((t) => t.id === taskId && t.state === "open");
+  if (!task) redirect(withMsg(dest, "That task is already finished or gone."));
+  const nextAt = nextNineAm(Date.now());
+  await snoozeTaskInDesk(taskId, nextAt, member.id, "Moved to tomorrow morning.");
+  revalidatePath("/");
+  redirect(dest + confirmed("Moved to tomorrow morning (09:00).", dest));
+}
+
+/** Manually mark a candidate as reconfirmed for a booked interview (R1 Interviews). */
+export async function recordCandidateReconfirm(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const interviewId = String(formData.get("interviewId") ?? "").trim();
+  const dest = backTo(formData, "/calendar");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
+  const iv = interviewIn(db, interviewId);
+  if (!iv) redirect(withMsg(dest, "That interview is gone."));
+  const note = String(formData.get("note") ?? "").trim() || "Candidate reconfirmed by Ops.";
+  await patchInterview(interviewId, { state: "reconfirmed" }, member.id, "interview.candidateReconfirmed", note);
+  if (iv.positionId) revalidatePath("/positions/" + iv.positionId);
+  revalidatePath("/calendar");
+  redirect(dest + confirmed("Candidate reconfirmation recorded.", dest));
+}
+
+/** Log a manual chase sent by hand (WhatsApp / phone / email) on an ESA or CV set. */
+export async function logManualChase(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const subjectType = String(formData.get("subjectType") ?? "").trim();
+  const subjectId = String(formData.get("subjectId") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "whatsapp").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const dest = backTo(formData, "/");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const problem = problemWithManualChase(channel, note);
+  if (problem) redirect(withMsg(dest, problem));
+
+  const db = await desk();
+  if (subjectType === "esa") {
+    const esa = agreementIn(db, subjectId);
+    if (!esa) redirect(withMsg(dest, "That agreement is gone."));
+    await patchAgreement(esa.id, { chaseStep: esa.chaseStep + 1 }, member.id, "esa.manualChase", `[${channel}] ${note}`);
+    revalidatePath("/clients/agreements");
+    redirect(dest + confirmed(`Logged manual chase ${esa.chaseStep + 1}.`, dest));
+  }
+  if (subjectType === "clientSet") {
+    const set = clientSetIn(db, subjectId);
+    if (!set) redirect(withMsg(dest, "That CV set is gone."));
+    await addAuditNote({
+      actorId: member.id,
+      action: "clientSet.manualChase",
+      subjectType: "clientSet",
+      subjectId: set.id,
+      after: channel,
+      reason: note,
+    });
+    const pos = positionForSet(db, set);
+    if (pos) revalidatePath("/positions/" + pos.id);
+    redirect(dest + confirmed("Manual chase recorded.", dest));
+  }
+  redirect(withMsg(dest, "Unknown subject for manual chase."));
+}
+
+/** Schedule an invite-back reminder on a declined or expired agreement (C3 Agreements). */
+export async function scheduleEsaInviteBack(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "").trim();
+  const dateStr = String(formData.get("inviteBackOn") ?? "").trim();
+  const dest = backTo(formData, "/clients/agreements");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const checked = problemWithInviteBack(dateStr, Date.now());
+  if (!checked.ok) redirect(withMsg(dest, checked.message));
+
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  if (!esa) redirect(withMsg(dest, "That agreement is gone."));
+  const lead = leadIn(db, esa.leadId);
+  const company = lead?.company ?? "Client";
+  await startTimer({
+    kind: "esa.invite_back",
+    subjectType: "esa",
+    subjectId: esa.id,
+    ownerId: esa.ownerId,
+    startsAt: Date.now(),
+    dueAt: checked.dueAt,
+    warnAt: checked.dueAt - DAY,
+    payload: { inviteBackOn: dateStr },
+  });
+  await createTask({
+    kind: "check",
+    title: `Invite ${company} back`,
+    body: `Reminder set for ${dateStr} after agreement was declined or expired.`,
+    assigneeId: esa.ownerId,
+    dueAt: checked.dueAt,
+    subjectType: "esa",
+    subjectId: esa.id,
+    link: "/leads/" + esa.leadId,
+  });
+  await addAuditNote({
+    actorId: member.id,
+    action: "esa.inviteBackSet",
+    subjectType: "esa",
+    subjectId: esa.id,
+    after: dateStr,
+    reason: `Invite-back reminder set for ${dateStr}.`,
+  });
+  revalidatePath("/clients/agreements");
+  revalidatePath("/");
+  redirect(dest + confirmed(`Invite-back reminder set for ${dateStr}.`, dest));
+}
+
+/** Log client HR follow-up answer from P1 ChaseHrPanel. */
+export async function logHrFollowUp(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "").trim();
+  const answer = String(formData.get("answer") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const dest = backTo(formData, "/positions");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  if (!answer) redirect(withMsg(dest, "Pick what the client HR answered."));
+  const db = await desk();
+  const pos = positionIn(db, positionId);
+  if (!pos) redirect(withMsg(dest, "That position is gone."));
+  await addAuditNote({
+    actorId: member.id,
+    action: "position.hrFollowUp",
+    subjectType: "position",
+    subjectId: pos.id,
+    after: answer,
+    reason: note || answer,
+  });
+  revalidatePath("/positions");
+  revalidatePath("/positions/" + pos.id);
+  redirect(dest + confirmed(`Saved: ${answer}.`, dest));
+}
+
+/** Log TA CV chase + promised date from P1 AskTaPanel. */
+export async function logTaCvChase(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "").trim();
+  const promisedOn = String(formData.get("promisedOn") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const dest = backTo(formData, "/positions");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
+  const pos = positionIn(db, positionId);
+  if (!pos) redirect(withMsg(dest, "That position is gone."));
+  const dueAt = /^\d{4}-\d{2}-\d{2}$/.test(promisedOn) ? Date.parse(`${promisedOn}T03:30:00.000Z`) : nextNineAm(Date.now());
+  await createTask({
+    kind: "check",
+    title: `Check CVs promised for ${pos.title}`,
+    body: note || (promisedOn ? `TA promised CVs by ${promisedOn}.` : "Follow up with TA on CVs."),
+    assigneeId: pos.ownerId,
+    dueAt,
+    subjectType: "position",
+    subjectId: pos.id,
+    link: "/positions/" + pos.id + "?view=sets",
+  });
+  await addAuditNote({
+    actorId: member.id,
+    action: "position.taChased",
+    subjectType: "position",
+    subjectId: pos.id,
+    after: promisedOn || "tomorrow",
+    reason: note || "Asked TA for CVs.",
+  });
+  revalidatePath("/positions");
+  revalidatePath("/");
+  redirect(dest + confirmed("Saved TA follow-up and reminder.", dest));
+}
+
+/** Save candidate phone number on a placement (R4 Offer & Joining). */
+export async function savePlacementPhone(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "").trim();
+  const phone = String(formData.get("candidatePhone") ?? "").trim();
+  const dest = backTo(formData, "/positions");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
+  const pl = placementIn(db, placementId);
+  if (!pl) redirect(withMsg(dest, "That placement is gone."));
+  await patchPlacement(pl.id, { candidatePhone: phone || null }, member.id, "placement.phoneSaved", phone ? "Candidate phone saved." : "Candidate phone cleared.");
+  if (pl.positionId) revalidatePath("/positions/" + pl.positionId);
+  redirect(dest + confirmed("Candidate phone saved.", dest));
+}
+
+/** Append an immutable correction note against a History audit row (R7 History). */
+export async function recordHistoryCorrection(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const auditId = String(formData.get("auditId") ?? "").trim();
+  const subjectType = String(formData.get("subjectType") ?? "position").trim();
+  const subjectId = String(formData.get("subjectId") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const dest = backTo(formData, "/positions");
+  const problem = problemWithHistoryCorrection(note);
+  if (problem) redirect(withMsg(dest, problem));
+  await addAuditNote({
+    actorId: member.id,
+    action: "audit.correction",
+    subjectType,
+    subjectId,
+    before: auditId || null,
+    after: note,
+    reason: `Correction to ${auditId || "record"}: ${note}`,
+  });
+  revalidatePath(dest.split("?")[0] || "/");
+  redirect(dest + confirmed("Correction recorded in history.", dest));
+}
+
+/** Handle custom-amount or declined ("no") refund decisions by the Director (A2 Accounts). */
+export async function decideRefundCustom(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/invoices/payment");
+  if (!can(member, "refund.decide")) redirect(withMsg(dest, refusal("refund.decide")));
+  const guaranteeId = String(formData.get("guaranteeId") ?? "").trim();
+  const answer = String(formData.get("answer") ?? "").trim();
+  const customRaw = String(formData.get("customAmount") ?? "").trim();
+  const customAmount = customRaw ? Number(customRaw) : null;
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  const db = await desk();
+  const g = guaranteeIn(db, guaranteeId);
+  if (!g) redirect(withMsg(dest, "That guarantee is gone."));
+  const pl = placementIn(db, g.placementId);
+  const inv = pl?.invoiceId ? invoiceIn(db, pl.invoiceId) : null;
+  const paid = inv ? inv.payments.reduce((s, p) => s + p.amount, 0) : 0;
+  const problem = problemWithRefundDecision({ answer, customAmount, paid, reason });
+  if (problem) redirect(withMsg(dest, problem));
+
+  if (answer === "no") {
+    await patchGuarantee(g.id, { state: "refund_declined", decidedBy: member.id, decidedAt: Date.now(), refundAmount: 0 }, member.id, "guarantee.refundDeclined", reason);
+    revalidatePath("/invoices/payment");
+    redirect(dest + confirmed("Refund declined and recorded.", dest));
+  }
+  await patchGuarantee(
+    g.id,
+    { state: "refund_pending", decidedBy: member.id, decidedAt: Date.now(), refundAmount: customAmount },
+    member.id,
+    "guarantee.refundCustom",
+    reason,
+  );
+  revalidatePath("/invoices/payment");
+  redirect(dest + confirmed(`Custom refund (${customAmount}) approved and recorded.`, dest));
+}
+
+/** Post a team note in Inbox -> Team news (I3). */
+export async function postTeamNote(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const body = String(formData.get("body") ?? "").trim();
+  const dest = backTo(formData, "/mail?view=news");
+  const problem = problemWithTeamNote(body);
+  if (problem) redirect(withMsg(dest, problem));
+  await addTeamNote(member.id, body);
+  revalidatePath("/mail");
+  redirect(dest + confirmed("Posted to Team news.", dest));
+}
+
+/** Internal hiring: create a new Career141 vacancy (H1). */
+export async function createVacancy(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const title = String(formData.get("title") ?? "").trim();
+  const places = Number(formData.get("places") ?? 1);
+  const checksRaw = String(formData.get("checks") ?? "");
+  const checks = checksRaw.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean);
+  const problem = problemWithVacancy(title, places);
+  if (problem) redirect(withMsg(dest, problem));
+  const v = await addVacancy({ title, places, checks, ownerId: member.id });
+  revalidatePath("/hiring");
+  redirect(`/hiring/${v.id}?msg=` + encodeURIComponent(`Vacancy "${v.title}" opened.`));
+}
+
+/** Internal hiring: add an applicant to a vacancy (H2). */
+export async function addHiringApplicant(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const name = String(formData.get("name") ?? "").trim();
+  const source = String(formData.get("source") ?? "LinkedIn").trim();
+  const phone = String(formData.get("phone") ?? "").trim() || null;
+  const email = String(formData.get("email") ?? "").trim() || null;
+  const problem = problemWithApplicant(name, source);
+  if (problem) redirect(withMsg(dest, problem));
+  await addApplicant({ vacancyId, name, source, phone, email, by: member.id });
+  revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
+  redirect(dest + confirmed(`${name} added.`, dest));
+}
+
+/** Internal hiring: log screening call result (H2 -> Call panel). */
+export async function recordHiringCall(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const result = String(formData.get("result") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  if (!result) redirect(withMsg(dest, "Pick the call result."));
+
+  const db = await desk();
+  const app = db.applicants.find((a) => a.id === applicantId);
+  if (!app) redirect(withMsg(dest, "That applicant is gone."));
+  const tries = app.tries + 1;
+  const isFits = result === "Talked" || result === "Fits";
+  const nextStage = isFits ? "fits" : "call";
+  const detail = isFits ? `Called · fits${note ? " — " + note : ""}` : `${result} · try ${Math.min(tries, 3)} of 3`;
+  await patchApplicant(applicantId, { stage: nextStage, tries, detail, notes: note || app.notes }, member.id, "applicant.called", detail);
+  revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
+  redirect(dest + confirmed("Call result saved.", dest));
+}
+
+/** Internal hiring: book an internal interview (H2 -> Book an interview panel). */
+export async function bookHiringInterview(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const whenRaw = String(formData.get("interviewAt") ?? "").trim();
+  const place = String(formData.get("place") ?? "Office").trim();
+  const interviewer = String(formData.get("interviewer") ?? member.name).trim();
+  const interviewAt = whenRaw ? Date.parse(whenRaw) : NaN;
+  if (Number.isNaN(interviewAt)) redirect(withMsg(dest, "Pick a valid interview date and time."));
+  await patchApplicant(
+    applicantId,
+    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place}` },
+    member.id,
+    "applicant.interviewBooked",
+    `Booked with ${interviewer} (${place})`,
+  );
+  revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/calendar");
+  redirect(dest + confirmed("Internal interview booked and added to Calendar.", dest));
+}
+
+/** Internal hiring: record interview result (H2 -> Add the result panel). */
+export async function recordHiringResult(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const result = String(formData.get("result") ?? "").trim().toLowerCase();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const scoreRaw = Number(formData.get("score") ?? 0);
+  const score = scoreRaw >= 1 && scoreRaw <= 5 ? scoreRaw : null;
+  if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Pass, Hold, or Fail."));
+  if (result === "fail" && reason.length < 4) redirect(withMsg(dest, "Write the reason before marking Fail."));
+
+  const nextStage = result === "pass" ? "decision" : result === "fail" ? "rejected" : "interview";
+  await patchApplicant(
+    applicantId,
+    {
+      stage: nextStage,
+      score,
+      notes: notes || null,
+      rejectReason: result === "fail" ? reason : null,
+      detail: result === "pass" ? "Passed interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
+    },
+    member.id,
+    "applicant.resultRecorded",
+    reason || notes || result,
+  );
+  revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
+  redirect(dest + confirmed("Interview result saved.", dest));
+}
+
+/** Internal hiring: final decision — Hire, Hold, or Reject (H2 -> Decide panel). */
+export async function decideHiringApplicant(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const decision = String(formData.get("decision") ?? "").trim().toLowerCase();
+  const startDate = String(formData.get("start") ?? "").trim() || null;
+  const salary = String(formData.get("salary") ?? "").trim() || null;
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithHiringDecision(decision, reason);
+  if (problem) redirect(withMsg(dest, problem));
+
+  const db = await desk();
+  const vac = db.vacancies.find((v) => v.id === vacancyId);
+  const nextStage = decision === "hire" ? "hired" : decision === "reject" ? "rejected" : "decision";
+  await patchApplicant(
+    applicantId,
+    {
+      stage: nextStage,
+      startDate,
+      salary,
+      rejectReason: decision === "reject" ? reason : null,
+      detail: decision === "hire" ? `Hired${startDate ? " · starts " + startDate : ""}` : decision === "reject" ? `Rejected: ${reason}` : "Decision on hold",
+    },
+    member.id,
+    "applicant.decided",
+    reason || `${decision}${salary ? " (" + salary + ")" : ""}`,
+  );
+  if (decision === "hire" && vac) {
+    await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Applicant hired.");
+  }
+  revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
+  redirect(dest + confirmed(decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.", dest));
 }

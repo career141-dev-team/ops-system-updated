@@ -31,7 +31,9 @@ const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers", "direct
   // "Open it now, without waiting" (17 Nov): a lead that was never marked has none of these.
   "openEarlyBy", "openEarlyAt", "openEarlyReason",
   // People on an opening besides the Primary TA (17 Nov): an opening made before has none.
-  "team"];
+  "team",
+  // Candidate phone on placements & start date on unreported-hire surcharge invoices (19 Nov).
+  "candidatePhone", "hiredStartDate"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

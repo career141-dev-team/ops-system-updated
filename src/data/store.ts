@@ -49,7 +49,10 @@ import type {
   OpsMessage,
   OpsSetting,
   OpsTask,
+  OpsTeamNote,
   OpsTimer,
+  OpsVacancy,
+  OpsApplicant,
 } from "./types";
 import { seed } from "./seed";
 import { tick } from "@/lib/tick";
@@ -1517,6 +1520,102 @@ export const repo = {
     if (!row) return;
     row.readState = "actioned";
     audit({ actorId: by, action: "inbound.actioned", subjectType: "inbound", subjectId: inboundId, before: "filed", after: "actioned", reason: null });
+    save();
+  },
+
+  snoozeTask(taskId: Id, dueAt: number, by: Id, reason: string | null): void {
+    const db = load();
+    const row = db.tasks.find((t) => t.id === taskId);
+    if (!row) return;
+    const before = String(row.dueAt);
+    row.dueAt = dueAt;
+    audit({ actorId: by, action: "task.snoozed", subjectType: "task", subjectId: taskId, before, after: String(dueAt), reason });
+    save();
+  },
+
+  addAuditNote(entry: Omit<OpsAuditEntry, "id" | "at">): void {
+    audit(entry);
+    save();
+  },
+
+  addTeamNote(authorId: Id, body: string): OpsTeamNote {
+    const db = load();
+    const row: OpsTeamNote = { id: id("tn"), authorId, body, createdAt: Date.now() };
+    db.teamNotes.push(row);
+    audit({ actorId: authorId, action: "teamNote.posted", subjectType: "teamNote", subjectId: row.id, before: null, after: body.slice(0, 120), reason: null });
+    save();
+    return row;
+  },
+
+  addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): OpsVacancy {
+    const db = load();
+    const now = Date.now();
+    const row: OpsVacancy = {
+      id: id("vac"),
+      title: input.title,
+      places: input.places,
+      filled: 0,
+      status: "open",
+      checks: input.checks,
+      ownerId: input.ownerId,
+      postedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.vacancies.push(row);
+    audit({ actorId: input.ownerId, action: "vacancy.created", subjectType: "vacancy", subjectId: row.id, before: null, after: row.title, reason: null });
+    save();
+    return row;
+  },
+
+  patchVacancy(vacancyId: Id, patch: Partial<OpsVacancy>, by: Id, action: string, reason: string | null): void {
+    const db = load();
+    const row = db.vacancies.find((v) => v.id === vacancyId);
+    if (!row) return;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action, subjectType: "vacancy", subjectId: vacancyId, before: null, after: null, reason });
+    save();
+  },
+
+  addApplicant(input: { vacancyId: Id; name: string; source: string; phone: string | null; email: string | null; by: Id }): OpsApplicant {
+    const db = load();
+    const now = Date.now();
+    const row: OpsApplicant = {
+      id: id("app"),
+      vacancyId: input.vacancyId,
+      name: input.name,
+      source: input.source,
+      phone: input.phone,
+      email: input.email,
+      stage: "new",
+      tries: 0,
+      detail: `CV from ${input.source}`,
+      checkResults: {},
+      interviewAt: null,
+      interviewer: null,
+      place: null,
+      score: null,
+      notes: null,
+      salary: null,
+      startDate: null,
+      rejectReason: null,
+      cvFileId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.applicants.push(row);
+    audit({ actorId: input.by, action: "applicant.added", subjectType: "applicant", subjectId: row.id, before: null, after: row.name, reason: null });
+    save();
+    return row;
+  },
+
+  patchApplicant(applicantId: Id, patch: Partial<OpsApplicant>, by: Id, action: string, reason: string | null): void {
+    const db = load();
+    const row = db.applicants.find((a) => a.id === applicantId);
+    if (!row) return;
+    const before = row.stage;
+    Object.assign(row, patch, { updatedAt: Date.now() });
+    audit({ actorId: by, action, subjectType: "applicant", subjectId: applicantId, before, after: row.stage, reason });
     save();
   },
 

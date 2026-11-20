@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { addHiringApplicant } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { Avatar, Card, EmptyState } from "@/app/ui/figma";
+import { Avatar, Card, EmptyState, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import Panel, { PanelSection } from "@/app/ui/Panel";
 import { desk } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
 import { BOARD_COLUMNS, STAGE_ACTION, countOf, daysSince, first, hiringView, vacancyById, vacancyLine, type Applicant } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
 import { closeHref, panelHref } from "@/lib/panel";
+import { can } from "@/lib/roles";
 import { closeSendHref } from "@/lib/sendModal";
 import { currentMember } from "@/lib/session";
 import HiringPanel, { type HiringPanelKind } from "./HiringPanel";
@@ -116,6 +119,12 @@ export default async function VacancyPage({
           </div>
           <p className="t-small text-ink-3">{vacancyLine(v)}</p>
         </div>
+        {can(me, "client.manage") && (
+          <Link href={panelHref(path, sp, "add-applicant")} scroll={false} className={pillSecondary + " shrink-0"}>
+            <Icon name="plus" size={16} />
+            Add applicant
+          </Link>
+        )}
       </div>
 
       <Card className="!flex-row items-center">
@@ -206,6 +215,32 @@ export default async function VacancyPage({
       </div>
 
       {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} />}
+      {sp.panel === "add-applicant" && can(me, "client.manage") && (
+        <Panel kicker="Internal hiring" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
+          <form action={addHiringApplicant}>
+            <input type="hidden" name="vacancyId" value={v.id} />
+            <input type="hidden" name="back" value={path} />
+            <PanelSection title="Applicant details">
+              <PanelField label="Full name">
+                <input name="name" required placeholder="e.g. Nimali Perera" className={panelInput} />
+              </PanelField>
+              <PanelField label="Source">
+                <input name="source" defaultValue="LinkedIn" required placeholder="LinkedIn, Referral, TopJobs" className={panelInput} />
+              </PanelField>
+              <PanelField label="Phone (optional)">
+                <input name="phone" placeholder="077 123 4567" className={panelInput} />
+              </PanelField>
+              <PanelField label="Email (optional)">
+                <input name="email" type="email" placeholder="name@example.com" className={panelInput} />
+              </PanelField>
+            </PanelSection>
+            <PanelSection title="What happens next">
+              <p className="t-body text-ink-2">They appear under &ldquo;To call&rdquo; on this vacancy board so the team can screen them.</p>
+              <button type="submit" className={pillPrimary + " self-start"}>Add applicant</button>
+            </PanelSection>
+          </form>
+        </Panel>
+      )}
       {typeof sp.send === "string" && on && (
         <HiringSendModal send={sp.send} vacancy={v} applicant={on} me={me} closeHref={closeSendHref(path, sp)} />
       )}

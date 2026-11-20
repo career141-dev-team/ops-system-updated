@@ -440,6 +440,7 @@ export default defineSchema({
     openingTaId: v.string(),
     clientId: v.union(v.string(), v.null()),
     candidateName: v.string(),
+    candidatePhone: v.optional(v.union(v.string(), v.null())),
     state: v.string(),
     startsAt: v.number(),
     endsAt: v.number(),
@@ -484,6 +485,7 @@ export default defineSchema({
     positionId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
     candidateName: v.string(),
+    candidatePhone: v.optional(v.union(v.string(), v.null())),
     state: v.string(),
     monthlySalary: v.union(v.number(), v.null()),
     basicSalary: v.union(v.number(), v.null()),
@@ -515,6 +517,7 @@ export default defineSchema({
     kind: v.string(),
     placementId: v.union(v.string(), v.null()),
     about: v.union(v.string(), v.null()),
+    hiredStartDate: v.optional(v.union(v.string(), v.null())),
     setId: v.union(v.string(), v.null()),
     againstInvoiceId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
@@ -584,6 +587,7 @@ export default defineSchema({
     applicationTaId: v.string(),
     openingTaId: v.string(),
     candidateName: v.string(),
+    candidatePhone: v.optional(v.union(v.string(), v.null())),
     state: v.string(),
     report: v.union(v.string(), v.null()),
     requestedAt: v.number(),
@@ -769,6 +773,52 @@ export default defineSchema({
     .index("by_received", ["receivedAt"]),
 
   /** Who changed what, before and after, and why. Everything, always. */
+  /** Team notes posted in Inbox -> Team news (19 Nov). */
+  opsTeamNotes: defineTable({
+    authorId: v.string(),
+    body: v.string(),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  /** Career141 internal hiring vacancies (19 Nov). */
+  opsVacancies: defineTable({
+    title: v.string(),
+    places: v.number(),
+    filled: v.number(),
+    status: v.string(),
+    checks: v.array(v.string()),
+    ownerId: v.string(),
+    postedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  /** Applicants to Career141 internal vacancies (19 Nov). */
+  opsApplicants: defineTable({
+    vacancyId: v.string(),
+    name: v.string(),
+    source: v.string(),
+    phone: v.union(v.string(), v.null()),
+    email: v.union(v.string(), v.null()),
+    stage: v.string(),
+    tries: v.number(),
+    detail: v.string(),
+    checkResults: v.any(),
+    interviewAt: v.union(v.number(), v.null()),
+    interviewer: v.union(v.string(), v.null()),
+    place: v.union(v.string(), v.null()),
+    score: v.union(v.number(), v.null()),
+    notes: v.union(v.string(), v.null()),
+    salary: v.union(v.string(), v.null()),
+    startDate: v.union(v.string(), v.null()),
+    rejectReason: v.union(v.string(), v.null()),
+    cvFileId: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_vacancy", ["vacancyId"])
+    .index("by_created", ["createdAt"]),
+
   opsAudit: defineTable({
     actorId: v.union(v.string(), v.null()),
     action: v.string(),

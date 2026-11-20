@@ -52,7 +52,7 @@ async function writeAudit(
 export const snapshot = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, chat, chatThreads, calls, baseline, taCalls, outbox, events, audit] =
+    const [members, settings, templates, holidays, timers, tasks, messages, inbound, files, leads, meetings, agreements, clients, clientSets, holds, requirements, positions, talentPulse, reports, interviews, references, placements, invoices, guarantees, closeChecklists, ads, aiRuns, chat, chatThreads, calls, baseline, taCalls, outbox, events, teamNotes, vacancies, applicants, audit] =
       await Promise.all([
       ctx.db.query("opsMembers").collect(),
       ctx.db.query("opsSettings").collect(),
@@ -91,6 +91,9 @@ export const snapshot = internalQuery({
       ctx.db.query("opsTaCalls").withIndex("by_at").order("desc").take(100),
       ctx.db.query("opsOutbox").collect(),
       ctx.db.query("opsEvents").withIndex("by_received").order("desc").take(200),
+      ctx.db.query("opsTeamNotes").withIndex("by_created").order("desc").take(100),
+      ctx.db.query("opsVacancies").withIndex("by_created").order("desc").take(100),
+      ctx.db.query("opsApplicants").withIndex("by_created").order("desc").take(300),
       ctx.db.query("opsAudit").withIndex("by_at").order("desc").take(AUDIT_SHOWN),
     ]);
 
@@ -134,6 +137,9 @@ export const snapshot = internalQuery({
       taCalls: taCalls.map(row),
       outbox: outbox.map(row),
       events: events.map(row),
+      teamNotes: teamNotes.map(row),
+      vacancies: vacancies.map(row),
+      applicants: applicants.map(row),
       audit: audit.map(row),
     };
   },
@@ -1036,6 +1042,7 @@ export const addInvoice = internalMutation({
     paidAt: v.union(v.number(), v.null()),
     writtenOffAt: v.union(v.number(), v.null()),
     reason: v.union(v.string(), v.null()),
+    hiredStartDate: v.optional(v.union(v.string(), v.null())),
     ownerId: v.string(),
   },
   handler: async (ctx, args) => {
@@ -2167,5 +2174,186 @@ export const cancelTimers = internalMutation({
       });
     }
     return { cancelled: args.timerIds.length };
+  },
+});
+
+/** Move an open task to a later due date/time (W4 Tasks -> Later, 19 Nov). */
+export const snoozeTask = internalMutation({
+  args: { taskId: v.string(), dueAt: v.number(), by: v.string(), reason: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const doc = (await ctx.db.get(args.taskId as never)) as Doc<"opsTasks"> | null;
+    if (!doc) return { ok: false };
+    await ctx.db.patch(doc._id, { dueAt: args.dueAt });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "task.snoozed",
+      subjectType: "task",
+      subjectId: args.taskId,
+      before: String(doc.dueAt),
+      after: String(args.dueAt),
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** Append an immutable audit note (e.g. history correction, manual chase, HR follow-up). */
+export const addAuditNote = internalMutation({
+  args: {
+    actorId: v.union(v.string(), v.null()),
+    action: v.string(),
+    subjectType: v.string(),
+    subjectId: v.string(),
+    before: v.union(v.string(), v.null()),
+    after: v.union(v.string(), v.null()),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    await writeAudit(ctx, args);
+    return { ok: true };
+  },
+});
+
+/** Post a team note in Inbox -> Team news (I3, 19 Nov). */
+export const addTeamNote = internalMutation({
+  args: { authorId: v.string(), body: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const id = await ctx.db.insert("opsTeamNotes", { authorId: args.authorId, body: args.body, createdAt: now });
+    await writeAudit(ctx, {
+      actorId: args.authorId,
+      action: "teamNote.posted",
+      subjectType: "teamNote",
+      subjectId: id as string,
+      after: args.body.slice(0, 120),
+    });
+    return { id: id as string, authorId: args.authorId, body: args.body, createdAt: now };
+  },
+});
+
+/** Internal hiring: create a Career141 vacancy (H1, 19 Nov). */
+export const addVacancy = internalMutation({
+  args: {
+    title: v.string(),
+    places: v.number(),
+    checks: v.array(v.string()),
+    ownerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const doc = {
+      title: args.title,
+      places: args.places,
+      filled: 0,
+      status: "open",
+      checks: args.checks,
+      ownerId: args.ownerId,
+      postedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const id = await ctx.db.insert("opsVacancies", doc);
+    await writeAudit(ctx, {
+      actorId: args.ownerId,
+      action: "vacancy.created",
+      subjectType: "vacancy",
+      subjectId: id as string,
+      after: args.title,
+    });
+    return { id: id as string, ...doc };
+  },
+});
+
+export const patchVacancy = internalMutation({
+  args: {
+    vacancyId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    action: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const doc = (await ctx.db.get(args.vacancyId as never)) as Doc<"opsVacancies"> | null;
+    if (!doc) return { ok: false };
+    await ctx.db.patch(doc._id, { ...(args.patch as Record<string, unknown>), updatedAt: Date.now() });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.action,
+      subjectType: "vacancy",
+      subjectId: args.vacancyId,
+      reason: args.reason,
+    });
+    return { ok: true };
+  },
+});
+
+/** Internal hiring: add an applicant to a vacancy (H2, 19 Nov). */
+export const addApplicant = internalMutation({
+  args: {
+    vacancyId: v.string(),
+    name: v.string(),
+    source: v.string(),
+    phone: v.union(v.string(), v.null()),
+    email: v.union(v.string(), v.null()),
+    by: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const doc = {
+      vacancyId: args.vacancyId,
+      name: args.name,
+      source: args.source,
+      phone: args.phone,
+      email: args.email,
+      stage: "new",
+      tries: 0,
+      detail: `CV from ${args.source}`,
+      checkResults: {},
+      interviewAt: null,
+      interviewer: null,
+      place: null,
+      score: null,
+      notes: null,
+      salary: null,
+      startDate: null,
+      rejectReason: null,
+      cvFileId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const id = await ctx.db.insert("opsApplicants", doc);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: "applicant.added",
+      subjectType: "applicant",
+      subjectId: id as string,
+      after: args.name,
+    });
+    return { id: id as string, ...doc };
+  },
+});
+
+export const patchApplicant = internalMutation({
+  args: {
+    applicantId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    action: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const doc = (await ctx.db.get(args.applicantId as never)) as Doc<"opsApplicants"> | null;
+    if (!doc) return { ok: false };
+    await ctx.db.patch(doc._id, { ...(args.patch as Record<string, unknown>), updatedAt: Date.now() });
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.action,
+      subjectType: "applicant",
+      subjectId: args.applicantId,
+      before: doc.stage,
+      after: String((args.patch as Record<string, unknown>).stage ?? doc.stage),
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });

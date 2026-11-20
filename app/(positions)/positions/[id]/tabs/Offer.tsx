@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { draftInvoiceForPlacement, markJoined } from "@/app/actions";
-import { Avatar, Card, EmptyState, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { draftInvoiceForPlacement, markJoined, savePlacementPhone } from "@/app/actions";
+import { Avatar, Card, EmptyState, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { colomboDateInWords } from "@/lib/calendar";
 import { moneyWhole } from "@/lib/money";
 import { guaranteeDay, missingInWords, offerColumn, type OfferColumn } from "@/lib/offerBoard";
@@ -190,9 +190,18 @@ export default function Offer({ c, sp }: TabProps) {
                   <p className="t-small text-ink-3">{m.reason}</p>
                 </div>
               ))}
-              <div>
+              <div className="flex flex-wrap gap-2">
                 <Link scroll={false} href={open("move-doj", rail.pl.id)} className={pillSecondary + small}>Move the DOJ</Link>
               </div>
+              <form action={savePlacementPhone} className="flex flex-col gap-2 border-t border-rule pt-3">
+                <input type="hidden" name="placementId" value={rail.pl.id} />
+                <input type="hidden" name="back" value={`${path}?view=offer`} />
+                <p className="t-micro text-ink-3">Candidate phone</p>
+                <div className="flex gap-2">
+                  <input name="candidatePhone" defaultValue={rail.pl.candidatePhone ?? ""} placeholder="077 123 4567" className={panelInput + " !py-1.5 !text-[13px]"} />
+                  <button type="submit" className={pillSecondary + small + " shrink-0"}>Save</button>
+                </div>
+              </form>
             </div>
           )}
         </div>

@@ -37,8 +37,11 @@ import type {
   OpsMessage,
   OpsOutboxItem,
   OpsTask,
+  OpsTeamNote,
   OpsTemplate,
   OpsTimer,
+  OpsVacancy,
+  OpsApplicant,
 } from "./types";
 import { DAY, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import {
@@ -1378,6 +1381,7 @@ export async function draftSurchargeInvoice(
   monthlySalary: number,
   by: Id,
   now = Date.now(),
+  hiredStartDate: string | null = null,
 ): Promise<{ ok: boolean; what: string; invoiceId: Id | null }> {
   const db = await desk();
   const set = clientSetIn(db, setId);
@@ -1429,6 +1433,7 @@ export async function draftSurchargeInvoice(
     paidAt: null,
     writtenOffAt: null,
     reason: null,
+    hiredStartDate,
     ownerId: db.members.find((m) => m.active && m.role === "accounts")?.id ?? by,
   });
 
@@ -3998,4 +4003,74 @@ export function liveTimersFor(db: OpsDatabase, memberId: Id): OpsTimer[] {
 
 export function liveTimers(db: OpsDatabase): OpsTimer[] {
   return db.timers.filter((t) => t.state === "running" || t.state === "warned");
+}
+
+export async function snoozeTask(taskId: Id, dueAt: number, by: Id, reason: string | null): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:snoozeTask", { taskId, dueAt, by, reason });
+    return;
+  }
+  repo.snoozeTask(taskId, dueAt, by, reason);
+}
+
+export async function addAuditNote(entry: {
+  actorId: Id | null;
+  action: string;
+  subjectType: string;
+  subjectId: Id;
+  before?: string | null;
+  after?: string | null;
+  reason?: string | null;
+}): Promise<void> {
+  const full = {
+    actorId: entry.actorId,
+    action: entry.action,
+    subjectType: entry.subjectType,
+    subjectId: entry.subjectId,
+    before: entry.before ?? null,
+    after: entry.after ?? null,
+    reason: entry.reason ?? null,
+  };
+  if (usingConvex()) {
+    await convexMutation("ops/data:addAuditNote", full);
+    return;
+  }
+  repo.addAuditNote(full);
+}
+
+export async function addTeamNote(authorId: Id, body: string): Promise<OpsTeamNote> {
+  if (usingConvex()) {
+    return (await convexMutation("ops/data:addTeamNote", { authorId, body })) as OpsTeamNote;
+  }
+  return repo.addTeamNote(authorId, body);
+}
+
+export async function addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): Promise<OpsVacancy> {
+  if (usingConvex()) {
+    return (await convexMutation("ops/data:addVacancy", input)) as OpsVacancy;
+  }
+  return repo.addVacancy(input);
+}
+
+export async function patchVacancy(vacancyId: Id, patch: Partial<OpsVacancy>, by: Id, action: string, reason: string | null): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:patchVacancy", { vacancyId, patch, by, action, reason });
+    return;
+  }
+  repo.patchVacancy(vacancyId, patch, by, action, reason);
+}
+
+export async function addApplicant(input: { vacancyId: Id; name: string; source: string; phone: string | null; email: string | null; by: Id }): Promise<OpsApplicant> {
+  if (usingConvex()) {
+    return (await convexMutation("ops/data:addApplicant", input)) as OpsApplicant;
+  }
+  return repo.addApplicant(input);
+}
+
+export async function patchApplicant(applicantId: Id, patch: Partial<OpsApplicant>, by: Id, action: string, reason: string | null): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:patchApplicant", { applicantId, patch, by, action, reason });
+    return;
+  }
+  repo.patchApplicant(applicantId, patch, by, action, reason);
 }

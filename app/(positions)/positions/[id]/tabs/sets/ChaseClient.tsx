@@ -1,7 +1,8 @@
 import Link from "next/link";
 
+import { logManualChase } from "@/app/actions";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { EmptyState, pillSecondary } from "@/app/ui/figma";
+import { EmptyState, panelInput, pillSecondary } from "@/app/ui/figma";
 import { closeHref } from "@/lib/panel";
 import { awaiting, dayOfWindow, shortDay } from "@/lib/setsBoard";
 import { OWNERSHIP_WORKING_DAYS } from "@/lib/clientFeedback";
@@ -54,10 +55,23 @@ export default function ChaseClient({ c, sp }: TabProps) {
         )}
       </WhoAndHow>
       <PanelSection title="LOG IT HERE">
-        <button type="button" disabled className={pillSecondary + " cursor-not-allowed self-start opacity-50"} title="not connected yet: logging a chase made by hand">
-          Log a chase made by hand
-        </button>
-        <p className="t-small text-ink-3">not connected yet: logging a chase made by hand. The answer per person below is saved.</p>
+        <form action={logManualChase} className="flex flex-col gap-2.5 border-b border-rule pb-4">
+          <input type="hidden" name="subjectType" value="clientSet" />
+          <input type="hidden" name="subjectId" value={set.id} />
+          <input type="hidden" name="back" value={close} />
+          <span className="t-small text-ink-3">Log a chase made by hand</span>
+          <div className="flex flex-wrap gap-2">
+            <select name="channel" defaultValue="whatsapp" className={panelInput + " !w-auto"}>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="call">Phone call</option>
+              <option value="email">Email</option>
+            </select>
+            <input name="note" required placeholder="What you sent or what they said" className={panelInput + " flex-1 min-w-[180px]"} />
+          </div>
+          <button type="submit" className={pillSecondary + " self-start"}>
+            Log manual chase
+          </button>
+        </form>
         {open.map((x) => (
           <AnswerForm key={x.applicationTaId} set={set} who={x} back={close} />
         ))}

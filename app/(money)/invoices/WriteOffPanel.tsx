@@ -115,11 +115,10 @@ export default function WriteOffPanel({
             <textarea name="note" rows={2} placeholder="What was tried, and what the client said" className={panelInput} />
           </PanelField>
           <PanelField label="After this, the client">
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-[7px] t-label text-ink-inverse"><Icon name="check" size={14} />Stays with us</span>
-              <span aria-disabled="true" className="inline-flex items-center rounded-full border border-rule px-3.5 py-[7px] t-label text-ink-3">Goes dormant</span>
-            </div>
-            <span className="t-small text-ink-3">Not connected yet: marking the client dormant from here. Do it on the client page.</span>
+            <label className="t-body flex items-center gap-2.5 text-ink-2">
+              <input type="checkbox" name="markDormant" className="size-4" />
+              Mark this client as dormant (unchecked = stays active with us)
+            </label>
           </PanelField>
           <div className="flex flex-col gap-3 border-t border-rule pt-[22px]">
             <h3 className="t-micro text-ink-3">What happens next</h3>

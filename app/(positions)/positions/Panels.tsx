@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { buildWeeklyReportNow, setPositionTeam } from "@/app/actions";
+import { buildWeeklyReportNow, logHrFollowUp, logTaCvChase, setPositionTeam } from "@/app/actions";
 import Icon from "@/app/Icon";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -132,6 +132,7 @@ export function ChooseTaPanel(p: {
 }
 
 export function ChaseHrPanel(p: {
+  positionId: string;
   closeHref: string;
   nextHref: string | null;
   sendHref?: string;
@@ -158,23 +159,27 @@ export function ChaseHrPanel(p: {
           </div>
         )}
       </PanelSection>
-      <PanelSection title="Log it here">
-        <PanelField label="The answer">
-          <div className="flex flex-wrap gap-2">
-            {["Accepted", "Declined", "Wants changes", "No answer yet"].map((l) => (
-              <span key={l} className="t-label rounded-full border border-rule px-4 py-[9px] text-ink-3">{l}</span>
-            ))}
-          </div>
-        </PanelField>
-      </PanelSection>
-      <PanelSection title="What happens next">
-        <SaveRow closeHref={p.closeHref} nextHref={p.nextHref} disabled="writing the HR's answer down from here. Record it on the role page." />
-      </PanelSection>
+      <form action={logHrFollowUp}>
+        <input type="hidden" name="positionId" value={p.positionId} />
+        <input type="hidden" name="back" value={p.closeHref} />
+        <PanelSection title="Log it here">
+          <PanelField label="The answer">
+            <ChoiceGroup label="The answer" name="answer" options={["Accepted", "Declined", "Wants changes", "No answer yet"]} value="No answer yet" />
+          </PanelField>
+          <PanelField label="Note">
+            <input name="note" placeholder="What HR said or the new date" className={panelInput} />
+          </PanelField>
+        </PanelSection>
+        <PanelSection title="What happens next">
+          <SaveRow closeHref={p.closeHref} nextHref={p.nextHref} />
+        </PanelSection>
+      </form>
     </Panel>
   );
 }
 
 export function AskTaPanel(p: {
+  positionId: string;
   closeHref: string;
   nextHref: string | null;
   sendHref?: string;
@@ -204,13 +209,22 @@ export function AskTaPanel(p: {
           </div>
         </PanelField>
       </PanelSection>
-      <PanelSection title="Log it here">
-        <p className="t-small text-ink-3">How you asked and the promised date are not saved yet.</p>
-      </PanelSection>
-      <PanelSection title="What happens next">
-        <p className="t-body text-ink-2">Nothing is sent from here. Copy the message and send it yourself.</p>
-        <SaveRow closeHref={p.closeHref} nextHref={p.nextHref} disabled="saving who you asked and the promised date" />
-      </PanelSection>
+      <form action={logTaCvChase}>
+        <input type="hidden" name="positionId" value={p.positionId} />
+        <input type="hidden" name="back" value={p.closeHref} />
+        <PanelSection title="Log it here">
+          <PanelField label="CVs promised by">
+            <input type="date" name="promisedOn" className={panelInput} />
+          </PanelField>
+          <PanelField label="Note">
+            <input name="note" placeholder="How you asked and what they promised" className={panelInput} />
+          </PanelField>
+        </PanelSection>
+        <PanelSection title="What happens next">
+          <p className="t-body text-ink-2">Saving records the follow-up in history and adds a reminder task for the promised date.</p>
+          <SaveRow closeHref={p.closeHref} nextHref={p.nextHref} />
+        </PanelSection>
+      </form>
     </Panel>
   );
 }

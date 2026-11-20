@@ -1,12 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { bookHiringInterview, decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
 import Icon from "@/app/Icon";
 import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { clockOf, dayWord } from "@/lib/calendarBoard";
-import { HIRING_BACKEND_GAPS, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
+import { dayWord } from "@/lib/calendarBoard";
+import { first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
 export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide";
 
@@ -90,24 +91,18 @@ function Save({ happens }: { happens: string }) {
   return (
     <PanelSection title="What happens next">
       <p className="t-body text-ink-2">{happens}</p>
+      <div>
+        <button type="submit" className={pillPrimary}>
+          Save
+        </button>
+      </div>
     </PanelSection>
-  );
-}
-
-function SaveButton() {
-  return (
-    <div className="flex flex-col items-start gap-2">
-      <button type="button" disabled className={pillPrimary + " opacity-40 cursor-not-allowed"}>
-        Save
-      </button>
-      <p className="t-small text-ink-3">Not connected yet: {HIRING_BACKEND_GAPS} are not stored, so this cannot save.</p>
-    </div>
   );
 }
 
 const textarea = panelInput + " min-h-[72px]";
 
-/** The four panels of H2. Every form is switched off: there is no backend to save into. */
+/** The four panels of H2, wired to the internal hiring backend actions. */
 export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string }) {
   const name = first(a.name);
   if (kind === "call") {
@@ -121,10 +116,13 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
             <p className="t-body text-ink-2">Hello {name}, this is Career141. We saw your CV for {v.title}. Do you have 5 minutes for a few questions?</p>
           </div>
         </Who>
-        <PanelSection title="Log it here">
-          <fieldset disabled className="flex flex-col gap-4">
+        <form action={recordHiringCall}>
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="Log it here">
             <PanelField label="Call result">
-              <ChoiceGroup name="result" label="Call result" options={["Talked", `No answer (try ${Math.min(next, 3)} of 3)`, "Call back on..."]} />
+              <ChoiceGroup name="result" label="Call result" required options={["Talked", `No answer (try ${Math.min(next, 3)} of 3)`, "Call back on..."]} />
             </PanelField>
             {v.checks.length > 0 && (
               <PanelField label={`The ${v.checks.length} checks`}>
@@ -149,10 +147,9 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
             <PanelField label="Note">
               <textarea name="note" className={textarea} placeholder="What you heard" />
             </PanelField>
-          </fieldset>
-        </PanelSection>
-        <Save happens={`Fits: ${name} goes to Called, fits, and you book the interview. Does not fit: pick a reason and copy the message. No answer: the next try is set and a WhatsApp message is ready to copy.`} />
-        <SaveButton />
+          </PanelSection>
+          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. No answer: increments the try counter and keeps them in To call.`} />
+        </form>
       </Panel>
     );
   }
@@ -168,23 +165,25 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
               <Icon name="send" size={14} /> Preview and send
             </Link>
           </div>
-          <Draft label="Invite message" text={invite} copy="Copy invite" missing="The invite is written once an interview time, a person and a place are chosen. Not connected yet: those are not stored." />
+          <Draft label="Invite message" text={invite} copy="Copy invite" missing="Book the interview below to generate the invite message and place it on the Calendar." />
         </Who>
-        <PanelSection title="Log it here">
-          <fieldset disabled className="flex flex-col gap-4">
-            {(v.freeTimes ?? []).map((f) => (
-              <PanelField key={f.who + f.round} label={`${f.who} is free · ${f.round}`}>
-                <ChoiceGroup name={"time-" + f.who} label={`${f.who} free times`} options={f.times.map((t) => dayWord(t) + " " + clockOf(t))} />
-              </PanelField>
-            ))}
-            {!v.freeTimes?.length && <p className="t-small text-ink-3">Not connected yet: the interviewers&apos; free times are not stored.</p>}
-            <PanelField label="Place">
-              <ChoiceGroup name="place" label="Place" options={["Office", "Online"]} />
+        <form action={bookHiringInterview}>
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="Log it here">
+            <PanelField label="Date and time">
+              <input type="datetime-local" name="interviewAt" required className={panelInput} />
             </PanelField>
-          </fieldset>
-        </PanelSection>
-        <Save happens={`The time goes on the calendar. ${name} and the interviewer get a reminder the day before. ${name} moves to Interview.`} />
-        <SaveButton />
+            <PanelField label="Interviewer">
+              <input name="interviewer" defaultValue="" placeholder="Who is interviewing?" className={panelInput} />
+            </PanelField>
+            <PanelField label="Place">
+              <ChoiceGroup name="place" label="Place" required options={["Office", "Online"]} value="Office" />
+            </PanelField>
+          </PanelSection>
+          <Save happens={`The time goes on the Calendar under Internal interviews, and ${name} moves to Interview.`} />
+        </form>
       </Panel>
     );
   }
@@ -199,25 +198,27 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
             <p className="t-body text-ink-2">The skills the role needs, how {name} spoke, and anything to check before a decision.</p>
           </div>
         </Who>
-        <PanelSection title="Log it here">
-          <fieldset disabled className="flex flex-col gap-4">
+        <form action={recordHiringResult}>
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="Log it here">
             <PanelField label="Result">
-              <ChoiceGroup name="result" label="Result" options={["Pass", "Hold", "Fail"]} />
+              <ChoiceGroup name="result" label="Result" required options={["Pass", "Hold", "Fail"]} />
             </PanelField>
             <PanelField label="If fail, the reason">
-              <textarea name="reason" className={textarea} />
+              <textarea name="reason" className={textarea} placeholder="Required if Fail" />
             </PanelField>
             <PanelField label="Score out of 5">
               <ChoiceGroup name="score" label="Score" options={["1", "2", "3", "4", "5"]} />
             </PanelField>
             <PanelField label="Notes">
-              <textarea name="notes" className={textarea} />
+              <textarea name="notes" className={textarea} placeholder="Key observations from the interview" />
             </PanelField>
-          </fieldset>
-        </PanelSection>
-        <Save happens={`Pass: ${name} moves to Decision. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
+          </PanelSection>
+          <Save happens={`Pass: ${name} moves to Decision. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
+        </form>
         <Draft label={`Message if ${name} fails`} text={rejectMessage(a, v.title)} copy="Copy message" missing="" />
-        <SaveButton />
       </Panel>
     );
   }
@@ -228,28 +229,30 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
       <Why v={v} a={a} now={now} />
       <Who a={a}>
         <div className="flex flex-col gap-1 pt-1">
-          <span className="t-small text-ink-3">What the interviewers said</span>
-          <p className="t-body text-ink-2">Not connected yet: interview results are not stored, so what the interviewers said cannot be shown here.</p>
+          <span className="t-small text-ink-3">Interview notes</span>
+          <p className="t-body text-ink-2">{a.detail || "Passed interview."}</p>
         </div>
       </Who>
-      <PanelSection title="Log it here">
-        <fieldset disabled className="flex flex-col gap-4">
+      <form action={decideHiringApplicant}>
+        <input type="hidden" name="vacancyId" value={v.id} />
+        <input type="hidden" name="applicantId" value={a.id} />
+        <input type="hidden" name="back" value={closeHref} />
+        <PanelSection title="Log it here">
           <PanelField label="Your decision">
-            <ChoiceGroup name="decision" label="Your decision" options={["Hire", "Hold", "Reject"]} />
+            <ChoiceGroup name="decision" label="Your decision" required options={["Hire", "Hold", "Reject"]} />
           </PanelField>
-          <input name="start" className={panelInput} placeholder="Start date" aria-label="Start date" />
-          <input name="salary" className={panelInput} placeholder="Salary" aria-label="Salary" />
-          <textarea name="reason" className={textarea} placeholder="If reject, the reason" aria-label="Reason to reject" />
-        </fieldset>
-      </PanelSection>
-      <Save happens={`Hire: the offer letter is ready to copy, and the vacancy shows ${v.filled + 1} of ${v.places} places filled. Hold keeps ${name} in Decision. Reject asks for the reason first.`} />
+          <input name="start" className={panelInput} placeholder="Start date (e.g. 1 Dec 2026)" aria-label="Start date" />
+          <input name="salary" className={panelInput} placeholder="Salary (e.g. LKR 150,000)" aria-label="Salary" />
+          <textarea name="reason" className={textarea} placeholder="If reject, the reason (required)" aria-label="Reason to reject" />
+        </PanelSection>
+        <Save happens={`Hire: the offer letter is ready to copy, and the vacancy shows ${v.filled + 1} of ${v.places} places filled. Hold keeps ${name} in Decision. Reject asks for the reason first.`} />
+      </form>
       <div className="pb-2">
         <Link href={`/hiring/${v.id}?send=offer-letter&on=${a.id}`} scroll={false} className={small}>
           <Icon name="send" size={14} /> Preview offer letter
         </Link>
       </div>
-      <Draft label="Offer letter" text={offer} copy="Copy offer letter" missing="The offer letter is written once a start date, a salary and a reply-by date are set. Not connected yet: they are not stored." />
-      <SaveButton />
+      <Draft label="Offer letter" text={offer} copy="Copy offer letter" missing="Save Hire with a start date and salary above to generate the offer letter." />
     </Panel>
   );
 }

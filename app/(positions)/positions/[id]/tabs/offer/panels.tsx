@@ -10,7 +10,7 @@ import ActionPanel, { type PanelPerson } from "./PanelKit";
 import ReasonField from "./ReasonField";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const CANDIDATE_PHONE = "Call and WhatsApp: not connected yet: the candidate phone from the TA System.";
+const CANDIDATE_PHONE = "No phone saved yet — add it on the Offer tab.";
 export const shortDay = (at: number) => {
   const d = new Date(at + 5.5 * 3_600_000);
   return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
@@ -78,7 +78,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
             ? "It has not moved yet"
             : `Moved ${moves} time${moves === 1 ? "" : "s"}: ` + placement.dojHistory.map((m) => `${m.from ? shortDay(m.from) : "unset"} to ${shortDay(m.to)} (${m.reason})`).join(", "),
         ]}
-        people={[{ name: placement.candidateName, detail: "Candidate", missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
+        people={[{ name: placement.candidateName, detail: "Candidate", phone: placement.candidatePhone ?? undefined, missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
         hidden={{ placementId: placement.id }}
         next={`The joining reminders and the invoice date move to the new date, and the TA System is told. The move count becomes ${moves + 1}.`}
         action={changeJoinDate}
@@ -102,7 +102,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
           `${first} is placed${joinWords ? ", due " + joinWords : ""} and has not joined`,
           "Nothing is invoiced when a placement is lost before joining",
         ]}
-        people={[{ name: placement.candidateName, detail: "Candidate", missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
+        people={[{ name: placement.candidateName, detail: "Candidate", phone: placement.candidatePhone ?? undefined, missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
         askTitle={`What to ask ${first}`}
         ask="Why did you decide no? Is there anything that would change it (salary, start date)?"
         hidden={{ placementId: placement.id }}
@@ -131,7 +131,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
           chosen ? "It is recorded that they did not turn up" : "Nobody has recorded that they turned up",
           "The fee is not invoiced and no refund is due when a person does not join",
         ]}
-        people={[{ name: placement.candidateName, detail: "Candidate", missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
+        people={[{ name: placement.candidateName, detail: "Candidate", phone: placement.candidatePhone ?? undefined, missing: CANDIDATE_PHONE }, ...clientPeople(c)]}
         askTitle={`What to ask ${first}`}
         ask="Where are you? Did you take another job? Will you still join, and when?"
         hidden={{ placementId: placement.id }}
