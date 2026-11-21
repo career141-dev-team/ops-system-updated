@@ -63,6 +63,16 @@ meant to work, so the designs fit the flow. Nothing here is a design.
   **only test data goes on it** until real Clerk sign-in is in. Each deploy needs the owner's
   go-ahead, as every live change does.
 
+## Motion (21 Nov, on branch `hdbinath/motion-teams-aura`)
+
+GSAP, kept small. It helps a person see what changed; it never makes them wait.
+
+- **What moves:** a page fades in and rises a few pixels on arrival; the tab underline is one pill that slides between tabs; a drawer's backdrop fades with the 680px panel; lists and card groups stagger in; numbers on the home page count up; buttons and rows have a small hover and press response.
+- **Durations (seconds):** fast `.2`, base `.42`, panel `.48`, stagger `.05` between items.
+- **Reduced motion:** with `prefers-reduced-motion` set, none of it runs. Content just appears, in its final place, and nothing depends on an animation finishing.
+- **Stagger convention:** put `data-stagger` on a container and its children stagger in. Mark a list or grid, not each row, and keep it to the first screenful so a long list does not take a second to appear.
+- **Rules:** motion never delays a click or hides content that has not arrived, never moves something a person is about to press, and is never the only sign of a state (the colour, the label and the clock still say it).
+
 ## The 13 screens
 
 | Screen | What it shows |

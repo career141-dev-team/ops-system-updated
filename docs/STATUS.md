@@ -1,6 +1,6 @@
 # Where the build actually is
 
-Updated 9 November 2026. This is the one page that says what exists.
+Updated 21 November 2026. This is the one page that says what exists.
 
 **Every phase of [15](15-BUILD-PLAN.md) is built, and so are the screens.** The
 nine phases are below, each with where its pieces live and what proves them.
@@ -16,7 +16,7 @@ code is invented.
 
 | Piece | Where | Proved by |
 |---|---|---|
-| **Sign-in: Microsoft, with the ops team as the allow-list** | `src/lib/signIn.ts`, `src/lib/seal.ts`, `src/lib/session.ts`, `app/sign-in` | `tests/signin.test.ts`. Built 6 Nov, because there was none: you picked a name from a list. Pick-your-name remains for development and is **refused outright** wherever Microsoft is set up |
+| **Sign-in: Microsoft, with the ops team as the allow-list** | `src/lib/signIn.ts`, `src/lib/seal.ts`, `src/lib/session.ts`, `app/sign-in` | `tests/signin.test.ts`. Built 6 Nov, because there was none: you picked a name from a list. Pick-your-name remains for development and is **refused outright** wherever Microsoft is set up. **Clerk replaced it as the door on 20 Nov** (committed on `hdbinath/clerk-auth-roles`, row under *Ops v6 backend gaps*); the Microsoft code stays, and Graph mail and calendar still use the Microsoft app |
 | Who may do what | `src/lib/roles.ts` | `tests/roles.test.ts` |
 | The desk, one API over two stores | `src/data/desk.ts` (JSON file or the Ops Convex backend) | every suite, and **the Convex store walked for the first time on 6 Nov** - every page, a lead written and read back, the clocks run. It found that `/mail` was a 500 there and fine on JSON; `tests/schema.test.ts` now guards the whole class |
 | The Colombo calendar and working days | `src/lib/calendar.ts` | `tests/calendar.test.ts` |
@@ -133,7 +133,7 @@ holds their feedback. All of this is the client's side.
 | Who schedules, us or the client | `startInterview` in `app/actions.ts` | asked once at the start, because the two are different work; a client who books it themselves gets a clock that asks for the date |
 | The times, asked and agreed | `requestInterviewSlots`, `recordInterviewSlots`, `recordCandidatePick` | the client's times are typed in (reading them is Phase 9); the candidate is asked by the TA, through their channels, and we record which they took |
 | The slot loop that stops | `problemWithNewSlots` in `src/lib/interviews.ts` | three rounds with nothing agreed and the TA is asked for a back-up instead of another email |
-| Booking it | `bookInterview` | refuses an online interview with no link and an onsite one with no address; tells TA through the outbox, drafts the invite to the interviewers, starts both clocks |
+| Booking it | `bookInterview` | refuses an online interview with no link and an onsite one with no address; with "make a Teams event" ticked it creates the Teams event itself (`createTeamsEvent`, 18-20 Nov) and uses its join link, saving `calendarEventId`; tells TA through the outbox, drafts the invite to the interviewers, starts both clocks |
 | The day before | `interview.reconfirm` → `remindAboutInterview` in `src/data/desk.ts` | nine in the morning the day before: the client's reminder drafted, and a task to have the TA reconfirm the candidate |
 | The interview itself | `interview.day` clock, `markInterviewAttendance` | somebody is asked whether it happened; a no-show needs a reason and TA is told |
 | A candidate pulling out | `noticeCandidateOut`, and TA's `interview.candidate_out` event | the notice is drafted whatever the hour, and how late it is said in plain words - a day is the promise, three hours the floor |
@@ -155,7 +155,7 @@ Added 16 Nov (scheduling and follow-ups):
 The **Teams meeting for the intro call and the requirement meeting** is built (17 Nov):
 `src/lib/teams.ts`, `src/lib/graphCalendar.ts`, `teamsPartOf` in `app/actions.ts`,
 `MeetingBookingForm`. It needs the `Calendars.ReadWrite` permission with admin consent and
-`switch.teamsEnabled`; until then a pasted link is used. Interviews do not use it yet.
+`switch.teamsEnabled`; until then a pasted link is used. Interviews use it too: `bookInterview` creates the event when "make a Teams event" is ticked (see the 21 Nov table below).
 
 Also built on 17 Nov (supervisor review; each is a decision in 09):
 
@@ -181,7 +181,6 @@ Not done from that review, each with its reason:
 | Thing | Why |
 |---|---|
 | A manual candidate in a CV set, an interview or a placement | every TA write for it would be refused; needs a TA endpoint that can hold a person Ops made |
-| A calendar event cancelled or moved when an interview is rescheduled or cancelled | the event id is saved (`calendarEventId`) but nothing uses it yet |
 | A clock that reads the transcript by itself after the call | it is a button for now |
 | A warning line on an invoice drafted for a client with no signed agreement | the existing fallback (1 month on gross) still applies silently |
 
@@ -412,8 +411,7 @@ Small things still open, each with its reason:
 | Thing | Why it waits |
 |---|---|
 | The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
-| Teams for **interviews** | the intro call and requirement meeting have it (17 Nov) and wait only on `Calendars.ReadWrite` consent and `switch.teamsEnabled`; `bookInterview` still takes a pasted link |
-| Reschedule / not-held emails for intro & requirement meetings | `markMeetingNotHeld` already cancels the Outlook event; reschedule/not-held notification emails to the client are not built yet |
+| Teams for **interviews**, and the reschedule / not-held emails | built on `hdbinath/motion-teams-aura` (see the 21 Nov table); like every Teams piece they wait on `Calendars.ReadWrite` consent and `switch.teamsEnabled`, and the system is not hosted yet |
 | The WhatsApp conversation view | waits on the Ops WhatsApp number existing |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
 | The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |
@@ -461,8 +459,9 @@ and accuracy machinery, and the priority order. It is **built and switched off**
   weekly report has nowhere to go.
 - The invoice template, as a document, before a real invoice can be sent as
   anything but the lines in an email.
-- A calendar permission for the Ops mailbox, or an interview's Teams link
-  stays something a person pastes in.
+- A calendar permission (`Calendars.ReadWrite`) for the Ops mailboxes, or a
+  Teams link stays something a person pastes in, and the /calendar page shows
+  no Outlook events.
 - `OPS_API_TOKEN` on the TA deployment, and the same value as `OPS_TA_TOKEN`
   here, or the link stays shut and Ops runs on recorded sample data.
 - The Ops WhatsApp number bought and verified, or there is no WhatsApp
@@ -479,8 +478,7 @@ and accuracy machinery, and the priority order. It is **built and switched off**
 | **Additive fields & append-only History corrections** (`candidatePhone` on placements, `hiredStartDate` on surcharge invoices, immutable `audit.correction` notes on R7 History) | `src/data/types.ts`, `convex/schema.ts`, `app/(positions)/positions/[id]/tabs/Offer.tsx`, `UnreportedHire.tsx`, `History.tsx` | `tests/schema.test.ts`, `tests/panelactions.test.ts` |
 | **Inbox · Team news (I3)** (`opsTeamNotes` table + audit milestone feed, live team note composer) | `src/lib/inboxChannels.ts`, `app/(inbox)/mail/ChannelViews.tsx`, `postTeamNote` in `app/actions.ts` | `tests/teamnews.test.ts` |
 | **Internal hiring (H1/H2) & Calendar K1** (`opsVacancies` + `opsApplicants` tables, add vacancy/applicant drawers, all 4 applicant panels wired, booked internal interviews surfaced in Calendar K1) | `src/lib/hiring.ts`, `app/hiring/page.tsx`, `app/hiring/[id]/page.tsx`, `app/hiring/[id]/HiringPanel.tsx`, `app/calendar/page.tsx` | `tests/hiringbackend.test.ts`, `tests/schema.test.ts` |
-
-| **Clerk authentication & 3-role access model (20 Nov)** (`@clerk/nextjs`, `proxy.ts`, `src/lib/clerkAuth.ts`, `src/lib/session.ts`, `app/sign-in/[[...sign-in]]`, Settings → Templates and people) | **Ops person** (`ops_owner`), **Ops lead** (`ops_lead`), and **Admin** (`admin`, full capabilities + `View as` any role + `OPS_ADMIN_EMAILS` bootstrap). Dev sign-in automatically disables whenever Clerk or Microsoft keys are set | `tests/clerkauth.test.ts`, `tests/roles.test.ts`, `tests/schema.test.ts` |
+| **Clerk authentication & 3-role access model (20 Nov)** (`@clerk/nextjs`, `proxy.ts`, `src/lib/clerkAuth.ts`, `src/lib/session.ts`, `app/sign-in/[[...sign-in]]`, Settings → Templates and people) | **Ops person** (`ops_owner`), **Ops lead** (`ops_lead`), and **Admin** (`admin`, full capabilities + `View as` any role + `OPS_ADMIN_EMAILS` bootstrap). Dev sign-in automatically disables whenever Clerk or Microsoft keys are set. Committed on `hdbinath/clerk-auth-roles` ("Clerk sign-in and roles"); not live | `tests/clerkauth.test.ts`, `tests/roles.test.ts`, `tests/schema.test.ts` |
 
 ## Rules the code enforces, and why
 
@@ -512,3 +510,23 @@ Both are green on `main`, and CI runs them on every push.
 
 Two things a laptop cannot do, and says so plainly rather than failing: make a
 PDF without LibreOffice, and reach Microsoft or Meta without credentials.
+
+## Built: motion, Outlook calendar, Teams follow-through and the Aura tool loop (21 Nov, on branch `hdbinath/motion-teams-aura`, not merged and not live)
+
+None of this is live. Email and Teams are integrated but the system is not hosted yet:
+`OPS_SEND` stays off, the outbound lock on, `OPS_TEAMS_FAKE` on. Everything below is
+faked or refused on a laptop, with a plain sentence saying why.
+
+| Piece | Where | What it does |
+|---|---|---|
+| **Motion** (GSAP) | see *Motion* in [07](07-SCREENS.md) | page fade and rise, a sliding tab pill, the drawer backdrop, staggered lists, number count-up and small hover and press motions. Off under reduced motion |
+| **Outlook calendar on /calendar** | `app/calendar/page.tsx`, Graph `calendarView` via `src/lib/graphCalendar.ts` | shows the signed-in person's **own** events only, read-only. Faked on a laptop. Needs `Calendars.ReadWrite` consent |
+| **Clash warnings when booking** | the booking forms in `app/actions.ts` | a booking that overlaps something already in that person's calendar says so. It **warns only**: it never blocks the booking |
+| **Teams events follow the interview** | `rescheduleInterview`, `cancelInterview` in `app/actions.ts` (uses the saved `calendarEventId`) | rescheduling moves the Teams event and cancelling cancels it, so no orphan meeting is left in somebody's calendar |
+| **Teams link for hiring interviews** | `app/hiring` | an internal interview gets a Teams link the same way a client interview does |
+| **Not-held notice for the intro call and requirement meeting** | `markMeetingNotHeld` in `app/actions.ts` | only "not held" drafts a client notice, and it is **drafted and goes through approval**, like every other client email. There is no reschedule draft for these two meetings |
+| **Aura looks things up** | `src/lib/agentTools.ts` (the tools), `src/lib/ai.ts` (the loop), [31](31-AGENT.md) | Claude Haiku 5.5 (`claude-haiku-5-5`) with tool use finds the client, lead, person, position, tasks and free times, fills in one action, and shows **one confirm card**. A person still clicks once before anything runs |
+| **New Aura actions** | `src/lib/agent.ts` | `create_lead`, `assign_lead_owner`, `book_intro_call`, `book_requirement_meeting`, `hand_over` |
+| **Health screen buttons** | `app/(settings)/health/page.tsx` | "Check Microsoft" says only whether the app got a Graph token, or the plain reason it did not; "Send a test email to me" sends one message to the signed-in person through `sendEmail`, so `OPS_SEND` and the outbound lock apply |
+
+Not live, in order: [22](22-GO-LIVE.md) has the switch-on runbook for when it is hosted.

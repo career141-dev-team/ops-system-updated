@@ -106,3 +106,15 @@ else a person does in a day is in the catalogue.
 Streaming tokens; voice in the chat (dictation already exists on the fields);
 the chat writing to TA outside the existing actions; any new rule about what
 a client is sent; WhatsApp, which waits on the number.
+
+## The tool-use loop (21 Nov, on branch `hdbinath/motion-teams-aura`)
+
+This replaces "DeepSeek v4 flash through OpenRouter" and the single JSON answer above, **when an Anthropic key is set**. The two rules do not change: the model never executes, and a person clicks once.
+
+- **Model.** Claude Haiku 5.5, `claude-haiku-5-5`. `ANTHROPIC_AGENT_MODEL` (optional) changes it. Every call is still in the ledger as task `agent`.
+- **Read tools** (lookups only, nothing is written): `find_client`, `find_lead`, `find_member`, `find_position`, `my_tasks`, `free_times`, `find_ta_lead`. The model uses them to turn "the Ceylon Tea lead" or "Nimal next Tuesday" into real ids and real times instead of guessing.
+- **One write tool: `propose_action`.** It does not run anything. It hands the intent and its fields to `resolveIntent` in `src/lib/agent.ts`, the same resolver as before, which returns one button, a question or a refusal. The thread then shows **one confirm card**, and the button runs the same server action the screen runs.
+- **Limits.** At most 6 rounds and 45 seconds per message. The daily budget is checked **each round**, not only at the start, so a long loop cannot go past `ai.dailyBudget`.
+- **Fallback.** With no Anthropic key, or when the loop fails, the old one-shot path (`agentPrompt`, JSON in, resolver) is used.
+- **New intents** it can fill in: `create_lead`, `assign_lead_owner`, `book_intro_call`, `book_requirement_meeting`, `hand_over`. Booking asks for the time through `free_times`, and a clash with the person's Outlook calendar is a warning on the card, not a block.
+- **Unchanged.** What stays refused (a reject, hold or decline decided by the AI; calling anybody; setting a money figure) is still refused. Email and Teams are not live until hosted, so a confirmed send still records as *blocked* or goes to the test address ([22](22-GO-LIVE.md) section 9).

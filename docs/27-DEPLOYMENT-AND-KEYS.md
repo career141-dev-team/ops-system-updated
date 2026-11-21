@@ -64,6 +64,7 @@ on the page; start it first.
 | `MS_CLIENT_SECRET` | the app | — and note its expiry date somewhere you will see it |
 | **`Mail.Read`**, application, admin-consented | the app registration | no reply is ever read; the desk goes back to Outlook |
 | **`Mail.Send`**, application, admin-consented | the app registration | every approved message records as *blocked* instead of going |
+| **`Mail.ReadWrite`**, application, admin-consented | the app registration | `sendEmail` first makes a draft with `POST /users/{from}/messages` and then sends it, and creating a message normally needs this permission, not only `Mail.Send`. **To be confirmed against the tenant** (21 Nov): if sending works without it, leave it off. Same access-policy group as the others |
 | **`Calendars.ReadWrite`**, application, admin-consented | the app registration | no Teams meeting is made; the booking says so and a pasted link is used. Same app and secret as the mail, no new key. Add the ops people's mailboxes to the same access-policy group |
 | **`OnlineMeetingTranscript.Read.All`**, application, admin-consented, **and a Teams application access policy** (`New-CsApplicationAccessPolicy`, `Grant-CsApplicationAccessPolicy`, Teams PowerShell) for the ops organisers | the app registration and the Teams tenant | the "Read the call's transcript" button says why it cannot. Also needs transcription allowed in the Teams meeting policy, and an AI key |
 | **The Director's signature picture** (PNG or JPG), uploaded on the Files screen as "The Director's signature" | the Files screen | a signed agreement is not countersigned automatically; the manual upload is used |
@@ -102,7 +103,8 @@ ever public.
 
 | Thing | Where | Without it |
 |---|---|---|
-| `ANTHROPIC_API_KEY` **or** `DEEPSEEK_API_KEY` | the app | the AI layer is off and every screen says which of the two reasons it is |
+| `ANTHROPIC_API_KEY` **or** `DEEPSEEK_API_KEY` | the app | the AI layer is off and every screen says which of the two reasons it is. Aura's lookups (tool use) need the Anthropic key; without it Aura falls back to the one-shot path ([31](31-AGENT.md)) |
+| `ANTHROPIC_AGENT_MODEL` | the app, **optional** | Aura's model. Default `claude-haiku-5-5`. Set it only to change the model without a code change |
 | `switch.aiEnabled` | the Settings screen, not the environment | the same |
 | `ai.dailyBudget` | Settings | start small; the ledger turns the guess into a number inside a week |
 
@@ -155,7 +157,7 @@ two changes:
 | 2 | `OPS_TA_READS_ENABLED=on`, `OPS_TA_FAKE=off` | unchanged |
 | 3 | `OPS_TA_WRITES_ENABLED=on` **and** `switch.taWritesEnabled` in Settings, **and** `OPS_API_WRITES_ENABLED=on` + `OPS_API_ACTOR_EMAIL` on the TA side | 22 named only the first two. All four are needed, and the last two are on the **other** system |
 | 4 | `OPS_SEND=on`, the lock on and holding the pilot client's addresses | unchanged |
-| later | the lock off | **22 said to set `OPS_OUTREACH_LIVE=on` here. Do not, until it is a switch that does something.** Taking the lock off is the real step, and it is the one that needs the most thought |
+| later | the lock off | **22 said to set `OPS_OUTREACH_LIVE=on` here. That was true until 6 Nov (#23). `OPS_OUTREACH_LIVE` is now a real veto: set it on at day 5 of 22 section 4, together with `switch.outreachLive`; both are needed.** Taking the lock off is still the real step, and it is the one that needs the most thought |
 
 Every one is reversible in under a minute, and nothing is lost while one is
 off: clocks keep their dates, writes stay queued, messages record as *blocked*
@@ -200,8 +202,10 @@ For a laptop test in `.env.local` (never committed):
 
 In Microsoft Entra on the existing app registration (`MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`):
 
-- Application permissions `Mail.Send` and `Calendars.ReadWrite` with admin consent
+- Application permissions `Mail.Send`, `Mail.ReadWrite` (to be confirmed, see 2.2) and `Calendars.ReadWrite` with admin consent
 - An application access policy limiting the app to the mailboxes it may use (the sender and the ops organisers)
+
+On the Health screen (Settings), two buttons test this without touching a client: **Check Microsoft** (can the app get a token, and what it was granted) and **Send me a test email** (one message to the signed-in person, through the same gate as any other). With `OPS_SEND` off they answer with a plain sentence saying why. The Outlook calendar on /calendar and the clash warnings read the signed-in person's own events, and are faked while `OPS_TEAMS_FAKE` is on.
 
 To reach real clients: **only** after the owner explicitly says so in the conversation, set `OPS_OUTREACH_LIVE=on` on that machine **and** turn on `switch.outreachLive` in Settings, and add each real address to `OPS_OUTBOUND_ALLOW_EMAILS` while the outbound lock is on.
 
