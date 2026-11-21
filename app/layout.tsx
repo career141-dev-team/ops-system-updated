@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import { Suspense } from "react";
 
 import Keys from "@/app/Keys";
@@ -16,7 +17,7 @@ import { CHAT_COOKIE, chatLines, chatOpen as chatShown, chatsOf } from "@/data/c
 import { desk, pinsOf } from "@/data/desk";
 import { nextSteps } from "@/lib/agent";
 import { bellOf } from "@/lib/bell";
-import { currentMember, realMember } from "@/lib/session";
+import { clerkSignInConfigured, currentMember, realMember } from "@/lib/session";
 import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import Welcome from "@/app/Welcome";
@@ -87,38 +88,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const dark = jar.get("ops_theme")?.value === "dark";
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
 
-  return (
-    // suppressHydrationWarning: a browser extension writes its own style onto
-    // <html> before React loads, and React then reports a mismatch that is not
-    // ours (10 Nov, seen on the lead's review link). One level only.
-    <html lang="en" className={sans.variable} data-theme={dark ? "dark" : "light"} suppressHydrationWarning>
-      {/*
-        `suppressHydrationWarning` is on the body and nowhere else (6 Nov).
-        
-        Browser extensions write their own attributes onto `<body>` before
-        React hydrates - ColorZilla adds `cz-shortcut-listen`, and password
-        managers and translators do the same - so the server HTML and the
-        browser's DOM differ on an attribute nothing of ours put there. React
-        reports it as a hydration mismatch, which reads like a bug in this
-        app and is not one.
-        
-        It is deliberately only this element. The flag covers an element's own
-        attributes and not its children, so every real mismatch inside the app
-        is still reported. Our own code sets exactly one thing here, the class
-        name, and that cannot drift between the server and the browser.
-      */}
-      <body className="min-h-screen" style={{ "--chat-w": chatWidth + "px" } as React.CSSProperties} suppressHydrationWarning>
-        {/* The three-second confirmation. Suspense because it reads the
-            address bar, which is not known until the browser has it. */}
-        <Suspense fallback={null}>
-          <Toast />
-        </Suspense>
-        {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
-        <Keys />
-        {/* The welcome after signing in: a class on the body for a second, then gone. */}
-        <Welcome />
-        {member ? (
-          <>
+  const clerkEnabled = clerkSignInConfigured();
+  const shell = (
+    <>
+      {/* The three-second confirmation. Suspense because it reads the
+          address bar, which is not known until the browser has it. */}
+      <Suspense fallback={null}>
+        <Toast />
+      </Suspense>
+      {/* J/K, A, Enter and / (UX order 8). One listener; the pages mark their rows. */}
+      <Keys />
+      {/* The welcome after signing in: a class on the body for a second, then gone. */}
+      <Welcome />
+      {member ? (
+        <>
           <Suspense fallback={<div className="hidden h-[96px] md:block" aria-hidden="true" />}>
             <TopBar
               may={may}
@@ -128,6 +111,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               viewing={previewing ? ROLE_LABEL[member.role] : null}
               chips={chips}
               dark={dark}
+              clerkEnabled={clerkEnabled}
             />
             <PhoneNav
               may={may}
@@ -137,6 +121,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               chips={chips}
               dark={dark}
               chatOpen={chatOpen}
+              clerkEnabled={clerkEnabled}
             />
             {/* The three Add panels: ?panel=add-note, add-call, add-enquiry, from any page. */}
             <AddPanel clients={clients} />
@@ -180,10 +165,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
             </form>
           )}
-          </>
-        ) : (
-          <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>
-        )}
+        </>
+      ) : (
+        <main className="mx-auto max-w-[760px] px-5 py-10">{children}</main>
+      )}
+    </>
+  );
+
+  return (
+    // suppressHydrationWarning: a browser extension writes its own style onto
+    // <html> before React loads, and React then reports a mismatch that is not
+    // ours (10 Nov, seen on the lead's review link). One level only.
+    <html lang="en" className={sans.variable} data-theme={dark ? "dark" : "light"} suppressHydrationWarning>
+      <body className="min-h-screen" style={{ "--chat-w": chatWidth + "px" } as React.CSSProperties} suppressHydrationWarning>
+        {clerkEnabled ? <ClerkProvider>{shell}</ClerkProvider> : shell}
       </body>
     </html>
   );

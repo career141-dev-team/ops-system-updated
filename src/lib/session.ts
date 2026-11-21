@@ -17,8 +17,9 @@
 
 import { cookies } from "next/headers";
 
-import { desk, member as findMember } from "@/data/desk";
+import { addMember, desk, member as findMember } from "@/data/desk";
 import type { OpsMember } from "@/data/types";
+import { adminEmailsFrom, clerkConfigured, resolveClerkDoor } from "./clerkAuth";
 import { previewRoleFrom } from "./roles";
 import { seal, secretFrom, unseal } from "./seal";
 import { signInConfigFrom } from "./signIn";
@@ -32,14 +33,19 @@ export const VIEW_AS = "ops_view_as";
 /** A working day is long; a week is not a session. */
 const SESSION_DAYS = 7;
 
+export function clerkSignInConfigured(): boolean {
+  return clerkConfigured(process.env);
+}
+
 export function microsoftSignInConfigured(): boolean {
+  if (clerkSignInConfigured()) return false;
   return signInConfigFrom(process.env) !== null && secretFrom(process.env) !== null;
 }
 
 export function devSignInAllowed(): boolean {
   // Never both. A machine with a real door does not keep a second one that
   // needs no password, however the environment is written.
-  if (microsoftSignInConfigured()) return false;
+  if (clerkSignInConfigured() || microsoftSignInConfigured()) return false;
   return (process.env.OPS_DEV_SIGNIN ?? "").toLowerCase() === "on";
 }
 
@@ -50,11 +56,11 @@ export function devSignInAllowed(): boolean {
  * which is the complaint this whole UI pass started from.
  */
 export function signInOffReason(): string | null {
-  if (microsoftSignInConfigured() || devSignInAllowed()) return null;
+  if (clerkSignInConfigured() || microsoftSignInConfigured() || devSignInAllowed()) return null;
   if (signInConfigFrom(process.env) && !secretFrom(process.env)) {
     return "Microsoft sign-in is set up, but OPS_SESSION_SECRET is missing or shorter than 16 characters, so a session could not be kept safely.";
   }
-  return "Sign-in is not set up on this machine. Either set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, OPS_APP_URL and OPS_SESSION_SECRET for Microsoft sign-in, or OPS_DEV_SIGNIN=on for the development one.";
+  return "Sign-in is not set up on this machine. Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY for Clerk sign-in, Microsoft sign-in keys, or OPS_DEV_SIGNIN=on for development.";
 }
 
 async function memberIdFromCookie(): Promise<string | null> {
@@ -71,8 +77,59 @@ async function memberIdFromCookie(): Promise<string | null> {
   return null;
 }
 
+/**
+ * Resolves the current Clerk session (when Clerk is configured) against the Ops allow-list.
+ * Returns whether the user is signed into Clerk, their matched/provisioned OpsMember, or a refusal message.
+ */
+export async function clerkSessionState(): Promise<{
+  signedIn: boolean;
+  member: OpsMember | null;
+  problem: string | null;
+}> {
+  if (!clerkSignInConfigured()) return { signedIn: false, member: null, problem: null };
+  const { auth, currentUser } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  if (!userId) return { signedIn: false, member: null, problem: null };
+
+  const user = await currentUser();
+  const primary =
+    user?.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses[0]?.emailAddress ??
+    null;
+
+  const db = await desk();
+  const door = resolveClerkDoor(primary, db.members, adminEmailsFrom(process.env));
+  if (!door.ok) return { signedIn: true, member: null, problem: door.why };
+
+  if (door.provisionAdmin) {
+    const displayName =
+      [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+      user?.username ||
+      door.email.split("@")[0] ||
+      "Admin";
+    const created = await addMember(
+      {
+        name: displayName,
+        email: door.email,
+        role: "admin",
+        active: true,
+        taUserId: null,
+      },
+      "system",
+    );
+    return { signedIn: true, member: created, problem: null };
+  }
+
+  const found = findMember(db, door.memberId);
+  return { signedIn: true, member: found && found.active ? found : null, problem: null };
+}
+
 /** The person who signed in, whatever role they are previewing. */
 export async function realMember(): Promise<OpsMember | null> {
+  if (clerkSignInConfigured()) {
+    const state = await clerkSessionState();
+    return state.member;
+  }
   const chosen = await memberIdFromCookie();
   if (!chosen) return null;
   const found = findMember(await desk(), chosen);

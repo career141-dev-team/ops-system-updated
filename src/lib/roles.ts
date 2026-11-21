@@ -36,6 +36,20 @@ const MATRIX: Record<OpsRole, Capability[]> = {
     "file.keep",
     "report.read",
   ],
+  admin: [
+    "inbox.read",
+    "task.do",
+    "task.reassign",
+    "message.approve",
+    "client.manage",
+    "money.manage",
+    "refund.decide",
+    "settings.manage",
+    "template.edit",
+    "advert.manage",
+    "file.keep",
+    "report.read",
+  ],
   accounts: ["inbox.read", "task.do", "message.approve", "money.manage", "file.keep", "report.read"],
   director_ops: ["inbox.read", "task.do", "money.manage", "refund.decide", "file.keep", "report.read"],
   marketing: ["inbox.read", "task.do", "advert.manage", "file.keep"],
@@ -71,8 +85,9 @@ export function refusal(capability: Capability): string {
 }
 
 export const ROLE_LABEL: Record<OpsRole, string> = {
-  ops_owner: "Ops owner",
+  ops_owner: "Ops person",
   ops_lead: "Ops lead",
+  admin: "Admin",
   accounts: "Accounts",
   director_ops: "Director of Operations",
   marketing: "Marketing",
@@ -80,16 +95,19 @@ export const ROLE_LABEL: Record<OpsRole, string> = {
   ta_lead_ro: "TA lead (read only)",
 };
 
+/** The three active access levels offered when adding or managing Ops team members (20 Nov). */
+export const ASSIGNABLE_ROLES: OpsRole[] = ["ops_owner", "ops_lead", "admin"];
+
 /**
  * Who opens on the whole desk rather than their own box (9 Nov, the owner:
- * "show all for the ops admin"). The ops lead and the Director of
+ * "show all for the ops admin"). Admins, the ops lead, and the Director of
  * Operations run the desk, so their mail page and their day count
- * everyone's mail; an ops owner opens on their own and is one click from
+ * everyone's mail; an ops person opens on their own and is one click from
  * the rest. Nothing is hidden from anybody either way: this is only where
  * a page starts.
  */
 export function seesWholeDesk(member: Pick<OpsMember, "role">): boolean {
-  return member.role === "ops_lead" || member.role === "director_ops";
+  return member.role === "admin" || member.role === "ops_lead" || member.role === "director_ops";
 }
 
 /**

@@ -35,6 +35,7 @@ export default function TopBar({
   viewing,
   chips,
   dark,
+  clerkEnabled = false,
 }: {
   may: Record<string, boolean>;
   who: { name: string; role: string };
@@ -43,6 +44,7 @@ export default function TopBar({
   viewing: string | null;
   chips: { role: string; label: string; active: boolean }[];
   dark: boolean;
+  clerkEnabled?: boolean;
 }) {
   const path = usePathname() ?? "/";
   const bar = useRef<HTMLDivElement>(null);
@@ -134,7 +136,7 @@ export default function TopBar({
           <Bell initial={bell} round />
 
           {/* The profile: who you are, and what is behind it. */}
-          <ProfileMenu may={may} who={who} viewing={viewing} chips={chips} dark={dark} chatOpen={chatOpen} />
+          <ProfileMenu may={may} who={who} viewing={viewing} chips={chips} dark={dark} chatOpen={chatOpen} clerkEnabled={clerkEnabled} />
         </header>
       </div>
     </div>

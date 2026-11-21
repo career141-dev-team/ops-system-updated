@@ -198,6 +198,31 @@ export const repo = {
     return row;
   },
 
+  patchMember(
+    memberId: Id,
+    patch: Partial<Pick<OpsMember, "name" | "role" | "active">>,
+    by: Id,
+    what: string,
+    reason: string | null = null,
+  ): boolean {
+    const db = load();
+    const row = db.members.find((m) => m.id === memberId);
+    if (!row) return false;
+    const before = `${row.role}, active=${row.active}`;
+    Object.assign(row, patch);
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "member",
+      subjectId: memberId,
+      before,
+      after: `${row.role}, active=${row.active}`,
+      reason,
+    });
+    save();
+    return true;
+  },
+
   member(memberId: Id): OpsMember | null {
     return load().members.find((m) => m.id === memberId) ?? null;
   },

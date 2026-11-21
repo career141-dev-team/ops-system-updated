@@ -39,6 +39,7 @@ import {
   addClient,
   addInterview,
   addMember,
+  patchMember,
   addInvoice,
   addReference,
   addTeamNote,
@@ -8174,4 +8175,151 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed(decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.", dest));
+}
+
+/** Add an Ops person, Ops lead, or Admin to the team allow-list (20 Nov, Settings -> Templates and people). */
+export async function addOpsMember(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/settings?view=templates");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const role = String(formData.get("role") ?? "").trim();
+  if (name.length < 2) redirect(withMsg(dest, "Write the person's full name."));
+  if (!email.includes("@")) redirect(withMsg(dest, "Write a valid email address."));
+  if (role !== "ops_owner" && role !== "ops_lead" && role !== "admin") {
+    redirect(withMsg(dest, "Pick Ops person, Ops lead, or Admin."));
+  }
+  if (role === "admin" && member.role !== "admin") {
+    redirect(withMsg(dest, "Only an Admin can grant Admin access."));
+  }
+
+  const db = await desk();
+  if (db.members.some((m) => m.email.trim().toLowerCase() === email)) {
+    redirect(withMsg(dest, `${email} is already on the team.`));
+  }
+  await addMember({ name, email, role, active: true, taUserId: null }, member.id);
+  revalidatePath("/settings");
+  revalidatePath("/account");
+  redirect(dest + confirmed(`${name} added.`, dest));
+}
+
+/** Invite a person by email via Clerk AND add them to the Ops allow-list (20 Nov, Account & help). */
+export async function inviteOpsMember(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const role = String(formData.get("role") ?? "").trim();
+  if (name.length < 2) redirect(withMsg(dest, "Write the person's full name."));
+  if (!email.includes("@")) redirect(withMsg(dest, "Write a valid email address."));
+  if (role !== "ops_owner" && role !== "ops_lead" && role !== "admin") {
+    redirect(withMsg(dest, "Pick Ops person, Ops lead, or Admin."));
+  }
+  if (role === "admin" && member.role !== "admin") {
+    redirect(withMsg(dest, "Only an Admin can invite an Admin."));
+  }
+
+  const db = await desk();
+  const existing = db.members.find((m) => m.email.trim().toLowerCase() === email);
+  if (existing) {
+    if (existing.role === "admin" && member.role !== "admin") {
+      redirect(withMsg(dest, "Only an Admin can change an Admin account."));
+    }
+    await patchMember(existing.id, { name, role, active: true }, member.id, "member.updated", "Re-invited via Account & help.");
+  } else {
+    await addMember({ name, email, role, active: true, taUserId: null }, member.id);
+  }
+
+  let inviteNote = `${name} added to Ops.`;
+  if ((process.env.CLERK_SECRET_KEY ?? "").trim()) {
+    try {
+      const { clerkClient } = await import("@clerk/nextjs/server");
+      const { headers } = await import("next/headers");
+      const client = await clerkClient();
+      let appUrl = (process.env.OPS_APP_URL ?? "").trim().replace(/\/+$/, "");
+      if (!appUrl) {
+        const h = await headers();
+        const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+        const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+        if (host) appUrl = `${proto}://${host}`;
+      }
+      await client.invitations.createInvitation({
+        emailAddress: email,
+        ...(appUrl ? { redirectUrl: appUrl + "/sign-up" } : {}),
+        ignoreExisting: true,
+      });
+      inviteNote = `Invitation emailed to ${email} via Clerk and added to Ops.`;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Clerk invitation could not be sent";
+      inviteNote = `${name} added to Ops, but Clerk invite email failed: ${detail}. They can still sign in if they already have a Clerk account.`;
+    }
+  }
+
+  revalidatePath("/account");
+  revalidatePath("/settings");
+  redirect(dest + confirmed(inviteNote, dest));
+}
+
+/** Update a team member's role or active status (20 Nov, Account & help). */
+export async function updateOpsMember(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const targetId = String(formData.get("memberId") ?? "").trim();
+  const intent = String(formData.get("intent") ?? "role").trim();
+  const db = await desk();
+  const target = db.members.find((m) => m.id === targetId);
+  if (!target) redirect(withMsg(dest, "That person is not on the list."));
+  if (target.role === "admin" && member.role !== "admin") {
+    redirect(withMsg(dest, "Only an Admin can modify an Admin account."));
+  }
+
+  if (intent === "toggle") {
+    if (target.id === member.id) {
+      redirect(withMsg(dest, "You cannot deactivate your own account."));
+    }
+    const nextActive = !target.active;
+    if (!nextActive && target.role === "admin") {
+      const otherAdmins = db.members.filter((m) => m.active && m.role === "admin" && m.id !== target.id);
+      if (otherAdmins.length === 0) {
+        redirect(withMsg(dest, "Cannot deactivate the last active Admin."));
+      }
+    }
+    await patchMember(
+      target.id,
+      { active: nextActive },
+      member.id,
+      nextActive ? "member.reactivated" : "member.deactivated",
+      nextActive ? "Reactivated from Account & help." : "Deactivated from Account & help.",
+    );
+    revalidatePath("/account");
+    revalidatePath("/settings");
+    redirect(dest + confirmed(`${target.name} ${nextActive ? "reactivated" : "deactivated"}.`, dest));
+  }
+
+  const nextRole = String(formData.get("role") ?? "").trim();
+  if (nextRole !== "ops_owner" && nextRole !== "ops_lead" && nextRole !== "admin") {
+    redirect(withMsg(dest, "Pick Ops person, Ops lead, or Admin."));
+  }
+  if (nextRole === "admin" && member.role !== "admin") {
+    redirect(withMsg(dest, "Only an Admin can grant Admin access."));
+  }
+  if (target.role === "admin" && nextRole !== "admin") {
+    const otherAdmins = db.members.filter((m) => m.active && m.role === "admin" && m.id !== target.id);
+    if (otherAdmins.length === 0) {
+      redirect(withMsg(dest, "Cannot demote the last active Admin."));
+    }
+  }
+  await patchMember(target.id, { role: nextRole }, member.id, "member.roleChanged", `Changed role to ${nextRole}.`);
+  revalidatePath("/account");
+  revalidatePath("/settings");
+  redirect(dest + confirmed(`${target.name}'s access updated.`, dest));
 }

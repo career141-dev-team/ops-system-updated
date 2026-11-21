@@ -1,5 +1,6 @@
 "use client";
 
+import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -26,6 +27,7 @@ export default function ProfileMenu({
   chips,
   dark,
   chatOpen,
+  clerkEnabled = false,
 }: {
   may: Record<string, boolean>;
   /** The phone's avatar (PH1): a 36px circle, and the card carries the eight pages the bar does not. */
@@ -37,6 +39,7 @@ export default function ProfileMenu({
   chips: { role: string; label: string; active: boolean }[];
   dark: boolean;
   chatOpen: boolean;
+  clerkEnabled?: boolean;
 }) {
   const path = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
@@ -152,9 +155,15 @@ export default function ProfileMenu({
                 <span className="flex-1">Dark mode</span>
                 <span className="text-ink-faint">{isDark ? "On" : "Off"}</span>
               </button>
-              <form action={signOutAction}>
-                <button className={item}>Sign out</button>
-              </form>
+              {clerkEnabled ? (
+                <SignOutButton redirectUrl="/sign-in">
+                  <button type="button" className={item}>Sign out</button>
+                </SignOutButton>
+              ) : (
+                <form action={signOutAction}>
+                  <button className={item}>Sign out</button>
+                </form>
+              )}
               <p className="mx-3 mt-1 border-t border-rule pt-2 text-[12px] text-ink-faint">Test data only</p>
             </div>
           </>,

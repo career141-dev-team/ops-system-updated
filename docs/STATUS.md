@@ -480,6 +480,8 @@ and accuracy machinery, and the priority order. It is **built and switched off**
 | **Inbox · Team news (I3)** (`opsTeamNotes` table + audit milestone feed, live team note composer) | `src/lib/inboxChannels.ts`, `app/(inbox)/mail/ChannelViews.tsx`, `postTeamNote` in `app/actions.ts` | `tests/teamnews.test.ts` |
 | **Internal hiring (H1/H2) & Calendar K1** (`opsVacancies` + `opsApplicants` tables, add vacancy/applicant drawers, all 4 applicant panels wired, booked internal interviews surfaced in Calendar K1) | `src/lib/hiring.ts`, `app/hiring/page.tsx`, `app/hiring/[id]/page.tsx`, `app/hiring/[id]/HiringPanel.tsx`, `app/calendar/page.tsx` | `tests/hiringbackend.test.ts`, `tests/schema.test.ts` |
 
+| **Clerk authentication & 3-role access model (20 Nov)** (`@clerk/nextjs`, `proxy.ts`, `src/lib/clerkAuth.ts`, `src/lib/session.ts`, `app/sign-in/[[...sign-in]]`, Settings → Templates and people) | **Ops person** (`ops_owner`), **Ops lead** (`ops_lead`), and **Admin** (`admin`, full capabilities + `View as` any role + `OPS_ADMIN_EMAILS` bootstrap). Dev sign-in automatically disables whenever Clerk or Microsoft keys are set | `tests/clerkauth.test.ts`, `tests/roles.test.ts`, `tests/schema.test.ts` |
+
 ## Rules the code enforces, and why
 
 Each of these exists because of something that went wrong, written in

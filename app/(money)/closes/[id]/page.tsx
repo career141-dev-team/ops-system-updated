@@ -47,7 +47,7 @@ export default async function ClosePage({
     <div className="flex flex-col gap-[22px]">
       <PageTitle
         title="Close the posts"
-        sub={`${position?.title ?? checklist.openingTaId} · ${clientName} · ${CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}`}
+        sub={`${position?.title ?? checklist.openingTaId} Â· ${clientName} Â· ${CLOSE_TRIGGERS[checklist.trigger] ?? checklist.trigger}`}
         right={
           <Link href={position ? `/positions/${position.id}` : "/closes"} className={pillSecondary}>
             {position ? "Back to the role" : "All closes"}

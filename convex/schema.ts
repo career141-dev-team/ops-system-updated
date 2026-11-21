@@ -55,6 +55,7 @@ export default defineSchema({
     role: v.union(
       v.literal("ops_owner"),
       v.literal("ops_lead"),
+      v.literal("admin"),
       v.literal("accounts"),
       v.literal("director_ops"),
       v.literal("marketing"),

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { changeSetting, saveBankDetails, saveCover, saveTemplateWording } from "@/app/actions";
+import { addOpsMember, changeSetting, saveBankDetails, saveCover, saveTemplateWording } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, PageTitle, PillTabs, figmaField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { desk, member as memberIn, numberOf, switchedOn, textOf } from "@/data/desk";
-import { can } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_LABEL, can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
 import { isInternal, settingRank, settingWords } from "@/lib/settingWords";
@@ -439,6 +439,45 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   ))}
                 </div>
               )}
+
+              <div className="flex flex-col gap-3 border-t border-rule pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="t-micro text-ink-3">Ops team &amp; access</h3>
+                  {mayChange && (
+                    <details className="group">
+                      <summary className="t-label cursor-pointer list-none rounded-full border border-rule bg-surface px-4 py-1.5 text-ink hover:bg-sunk [&::-webkit-details-marker]:hidden">
+                        Add person
+                      </summary>
+                      <form action={addOpsMember} className="mt-3 flex flex-col gap-2.5 rounded-[18px] border border-rule bg-sunk p-4">
+                        <input type="hidden" name="back" value="/settings?view=templates" />
+                        <input name="name" required placeholder="Full name" className={panelInput} />
+                        <input name="email" type="email" required placeholder="Email address (must match Clerk login)" className={panelInput} />
+                        <select name="role" defaultValue="ops_owner" className={panelInput}>
+                          {ASSIGNABLE_ROLES.filter((r) => r !== "admin" || me.role === "admin").map((r) => (
+                            <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                          ))}
+                        </select>
+                        <button type="submit" className={pillPrimary + " self-start"}>
+                          Add to Ops team
+                        </button>
+                      </form>
+                    </details>
+                  )}
+                </div>
+                <div className="flex flex-col divide-y divide-rule">
+                  {db.members.filter((m) => m.active).map((m) => (
+                    <div key={m.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="t-body-m truncate text-ink">{m.name}</p>
+                        <p className="t-small truncate text-ink-3">{m.email}</p>
+                      </div>
+                      <span className="t-label shrink-0 rounded-full bg-sunk px-3 py-1 text-ink-2">
+                        {ROLE_LABEL[m.role]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </section>
           </div>
 

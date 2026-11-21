@@ -167,6 +167,7 @@ export const seed = internalMutation({
         role: v.union(
           v.literal("ops_owner"),
           v.literal("ops_lead"),
+          v.literal("admin"),
           v.literal("accounts"),
           v.literal("director_ops"),
           v.literal("marketing"),
@@ -635,6 +636,7 @@ export const addMember = internalMutation({
     role: v.union(
       v.literal("ops_owner"),
       v.literal("ops_lead"),
+      v.literal("admin"),
       v.literal("accounts"),
       v.literal("director_ops"),
       v.literal("marketing"),
@@ -657,6 +659,33 @@ export const addMember = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** Update a member's name, role, or active status (20 Nov, Account & help people management). */
+export const patchMember = internalMutation({
+  args: {
+    memberId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.memberId as Id<"opsMembers">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, args.patch);
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "member",
+      subjectId: found._id as string,
+      before: `${found.role}, active=${found.active}`,
+      after: after ? `${after.role}, active=${after.active}` : null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 

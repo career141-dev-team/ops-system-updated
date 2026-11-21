@@ -13,6 +13,7 @@ export type Id = string;
 export type OpsRole =
   | "ops_owner"
   | "ops_lead"
+  | "admin"
   | "accounts"
   | "director_ops"
   | "marketing"

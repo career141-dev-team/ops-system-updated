@@ -29,6 +29,7 @@ export default function PhoneNav({
   viewing,
   dark,
   chatOpen,
+  clerkEnabled = false,
 }: {
   may: Record<string, boolean>;
   /** What is waiting on this person right now, kept live by the bell itself. */
@@ -38,6 +39,7 @@ export default function PhoneNav({
   chips: { role: string; label: string; active: boolean }[];
   dark: boolean;
   chatOpen: boolean;
+  clerkEnabled?: boolean;
 }) {
   const path = usePathname() ?? "/";
   const tabs = PHONE_PAGES.map((href) => ({ href, what: NAV[0].pages.find((p) => p.href === href)?.what ?? PHONE_ONLY[href]?.what ?? href }));
@@ -53,7 +55,7 @@ export default function PhoneNav({
         </Link>
         <div className="flex-1" />
         <Bell initial={bell} />
-        <ProfileMenu phone may={may} who={who} viewing={viewing} chips={chips} dark={dark} chatOpen={chatOpen} />
+        <ProfileMenu phone may={may} who={who} viewing={viewing} chips={chips} dark={dark} chatOpen={chatOpen} clerkEnabled={clerkEnabled} />
       </header>
 
       {/* The bar along the foot. */}

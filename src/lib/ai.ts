@@ -314,7 +314,11 @@ export async function ask<T>(input: AskModel): Promise<Proposal<T>> {
   const started = Date.now();
   const { text: prompt, trimmed } = trimForModel(input.prompt);
   const route = provider === "deepseek" ? deepseekRoute() : null;
-  const model = route ? route.model : MODELS[provider];
+  const model = route
+    ? route.model
+    : provider === "claude"
+      ? (process.env.ANTHROPIC_MODEL ?? "").trim() || MODELS.claude
+      : MODELS[provider];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 

@@ -15,10 +15,18 @@
   // MS_CLIENT_ID, MS_CLIENT_SECRET, OPS_APP_URL and OPS_SESSION_SECRET as secrets in the dashboard: with those present the
   // app switches the "pick your name" door off by itself (src/lib/session.ts), whatever OPS_DEV_SIGNIN says.
   "vars": {
-    "OPS_STORE": "json",
+    "OPS_STORE": "convex",
+    "CONVEX_SELF_HOSTED_URL": "https://savory-badger-711.convex.cloud",
+    "OPS_APP_URL": "https://ops-system-demo.bytecreator3.workers.dev",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL": "/",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL": "/",
     "OPS_DATA_DIR": "/tmp/ops-data",
-    "OPS_DEV_SIGNIN": "on",
+    "OPS_DEV_SIGNIN": "off",
     "OPS_TA_FAKE": "on",
-    "OPS_TEAMS_FAKE": "on"
+    "OPS_TEAMS_FAKE": "on",
+    "OPS_SEND": "off",
+    "OPS_OUTBOUND_LOCK": "on"
   }
 }

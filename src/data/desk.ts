@@ -3750,6 +3750,18 @@ export async function addMember(input: Omit<OpsMember, "id">, by: Id): Promise<O
   return (await convexMutation<OpsMember>("ops/data:addMember", { ...input, by })) as OpsMember;
 }
 
+export async function patchMember(
+  memberId: Id,
+  patch: Partial<Pick<OpsMember, "name" | "role" | "active">>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<boolean> {
+  if (!usingConvex()) return repo.patchMember(memberId, patch, by, what, reason);
+  const res = await convexMutation<{ ok: boolean }>("ops/data:patchMember", { memberId, patch, by, what, reason });
+  return Boolean(res?.ok);
+}
+
 export async function addHolidays(days: { date: string; name: string }[], by: Id): Promise<number> {
   if (!usingConvex()) return repo.addHolidays(days, by);
   return convexMutation<number>("ops/data:addHolidays", { days, by });
