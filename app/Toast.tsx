@@ -4,7 +4,7 @@ import gsap from "gsap";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { EASE_IN, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
+import { DUR, EASE_IN, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 
 /**
  * The three-second confirmation (7 Nov, UX order 2), now animated with GSAP for a crisp
@@ -35,7 +35,7 @@ export default function Toast() {
       gsap.fromTo(
         el,
         { y: 16, scale: 0.96, opacity: 0 },
-        { y: 0, scale: 1, opacity: 1, duration: 0.24, ease: EASE_OUT, clearProps: "transform" },
+        { y: 0, scale: 1, opacity: 1, duration: DUR.base, ease: EASE_OUT, clearProps: "transform" },
       );
     }
 
@@ -44,7 +44,7 @@ export default function Toast() {
         gsap.to(el, {
           y: 10,
           opacity: 0,
-          duration: 0.2,
+          duration: DUR.fast,
           ease: EASE_IN,
           onComplete: () => setShown(null),
         });

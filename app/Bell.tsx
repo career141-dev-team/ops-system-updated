@@ -83,7 +83,7 @@ export default function Bell({ initial, round = false }: { initial: BellCount; r
           <>
             <Icon name="bell" size={18} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
             {bell.waiting > 0 && (
-              <span aria-hidden="true" className={"absolute right-[10px] top-[10px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")} />
+              <span aria-hidden="true" className={"absolute right-[10px] top-[10px] size-2 rounded-full " + (rose ? "badge-pulse " : "") + (bell.late ? "bg-danger" : "bg-brand")} />
             )}
           </>
         }
@@ -121,7 +121,7 @@ export default function Bell({ initial, round = false }: { initial: BellCount; r
     >
       <Icon name="bell" size={18} className={rose ? "motion-safe:animate-[ring_600ms_ease-out]" : ""} />
       {bell.waiting > 0 && (
-        <span aria-hidden="true" className={"absolute right-[8px] top-[8px] size-2 rounded-full " + (bell.late ? "bg-danger" : "bg-brand")} />
+        <span aria-hidden="true" className={"absolute right-[8px] top-[8px] size-2 rounded-full " + (rose ? "badge-pulse " : "") + (bell.late ? "bg-danger" : "bg-brand")} />
       )}
     </Link>
   );

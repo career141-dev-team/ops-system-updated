@@ -115,7 +115,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               An enquiry appears here when the website form, a call or the Add button brings one in.
             </EmptyState>
           ) : (
-            <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-4">
+            <div data-stagger className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-4">
               {COLUMNS.map((col) => (
                 <div key={col.key} className="flex min-w-0 flex-col gap-2.5 rounded-[20px] bg-sunk px-3 py-3.5">
                   <div className="flex items-center gap-2 px-1 pb-0.5">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import Icon from "@/app/Icon";
+import CountUp from "@/app/ui/CountUp";
 import { Card } from "@/app/ui/figma";
 import type { Tone, WorkButton, WorkRow } from "@/lib/myWorkView";
 
@@ -15,7 +16,7 @@ export function StatStrip({ stats }: { stats: { label: string; value: ReactNode;
           {i > 0 && <span aria-hidden="true" className="h-16 w-px shrink-0 bg-rule max-md:hidden" />}
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="t-micro text-ink-3">{s.label}</p>
-            <p className={"t-num " + tone[s.tone ?? "ink"]}>{s.value}</p>
+            <p className={"t-num " + tone[s.tone ?? "ink"]}>{typeof s.value === "number" ? <CountUp value={s.value} /> : s.value}</p>
             <p className="t-small text-ink-3">{s.caption}</p>
           </div>
         </div>

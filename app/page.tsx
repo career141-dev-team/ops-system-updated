@@ -296,7 +296,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
       />
       <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
         <Card title="Board" sub="Late first. Each card has one button.">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div data-stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {cols.map((col) => (
               <div key={col.key} className="flex flex-col gap-3 rounded-[18px] bg-sunk p-3">
                 <p className="t-body-m flex items-center gap-2 px-1">
