@@ -3,12 +3,24 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { activeMembers, desk } from "@/data/desk";
+import { ROLE_LABEL } from "@/lib/roles";
 import {
   clerkSessionState,
   clerkSignInConfigured,
+  devSignInAllowed,
   microsoftSignInConfigured,
+  signInAs,
   signInOffReason,
 } from "@/lib/session";
+
+async function choose(formData: FormData) {
+  "use server";
+  const memberId = String(formData.get("memberId") ?? "");
+  if (!memberId) return;
+  await signInAs(memberId);
+  redirect("/");
+}
 
 const buttonClass =
   "inline-flex items-center gap-1.5 rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium text-ink-inverse transition-transform active:scale-[0.98]";
@@ -88,7 +100,32 @@ export default async function SignInPage({
         </>
       )}
 
-      {!microsoftSignInConfigured() && (
+      {/* Restored 21 Nov: the Clerk page dropped the development door, so
+          start-ui.sh could not sign in. devSignInAllowed() still refuses it
+          wherever Clerk or Microsoft is set up. */}
+      {devSignInAllowed() && (
+        <>
+          <p className="mt-1 text-[13.5px] text-ink-soft">
+            This is the development sign-in. The data on this site is invented, and nothing it
+            sends reaches anybody.
+          </p>
+          <form action={choose} className="mt-5 flex flex-col gap-2">
+            {activeMembers(await desk()).map((member) => (
+              <button
+                key={member.id}
+                name="memberId"
+                value={member.id}
+                className="flex items-center justify-between rounded-xl border border-rule bg-surface px-4 py-3 text-left hover:border-rule-strong"
+              >
+                <span className="text-[14px]">{member.name}</span>
+                <span className="text-[12.5px] text-ink-faint">{ROLE_LABEL[member.role]}</span>
+              </button>
+            ))}
+          </form>
+        </>
+      )}
+
+      {!microsoftSignInConfigured() && !devSignInAllowed() && (
         <p className="mt-3 text-[13.5px] text-ink-soft">
           {off ?? "Sign-in requires Clerk keys (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY) to be configured."}
         </p>

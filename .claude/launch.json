@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Program Files\\Git\\bin\\bash.exe",
       "runtimeArgs": ["-lc", "sh deploy/local/start-ui.sh"],
       "port": 4300
+    },
+    {
+      "name": "ops-ui-devsignin",
+      "runtimeExecutable": "C:\\Program Files\\Git\\bin\\bash.exe",
+      "runtimeArgs": ["-lc", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=' ' CLERK_SECRET_KEY=' ' OPS_TEAMS_FAKE=on PORT=4300 sh deploy/local/start-ui.sh"],
+      "port": 4300
     }
   ]
 }
