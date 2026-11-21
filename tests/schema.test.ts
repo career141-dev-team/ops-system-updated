@@ -27,7 +27,7 @@ const types = readFileSync(join(process.cwd(), "src", "data", "types.ts"), "utf8
 // reschedules (16 Nov): an interview that never moved has no history, and the page reads that as none.
 const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "slotAnswers", "direction", "to", "attachments", "reschedules",
   // Teams (17 Nov): a meeting booked before it has none of these, and the page reads that as "no link".
-  "alsoRequirement", "strategies", "contacts", "manualCandidates", "calendarEventId", "lengthMin", "organiserId", "attendees", "joinUrl", "graphEventId", "teamsProblem",
+  "alsoRequirement", "strategies", "contacts", "manualCandidates", "calendarEventId", "calendarOrganiser", "calendarLengthMin", "lengthMin", "organiserId", "attendees", "joinUrl", "graphEventId", "teamsProblem",
   // "Open it now, without waiting" (17 Nov): a lead that was never marked has none of these.
   "openEarlyBy", "openEarlyAt", "openEarlyReason",
   // People on an opening besides the Primary TA (17 Nov): an opening made before has none.

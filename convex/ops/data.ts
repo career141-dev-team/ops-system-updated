@@ -1135,6 +1135,8 @@ export const addInterview = internalMutation({
     interviewTaId: v.union(v.string(), v.null()),
     inviteMessageId: v.union(v.string(), v.null()),
     calendarEventId: v.optional(v.union(v.string(), v.null())),
+    calendarOrganiser: v.optional(v.union(v.string(), v.null())),
+    calendarLengthMin: v.optional(v.union(v.number(), v.null())),
     attendedAt: v.union(v.number(), v.null()),
     decision: v.union(v.string(), v.null()),
     decisionReason: v.union(v.string(), v.null()),

@@ -745,6 +745,9 @@ export interface OpsInterview {
   /** Each message this interview has caused, newest last. */
   /** The Outlook event made for it, so a change or a cancel can reach it (17 Nov). */
   calendarEventId?: string | null;
+  /** Whose calendar holds it (email) and how long it is, so a move or cancel reaches the right event (21 Nov). */
+  calendarOrganiser?: string | null;
+  calendarLengthMin?: number | null;
   inviteMessageId: Id | null;
   attendedAt: number | null;
   /** What the client decided after it: next, selected or rejected. */
@@ -1082,6 +1085,9 @@ export interface OpsApplicant {
   startDate: string | null;
   rejectReason: string | null;
   cvFileId: Id | null;
+  /** Teams link and Outlook event for an online internal interview (21 Nov). */
+  joinUrl?: string | null;
+  graphEventId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
