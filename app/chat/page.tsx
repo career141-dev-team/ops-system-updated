@@ -25,7 +25,7 @@ export default async function ChatPage() {
     <div className="flex flex-col gap-[22px]">
       <PageTitle title="AURA" sub="Ask, and get it done. Every action waits for your button." />
       {/* The thread needs a box of its own to scroll in; the page itself scrolls with the window. */}
-      <section className="flex h-[640px] flex-col overflow-hidden rounded-[28px] bg-surface shadow-card">
+      <section className="flex h-[640px] max-md:h-[calc(100dvh-17rem)] max-md:min-h-[420px] flex-col overflow-hidden rounded-[28px] bg-surface shadow-card">
       <Chat rows={chatLines(db, member.id, open)} chats={chatsOf(db, member.id)} open={open} who={member.name} pins={pinsOf(db, member.id, Date.now())} next={nextSteps(db, member, Date.now())} />
       </section>
     </div>

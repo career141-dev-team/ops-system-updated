@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
+import Icon from "@/app/Icon";
 import { chatDo, chatSay, deleteChat, newChat, openChat, renameChat } from "@/app/actions";
 import type { OpsChatRow, OpsChatThread } from "@/data/types";
 import { PENDING, yesterdayInWords } from "@/lib/agent";
@@ -123,14 +124,14 @@ export default function Chat({
     <div className="flex h-full min-h-0 flex-col">
       <Chats chats={chats} open={open} back={path} />
       {/* Pinned: where you stand, in four chips. */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-shell-rule px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-rule px-4 py-2.5">
         <span className="mr-1 text-[10px] uppercase tracking-[0.08em] text-ink-faint">Your desk</span>
         {pins.map((pin) => (
           <span
             key={pin.label}
             className={
               "rounded-full border px-2 py-0.5 text-[11px] " +
-              (pin.late ? "border-danger/30 bg-bg-danger text-danger" : "border-shell-rule bg-surface text-ink-soft")
+              (pin.late ? "border-danger/30 bg-bg-danger text-danger" : "border-rule bg-surface text-ink-soft")
             }
           >
             {pin.label} <span className="font-medium text-ink">{pin.value}</span>
@@ -139,7 +140,7 @@ export default function Chat({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [overflow-anchor:none] [scrollbar-gutter:stable]">
-        {yesterday && <p className="mb-3 rounded-lg bg-shell-sunk px-3 py-1.5 text-[11.5px] text-ink-soft">{yesterday}</p>}
+        {yesterday && <p className="mb-3 rounded-lg bg-sunk px-3 py-1.5 text-[11.5px] text-ink-soft">{yesterday}</p>}
         {all.length === 0 && !sending && (
           <Said>
             Say what you want done. For example: &ldquo;approve the last email&rdquo;, &ldquo;note: Nippon want the set by
@@ -158,7 +159,7 @@ export default function Chat({
         <div ref={end} />
       </div>
 
-      <div className="border-t border-shell-rule bg-surface px-4 pb-3 pt-2.5">
+      <div className="border-t border-rule bg-paper px-4 pb-3 pt-2.5">
         {/* What comes next, read off the desk: one tap each. Hidden while the
             desk is waiting for an answer, which comes first. */}
         {!waitingForAnswer && !sending && next.length > 0 && (
@@ -169,7 +170,7 @@ export default function Chat({
                 type="button"
                 title={n.say}
                 onClick={() => sendNow(n.say)}
-                className="rounded-full border border-shell-rule px-2.5 py-1 text-[12px] text-ink-soft transition-colors hover:bg-shell-sunk hover:text-ink"
+                className="rounded-full border border-rule px-2.5 py-1 text-[12px] text-ink-soft transition-colors hover:bg-sunk hover:text-ink"
               >
                 {n.label}
               </button>
@@ -185,7 +186,7 @@ export default function Chat({
           }}
         >
           <input type="hidden" name="back" value={path} />
-          <Box who={who} boxRef={box} waiting={waitingForAnswer} />
+          <Box boxRef={box} waiting={waitingForAnswer} />
         </form>
       </div>
     </div>
@@ -200,7 +201,7 @@ function Said({ children, tone = "", label = "AURA" }: { children: React.ReactNo
       {/* In the light theme AURA's words sit in a grey bubble in black (17 Nov, the owner); in the dark theme they stay plain. */}
       <div
         className={
-          "mt-1 w-fit max-w-full rounded-2xl rounded-tl-md bg-sunk px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink dark:w-auto dark:rounded-none dark:bg-transparent dark:p-0 " +
+          "mt-1 w-fit max-w-full rounded-2xl rounded-tl-md bg-sunk px-3.5 py-2.5 text-[14px] leading-relaxed text-ink dark:w-auto dark:rounded-none dark:bg-transparent dark:p-0 " +
           tone
         }
       >
@@ -213,7 +214,7 @@ function Said({ children, tone = "", label = "AURA" }: { children: React.ReactNo
 function Mine({ text, sent = true }: { text: string; sent?: boolean }) {
   return (
     <div className="chat-in mb-4 flex flex-col items-end">
-      <div className="max-w-[86%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
+      <div className="max-w-[86%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[14px] leading-relaxed text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.12)]">
         <p className="whitespace-pre-wrap">{text}</p>
       </div>
       <p className="mt-0.5 text-[10.5px] text-ink-faint">{sent ? "Sent ✓" : "Sending…"}</p>
@@ -226,7 +227,7 @@ function Reserved() {
   return (
     <div className="mb-3 pr-6" aria-live="polite" aria-busy="true">
       <p className="text-[10px] uppercase tracking-[0.08em] text-ink-faint">AURA · reading what you asked</p>
-      <div className="mt-1.5 flex min-h-[84px] flex-col gap-2 rounded-xl border border-shell-rule bg-surface px-3 py-2.5">
+      <div className="mt-1.5 flex min-h-[84px] flex-col gap-2 rounded-2xl border border-rule bg-surface px-3 py-2.5">
         <span className="chat-skeleton h-2.5 w-[72%] rounded-full" />
         <span className="chat-skeleton h-2.5 w-[54%] rounded-full" />
         <span className="chat-skeleton h-2.5 w-[38%] rounded-full" />
@@ -259,12 +260,12 @@ function Cites({ cites }: { cites: { label: string; href: string }[] }) {
           <Link
             key={i}
             href={c.href}
-            className="rounded-md border border-shell-rule bg-paper px-1.5 py-0.5 text-[11px] text-ink-soft hover:border-brand hover:text-brand"
+            className="rounded-md border border-rule bg-sunk px-1.5 py-0.5 text-[11px] text-ink-soft hover:border-brand hover:text-brand"
           >
             ↗ {c.label}
           </Link>
         ) : (
-          <span key={i} className="rounded-md bg-shell-sunk px-1.5 py-0.5 text-[11px] text-ink-faint">
+          <span key={i} className="rounded-md bg-sunk px-1.5 py-0.5 text-[11px] text-ink-faint">
             ↗ {c.label}
           </span>
         ),
@@ -284,9 +285,9 @@ function Steps({ state, found }: { state: string; found: number }) {
   return (
     <p className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-ink-faint">
       <span className="text-brand">✓</span> Read
-      <span className="text-shell-rule">—</span>
+      <span className="text-rule-strong">—</span>
       <span className="text-brand">✓</span> {found ? "Found " + found : "Nothing to look up"}
-      <span className="text-shell-rule">—</span>
+      <span className="text-rule-strong">—</span>
       <span className={last.tone}>{last.text}</span>
     </p>
   );
@@ -352,14 +353,14 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
       {button && (
         <div
           className={
-            "mt-2.5 rounded-2xl border border-shell-rule bg-surface px-4 py-3 " +
+            "mt-2.5 rounded-2xl border border-rule bg-surface px-4 py-3 " +
             (row.state === "said"
               ? "opacity-60"
               : "shadow-[0_1px_2px_rgba(22,24,26,0.05),0_10px_24px_-14px_rgba(22,24,26,0.22)]")
           }
         >
           <Steps state={row.state} found={found} />
-          <div className="my-2.5 h-px bg-shell-rule/70" />
+          <div className="my-2.5 h-px bg-rule" />
           <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-ink-faint">Here is what I will do</p>
           <dl className="mt-1.5 grid grid-cols-[88px_1fr_20px] items-baseline gap-x-2 gap-y-1.5 text-[13px]">
             {button.shows.map((s, i) => (
@@ -393,14 +394,14 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
                         <button
                           type="button"
                           onClick={() => setEditing(null)}
-                          className="rounded-lg px-2.5 py-1 text-[12px] text-ink-soft hover:bg-shell-sunk hover:text-ink"
+                          className="rounded-lg px-2.5 py-1 text-[12px] text-ink-soft hover:bg-sunk hover:text-ink"
                         >
                           Cancel
                         </button>
                       </span>
                     </form>
                   ) : s.href ? (
-                    <Link href={s.href} title="Open the record this comes from" className="decoration-shell-rule underline-offset-2 hover:text-brand hover:underline">
+                    <Link href={s.href} title="Open the record this comes from" className="decoration-rule underline-offset-2 hover:text-brand hover:underline">
                       {s.value}
                     </Link>
                   ) : (
@@ -414,7 +415,7 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
                       onClick={() => open(s)}
                       title={"Change " + s.label.toLowerCase()}
                       aria-label={"Change " + s.label.toLowerCase()}
-                      className="rounded px-1 text-[11px] text-ink-faint hover:bg-shell-sunk hover:text-ink"
+                      className="rounded px-1 text-[11px] text-ink-faint hover:bg-sunk hover:text-ink"
                     >
                       ✎
                     </button>
@@ -439,7 +440,7 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
                 <button
                   type="button"
                   onClick={() => open(editable[0])}
-                  className="w-full rounded-xl border border-shell-rule bg-surface px-3 py-2 text-[12.5px] text-ink-soft transition-colors hover:bg-paper hover:text-ink"
+                  className="w-full rounded-2xl border border-rule bg-surface px-3 py-2 text-[12.5px] text-ink-soft transition-colors hover:bg-sunk hover:text-ink"
                 >
                   Make an edit
                 </button>
@@ -473,7 +474,7 @@ function Press({ label }: { label: string }) {
     <button
       disabled={pending}
       aria-busy={pending}
-      className="relative flex w-full items-center justify-between gap-3 rounded-xl bg-ink px-3.5 py-2 text-left text-[12.5px] font-medium leading-snug text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.2)] transition-colors hover:opacity-90 active:scale-[0.99] disabled:opacity-70"
+      className="relative flex w-full items-center justify-between gap-3 rounded-2xl bg-ink px-3.5 py-2 text-left text-[12.5px] font-medium leading-snug text-ink-inverse shadow-[0_1px_2px_rgba(22,24,26,0.2)] transition-colors hover:opacity-90 active:scale-[0.99] disabled:opacity-70"
     >
       <span className={"min-w-0 " + (pending ? "opacity-40" : "")}>{label}</span>
       <span aria-hidden="true" className={"shrink-0 " + (pending ? "opacity-0" : "")}>↵</span>
@@ -482,22 +483,29 @@ function Press({ label }: { label: string }) {
   );
 }
 
-function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HTMLTextAreaElement | null>; waiting: boolean }) {
+function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement | null>; waiting: boolean }) {
   const { pending } = useFormStatus();
+  // field-sizing: content grows the box by itself; browsers without it get the scrollHeight fallback.
+  const grow = (el: HTMLTextAreaElement) => {
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 192) + "px";
+  };
   return (
-    <div className="flex items-end gap-2">
+    <div className="flex items-end gap-2 rounded-3xl bg-surface py-2.5 pl-4 pr-2.5 shadow-float">
       <textarea
         ref={boxRef}
         name="text"
         required
-        rows={1}
+        rows={3}
         readOnly={pending}
-        placeholder={waiting ? "Type the answer…" : "Tell AURA what happened, or ask anything…"}
+        placeholder={waiting ? "Type the answer…" : "Tell AURA what happened, or ask anything"}
         aria-label="Say what you want done"
-        className="min-h-[42px] w-full resize-none rounded-xl border border-shell-rule bg-paper px-3.5 py-2.5 text-[13.5px] outline-none transition-colors placeholder:text-ink-faint focus:border-brand focus:bg-surface"
+        className="min-h-[72px] max-h-[192px] min-w-0 flex-1 resize-none bg-transparent text-[16px] leading-6 text-ink outline-none [field-sizing:content] placeholder:text-ink-faint"
+        onInput={(e) => grow(e.currentTarget)}
         onKeyDown={(e) => {
           // Enter sends; Shift+Enter is a new line, as every chat does it.
-          if (e.key === "Enter" && !e.shiftKey) {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             e.currentTarget.form?.requestSubmit();
           }
@@ -506,9 +514,9 @@ function Box({ who, boxRef, waiting }: { who: string; boxRef: React.RefObject<HT
       <button
         disabled={pending}
         aria-label="Send"
-        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-ink text-ink-inverse hover:opacity-90 active:scale-[0.96] disabled:opacity-60"
+        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand text-ink-inverse transition-transform active:scale-[0.96] disabled:opacity-60"
       >
-        ↑
+        <Icon name="send" size={18} />
       </button>
     </div>
   );
@@ -530,8 +538,8 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
     </>
   );
   return (
-    <details className="group border-b border-shell-rule">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[12.5px] hover:bg-shell-sunk">
+    <details className="group border-b border-rule">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[12.5px] hover:bg-sunk">
         <span className="min-w-0 flex-1 truncate font-medium text-ink">{current?.name ?? "New chat"}</span>
         <span className="shrink-0 text-[11px] text-ink-faint">
           History · {chats.length} <span className="inline-block transition-transform group-open:rotate-180">▾</span>
@@ -540,11 +548,11 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
       <div className="max-h-[240px] overflow-y-auto px-2 pb-2">
         <form action={newChat} className="px-2 pb-1.5">
           <input type="hidden" name="back" value={back} />
-          <button className="w-full rounded-lg border border-shell-rule bg-surface px-2.5 py-1.5 text-left text-[12.5px] text-ink hover:bg-paper">+ New chat</button>
+          <button className="w-full rounded-lg border border-rule bg-surface px-2.5 py-1.5 text-left text-[12.5px] text-ink hover:bg-sunk">+ New chat</button>
         </form>
         {chats.length === 0 && <p className="px-2 py-1 text-[12px] text-ink-faint">No chats yet. The first words you send start one.</p>}
         {chats.map((c) => (
-          <div key={c.id || "earlier"} className={"flex items-center gap-1 rounded-lg px-2 py-1 " + (c.id === open ? "bg-surface" : "hover:bg-shell-sunk")}>
+          <div key={c.id || "earlier"} className={"flex items-center gap-1 rounded-lg px-2 py-1 " + (c.id === open ? "bg-surface" : "hover:bg-sunk")}>
             {renaming === c.id ? (
               <form action={renameChat} className="flex min-w-0 flex-1 items-center gap-1">
                 {hidden(c.id)}
@@ -574,11 +582,11 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
                   <button className={"w-full truncate text-left text-[12.5px] " + (c.id === open ? "font-medium text-ink" : "text-ink-soft hover:text-ink")}>{c.name}</button>
                 </form>
                 {c.id && (
-                  <button type="button" onClick={() => setRenaming(c.id)} title="Rename" aria-label={"Rename " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-paper hover:text-ink">
+                  <button type="button" onClick={() => setRenaming(c.id)} title="Rename" aria-label={"Rename " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-sunk hover:text-ink">
                     ✎
                   </button>
                 )}
-                <button type="button" onClick={() => setDeleting(c.id)} title="Delete" aria-label={"Delete " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-paper hover:text-danger">
+                <button type="button" onClick={() => setDeleting(c.id)} title="Delete" aria-label={"Delete " + c.name} className="rounded px-1 text-[11px] text-ink-faint hover:bg-sunk hover:text-danger">
                   ✕
                 </button>
               </>

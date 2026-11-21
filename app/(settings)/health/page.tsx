@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { mailboxesInWords, readerEnabled } from "@/lib/graphMail";
-import { outboundLocked, outreachInWords, outreachLiveInEnv, sendingEnabled } from "@/lib/senders";
+import { healthCheckMicrosoft, healthSendTestEmail } from "@/app/actions";
+import { can } from "@/lib/roles";
+import { healthLines, senderMailbox, outboundLocked, outreachInWords, outreachLiveInEnv } from "@/lib/senders";
 import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
 import { desk, liveTimers, switchedOn } from "@/data/desk";
 import { usingConvex } from "@/data/convexClient";
@@ -47,7 +49,6 @@ export default async function HealthPage() {
       <section className={card}>
         <h2 className="t-h2">What can leave the building</h2>
         <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
-          <p>Sending: {sendingEnabled() ? "on" : "switched off"}</p>
           <p>Outreach to real clients: {outreachInWords(outreachLiveInEnv(), switchedOn(db, "switch.outreachLive"))}</p>
           <p>
             Dev sender:{" "}
@@ -62,6 +63,19 @@ export default async function HealthPage() {
               : "missing"}
           </p>
           <p>Reading the mailboxes: {readerEnabled() ? "on" : "switched off"}</p>
+          {healthLines(process.env, senderMailbox(member.email, devSignInAllowed())).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          {can(member, "settings.manage") && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <form action={healthCheckMicrosoft}>
+                <button className="rounded-full bg-sunk px-4 py-2 text-[13px] text-ink hover:bg-rule">Check Microsoft</button>
+              </form>
+              <form action={healthSendTestEmail}>
+                <button className="rounded-full bg-sunk px-4 py-2 text-[13px] text-ink hover:bg-rule">Send a test email to me</button>
+              </form>
+            </div>
+          )}
           <p className="text-ink-soft">
             {mailboxesInWords()}
             {outboundLocked() ? " · the outbound lock allows only named addresses and numbers" : ""}

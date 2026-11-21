@@ -412,3 +412,220 @@ export async function ask<T>(input: AskModel): Promise<Proposal<T>> {
     clearTimeout(timer);
   }
 }
+
+/* ── Aura: a model that looks things up, then proposes ─────────────────────── */
+
+/**
+ * Claude Haiku 5.5 through the Messages API with tools. Price per million
+ * tokens in rupees: the published $0.10 in / $0.50 out at about LKR 300 to the
+ * dollar. A cache read is billed at a tenth of the input price. The ledger
+ * still says "claude".
+ */
+export const AGENT_MODEL = "claude-haiku-5-5";
+export const AGENT_PRICE_PER_MTOK = { in: 30, out: 150 };
+export const CACHE_READ_FACTOR = 0.1;
+
+/** `tokensIn` is everything read at full price; `cached` is what came from the prompt cache. */
+export function costOfAgent(tokensIn: number, tokensOut: number, cached = 0): number {
+  const cost =
+    (tokensIn / 1_000_000) * AGENT_PRICE_PER_MTOK.in +
+    (cached / 1_000_000) * AGENT_PRICE_PER_MTOK.in * CACHE_READ_FACTOR +
+    (tokensOut / 1_000_000) * AGENT_PRICE_PER_MTOK.out;
+  return Math.round(cost * 10_000) / 10_000;
+}
+
+/** What an HTTP error from the model says to a person: one plain sentence, never the raw body. */
+export function sayModelStatus(status: number): string {
+  if (status === 401 || status === 403) return "The model's key was refused. The owner checks ANTHROPIC_API_KEY.";
+  if (status === 429 || status === 529) return "The model is busy right now. Try again in a minute.";
+  if (status >= 500) return "The model had a problem on its side. Try again in a minute.";
+  return "The model could not take that request (" + status + ").";
+}
+
+export interface ToolDef {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+export type AgentBlock = { type: string; [key: string]: unknown };
+export interface AgentMessage {
+  role: "user" | "assistant";
+  content: string | AgentBlock[];
+}
+export interface AgentResponse {
+  content?: AgentBlock[];
+  stop_reason?: string;
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+}
+
+/** What a tool hands back: words for the model, or "stop the loop, here is the answer". */
+export type ToolRun = string | { stop: true; value: unknown; text?: string };
+
+export type AgentOutcome = "done" | "stopped" | "refused" | "cut_off" | "too_many_rounds" | "too_slow" | "blocked" | "failed";
+
+export type NextStep =
+  | { kind: "tools"; uses: { id: string; name: string; input: Record<string, unknown> }[] }
+  /** The server paused a long turn: send the content back as it is and go on. */
+  | { kind: "pause" }
+  | { kind: "end"; outcome: "done" | "refused" | "cut_off" | "failed"; text: string };
+
+/** The reducer: one response in, what the loop does next out. Pure, so every stop reason is tested. */
+export function nextStep(response: AgentResponse): NextStep {
+  const content = response.content ?? [];
+  const text = content.filter((b) => b.type === "text").map((b) => String(b.text ?? "")).join("").trim();
+  const uses = content
+    .filter((b) => b.type === "tool_use")
+    .map((b) => ({ id: String(b.id), name: String(b.name), input: (b.input ?? {}) as Record<string, unknown> }));
+  switch (response.stop_reason) {
+    case "tool_use":
+      return uses.length ? { kind: "tools", uses } : { kind: "end", outcome: "failed", text: "The model asked for a tool but named none." };
+    case "pause_turn":
+      return { kind: "pause" };
+    case "refusal":
+      return { kind: "end", outcome: "refused", text: "The model declined to help with that." };
+    case "max_tokens":
+      return { kind: "end", outcome: "cut_off", text: "The model's answer was cut off. Try asking in smaller steps." };
+    case "end_turn":
+    case "stop_sequence":
+    case undefined:
+      return { kind: "end", outcome: "done", text };
+    default:
+      return { kind: "end", outcome: "failed", text: "The model stopped unexpectedly (" + response.stop_reason + ")." };
+  }
+}
+
+export interface AskWithTools {
+  system: string;
+  messages: AgentMessage[];
+  tools: ToolDef[];
+  runTool: (name: string, input: Record<string, unknown>) => Promise<ToolRun> | ToolRun;
+  maxRounds?: number;
+  deadlineMs?: number;
+  model?: string;
+  /**
+   * Why the layer may not run another round (switches, daily budget); null to go on. Checked before every
+   * round and given what this chat has cost so far, so the daily cap holds inside a long loop too.
+   */
+  guard?: (spentSoFar: number) => string | null;
+  /** Injectable for tests; defaults to the platform's fetch. Never the real API in a test. */
+  fetch?: typeof fetch;
+  now?: () => number;
+  /** The pause before the one retry on a busy model; a test passes a no-op. */
+  sleep?: (ms: number) => Promise<void>;
+  apiKey?: string;
+}
+
+export interface AskWithToolsResult {
+  outcome: AgentOutcome;
+  /** A plain sentence: the model's closing words, or why the loop ended. */
+  text: string;
+  stopValue: unknown;
+  usage: { tokensIn: number; tokensOut: number; cached: number; cost: number };
+  rounds: number;
+  model: string;
+}
+
+/**
+ * Ask Claude with tools until it finishes, a tool says stop, or a limit is hit.
+ *
+ * Each round the assistant's content goes back unchanged, and every tool_result
+ * of that round goes in ONE user message (the API rejects them split). The
+ * model never executes anything here: tools only read, and propose_action's
+ * stop value is a proposal a person still has to press.
+ *
+ * Haiku 5.5 thinks by default and thinking counts toward max_tokens, so the
+ * effort is set low and the ceiling is generous.
+ */
+export async function askWithTools(input: AskWithTools): Promise<AskWithToolsResult> {
+  const model = input.model || (process.env.ANTHROPIC_AGENT_MODEL ?? "").trim() || AGENT_MODEL;
+  const maxRounds = input.maxRounds ?? 6;
+  const now = input.now ?? Date.now;
+  const doFetch = input.fetch ?? fetch;
+  const sleep = input.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const key = (input.apiKey ?? process.env.ANTHROPIC_API_KEY ?? "").trim();
+  const start = now();
+  const deadline = start + (input.deadlineMs ?? 45_000);
+  const messages: AgentMessage[] = [...input.messages];
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let cached = 0;
+  let rounds = 0;
+  const finish = (outcome: AgentOutcome, text: string, stopValue: unknown = null): AskWithToolsResult => ({
+    outcome,
+    text,
+    stopValue,
+    usage: { tokensIn: tokensIn + cached, tokensOut, cached, cost: costOfAgent(tokensIn, tokensOut, cached) },
+    rounds,
+    model,
+  });
+  if (!key) return finish("blocked", "No model key is set, so there is nothing to ask.");
+
+  while (rounds < maxRounds) {
+    const why = input.guard?.(costOfAgent(tokensIn, tokensOut, cached)) ?? null;
+    if (why) return finish("blocked", why);
+    if (now() >= deadline) return finish("too_slow", "It took too long and was stopped.");
+    rounds += 1;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1, deadline - now()));
+    let response: AgentResponse;
+    try {
+      const send = () =>
+        doFetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          signal: controller.signal,
+          cache: "no-store",
+          headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model,
+            max_tokens: 4_096,
+            output_config: { effort: "low" },
+            system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+            messages,
+            tools: input.tools,
+            tool_choice: { type: "auto" },
+          }),
+        });
+      let res = await send();
+      // Busy (429, 529): one more try after a short pause, then a plain sentence.
+      if (res.status === 429 || res.status === 529) {
+        // The server's retry-after, but never longer than what is left of the deadline.
+        const said = Number(res.headers.get("retry-after"));
+        const wait = Number.isFinite(said) && said > 0 ? said * 1_000 : 1_500;
+        await sleep(Math.min(wait, Math.max(0, deadline - now())));
+        res = await send();
+      }
+      if (!res.ok) return finish("failed", sayModelStatus(res.status));
+      response = (await res.json()) as AgentResponse;
+    } catch (error) {
+      const slow = error instanceof Error && error.name === "AbortError";
+      return finish(slow ? "too_slow" : "failed", slow ? "It took too long and was stopped." : "The model could not be reached.");
+    } finally {
+      clearTimeout(timer);
+    }
+
+    tokensIn += (response.usage?.input_tokens ?? 0) + (response.usage?.cache_creation_input_tokens ?? 0);
+    cached += response.usage?.cache_read_input_tokens ?? 0;
+    tokensOut += response.usage?.output_tokens ?? 0;
+
+    const step = nextStep(response);
+    if (step.kind === "end") return finish(step.outcome, step.text);
+
+    messages.push({ role: "assistant", content: response.content ?? [] });
+    if (step.kind === "pause") continue;
+    const results: AgentBlock[] = [];
+    for (const use of step.uses) {
+      let out: ToolRun;
+      try {
+        out = await input.runTool(use.name, use.input);
+      } catch {
+        results.push({ type: "tool_result", tool_use_id: use.id, content: "That tool failed. Carry on without it.", is_error: true });
+        continue;
+      }
+      if (typeof out !== "string" && out.stop) return finish("stopped", out.text ?? "", out.value);
+      results.push({ type: "tool_result", tool_use_id: use.id, content: out as string });
+    }
+    messages.push({ role: "user", content: results });
+  }
+  return finish("too_many_rounds", "I went round too many times without finishing. Try asking in smaller steps.");
+}

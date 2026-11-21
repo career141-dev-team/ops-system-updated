@@ -72,6 +72,7 @@ import {
   patchAd,
   recordAiOutcome,
   runAi,
+  aiSwitches,
   patchChecklist,
   patchGuarantee,
   patchInvoice,
@@ -154,7 +155,9 @@ import {
   type Thread,
 } from "@/lib/mailbox";
 import { settingChange } from "@/lib/settingsRules";
-import { groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
+import { askWithTools, problemWithRunning } from "@/lib/ai";
+import { agentSystemPrompt, AGENT_TOOLS, runAgentTool, withTaNames } from "@/lib/agentTools";
+import { graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
@@ -308,7 +311,8 @@ import {
   routeLead,
 } from "@/lib/leads";
 import { clients as taClients, fakeTa, people as taPeople, preparedCv } from "@/lib/ta";
-import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, teamsFake } from "@/lib/graphCalendar";
+import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, listEvents, moveTeamsEvent, teamsFake } from "@/lib/graphCalendar";
+import { clashWith } from "@/lib/outlook";
 import { trimForAi, vttToText } from "@/lib/transcript";
 import { stampCountersignature } from "@/lib/countersign";
 import { type ContactRow, contactsFor, problemWithContact, setRecipients } from "@/lib/contacts";
@@ -1006,11 +1010,35 @@ export async function saveDraft(formData: FormData): Promise<void> {
  * send from one real Microsoft 365 mailbox instead of `@example.test` (17 Nov).
  */
 function senderAddressFor(fallbackEmail: string): string {
-  if (devSignInAllowed()) {
-    const devSender = (process.env.OPS_DEV_SENDER_EMAIL ?? "").trim();
-    if (devSender) return devSender;
+  return senderMailbox(fallbackEmail, devSignInAllowed());
+}
+
+/** Health page: can we get a Microsoft token at all? Nothing runs on render; this is a button. */
+export async function healthCheckMicrosoft(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  if (!can(member, "settings.manage")) redirect(withMsg("/health", refusal("settings.manage")));
+  let said: string;
+  try {
+    said = (await graphToken()) ? "Microsoft gave us a token." : "Microsoft would not give us a token (credentials missing or refused).";
+  } catch {
+    said = "Microsoft could not be reached.";
   }
-  return fallbackEmail;
+  redirect(withMsg("/health", said));
+}
+
+/** Health page: one test email to the member's own address, through sendEmail (OPS_SEND and the outbound lock apply). */
+export async function healthSendTestEmail(): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  if (!can(member, "settings.manage")) redirect(withMsg("/health", refusal("settings.manage")));
+  const outcome = await sendEmail({
+    from: senderAddressFor(member.email),
+    to: [member.email],
+    subject: "Ops test email",
+    body: "This is a test from the Ops Health page. Nothing needs doing.",
+  });
+  redirect(withMsg("/health", outcome.ok ? "Test email sent to " + member.email + "." : (outcome.reason ?? "The test email did not go.")));
 }
 
 /**
@@ -1723,7 +1751,7 @@ export async function closeLead(formData: FormData): Promise<void> {
 async function teamsPartOf(
   formData: FormData,
   member: OpsMember,
-  lead: { company: string },
+  lead: { company: string; contactName?: string; contactEmail?: string },
   kind: "intro" | "requirement",
   at: number,
   taLeadId: string,
@@ -1740,7 +1768,11 @@ async function teamsPartOf(
   const pasted = String(formData.get("link") ?? "").trim();
   const lengthMin = Number(formData.get("lengthMin") ?? DEFAULT_LENGTH) || DEFAULT_LENGTH;
   const organiser = db.members.find((m) => m.id === String(formData.get("organiserId") ?? "")) ?? member;
-  const attendees = attendeesFrom(formData.getAll("attendeeName").map(String), formData.getAll("attendeeEmail").map(String));
+  // Aura's one-click booking (21 Nov) posts no attendee rows: the lead's own contact is who the link goes to.
+  const typed = formData.has("attendeeEmail");
+  const attendees = typed
+    ? attendeesFrom(formData.getAll("attendeeName").map(String), formData.getAll("attendeeEmail").map(String))
+    : attendeesFrom([lead.contactName ?? ""], [lead.contactEmail ?? ""]);
   const none = { lengthMin, organiserId: organiser.id, attendees, link: pasted, graphEventId: null, problem: null, refusal: null };
 
   const badLength = problemWithLength(lengthMin);
@@ -1762,6 +1794,17 @@ async function teamsPartOf(
   });
   if (!made.ok) return { ...none, problem: made.reason };
   return { ...none, link: made.joinUrl, graphEventId: made.eventId };
+}
+
+/**
+ * A sentence if the booking lands on something in this person's Outlook, else "" (21 Nov).
+ * Warn only: it never refuses a booking, and it asks Microsoft only when Teams is on (or faked).
+ */
+async function outlookClash(db: OpsDatabase, email: string, at: number, lengthMin: number): Promise<string> {
+  if (!Number.isFinite(at) || (!teamsFake() && !switchedOn(db, "switch.teamsEnabled"))) return "";
+  const seen = await listEvents(email, new Date(at).toISOString(), new Date(at + lengthMin * 60_000).toISOString());
+  const clash = clashWith(at, lengthMin, seen.events);
+  return clash ? " " + clash : "";
 }
 
 /**
@@ -1855,12 +1898,14 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
   );
   revalidatePath(here);
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
+  const clash = await outlookClash(db, db.members.find((m) => m.id === teams.organiserId)?.email ?? member.email, at, teams.lengthMin);
   back(
     "Booked, with a reminder the day before and an hour before. It is on the Interviews calendar." +
       (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
       (teams.problem ? " No Teams link was made: " + teams.problem : "") +
       inviteSentence +
-      (warning ? " " + warning : ""),
+      (warning ? " " + warning : "") +
+      clash,
   );
 }
 
@@ -1992,7 +2037,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
   let calendarNote = "";
   if (row.graphEventId) {
     const organiser = db.members.find((m) => m.id === row.organiserId);
-    const cancelled = organiser ? await cancelTeamsEvent(organiser.email, row.graphEventId) : null;
+    const cancelled = organiser ? await cancelTeamsEvent(organiser.email, row.graphEventId, switchedOn(db, "switch.teamsEnabled")) : null;
     if (cancelled && !cancelled.ok) calendarNote = " The Outlook meeting could not be cancelled: " + cancelled.reason;
   }
   await patchMeeting(
@@ -2017,6 +2062,27 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
     back(outcome.because + calendarNote);
   }
 
+  // A draft to the client that the meeting did not go ahead; a person approves it, nothing is sent here (21 Nov).
+  const lead = leadIn(db, row.leadId);
+  const to = row.attendees?.length ? row.attendees.map((x) => x.email) : interviewersFrom(lead?.contactEmail ?? "");
+  let draftNote = "";
+  if (lead && to.length) {
+    const what = row.kind === "intro" ? "introductory call" : "requirement meeting";
+    await draftMessage({
+      channel: "email",
+      to,
+      subject: "Our " + what + " on " + colomboWhen(row.at),
+      body:
+        "Dear " + (lead.contactName || "all") + ",\n\nWe are sorry that our " + what + " planned for " + colomboWhen(row.at) +
+        " did not go ahead. We will be in touch with a new time shortly; if one suits you better, reply and we will fit around it." +
+        "\n\nKind regards\n" + member.name,
+      templateKey: null,
+      attachmentFileIds: [],
+      subjectType: "meeting",
+      subjectId: row.id,
+    });
+    draftNote = " A note to the client is drafted in To approve.";
+  }
   await createTask({
     kind: "call",
     title: "Book the intro call again",
@@ -2028,7 +2094,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
     link: "/leads/" + row.leadId,
   });
   revalidatePath(here);
-  back(outcome.because + calendarNote);
+  back(outcome.because + calendarNote + draftNote);
 }
 
 /* \u2500\u2500 The client agreement (15, Phase 2 steps 9 to 18) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
@@ -3727,13 +3793,15 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
     formData.get("sendNow") === "on",
   );
   const warning = warningAboutBooking(at, db.holidays.map((h) => h.date));
+  const clash = await outlookClash(db, db.members.find((m) => m.id === teams.organiserId)?.email ?? member.email, at, teams.lengthMin);
   revalidatePath(here);
   back(
     "Booked, with a reminder the day before and an hour before. It is on the Interviews calendar." +
       (teams.graphEventId ? " The Teams meeting is in the organiser's Outlook calendar." : "") +
       (teams.problem ? " No Teams link was made: " + teams.problem : "") +
       inviteSentence +
-      (warning ? " " + warning : ""),
+      (warning ? " " + warning : "") +
+      clash,
   );
 }
 
@@ -4959,6 +5027,7 @@ export async function bookInterview(formData: FormData): Promise<void> {
   // event with the address for one at their office. A pasted link still wins,
   // and a Microsoft failure never stops the booking.
   let calendarEventId: string | null = null;
+  const interviewLength = Number(formData.get("lengthMin") ?? 60) || 60;
   let calendarNote = "";
   const wantsCalendar =
     formData.get("makeTeams") === "on" && Number.isFinite(row.at ?? NaN) && (format === "online" || format === "onsite");
@@ -4982,7 +5051,7 @@ export async function bookInterview(formData: FormData): Promise<void> {
         kind: "interview",
         subject: "Interview: " + row.candidateName + ", round " + row.round,
         at: row.at as number,
-        lengthMin: Number(formData.get("lengthMin") ?? 60) || 60,
+        lengthMin: interviewLength,
         online: format === "online",
         location: format === "onsite" ? whereOrLink : undefined,
         internalAttendees: [],
@@ -5044,6 +5113,9 @@ export async function bookInterview(formData: FormData): Promise<void> {
       whereOrLink: wanted.whereOrLink,
       inviteMessageId: message.id,
       calendarEventId,
+      // Whose calendar it is in and how long, so a move or a cancel reaches the right event later.
+      calendarOrganiser: calendarEventId ? member.email : null,
+      calendarLengthMin: calendarEventId ? interviewLength : null,
     },
     member.id,
     "interview.booked",
@@ -5065,6 +5137,7 @@ export async function bookInterview(formData: FormData): Promise<void> {
     { type: "interview", id: interviewId },
   );
   await startInterviewClocks({ ...row, at: wanted.at, ownerId: row.ownerId }, Date.now());
+  const clash = await outlookClash(db, member.email, wanted.at, Number(formData.get("lengthMin") ?? 60) || 60);
   revalidatePath(here);
   revalidatePath("/interviews");
   redirect(
@@ -5074,7 +5147,8 @@ export async function bookInterview(formData: FormData): Promise<void> {
       encodeURIComponent(
         "Booked. The invite to the client's people is drafted, the TA System has been told, and the reminders are set." +
           (calendarEventId ? " It is in your calendar." : "") +
-          calendarNote,
+          calendarNote +
+          clash,
       ),
   );
 }
@@ -5207,6 +5281,19 @@ export async function rescheduleInterview(formData: FormData): Promise<void> {
     "interview.rescheduled",
     reason,
   );
+  // The Outlook event follows the move; a refusal is a note and never undoes the change (21 Nov).
+  // The event sits in the organiser's calendar (stored at booking), not necessarily the mover's; 60 min only for rows booked before the length was kept.
+  let calendarNote = "";
+  if (row.calendarEventId) {
+    const moved = await moveTeamsEvent(
+      row.calendarOrganiser || member.email,
+      row.calendarEventId,
+      new Date(to).toISOString(),
+      row.calendarLengthMin || 60,
+      switchedOn(db, "switch.teamsEnabled"),
+    );
+    if (moved && !moved.ok) calendarNote = " The Outlook event could not be moved: " + moved.reason;
+  }
   await cancelClocksFor(db, "interview", interviewId, member.id, "The interview moved.", null);
   await startInterviewClocks({ ...row, at: to }, now);
 
@@ -5266,7 +5353,7 @@ export async function rescheduleInterview(formData: FormData): Promise<void> {
     "/messages/" +
       message.id +
       "?msg=" +
-      encodeURIComponent("Moved. The updated invite is drafted, the TA System has been told, and the reminders are reset."),
+      encodeURIComponent("Moved. The updated invite is drafted, the TA System has been told, and the reminders are reset." + calendarNote),
   );
 }
 
@@ -5291,11 +5378,23 @@ export async function cancelInterview(formData: FormData): Promise<void> {
     interviewId,
     // Rebooking keeps the round: a candidate who was at round two is still at
     // round two after the client moves the date.
-    again ? { state: "slots", at: null, slots: [], slotAnswers: [], reason } : { state: "cancelled", reason },
+    again
+      ? { state: "slots", at: null, slots: [], slotAnswers: [], reason }
+      : { state: "cancelled", reason },
     member.id,
     again ? "interview.rebooking" : "interview.cancelled",
     reason,
   );
+  let calendarNote = "";
+  if (row.calendarEventId) {
+    const cancelled = await cancelTeamsEvent(row.calendarOrganiser || member.email, row.calendarEventId, switchedOn(db, "switch.teamsEnabled"));
+    if (cancelled && !cancelled.ok) {
+      // The id stays, so the event can still be found and cancelled by hand.
+      calendarNote = " The Outlook event could not be cancelled: " + cancelled.reason;
+    } else {
+      await patchInterview(interviewId, { calendarEventId: null, calendarOrganiser: null, calendarLengthMin: null }, member.id, "interview.calendarCleared", null);
+    }
+  }
   await cancelClocksFor(db, "interview", interviewId, member.id, "The interview is off.", null);
   await queueTaWrite(
     "/integrations/v1/interviews/" + (row.interviewTaId ?? row.applicationTaId) + "/cancel",
@@ -5305,8 +5404,8 @@ export async function cancelInterview(formData: FormData): Promise<void> {
   revalidatePath(here);
   back(
     again
-      ? "Off, and back to agreeing a time. The round is kept, and the TA System has been told."
-      : "Cancelled, and the TA System has been told.",
+      ? "Off, and back to agreeing a time. The round is kept, and the TA System has been told." + calendarNote
+      : "Cancelled, and the TA System has been told." + calendarNote,
   );
 }
 
@@ -7473,6 +7572,11 @@ const RUNNABLE: Record<Runnable, (fd: FormData) => Promise<void>> = {
   approveWeeklyReport,
   compileTalentPulseNow,
   summariseClient,
+  createLead,
+  assignLeadOwner,
+  bookIntroCall,
+  bookRequirementMeeting,
+  handOverToTa,
 };
 
 /**
@@ -7550,6 +7654,81 @@ export async function chatSay(formData: FormData): Promise<void> {
     redirect(back);
   }
 
+  // Aura: with an Anthropic key, Claude Haiku looks things up with tools and ends on ONE
+  // proposal; the button and chatDo are exactly the old ones. No key: the old path below, unchanged.
+  if ((process.env.ANTHROPIC_API_KEY ?? "").trim()) {
+    const switches = aiSwitches(db, now);
+    const stopped = problemWithRunning("agent", "claude", switches);
+    if (stopped) {
+      await addChatRow({ thread, memberId: member.id, who: "desk", text: stopped, buttons: [], state: "refused", actionName: null, runId: null, at: Date.now() });
+      revalidatePath(back);
+      redirect(back);
+    }
+    // The chat so far as alternating turns, starting and ending with the person.
+    const turns: { role: "user" | "assistant"; content: string }[] = [];
+    for (const r of mine.slice(-8)) {
+      const role = r.who === "person" ? "user" : "assistant";
+      const last = turns[turns.length - 1];
+      if (last && last.role === role) last.content += " " + r.text;
+      else turns.push({ role, content: r.text });
+    }
+    while (turns.length && turns[0].role !== "user") turns.shift();
+    const result = await askWithTools({
+      system: agentSystemPrompt(member, colomboDate(now)),
+      messages: turns,
+      tools: AGENT_TOOLS,
+      guard: (spent) => problemWithRunning("agent", "claude", { ...switches, spentToday: switches.spentToday + spent }),
+      runTool: (name, input) =>
+        runAgentTool(
+          {
+            db,
+            member,
+            now,
+            findTaLead: async (query) => {
+              const found = await taPeople();
+              if (!found.ok) return "The TA System could not be read: " + found.reason;
+              const q = query.trim().toLowerCase();
+              const hits = found.data.filter((p) => p.isActive && (!q || p.fullName.toLowerCase().includes(q)));
+              return hits.length ? JSON.stringify(hits.slice(0, 20).map((p) => ({ id: p.id, name: p.fullName }))) : "Nothing found.";
+            },
+          },
+          name,
+          input,
+        ),
+    });
+    const proposal = result.outcome === "stopped" ? (result.stopValue as ReturnType<typeof resolveIntent>) : null;
+    // One ledger row for the whole chat turn, with the summed usage, as runAi writes one.
+    const worked = result.outcome === "stopped" || result.outcome === "done";
+    const run = await addAiRun({
+      task: "agent",
+      provider: "claude",
+      model: result.model,
+      read: ["the words typed, and what the tools looked up"],
+      proposed: proposal && proposal.kind === "proposal" ? proposal.intent : null,
+      outcome: null,
+      kept: null,
+      ok: worked,
+      because: worked ? null : result.text,
+      tokensIn: result.usage.tokensIn,
+      tokensOut: result.usage.tokensOut,
+      cost: result.usage.cost,
+      ms: Date.now() - now,
+      subjectType: "chat",
+      subjectId: member.id,
+      by: member.id,
+      at: now,
+    });
+    if (proposal && proposal.kind === "proposal") {
+      // A TA lead is shown by name, not by the id the tool found.
+      await sayResolved(member.id, thread, proposal, run.id);
+    } else {
+      const text = result.text || "I could not work that out. Try saying it another way.";
+      await addChatRow({ thread, memberId: member.id, who: "desk", text, buttons: [], state: result.outcome === "done" ? "done" : "refused", actionName: null, runId: run.id, at: Date.now() });
+    }
+    revalidatePath(back);
+    redirect(back);
+  }
+
   const context = [
     "Today is " + colomboDateInWords(now) + ".",
     db.messages.filter((m) => m.state === "draft").length + " drafts wait for approval.",
@@ -7608,6 +7787,11 @@ export async function chatSay(formData: FormData): Promise<void> {
 async function sayResolved(memberId: string, thread: string, resolved: Exclude<ReturnType<typeof resolveIntent>, { kind: "question" }>, runId: string | null): Promise<void> {
   const at = Date.now();
   if (resolved.kind === "proposal") {
+    // A TA lead is shown by name on every card, however the proposal arrived (first ask, edit, or answer).
+    if (resolved.buttons.some((b) => b.fields.taLeadId || b.fields.primaryTaId)) {
+      const people = await taPeople();
+      if (people.ok) resolved = withTaNames(resolved, people.data);
+    }
     await addChatRow({ thread, memberId, who: "desk", text: resolved.said, buttons: resolved.buttons, state: "proposed", actionName: planMark(resolved.intent), runId, at });
   } else if (resolved.kind === "ask") {
     // The question carries what it is waiting for, so the next words answer it.
@@ -8091,16 +8275,53 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   const interviewer = String(formData.get("interviewer") ?? member.name).trim();
   const interviewAt = whenRaw ? Date.parse(whenRaw) : NaN;
   if (Number.isNaN(interviewAt)) redirect(withMsg(dest, "Pick a valid interview date and time."));
+  // An online interview gets a Teams link in the booker's calendar, the same way client interviews do (21 Nov).
+  let joinUrl: string | null = null;
+  let graphEventId: string | null = null;
+  let teamsNote = "";
+  const db = await desk();
+  // A booking that is moved, or stops being online, must not leave the old event in the calendar.
+  let keepOld = false;
+  const earlier = (db.applicants ?? []).find((a) => a.id === applicantId)?.graphEventId;
+  if (earlier) {
+    const gone = await cancelTeamsEvent(member.email, earlier, switchedOn(db, "switch.teamsEnabled"));
+    if (gone && !gone.ok) {
+      // The old event is still there: keep its id so it can be found, and make no second one.
+      keepOld = true;
+      teamsNote = " The earlier Outlook event could not be cancelled, so it was kept as it is: " + gone.reason;
+    }
+  }
+  if (place.toLowerCase() === "online" && !keepOld) {
+    if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
+      teamsNote = " Teams is switched off in Settings, so no link was made.";
+    } else {
+      const who = (db.applicants ?? []).find((a) => a.id === applicantId)?.name ?? "candidate";
+      const made = await createTeamsEvent(member.email, {
+        company: "Career 141",
+        kind: "interview",
+        subject: "Interview: " + who,
+        at: interviewAt,
+        lengthMin: 60,
+        internalAttendees: [],
+      });
+      if (made.ok) {
+        joinUrl = made.joinUrl;
+        graphEventId = made.eventId;
+      } else {
+        teamsNote = " No Teams link was made: " + made.reason;
+      }
+    }
+  }
   await patchApplicant(
     applicantId,
-    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place}` },
+    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place}`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
     member.id,
     "applicant.interviewBooked",
     `Booked with ${interviewer} (${place})`,
   );
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/calendar");
-  redirect(dest + confirmed("Internal interview booked and added to Calendar.", dest));
+  redirect(dest + confirmed("Internal interview booked and added to Calendar." + (joinUrl ? " The Teams link is saved on it." : "") + teamsNote, dest));
 }
 
 /** Internal hiring: record interview result (H2 -> Add the result panel). */
