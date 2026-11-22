@@ -135,7 +135,7 @@ import {
 } from "@/data/desk";
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
-import { moveTarget, problemWithMove } from "@/lib/taskMove";
+import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
 import { problemWithApplicant, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
@@ -7944,6 +7944,8 @@ export async function snoozeTaskAction(formData: FormData): Promise<void> {
   const db = await desk();
   const task = db.tasks.find((t) => t.id === taskId && t.state === "open");
   if (!task) redirect(withMsg(dest, "That task is already finished or gone."));
+  const whose = problemWithMover(task, member.id, can(member, "task.do"), can(member, "task.reassign"));
+  if (whose) redirect(withMsg(dest, whose));
   const now = Date.now();
   const target = moveTarget(String(formData.get("to") ?? "tomorrow"), String(formData.get("date") ?? ""), now);
   const reason = String(formData.get("reason") ?? "").trim();

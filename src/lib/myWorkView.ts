@@ -128,6 +128,9 @@ export function buttonFor(t: OpsTask, ctx: Context, panel: (name: string, id: st
   return { label: t.kind === "approve" ? "Approve" : "Open", href: t.link ?? "/tasks/" + t.id };
 }
 
+/** The system made it for a deadline (it is about a record): the one definition the card flag and the move rule share. */
+export const isSystemTask = (t: { subjectType: string | null }): boolean => t.subjectType !== null;
+
 const SOURCES: Record<string, string> = {
   report: "From the weekly report",
   talentPulse: "From Talent Pulse",
@@ -146,6 +149,8 @@ const SOURCES: Record<string, string> = {
   reference: "From a reference check",
   close: "From closing a position",
   timer: "From a timer",
+  meeting: "From a meeting",
+  chat: "From AURA",
 };
 
 /**
@@ -256,7 +261,7 @@ export function workView(
       title: t.title,
       line: t.body,
       sub: taskSource(t, who(t)),
-      system: t.subjectType !== null,
+      system: isSystemTask(t),
       due: k === "late" ? lateTag(t.dueAt, now) : k === "today" ? (t.dueAt >= start ? "Today · " + clockOf(t.dueAt) : "Today") : dayShort(t.dueAt),
     }));
   const nextLater = buckets.later[0] ? dayShort(buckets.later[0].dueAt) : null;

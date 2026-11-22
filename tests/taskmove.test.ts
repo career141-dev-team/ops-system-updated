@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { endOfWorkDay, moveTarget, problemWithMove } from "@/lib/taskMove";
+import { endOfWorkDay, moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 
 const NOW = Date.parse("2026-11-23T02:30:00Z"); // Mon 08:00 in Colombo
 const at = (iso: string) => Date.parse(iso);
@@ -32,4 +32,32 @@ test("free tasks move either way; deadline tasks move later only with a reason",
   assert.equal(problemWithMove({ dueAt: later, subjectType: "talentPulse" }, NOW + 3_600_000, "", NOW), null);
   assert.match(problemWithMove(free, null, "", NOW) ?? "", /day/);
   assert.match(problemWithMove(free, NOW - 2 * 86_400_000, "", NOW) ?? "", /later day/);
+});
+
+test("a filled date wins over the select; today's date is Today; month 13 and far dates are refused", () => {
+  assert.equal(moveTarget("today", "2026-12-01", NOW), at("2026-12-01T03:30:00Z"));
+  assert.equal(moveTarget("date", "2026-11-23", NOW), moveTarget("today", "", NOW));
+  assert.equal(moveTarget("date", "2026-13-05", NOW), null);
+  assert.match(problemWithMove({ dueAt: NOW, subjectType: null }, moveTarget("date", "2030-01-01", NOW), "", NOW) ?? "", /year/);
+});
+
+test("today in the last minute of the day does not land before now, or tomorrow", () => {
+  const edge = at("2026-11-23T18:29:30Z"); // 23:59:30 Colombo
+  const t = moveTarget("today", "", edge) as number;
+  assert.ok(t >= edge && t < at("2026-11-23T18:30:00Z"));
+});
+
+test("a late system task can come to Today without a reason; later days still need one", () => {
+  const late = { dueAt: NOW - 3_600_000, subjectType: "talentPulse" };
+  assert.equal(problemWithMove(late, moveTarget("today", "", NOW), "", NOW), null);
+  assert.match(problemWithMove(late, moveTarget("tomorrow", "", NOW), "", NOW) ?? "", /why/i);
+  assert.equal(moveTarget("tomorrow", "", NOW), at("2026-11-24T03:30:00Z")); // the action's default choice
+});
+
+test("only people who may do tasks move them, and another person's task needs the reassign right", () => {
+  const mine = { assigneeId: "m1" };
+  assert.match(problemWithMover(mine, "m1", false, false) ?? "", /Not allowed/);
+  assert.equal(problemWithMover(mine, "m1", true, false), null);
+  assert.match(problemWithMover(mine, "m2", true, false) ?? "", /someone else/);
+  assert.equal(problemWithMover(mine, "m2", true, true), null);
 });

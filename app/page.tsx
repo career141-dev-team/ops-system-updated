@@ -295,7 +295,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
         ]}
       />
       <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
-        <Card title="Board" sub="Late first. Each card has one button.">
+        <Card title="Board" sub="Late first. Each card says where it came from.">
           <div data-stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {cols.map((col) => (
               <div key={col.key} className="flex flex-col gap-3 rounded-[18px] bg-sunk p-3">
@@ -321,13 +321,23 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
                         <form action={snoozeTaskAction} className="mt-2 flex flex-col gap-2">
                           <input type="hidden" name="taskId" value={t.key} />
                           <input type="hidden" name="back" value="/?view=tasks" />
-                          <select name="to" defaultValue="today" aria-label="Move to" className="t-small rounded-[10px] bg-sunk px-2 py-1.5">
-                            <option value="today">Today</option>
-                            <option value="tomorrow">Tomorrow</option>
-                            <option value="date">A date</option>
-                          </select>
-                          <input type="date" name="date" aria-label="Date, if you chose A date" className="t-small rounded-[10px] bg-sunk px-2 py-1.5" />
-                          {t.system && <input name="reason" aria-label="Why it can wait" placeholder="Why it can wait (needed to move it later)" className="t-small rounded-[10px] bg-sunk px-2 py-1.5" />}
+                          <label className="t-small flex flex-col gap-1 text-ink-3">
+                            Move to
+                            <select name="to" defaultValue="today" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink">
+                              <option value="today">Today</option>
+                              <option value="tomorrow">Tomorrow</option>
+                            </select>
+                          </label>
+                          <label className="t-small flex flex-col gap-1 text-ink-3">
+                            Or a date (this wins)
+                            <input type="date" name="date" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink" />
+                          </label>
+                          {t.system && (
+                            <label className="t-small flex flex-col gap-1 text-ink-3">
+                              Reason
+                              <input name="reason" placeholder="Why it is moving later than its deadline" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink" />
+                            </label>
+                          )}
                           <button type="submit" className={ghost}>
                             Move
                           </button>
