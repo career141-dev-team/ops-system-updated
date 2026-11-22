@@ -135,6 +135,7 @@ import {
 } from "@/data/desk";
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { moveTarget, problemWithMove } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
 import { problemWithApplicant, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
@@ -7928,7 +7929,12 @@ export async function toggleChat(formData: FormData): Promise<void> {
 
 /* ── Backend gap actions (19 Nov): snooze, manual chases, invite-back, reconfirm, HR/TA logs, refunds, dormant, phone, history, team news, internal hiring ── */
 
-/** Snooze an open task to 09:00 tomorrow (Colombo) (W4 Tasks -> Later). */
+/**
+ * Move an open task to Today, Tomorrow or a date (22 Nov: the board could only push
+ * tasks later, so a Talent Pulse task under Later could not be pulled to Today).
+ * Pulling earlier is always allowed; a task the system made with a deadline needs a
+ * reason to go later (src/lib/taskMove.ts). Same audit row as the old snooze.
+ */
 export async function snoozeTaskAction(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -7938,10 +7944,14 @@ export async function snoozeTaskAction(formData: FormData): Promise<void> {
   const db = await desk();
   const task = db.tasks.find((t) => t.id === taskId && t.state === "open");
   if (!task) redirect(withMsg(dest, "That task is already finished or gone."));
-  const nextAt = nextNineAm(Date.now());
-  await snoozeTaskInDesk(taskId, nextAt, member.id, "Moved to tomorrow morning.");
+  const now = Date.now();
+  const target = moveTarget(String(formData.get("to") ?? "tomorrow"), String(formData.get("date") ?? ""), now);
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithMove(task, target, reason, now);
+  if (problem) redirect(withMsg(dest, problem));
+  await snoozeTaskInDesk(taskId, target as number, member.id, reason || "Moved from the task board.");
   revalidatePath("/");
-  redirect(dest + confirmed("Moved to tomorrow morning (09:00).", dest));
+  redirect(dest + confirmed("Moved to " + colomboDateInWords(target as number) + ".", dest));
 }
 
 /** Manually mark a candidate as reconfirmed for a booked interview (R1 Interviews). */

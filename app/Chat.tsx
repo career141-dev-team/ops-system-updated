@@ -492,6 +492,10 @@ function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement 
     el.style.height = Math.min(el.scrollHeight, 192) + "px";
   };
   return (
+    <>
+    <p className="t-small px-3 pb-1.5 text-ink-3">
+      Ask a question, or tell AURA what to do (&quot;approve the last email&quot;). The answer appears above. Anything it would change shows one button first: nothing happens until you press it.
+    </p>
     <div className="flex items-end gap-2 rounded-3xl bg-surface py-2.5 pl-4 pr-2.5 shadow-float">
       <textarea
         ref={boxRef}
@@ -499,7 +503,7 @@ function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement 
         required
         rows={3}
         readOnly={pending}
-        placeholder={waiting ? "Type the answer…" : "Tell AURA what happened, or ask anything"}
+        placeholder={waiting ? "Type the answer…" : "Ask a question, or say what to do"}
         aria-label="Say what you want done"
         className="min-h-[72px] max-h-[192px] min-w-0 flex-1 resize-none bg-transparent text-[16px] leading-6 text-ink outline-none [field-sizing:content] placeholder:text-ink-faint"
         onInput={(e) => grow(e.currentTarget)}
@@ -519,6 +523,7 @@ function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement 
         <Icon name="send" size={18} />
       </button>
     </div>
+    </>
   );
 }
 

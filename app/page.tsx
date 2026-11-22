@@ -309,21 +309,30 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
                     <p className="t-body-m">{t.title}</p>
                     <p className="t-small text-ink-3">{t.sub}</p>
                     <p className={"t-small " + (col.key === "late" ? "text-danger" : col.key === "waits" ? "text-warn" : "text-ink-3")}>{t.due}</p>
-                    <div className="pt-2">
-                      {col.key === "waits" ? (
-                        <form action={snoozeTaskAction}>
-                          <input type="hidden" name="taskId" value={t.key} />
-                          <input type="hidden" name="back" value="/?view=tasks" />
-                          <button type="submit" className={ghost}>
-                            Later
-                          </button>
-                        </form>
-                      ) : (
-                        // Done opens the task: nothing closes without a line about what happened.
+                    <div className="flex flex-wrap items-start gap-2 pt-2">
+                      {/* Done opens the task: nothing closes without a line about what happened. */}
+                      {col.key !== "waits" && (
                         <Link href={"/tasks/" + t.key} className={ghost}>
                           Done
                         </Link>
                       )}
+                      <details className="w-full">
+                        <summary className={ghost + " inline-flex cursor-pointer"}>Move to</summary>
+                        <form action={snoozeTaskAction} className="mt-2 flex flex-col gap-2">
+                          <input type="hidden" name="taskId" value={t.key} />
+                          <input type="hidden" name="back" value="/?view=tasks" />
+                          <select name="to" defaultValue="today" aria-label="Move to" className="t-small rounded-[10px] bg-sunk px-2 py-1.5">
+                            <option value="today">Today</option>
+                            <option value="tomorrow">Tomorrow</option>
+                            <option value="date">A date</option>
+                          </select>
+                          <input type="date" name="date" aria-label="Date, if you chose A date" className="t-small rounded-[10px] bg-sunk px-2 py-1.5" />
+                          {t.system && <input name="reason" aria-label="Why it can wait" placeholder="Why it can wait (needed to move it later)" className="t-small rounded-[10px] bg-sunk px-2 py-1.5" />}
+                          <button type="submit" className={ghost}>
+                            Move
+                          </button>
+                        </form>
+                      </details>
                     </div>
                   </article>
                 ))}

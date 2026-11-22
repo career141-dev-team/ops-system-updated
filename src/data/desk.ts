@@ -44,6 +44,7 @@ import type {
   OpsApplicant,
 } from "./types";
 import { DAY, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { endOfWorkDay } from "@/lib/taskMove";
 import {
   AI_TASKS,
   type AiSwitches,
@@ -3278,7 +3279,9 @@ export async function buildWeeklyReport(by: Id, now = Date.now()): Promise<OpsRe
       ? "One line per open position, built from the TA System and our own rows. Read it, correct nothing silently - if a line is wrong, say so on the position - then approve it and the Director's email is drafted."
       : "No position is open, so there is nothing in it. Nothing goes to the Director.",
     assigneeId: owner,
-    dueAt: now,
+    // 22 Nov: it was due "now", so it showed "Late" before anyone could read it.
+    // The working day it lands on is the time to read it.
+    dueAt: endOfWorkDay(now),
     subjectType: "report",
     subjectId: report.id,
     link: "/reports/" + report.id,
