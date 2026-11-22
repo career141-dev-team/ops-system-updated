@@ -249,6 +249,7 @@ template work as the invoice.
 | TA down, a handler throwing, every switch off | `tests/hardening.test.ts` | writes queue with their keys and wait longer each time, reads answer "could not be read" rather than throwing, one bad clock does not stop the pass, and with the senders off nothing can leave the building |
 | The ops lead's own TA-writes switch | `pushOutbox` in `src/data/desk.ts` | it now really holds the link: the writes stay queued while it is off. It was read from the environment only, so the switch on the Settings screen did nothing |
 | The first-day import | `src/lib/importer.ts`, screen `app/(settings)/import` | clients and who owns each, the holiday list, the ops people. A dry run first every time, and the same code builds the dry run and the real run; a bad row stops itself and names its line; a file run twice adds nothing |
+| An empty backend never fills with sample data (22 Nov) | `wantsSampleDesk`, `firstRunDesk` in `src/lib/firstRun.ts`, `desk()` in `src/data/desk.ts`, `tests/firstrun.test.ts` | a Convex backend with no settings gets, once, only the real defaults: the settings and our own wording, no people, clocks, tasks, drafts or holidays (the people and holidays come in through the first-day import). The invented sample desk goes in only where `OPS_SAMPLE_DESK=on`: `deploy/local/start-ui.sh`, `deploy/local/start.sh` and the invented-data preview's compose file, never production. Before this, a live backend that started empty (first deploy, a restore) would have filled with sample clients' work |
 | Production deploy files | `deploy/production/` | the preview's shape with production names and ports, **every switch off on the first deploy**, and the order to turn them on written at the top of the env example |
 | Runbooks | `docs/runbooks/` | the wrong recipient, the mail reader stalled, the TA link down, events stuck, pausing Ops, restoring, rotating a key - and every switch in one table |
 | Going live | [22](22-GO-LIVE.md) | the server once, backups rehearsed, the first deploy with everything off, one switch a day, the pilot, which sheet stops when, and what is still not built |
@@ -488,6 +489,9 @@ Each of these exists because of something that went wrong, written in
 - **Nothing closes, holds or declines without a reason**, and the reason is kept.
 - **Nothing reaches a client except as a draft a person approved.** Switched off
   records as *blocked*, never as *failed*, and nothing is retried silently.
+- **A live desk never holds invented data.** An empty backend gets the sample desk
+  only when the run sets `OPS_SAMPLE_DESK=on`; otherwise it starts with the real
+  defaults alone (22 Nov, found in review: any empty backend was seeded).
 - **A hole in a document is never left in it.** A draft once went to a client
   with placeholders still in it.
 - **A client who replies is not chased.** A reply cancels the chase clocks.

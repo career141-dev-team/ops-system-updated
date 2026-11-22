@@ -6,6 +6,7 @@ import { SAMPLE_PREFIX, sampleOpenings } from "./sampleOpenings";
 import { sampleDesk } from "./sampleDesk";
 import { repo } from "./store";
 import { seed } from "./seed";
+import { firstRunDesk, wantsSampleDesk } from "@/lib/firstRun";
 import type {
   Id,
   OpsBaseline,
@@ -154,11 +155,12 @@ export async function desk(): Promise<OpsDatabase> {
   if (!usingConvex()) return repo.all();
 
   const snapshot = await convexQuery<OpsDatabase>("ops/data:snapshot");
-  // A brand new backend has nobody and no numbers, which would show an empty
-  // screen with no way to fix it. The preview holds invented data by decision,
-  // so the sample desk is put in once and never overwritten.
+  // A brand new backend has no numbers, so the rules would have nothing to read.
+  // It gets the real defaults once, never overwritten; the invented sample desk
+  // only where the run asks for it (22 Nov: a live backend that starts empty must
+  // not fill with sample clients).
   if (snapshot.settings.length === 0) {
-    const sample = seed();
+    const sample = firstRunDesk(seed(), wantsSampleDesk(process.env));
     // The sample refers to people by id; the backend makes its own, so the
     // clocks and tasks name the role they belong to and it joins them up.
     const roleOf = (memberId: string) => sample.members.find((m) => m.id === memberId)?.role ?? "ops_owner";

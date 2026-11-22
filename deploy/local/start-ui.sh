@@ -7,6 +7,8 @@ export OPS_DATA_DIR="$PWD/.data-ui"
 unset CONVEX_SELF_HOSTED_URL CONVEX_SELF_HOSTED_ADMIN_KEY
 export OPS_STORE=json
 export OPS_DEV_SIGNIN=on
+# Invented sample desk on an empty store (22 Nov). Never set on a live server.
+export OPS_SAMPLE_DESK=on
 # The TA side of the API does not exist yet, so a stand-in answers with
 # recorded sample data. Every screen that uses it says so.
 export OPS_TA_FAKE=on
