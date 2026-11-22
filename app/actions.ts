@@ -137,7 +137,7 @@ import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chat
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
-import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes,problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
   problemWithInviteBack,
@@ -8231,18 +8231,18 @@ export async function addHiringApplicant(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim() || null;
   const cv = formData.get("cv");
   const file = cv instanceof File && cv.size > 0 ? cv : null;
-  const problem = problemWithApplicant(name, source) ?? (file ? problemWithCv(file) : null);
+  const bytes = file ? new Uint8Array(await file.arrayBuffer()) : null;
+  const problem = problemWithApplicant(name, source) ?? (file && bytes ? problemWithCv(file) ?? problemWithCvBytes(bytes) : null);
   if (problem) redirect(withMsg(dest, problem));
   const added = await addApplicant({ vacancyId, name, source, phone, email, by: member.id });
-  if (file) await keepApplicantCv(member.id, added.id, file);
+  if (file && bytes) await keepApplicantCv(member.id, added.id, file, bytes);
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed(`${name} added.`, dest));
 }
 
 /** Keeps an applicant's CV in the file store (as keepFile does) and points the applicant at it (22 Nov). */
-async function keepApplicantCv(by: string, applicantId: string, file: File): Promise<void> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
+async function keepApplicantCv(by: string, applicantId: string, file: File, bytes: Uint8Array): Promise<void> {
   const key = keyFor("cv", "applicant", applicantId, file.name);
   const mime = mimeFor(file.name);
   await putBytes(key, bytes, mime);
@@ -8261,11 +8261,12 @@ export async function addApplicantCv(formData: FormData): Promise<void> {
   const cv = formData.get("cv");
   if (!(cv instanceof File) || cv.size === 0) redirect(withMsg(dest, "Choose the CV file first."));
   const file = cv as File;
-  const problem = problemWithCv(file);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const problem = problemWithCv(file) ?? problemWithCvBytes(bytes);
   if (problem) redirect(withMsg(dest, problem));
   const db = await desk();
-  if (!db.applicants.some((a) => a.id === applicantId)) redirect(withMsg(dest, "That applicant is gone."));
-  await keepApplicantCv(member.id, applicantId, file);
+  if (!db.applicants.some((a) => a.id === applicantId && a.vacancyId === vacancyId)) redirect(withMsg(dest, "That applicant is gone."));
+  await keepApplicantCv(member.id, applicantId, file, bytes);
   revalidatePath(`/hiring/${vacancyId}`);
   redirect(dest + confirmed("CV saved.", dest));
 }
@@ -8285,9 +8286,7 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   const db = await desk();
   const app = db.applicants.find((a) => a.id === applicantId);
   if (!app) redirect(withMsg(dest, "That applicant is gone."));
-  const vac = db.vacancies.find((v) => v.id === vacancyId);
-  const notOk = (vac?.checks ?? []).filter((_, i) => formData.get("check" + i) === "not-ok").length;
-  const problem = problemWithHiringCall(result, notOk, note);
+  const problem = problemWithHiringCall(result, note);
   if (problem) redirect(withMsg(dest, problem));
   const tries = app.tries + 1;
   if (result === CALL_NOT_FIT) {

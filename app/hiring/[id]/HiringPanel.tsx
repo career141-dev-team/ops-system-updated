@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { addApplicantCv, bookHiringInterview,decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
+import { addApplicantCv, bookHiringInterview, decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
 import Icon from "@/app/Icon";
 import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
@@ -161,7 +161,7 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref }: { ki
               <textarea name="note" className={textarea} placeholder="What you heard (the reason, if not a fit)" />
             </PanelField>
           </PanelSection>
-          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. Not a fit: ${name} moves to Rejected with your note as the reason, and no interview is booked. No answer: increments the try counter and keeps them in To call.`} />
+          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. Not a fit: ${name} moves to Rejected with your note as the reason and no interview is booked, so copy the message below before you save, because this drawer closes. No answer: increments the try counter and keeps them in To call.`} />
         </form>
         <Draft label={`Message if ${name} is not a fit`} text={rejectMessage(a, v.title, true)} copy="Copy message" missing="" />
       </Panel>

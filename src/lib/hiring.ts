@@ -154,30 +154,40 @@ export function problemWithApplicant(name: string, source: string): string | nul
   return null;
 }
 
-/** A CV is a document the team reads: PDF or Word, within the size the file store allows (22 Nov). */
+/** The most a CV may be (22 Nov). Below the 25 MB the file store allows: a CV is text; a bigger one is a scan. */
+export const MAX_CV_BYTES = 10 * 1024 * 1024;
+
+/** A CV is a document the team reads: PDF or Word, within the size above (22 Nov). */
 export function problemWithCv(file: { name: string; size: number }): string | null {
   const ext = extensionOf(file.name);
   if (ext && ![".pdf", ".doc", ".docx"].includes(ext)) return "A CV must be a PDF or a Word file.";
+  if (file.size > MAX_CV_BYTES) return "That CV is bigger than 10 MB. Save it smaller, or as a PDF, and add it again.";
   return problemWithUpload(file);
+}
+
+/** The name can lie; the first bytes cannot: %PDF, PK (docx) or D0CF11E0 (old .doc). */
+export function problemWithCvBytes(bytes: Uint8Array): string | null {
+  const is = (...b: number[]) => b.every((x, i) => bytes[i] === x);
+  return is(0x25, 0x50, 0x44, 0x46) || is(0x50, 0x4b) || is(0xd0, 0xcf, 0x11, 0xe0) ? null : "That file is not a real PDF or Word file. Open it, save it again as a PDF, and add it again.";
 }
 
 /** The call result that closes the applicant without an interview (22 Nov, ops team: "can we reject without an interview?"). */
 export const CALL_NOT_FIT = "Talked - not a fit";
 
-/**
- * Why a call result cannot be saved, or null. A check marked Not OK cannot be logged as plain
- * "Talked" (22 Nov): that moved Hana to Called · fits with a "Not a culture fit" note. Rejecting
- * from a call needs a reason, like every other reject.
- */
-export function problemWithHiringCall(result: string, notOkChecks: number, note: string): string | null {
-  if (result === CALL_NOT_FIT) return note.trim().length < 4 ? "Write the reason in the note before marking not a fit." : null;
-  if (result === "Talked" && notOkChecks > 0) return `${notOkChecks === 1 ? "A check is" : "Some checks are"} marked Not OK. Log the call as "${CALL_NOT_FIT}", or change the check.`;
+/** Not a fit rejects, so it needs a reason like every other reject. */
+export function problemWithHiringCall(result: string, note: string): string | null {
+  if (result === CALL_NOT_FIT && note.trim().length < 4) return "Write the reason in the note before marking not a fit.";
   return null;
 }
 
-/** "2026-11-22T10:45" typed on the form is Colombo time; the server clock is not (22 Nov: 10:45 showed as 05:15). */
+/**
+ * "2026-11-22T10:45" typed on the form is Colombo time (22 Nov). It was read in the server's own
+ * zone, so on a UTC server every interview was saved 5h30 late. (The exact "Sun 05:15" the team
+ * reported was not reproduced.) NaN when it is not a date.
+ */
 export function colomboLocalToMs(typed: string): number {
-  return Date.parse(typed.trim() + ":00+05:30");
+  const t = typed.trim();
+  return Date.parse(t + (/T\d\d:\d\d$/.test(t) ? ":00" : "") + "+05:30");
 }
 
 export function problemWithHiringDecision(decision: string, reason: string): string | null {

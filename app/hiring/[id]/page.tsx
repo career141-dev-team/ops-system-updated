@@ -20,7 +20,7 @@ import { HiringSendModal } from "./HiringSendModals";
 
 const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject"];
 
-/** H2 · Vacancy detail: the numbers, the board of applicants, and the four panels. Nothing here saves (no backend). */
+/** H2 · Vacancy detail: the numbers, the board of applicants, and the panels (call, book, result, decide, not a fit). Every form saves through an action in app/actions.ts. */
 export default async function VacancyPage({
   params,
   searchParams,

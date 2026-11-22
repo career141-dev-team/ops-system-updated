@@ -36,6 +36,9 @@ const nextConfig: NextConfig = {
 
   experimental: {
     agentUpgrade: "security",
+    // Server actions take 1 MB by default, so a 3 MB CV (22 Nov, hiring) or a 20 MB kept file failed with a raw 413.
+    // 26 MB covers the 25 MB the file store allows plus the multipart overhead.
+    serverActions: { bodySizeLimit: "26mb" },
   },
 };
 
