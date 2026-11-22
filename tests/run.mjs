@@ -56,7 +56,8 @@ for (const file of files) {
     {
       stdio: "inherit",
       cwd: path.resolve(here, ".."),
-      env: { ...process.env, OPS_STORE: store, OPS_TEST_RUN: "1" },
+      // A test backend that starts empty gets the sample desk, as it did before 22 Nov.
+      env: { ...process.env, OPS_STORE: store, OPS_TEST_RUN: "1", OPS_SAMPLE_DESK: "on" },
     },
   );
   if (r.status !== 0) { failed++; bad.push(label); }

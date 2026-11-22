@@ -178,7 +178,9 @@ Actions → **Deploy preview** → Run workflow. It:
 There is no automatic deploy. Nothing happens on a push.
 
 The sample desk puts itself in the first time a screen is opened on an empty
-backend, so there is nothing to seed by hand.
+backend, so there is nothing to seed by hand. It does so only because the
+compose file sets `OPS_SAMPLE_DESK=on`; a backend without it (production) starts
+with the real default settings and wording only.
 
 ## 4. Looking after it
 

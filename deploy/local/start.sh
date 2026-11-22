@@ -32,6 +32,8 @@ export CONVEX_SELF_HOSTED_ADMIN_KEY="$LOCAL_ADMIN_KEY"
 export OPS_SESSION_SECRET="$LOCAL_SESSION_SECRET"
 export OPS_STORE=convex
 export OPS_DEV_SIGNIN=on
+# Invented sample desk on an empty store (22 Nov). Never set on a live server.
+export OPS_SAMPLE_DESK=on
 # The TA System and Teams are stand-ins on a laptop (17 Nov): the pretend-TA panel at
 # /dev/ta needs the first, and no real meeting is ever made without the second.
 export OPS_TA_FAKE=on

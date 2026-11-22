@@ -61,6 +61,9 @@ services:
     environment:
       PORT: 3300
       HOSTNAME: 0.0.0.0
+      # The preview's data is invented by decision, so an empty preview backend
+      # gets the sample desk (22 Nov). The production compose never sets this.
+      OPS_SAMPLE_DESK: "on"
     ports:
       - "127.0.0.1:3322:3300"
     mem_limit: 1g
