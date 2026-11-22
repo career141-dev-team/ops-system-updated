@@ -91,6 +91,7 @@ import {
   leadJourney,
   stepToShow,
 } from "@/lib/leadJourney";
+import { meetingWeek } from "@/lib/calendarBoard";
 import { outlookNote } from "@/lib/outlookNote";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
@@ -217,6 +218,13 @@ export default async function LeadPage({
   const openedEarly = !!lead.openEarlyAt;
   // The opening's own gate is the action's: the button shows exactly when handOverToTa would accept (22 Nov).
   const introAccepted = introSatisfied({ meetings, esa, skipsIntro: known.skipsIntro });
+  const checklist = handoverChecklist({
+    intro: { meetings, esa, skipsIntro: known.skipsIntro },
+    esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
+    requirementBlanks: requirementBlanks.map((f) => f.label.toLowerCase()),
+    openEarly: openedEarly,
+    fields: requirement?.fields ?? {},
+  });
   const openingReady = introAccepted && agreementDone && !!requirement && requirementBlanks.length === 0;
   const roleKnown = !!(requirement?.fields.title ?? "").trim() && !!(requirement?.fields.headcount ?? "").trim();
   const position = requirement
@@ -1332,7 +1340,6 @@ export default async function LeadPage({
                             <a href={meeting.joinUrl} className="text-brand hover:underline">
                               {meeting.joinUrl}
                             </a>
-                            {" · " + outlookNote({ graphEventId: meeting.graphEventId, organiserName: nameOf(meeting.organiserId ?? null) })}
                           </>
                         ) : null}
                         {meeting.teamsProblem ? (
@@ -1343,8 +1350,22 @@ export default async function LeadPage({
                     {meeting.state === "booked" && (
                       // 22 Nov: staff booked an intro call and said it was not in their calendar. It is on the Ops Calendar page whatever Outlook did.
                       <p className="text-[13px] text-ink-soft">
-                        This call is on the Ops Calendar page.{" "}
-                        {outlookNote({ graphEventId: meeting.graphEventId, teamsProblem: meeting.teamsProblem, organiserName: nameOf(meeting.organiserId ?? null) })}
+                        {(() => {
+                          const w = meeting.at ? meetingWeek(now, meeting.at) : null;
+                          if (!w) return null;
+                          return w.sunday ? (
+                            "The Ops Calendar shows Monday to Saturday, so this Sunday call is not on it."
+                          ) : (
+                            <>
+                              On the{" "}
+                              <Link href={w.offset ? "/calendar?weekOffset=" + w.offset : "/calendar"} className="text-brand hover:underline">
+                                Ops Calendar, in the week of {w.mondayLabel}
+                              </Link>{" "}
+                              (Team view).
+                            </>
+                          );
+                        })()}{" "}
+                        {outlookNote({ graphEventId: meeting.graphEventId, organiserName: nameOf(meeting.organiserId ?? null) })}
                       </p>
                     )}
                     {meeting.state === "booked" &&
@@ -1583,13 +1604,7 @@ export default async function LeadPage({
             <div className="flex flex-col gap-2 rounded-[16px] bg-sunk px-4 py-3 text-[14px]">
               <span className={figmaLabel}>BEFORE THIS BECOMES A ROLE ON POSITIONS</span>
               <ul className="flex flex-col gap-1">
-                {handoverChecklist({
-                  intro: { meetings, esa, skipsIntro: known.skipsIntro },
-                  esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
-                  requirementBlanks: requirementBlanks.map((f) => f.label.toLowerCase()),
-                  openEarly: openedEarly,
-                  fields: requirement?.fields ?? {},
-                }).items.map((item) => (
+                {checklist.items.map((item) => (
                   <li key={item.step} className={item.done ? "text-ink-soft" : "text-ink"}>
                     <span aria-hidden="true">{item.done ? "✓ " : "○ "}</span>
                     <span className="sr-only">{item.done ? "Done: " : "Still needed: "}</span>
@@ -1605,14 +1620,14 @@ export default async function LeadPage({
                   </li>
                 ))}
               </ul>
-              {introAccepted && (openingReady || openedEarly) && (
+              {checklist.ready && (
                 <p className="text-[13px] text-ink-soft">Then hand it to the TA System with the button below.</p>
               )}
             </div>
           )}
           {!position && !introAccepted && (
             <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
-              The intro call is not marked as held yet, so the opening cannot be opened.{" "}
+              The intro call is not held and the agreement has not gone out yet, so the opening cannot be opened.{" "}
               <Link href={stepHref("intro")} className="font-medium underline">
                 Go to the intro call
               </Link>
@@ -1620,20 +1635,18 @@ export default async function LeadPage({
           )}
           {!position && introAccepted && !openingReady && !openedEarly && mayManage && (
             <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
-              {mayManage && (
-                <form action={openEarly} className="flex flex-col gap-2 border-t border-rule pt-3">
-                  <input type="hidden" name="leadId" value={lead.id} />
-                  <span className={figmaLabel}>A CLIENT WE TRUST? OPEN IT NOW, WITHOUT WAITING</span>
-                  <input
-                    name="reason"
-                    placeholder="Why this client can be opened for without waiting, and who agreed (kept with the lead)"
-                    className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                  />
-                  <SubmitButton id="open-early" className={pillSecondary + " self-start"}>
-                    Open it now, without waiting
-                  </SubmitButton>
-                </form>
-              )}
+              <form action={openEarly} className="flex flex-col gap-2">
+                <input type="hidden" name="leadId" value={lead.id} />
+                <span className={figmaLabel}>A CLIENT WE TRUST? OPEN IT NOW, WITHOUT WAITING</span>
+                <input
+                  name="reason"
+                  placeholder="Why this client can be opened for without waiting, and who agreed (kept with the lead)"
+                  className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                />
+                <SubmitButton id="open-early" className={pillSecondary + " self-start"}>
+                  Open it now, without waiting
+                </SubmitButton>
+              </form>
             </div>
           )}
           {!position && openedEarly && (

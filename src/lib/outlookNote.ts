@@ -11,5 +11,5 @@ export function outlookNote(input: {
   const id = input.graphEventId ?? "";
   if (id.startsWith("fake-")) return "Test mode: no Outlook event was made.";
   if (id) return "It is also in " + (input.organiserName ? input.organiserName + "'s " : "the organiser's ") + "Outlook calendar.";
-  return "No Outlook event was made for this call" + (input.teamsProblem ? ": " + input.teamsProblem : ".");
+  return "No Outlook event was made for this call" + (input.teamsProblem ? ": " + input.teamsProblem.replace(/\.?\s*$/, ".") : ".");
 }

@@ -58,6 +58,25 @@ export function saturdayAfter(fridayEndMs: number, now: number) {
   return { name: "Sat" as const, dayNum, startMs: fridayEndMs, endMs: fridayEndMs + DAY, isToday: today };
 }
 
+/**
+ * Where a booked meeting sits on /calendar (22 Nov): the page shows one Monday-to-Saturday week
+ * and opens on the current one, so "it is on the Calendar" needs the week to be true. A Sunday
+ * call is on no week at all.
+ */
+export function meetingWeek(now: number, at: number): { offset: number; sunday: boolean; mondayLabel: string } {
+  const mondayOf = (t: number) => {
+    const local = new Date(t + COLOMBO_OFFSET_MS);
+    const toMonday = local.getUTCDay() === 0 ? -6 : 1 - local.getUTCDay();
+    return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + toMonday);
+  };
+  const monday = new Date(mondayOf(at));
+  return {
+    offset: Math.round((mondayOf(at) - mondayOf(now)) / (7 * DAY)),
+    sunday: new Date(at + COLOMBO_OFFSET_MS).getUTCDay() === 0,
+    mondayLabel: monday.getUTCDate() + " " + monday.toLocaleString("en-GB", { month: "short", timeZone: "UTC" }),
+  };
+}
+
 /** "Fri 20 Nov", Colombo. */
 export function dayWord(at: number): string {
   const d = new Date(at + COLOMBO_OFFSET_MS);
