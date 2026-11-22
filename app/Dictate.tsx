@@ -94,8 +94,8 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
       <button
         type="button"
         aria-pressed={listening}
-        aria-label={listening ? "Listening - press to stop" : label}
-        title={listening ? "Listening - press to stop" : label}
+        aria-label={problem || (listening ? "Listening - press to stop" : label)}
+        title={problem || (listening ? "Listening - press to stop" : label)}
         onClick={toggle}
         className={
           "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors " +
@@ -119,6 +119,7 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
     <span className="flex flex-wrap items-center gap-2">
       <button
         type="button"
+        aria-pressed={listening}
         onClick={toggle}
         className={
           "rounded-full border px-3 py-1 text-[12px] " +
@@ -127,7 +128,7 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
       >
         {listening ? "Listening — press to stop" : label}
       </button>
-      {problem && <span className="text-[12px] text-warn">{problem}</span>}
+      {problem && <span role="status" className="text-[12px] text-warn">{problem}</span>}
       {said && <span className="text-[12px] text-ink-faint">{said.split(/\s+/).length} words heard</span>}
     </span>
   );

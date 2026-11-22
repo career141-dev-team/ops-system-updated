@@ -257,6 +257,21 @@ export function existingClientOf(
   };
 }
 
+/**
+ * The one intro rule (22 Nov), exactly what handOverToTa accepts: any meeting held, or an
+ * agreement that has gone out (a draft has not), or a lead that skips the intro. The lead page
+ * and the checklist use this too, so the button shows exactly when the action would accept.
+ */
+export function introSatisfied(input: {
+  meetings: { state: string }[];
+  esa: { state: string } | null;
+  skipsIntro: boolean;
+}): boolean {
+  const talked = input.meetings.some((m) => m.state === "held");
+  const goneOut = !!input.esa && input.esa.state !== "draft";
+  return talked || goneOut || input.skipsIntro;
+}
+
 /** The owner's rule: nothing closes without a reason written down first. */
 export function problemWithClosing(state: LeadState, reason: string): string | null {
   const closing: LeadState[] = ["declined_industry", "closed_silent", "closed_other"];

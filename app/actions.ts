@@ -307,6 +307,7 @@ import {
   problemWithClosing,
   directClientRouting,
   existingClientOf,
+  introSatisfied,
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
@@ -4012,13 +4013,10 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   // requirement is complete, unless this lead was marked "open it now".
   const esa = agreementForLead(db, leadId);
   const leadMeetings = meetingsForLead(db, leadId);
-  const talked = leadMeetings.some((m) => m.state === "held");
   // A Director's lead, or a client we already had, has no intro call; one signed before has no agreement here (18 Nov).
   const known = existingClientOf(row, leadMeetings, esa);
-  // A draft made from the intro call's own form (17 Nov) is not an agreement that has gone out:
-  // it must not stand in for the call, or the opening opens before the call is held.
-  const goneOut = !!esa && esa.state !== "draft";
-  if (!talked && !goneOut && !known.skipsIntro) back("Hold the intro call first: the opening is opened after it.");
+  // A draft made from the intro call's own form (17 Nov) is not an agreement that has gone out (see introSatisfied).
+  if (!introSatisfied({ meetings: leadMeetings, esa, skipsIntro: known.skipsIntro })) back("Hold the intro call first: the opening is opened after it.");
   const problem = problemWithOpening({
     esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
     requirementBlanks: requirementMissing(req.fields).map((f) => f.label.toLowerCase()),

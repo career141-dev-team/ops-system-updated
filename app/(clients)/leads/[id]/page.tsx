@@ -72,7 +72,7 @@ import {
   startingFields,
   whereItStands,
 } from "@/lib/esa";
-import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, type LeadState } from "@/lib/leads";
+import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, introSatisfied, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
   MAX_REBOOKS,
@@ -91,6 +91,7 @@ import {
   leadJourney,
   stepToShow,
 } from "@/lib/leadJourney";
+import { outlookNote } from "@/lib/outlookNote";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
@@ -214,7 +215,9 @@ export default async function LeadPage({
   // A finished step is shown, not edited (owner, 17 Nov evening).
   const requirementDone = !!requirement && requirementLocked(requirement.fields);
   const openedEarly = !!lead.openEarlyAt;
-  const openingReady = introHeldOrSkipped && agreementDone && !!requirement && requirementBlanks.length === 0;
+  // The opening's own gate is the action's: the button shows exactly when handOverToTa would accept (22 Nov).
+  const introAccepted = introSatisfied({ meetings, esa, skipsIntro: known.skipsIntro });
+  const openingReady = introAccepted && agreementDone && !!requirement && requirementBlanks.length === 0;
   const roleKnown = !!(requirement?.fields.title ?? "").trim() && !!(requirement?.fields.headcount ?? "").trim();
   const position = requirement
     ? (db.positions.find((p) => p.requirementId === requirement.id) ?? null)
@@ -1329,9 +1332,7 @@ export default async function LeadPage({
                             <a href={meeting.joinUrl} className="text-brand hover:underline">
                               {meeting.joinUrl}
                             </a>
-                            {meeting.graphEventId && meeting.organiserId
-                              ? " · in " + nameOf(meeting.organiserId) + "'s Outlook calendar"
-                              : ""}
+                            {" · " + outlookNote({ graphEventId: meeting.graphEventId, organiserName: nameOf(meeting.organiserId ?? null) })}
                           </>
                         ) : null}
                         {meeting.teamsProblem ? (
@@ -1340,12 +1341,10 @@ export default async function LeadPage({
                       </p>
                     )}
                     {meeting.state === "booked" && (
-                      // 22 Nov: staff booked an intro call and said it was not in their calendar. It is on the Ops Calendar page; only Outlook is off in test mode.
+                      // 22 Nov: staff booked an intro call and said it was not in their calendar. It is on the Ops Calendar page whatever Outlook did.
                       <p className="text-[13px] text-ink-soft">
                         This call is on the Ops Calendar page.{" "}
-                        {meeting.graphEventId
-                          ? "It is also in Outlook."
-                          : "It is NOT in anyone's Outlook: sending is switched off (test mode), so no invite went out."}
+                        {outlookNote({ graphEventId: meeting.graphEventId, teamsProblem: meeting.teamsProblem, organiserName: nameOf(meeting.organiserId ?? null) })}
                       </p>
                     )}
                     {meeting.state === "booked" &&
@@ -1585,22 +1584,33 @@ export default async function LeadPage({
               <span className={figmaLabel}>BEFORE THIS BECOMES A ROLE ON POSITIONS</span>
               <ul className="flex flex-col gap-1">
                 {handoverChecklist({
-                  introDone: introHeldOrSkipped,
+                  intro: { meetings, esa, skipsIntro: known.skipsIntro },
                   esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
                   requirementBlanks: requirementBlanks.map((f) => f.label.toLowerCase()),
                   openEarly: openedEarly,
                   fields: requirement?.fields ?? {},
                 }).items.map((item) => (
-                  <li key={item.label} className={item.done ? "text-ink-soft" : "text-ink"}>
-                    {item.done ? "✓ " : "○ "}
+                  <li key={item.step} className={item.done ? "text-ink-soft" : "text-ink"}>
+                    <span aria-hidden="true">{item.done ? "✓ " : "○ "}</span>
+                    <span className="sr-only">{item.done ? "Done: " : "Still needed: "}</span>
                     {item.label}
+                    {!item.done && (
+                      <>
+                        {". "}
+                        <Link href={stepHref(item.step)} className="font-medium text-brand underline">
+                          Go to it
+                        </Link>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
-              <p className="text-[13px] text-ink-soft">Then hand it to the TA System with the button below.</p>
+              {introAccepted && (openingReady || openedEarly) && (
+                <p className="text-[13px] text-ink-soft">Then hand it to the TA System with the button below.</p>
+              )}
             </div>
           )}
-          {!position && !introHeldOrSkipped && (
+          {!position && !introAccepted && (
             <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
               The intro call is not marked as held yet, so the opening cannot be opened.{" "}
               <Link href={stepHref("intro")} className="font-medium underline">
@@ -1608,28 +1618,8 @@ export default async function LeadPage({
               </Link>
             </p>
           )}
-          {!position && introHeldOrSkipped && !openingReady && !openedEarly && (
+          {!position && introAccepted && !openingReady && !openedEarly && mayManage && (
             <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
-              <span className={figmaLabel}>THE OPENING WAITS FOR TWO THINGS</span>
-              <ul className="flex flex-col gap-1.5 text-[14px]">
-                <li className={agreementDone ? "text-ink-soft" : "text-ink"}>
-                  {agreementDone ? "Done: " : "Waiting: "}the client&rsquo;s signed agreement.{" "}
-                  {!agreementDone && (
-                    <Link href={stepHref("agreement")} className="font-medium text-brand underline">
-                      The agreement
-                    </Link>
-                  )}
-                </li>
-                <li className={requirement && requirementBlanks.length === 0 ? "text-ink-soft" : "text-ink"}>
-                  {requirement && requirementBlanks.length === 0 ? "Done: " : "Waiting: "}the requirement, complete
-                  {requirement && requirementBlanks.length > 0 ? " (" + requirementBlanks.length + " blank)" : ""}.{" "}
-                  {!(requirement && requirementBlanks.length === 0) && (
-                    <Link href={stepHref("requirement")} className="font-medium text-brand underline">
-                      The requirement
-                    </Link>
-                  )}
-                </li>
-              </ul>
               {mayManage && (
                 <form action={openEarly} className="flex flex-col gap-2 border-t border-rule pt-3">
                   <input type="hidden" name="leadId" value={lead.id} />
@@ -1676,7 +1666,7 @@ export default async function LeadPage({
                 Open the position
               </Link>
             </div>
-          ) : !introHeldOrSkipped || !(openingReady || openedEarly) ? null : (
+          ) : !introAccepted || !(openingReady || openedEarly) ? null : (
             <>
               {mayManage && !roleKnown && (
                 <form action={saveRequirement} className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">

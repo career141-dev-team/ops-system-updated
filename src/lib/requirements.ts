@@ -1,3 +1,5 @@
+import { introSatisfied } from "@/lib/leads";
+
 /**
  * The requirement, and handing it to the TA System (15, Phase 3).
  *
@@ -193,18 +195,23 @@ export function agreementSigned(esaState: string | null): boolean {
  * the requirement line asks `problemWithOpening` itself, so the checklist and the refusal agree.
  */
 export function handoverChecklist(input: {
-  introDone: boolean;
+  intro: { meetings: { state: string }[]; esa: { state: string } | null; skipsIntro: boolean };
   esaState: string | null;
   requirementBlanks: string[];
   openEarly: boolean;
   fields: RequirementFields;
-}): { items: { label: string; done: boolean }[]; ready: boolean } {
-  const signed = agreementSigned(input.esaState);
-  const complete = problemWithHandover(input.fields) === null && input.requirementBlanks.length === 0;
+}): { items: { step: "intro" | "agreement" | "requirement"; label: string; done: boolean }[]; ready: boolean } {
+  const introDone = introSatisfied(input.intro);
+  const named = problemWithHandover(input.fields) === null;
+  // Opened early, the signature and the blanks are waived; claiming them would be false.
   const items = [
-    { label: "The intro call is held", done: input.introDone },
-    { label: "The client has signed the agreement", done: signed || input.openEarly },
-    { label: "The requirement is complete", done: input.openEarly ? problemWithHandover(input.fields) === null : complete },
+    { step: "intro" as const, label: "The intro call is held (or the agreement has gone out)", done: introDone },
+    input.openEarly
+      ? { step: "agreement" as const, label: "Marked to open without waiting (agreement not needed yet)", done: true }
+      : { step: "agreement" as const, label: "The client has signed the agreement", done: agreementSigned(input.esaState) },
+    input.openEarly
+      ? { step: "requirement" as const, label: "The role's name and how many are written", done: named }
+      : { step: "requirement" as const, label: "The requirement is complete", done: named && input.requirementBlanks.length === 0 },
   ];
-  return { items, ready: input.introDone && problemWithOpening(input) === null };
+  return { items, ready: introDone && problemWithOpening(input) === null };
 }
