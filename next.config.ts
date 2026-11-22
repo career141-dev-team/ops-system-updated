@@ -39,6 +39,9 @@ const nextConfig: NextConfig = {
     // Server actions take 1 MB by default, so a 3 MB CV (22 Nov, hiring) or a 20 MB kept file failed with a raw 413.
     // 26 MB covers the 25 MB the file store allows plus the multipart overhead.
     serverActions: { bodySizeLimit: "26mb" },
+    // proxy.ts also reads action POSTs, and its own body limit defaults to 10 MB, which would cut a larger upload
+    // before the limit above applies. Same value on purpose.
+    proxyClientMaxBodySize: "26mb",
   },
 };
 

@@ -79,7 +79,7 @@ export default async function VacancyPage({
 
   const figures: [string, number, string, string][] = [
     ["New CVs", n("new"), "to look at", "text-ink"],
-    ["To call", toCall, toCall ? `oldest waits ${oldest} ${oldest === 1 ? "day" : "days"}` : "nobody waits", "text-warn"],
+    ["To call", toCall, toCall ? `${n("new") > 0 ? `includes ${n("new")} new ${n("new") === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${oldest} ${oldest === 1 ? "day" : "days"}` : "nobody waits", "text-warn"],
     ["Called · fits", n("fits"), "to book", "text-ink"],
     ["Interview", n("interview"), `${interviewers.length} this week`, "text-info"],
     ["Decision", n("decision"), "waiting for you", n("decision") ? "text-warn" : "text-ink"],
