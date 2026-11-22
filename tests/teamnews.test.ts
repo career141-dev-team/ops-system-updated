@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { seed } from "../src/data/seed";
 import { teamNewsView } from "../src/lib/inboxChannels";
+import { canDeleteTeamNote, isRepeatTeamNote } from "../src/lib/panelActions";
 
 test("teamNewsView merges real team notes and milestone audit rows newest first", () => {
   const now = Date.now();
@@ -21,4 +22,19 @@ test("teamNewsView merges real team notes and milestone audit rows newest first"
   assert.equal(feed[0]!.kind, "Note");
   assert.equal(feed[1]!.id, "au_1");
   assert.equal(feed[1]!.kind, "Signed");
+});
+
+test("isRepeatTeamNote catches the same author and text inside two minutes only", () => {
+  const now = 1_000_000_000;
+  const notes = [{ authorId: "a", body: "Hello team", createdAt: now - 60_000 }];
+  assert.equal(isRepeatTeamNote(notes, "a", " Hello team ", now), true);
+  assert.equal(isRepeatTeamNote(notes, "b", "Hello team", now), false);
+  assert.equal(isRepeatTeamNote(notes, "a", "Different", now), false);
+  assert.equal(isRepeatTeamNote(notes, "a", "Hello team", now + 120_000), false);
+});
+
+test("canDeleteTeamNote lets only the author delete", () => {
+  assert.equal(canDeleteTeamNote({ authorId: "a" }, "a"), true);
+  assert.equal(canDeleteTeamNote({ authorId: "a" }, "b"), false);
+  assert.equal(canDeleteTeamNote(undefined, "a"), false);
 });

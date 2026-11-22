@@ -2262,6 +2262,24 @@ export const addTeamNote = internalMutation({
   },
 });
 
+/** Delete a team note; the author check is in the action (22 Nov). */
+export const removeTeamNote = internalMutation({
+  args: { noteId: v.string(), actorId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.noteId as Id<"opsTeamNotes">);
+    if (!row) return { ok: false };
+    await ctx.db.delete(row._id);
+    await writeAudit(ctx, {
+      actorId: args.actorId,
+      action: "teamNote.deleted",
+      subjectType: "teamNote",
+      subjectId: args.noteId,
+      before: row.body.slice(0, 120),
+    });
+    return { ok: true };
+  },
+});
+
 /** Internal hiring: create a Career141 vacancy (H1, 19 Nov). */
 export const addVacancy = internalMutation({
   args: {

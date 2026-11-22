@@ -43,6 +43,7 @@ import {
   addInvoice,
   addReference,
   addTeamNote,
+  removeTeamNote,
   addVacancy,
   patchApplicant,
   patchVacancy,
@@ -144,6 +145,8 @@ import {
   problemWithManualChase,
   problemWithRefundDecision,
   problemWithTeamNote,
+  isRepeatTeamNote,
+  canDeleteTeamNote,
 } from "@/lib/panelActions";
 import { doNotContactFrom, gate, isRoutine, needsApproval, sentToday } from "@/lib/messages";
 import {
@@ -8196,9 +8199,23 @@ export async function postTeamNote(formData: FormData): Promise<void> {
   const dest = backTo(formData, "/mail?view=news");
   const problem = problemWithTeamNote(body);
   if (problem) redirect(withMsg(dest, problem));
-  await addTeamNote(member.id, body);
+  // A repeat click is answered as posted but not saved again (22 Nov).
+  if (!isRepeatTeamNote((await desk()).teamNotes ?? [], member.id, body, Date.now())) await addTeamNote(member.id, body);
   revalidatePath("/mail");
   redirect(dest + confirmed("Posted to Team news.", dest));
+}
+
+/** Delete your own team note (22 Nov). */
+export async function deleteTeamNote(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/mail?view=news");
+  const noteId = String(formData.get("id") ?? "");
+  const note = ((await desk()).teamNotes ?? []).find((n) => n.id === noteId);
+  if (!canDeleteTeamNote(note, member.id)) redirect(withMsg(dest, "You can only delete your own notes."));
+  await removeTeamNote(noteId, member.id);
+  revalidatePath("/mail");
+  redirect(dest + confirmed("Note deleted.", dest));
 }
 
 /** Internal hiring: create a new Career141 vacancy (H1). */

@@ -49,6 +49,25 @@ export function problemWithHistoryCorrection(note: string): string | null {
   return null;
 }
 
+/**
+ * A repeat post: same author, same text, within two minutes (22 Nov). The post button had no
+ * waiting state, so a slow post was clicked again and the same note showed 4+ times.
+ */
+export function isRepeatTeamNote(
+  notes: { authorId: string; body: string; createdAt: number }[],
+  authorId: string,
+  body: string,
+  now: number,
+): boolean {
+  const b = body.trim();
+  return notes.some((n) => n.authorId === authorId && n.body.trim() === b && now - n.createdAt < 120_000);
+}
+
+/** Only the author may delete a team note (22 Nov). */
+export function canDeleteTeamNote(note: { authorId: string } | undefined, memberId: string): boolean {
+  return !!note && note.authorId === memberId;
+}
+
 export function problemWithTeamNote(body: string): string | null {
   const b = body.trim();
   if (b.length < 2) return "Write a note before posting.";

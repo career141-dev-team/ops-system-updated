@@ -1572,6 +1572,15 @@ export const repo = {
     return row;
   },
 
+  removeTeamNote(noteId: Id, actorId: Id): void {
+    const db = load();
+    const row = db.teamNotes.find((n) => n.id === noteId);
+    if (!row) return;
+    db.teamNotes = db.teamNotes.filter((n) => n.id !== noteId);
+    audit({ actorId, action: "teamNote.deleted", subjectType: "teamNote", subjectId: noteId, before: row.body.slice(0, 120), after: null, reason: null });
+    save();
+  },
+
   addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): OpsVacancy {
     const db = load();
     const now = Date.now();

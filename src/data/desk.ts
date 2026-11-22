@@ -4057,6 +4057,14 @@ export async function addTeamNote(authorId: Id, body: string): Promise<OpsTeamNo
   return repo.addTeamNote(authorId, body);
 }
 
+export async function removeTeamNote(noteId: Id, actorId: Id): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:removeTeamNote", { noteId, actorId });
+    return;
+  }
+  repo.removeTeamNote(noteId, actorId);
+}
+
 export async function addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): Promise<OpsVacancy> {
   if (usingConvex()) {
     return (await convexMutation("ops/data:addVacancy", input)) as OpsVacancy;
