@@ -21,6 +21,7 @@ export function SubmitButton({
   value,
   formNoValidate,
   answerAt,
+  "aria-label": ariaLabel,
 }: {
   id: string;
   /** Where the answer is shown when this button will not be on the page afterwards (an <Answer id>). */
@@ -30,6 +31,7 @@ export function SubmitButton({
   name?: string;
   value?: string;
   formNoValidate?: boolean;
+  "aria-label"?: string;
 }) {
   const { pending, data } = useFormStatus();
   const params = useSearchParams();
@@ -51,6 +53,7 @@ export function SubmitButton({
         value={name ? value : at}
         formNoValidate={formNoValidate}
         disabled={pending}
+        aria-label={ariaLabel}
         aria-busy={pending && mine}
         className={className + " inline-flex items-center gap-2 disabled:opacity-60"}
         onClick={(e) => {

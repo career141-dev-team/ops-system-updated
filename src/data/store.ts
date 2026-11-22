@@ -1575,7 +1575,7 @@ export const repo = {
   removeTeamNote(noteId: Id, actorId: Id): void {
     const db = load();
     const row = db.teamNotes.find((n) => n.id === noteId);
-    if (!row) return;
+    if (!row || row.authorId !== actorId) return; // author only, even if the action's check is skipped
     db.teamNotes = db.teamNotes.filter((n) => n.id !== noteId);
     audit({ actorId, action: "teamNote.deleted", subjectType: "teamNote", subjectId: noteId, before: row.body.slice(0, 120), after: null, reason: null });
     save();

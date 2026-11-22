@@ -24,13 +24,13 @@ test("teamNewsView merges real team notes and milestone audit rows newest first"
   assert.equal(feed[1]!.kind, "Signed");
 });
 
-test("isRepeatTeamNote catches the same author and text inside two minutes only", () => {
+test("isRepeatTeamNote catches the same author and text inside ten minutes only", () => {
   const now = 1_000_000_000;
-  const notes = [{ authorId: "a", body: "Hello team", createdAt: now - 60_000 }];
+  const notes = [{ authorId: "a", body: "Hello team", createdAt: now - 300_000 }];
   assert.equal(isRepeatTeamNote(notes, "a", " Hello team ", now), true);
   assert.equal(isRepeatTeamNote(notes, "b", "Hello team", now), false);
   assert.equal(isRepeatTeamNote(notes, "a", "Different", now), false);
-  assert.equal(isRepeatTeamNote(notes, "a", "Hello team", now + 120_000), false);
+  assert.equal(isRepeatTeamNote(notes, "a", "Hello team", now + 600_000), false);
 });
 
 test("canDeleteTeamNote lets only the author delete", () => {

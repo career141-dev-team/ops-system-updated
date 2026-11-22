@@ -2267,7 +2267,7 @@ export const removeTeamNote = internalMutation({
   args: { noteId: v.string(), actorId: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.noteId as Id<"opsTeamNotes">);
-    if (!row) return { ok: false };
+    if (!row || row.authorId !== args.actorId) return { ok: false }; // author only
     await ctx.db.delete(row._id);
     await writeAudit(ctx, {
       actorId: args.actorId,
