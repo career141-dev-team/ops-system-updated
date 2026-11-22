@@ -149,7 +149,7 @@ export function problemWithOpening(input: {
   fields: RequirementFields;
 }): string | null {
   if (!input.openEarly) {
-    const signed = input.esaState === "signed" || input.esaState === "countersigned";
+    const signed = agreementSigned(input.esaState);
     const missing: string[] = [];
     if (!signed) missing.push("the client has not signed the agreement yet");
     if (input.requirementBlanks.length) missing.push("the requirement still has blanks: " + input.requirementBlanks.join(", "));
@@ -180,4 +180,31 @@ export function handoverInWords(
   if (position.primaryTaId) bits.push("primary TA set");
   if (position.hundredPercentDay) bits.push("100% day " + position.hundredPercentDay);
   return bits.join(" · ");
+}
+
+/** One answer to "has the client signed", shared by the hand-over and its checklist so they cannot drift. */
+export function agreementSigned(esaState: string | null): boolean {
+  return esaState === "signed" || esaState === "countersigned";
+}
+
+/**
+ * "Before this becomes a role on Positions" (22 Nov): staff saved a requirement and saw no role,
+ * because the role is only made when handOverToTa passes. Each line is one of its conditions;
+ * the requirement line asks `problemWithOpening` itself, so the checklist and the refusal agree.
+ */
+export function handoverChecklist(input: {
+  introDone: boolean;
+  esaState: string | null;
+  requirementBlanks: string[];
+  openEarly: boolean;
+  fields: RequirementFields;
+}): { items: { label: string; done: boolean }[]; ready: boolean } {
+  const signed = agreementSigned(input.esaState);
+  const complete = problemWithHandover(input.fields) === null && input.requirementBlanks.length === 0;
+  const items = [
+    { label: "The intro call is held", done: input.introDone },
+    { label: "The client has signed the agreement", done: signed || input.openEarly },
+    { label: "The requirement is complete", done: input.openEarly ? problemWithHandover(input.fields) === null : complete },
+  ];
+  return { items, ready: input.introDone && problemWithOpening(input) === null };
 }

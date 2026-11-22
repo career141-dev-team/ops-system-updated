@@ -101,7 +101,8 @@ import { AgreementFieldsForm } from "./AgreementFieldsForm";
 import { CoverEmailPreview } from "./CoverEmailPreview";
 import { MeetingBookingForm } from "./MeetingBookingForm";
 import { leadNextStep } from "@/lib/nextStep";
-import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
+import { actionInWords } from "@/lib/auditWords";
+import { REQUIREMENT_FIELDS, briefText, handoverChecklist, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { fakeTa, people as taPeople } from "@/lib/ta";
@@ -905,7 +906,7 @@ export default async function LeadPage({
                         />
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Dictate into="said" label="Hold a moment and speak" />
+                        <Dictate into="said" label="Press and speak" />
                         <button type="submit" className={pillSecondary}>
                           Put it into the fields
                         </button>
@@ -1338,6 +1339,15 @@ export default async function LeadPage({
                         ) : null}
                       </p>
                     )}
+                    {meeting.state === "booked" && (
+                      // 22 Nov: staff booked an intro call and said it was not in their calendar. It is on the Ops Calendar page; only Outlook is off in test mode.
+                      <p className="text-[13px] text-ink-soft">
+                        This call is on the Ops Calendar page.{" "}
+                        {meeting.graphEventId
+                          ? "It is also in Outlook."
+                          : "It is NOT in anyone's Outlook: sending is switched off (test mode), so no invite went out."}
+                      </p>
+                    )}
                     {meeting.state === "booked" &&
                       renderInviteOutcome(
                         db.messages.find(
@@ -1569,6 +1579,27 @@ export default async function LeadPage({
 
           {activeView === "opening" && (
             <>
+          {!position && (
+            // 22 Nov: staff saved the requirement and saw no role on Positions; the role is made only when all of these hold.
+            <div className="flex flex-col gap-2 rounded-[16px] bg-sunk px-4 py-3 text-[14px]">
+              <span className={figmaLabel}>BEFORE THIS BECOMES A ROLE ON POSITIONS</span>
+              <ul className="flex flex-col gap-1">
+                {handoverChecklist({
+                  introDone: introHeldOrSkipped,
+                  esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
+                  requirementBlanks: requirementBlanks.map((f) => f.label.toLowerCase()),
+                  openEarly: openedEarly,
+                  fields: requirement?.fields ?? {},
+                }).items.map((item) => (
+                  <li key={item.label} className={item.done ? "text-ink-soft" : "text-ink"}>
+                    {item.done ? "✓ " : "○ "}
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[13px] text-ink-soft">Then hand it to the TA System with the button below.</p>
+            </div>
+          )}
           {!position && !introHeldOrSkipped && (
             <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
               The intro call is not marked as held yet, so the opening cannot be opened.{" "}
@@ -1747,16 +1778,19 @@ export default async function LeadPage({
           <div className="flex flex-col gap-2.5">
             {/* Fold 5: Close lead & audit */}
             <FoldRow
-              title="Something different?"
+              title="Close this lead"
               summary={
                 closed
                   ? `Closed · ${STATE_MEANINGS[lead.state as LeadState] ?? lead.state}`
-                  : "Close with a reason · what happened to it"
+                  : "Only if it is not going ahead · what happened to it"
               }
             >
               <div className="flex flex-col gap-4">
                 {!closed && mayManage && (
                   <form action={closeLead} className="flex flex-col gap-3">
+                    <p className="text-[13px] text-ink-soft">
+                      This closes the lead. Use it only if it is not going ahead - nothing closes without a reason.
+                    </p>
                     <input type="hidden" name="leadId" value={lead.id} />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <label className="flex flex-col gap-1">
@@ -1799,7 +1833,7 @@ export default async function LeadPage({
                         key={entry.id}
                         className="flex flex-wrap items-baseline justify-between gap-2 border-t border-rule py-1.5 text-[13px] first:border-t-0"
                       >
-                        <span className="font-medium text-ink">{entry.action}</span>
+                        <span className="font-medium text-ink">{actionInWords(entry.action)}</span>
                         <span className="text-ink-soft">
                           {nameOf(entry.actorId)} · {whenLocal(entry.at)}
                           {entry.reason ? ` · ${entry.reason}` : ""}
