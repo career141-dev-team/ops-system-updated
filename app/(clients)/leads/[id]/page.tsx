@@ -72,7 +72,7 @@ import {
   startingFields,
   whereItStands,
 } from "@/lib/esa";
-import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, type LeadState } from "@/lib/leads";
+import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, introSatisfied, type LeadState } from "@/lib/leads";
 import {
   KIND_MEANINGS,
   MAX_REBOOKS,
@@ -91,6 +91,8 @@ import {
   leadJourney,
   stepToShow,
 } from "@/lib/leadJourney";
+import { meetingWeek } from "@/lib/calendarBoard";
+import { outlookNote } from "@/lib/outlookNote";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
@@ -101,7 +103,8 @@ import { AgreementFieldsForm } from "./AgreementFieldsForm";
 import { CoverEmailPreview } from "./CoverEmailPreview";
 import { MeetingBookingForm } from "./MeetingBookingForm";
 import { leadNextStep } from "@/lib/nextStep";
-import { REQUIREMENT_FIELDS, briefText, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
+import { actionInWords } from "@/lib/auditWords";
+import { REQUIREMENT_FIELDS, briefText, handoverChecklist, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { fakeTa, people as taPeople } from "@/lib/ta";
@@ -213,7 +216,16 @@ export default async function LeadPage({
   // A finished step is shown, not edited (owner, 17 Nov evening).
   const requirementDone = !!requirement && requirementLocked(requirement.fields);
   const openedEarly = !!lead.openEarlyAt;
-  const openingReady = introHeldOrSkipped && agreementDone && !!requirement && requirementBlanks.length === 0;
+  // The opening's own gate is the action's: the button shows exactly when handOverToTa would accept (22 Nov).
+  const introAccepted = introSatisfied({ meetings, esa, skipsIntro: known.skipsIntro });
+  const checklist = handoverChecklist({
+    intro: { meetings, esa, skipsIntro: known.skipsIntro },
+    esaState: known.signedOnFile ? "signed" : (esa?.state ?? null),
+    requirementBlanks: requirementBlanks.map((f) => f.label.toLowerCase()),
+    openEarly: openedEarly,
+    fields: requirement?.fields ?? {},
+  });
+  const openingReady = introAccepted && agreementDone && !!requirement && requirementBlanks.length === 0;
   const roleKnown = !!(requirement?.fields.title ?? "").trim() && !!(requirement?.fields.headcount ?? "").trim();
   const position = requirement
     ? (db.positions.find((p) => p.requirementId === requirement.id) ?? null)
@@ -905,7 +917,7 @@ export default async function LeadPage({
                         />
                       </label>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Dictate into="said" label="Hold a moment and speak" />
+                        <Dictate into="said" label="Press and speak" />
                         <button type="submit" className={pillSecondary}>
                           Put it into the fields
                         </button>
@@ -1328,14 +1340,32 @@ export default async function LeadPage({
                             <a href={meeting.joinUrl} className="text-brand hover:underline">
                               {meeting.joinUrl}
                             </a>
-                            {meeting.graphEventId && meeting.organiserId
-                              ? " · in " + nameOf(meeting.organiserId) + "'s Outlook calendar"
-                              : ""}
                           </>
                         ) : null}
                         {meeting.teamsProblem ? (
                           <span className="text-warn"> No Teams link was made: {meeting.teamsProblem}</span>
                         ) : null}
+                      </p>
+                    )}
+                    {meeting.state === "booked" && (
+                      // 22 Nov: staff booked an intro call and said it was not in their calendar. It is on the Ops Calendar page whatever Outlook did.
+                      <p className="text-[13px] text-ink-soft">
+                        {(() => {
+                          const w = meeting.at ? meetingWeek(now, meeting.at) : null;
+                          if (!w) return null;
+                          return w.sunday ? (
+                            "The Ops Calendar shows Monday to Saturday, so this Sunday call is not on it."
+                          ) : (
+                            <>
+                              On the{" "}
+                              <Link href={w.offset ? "/calendar?weekOffset=" + w.offset : "/calendar"} className="text-brand hover:underline">
+                                Ops Calendar, in the week of {w.mondayLabel}
+                              </Link>{" "}
+                              (Team view).
+                            </>
+                          );
+                        })()}{" "}
+                        {outlookNote({ graphEventId: meeting.graphEventId, organiserName: nameOf(meeting.organiserId ?? null) })}
                       </p>
                     )}
                     {meeting.state === "booked" &&
@@ -1569,50 +1599,54 @@ export default async function LeadPage({
 
           {activeView === "opening" && (
             <>
-          {!position && !introHeldOrSkipped && (
+          {!position && (
+            // 22 Nov: staff saved the requirement and saw no role on Positions; the role is made only when all of these hold.
+            <div className="flex flex-col gap-2 rounded-[16px] bg-sunk px-4 py-3 text-[14px]">
+              <span className={figmaLabel}>BEFORE THIS BECOMES A ROLE ON POSITIONS</span>
+              <ul className="flex flex-col gap-1">
+                {checklist.items.map((item) => (
+                  <li key={item.step} className={item.done ? "text-ink-soft" : "text-ink"}>
+                    <span aria-hidden="true">{item.done ? "✓ " : "○ "}</span>
+                    <span className="sr-only">{item.done ? "Done: " : "Still needed: "}</span>
+                    {item.label}
+                    {!item.done && (
+                      <>
+                        {". "}
+                        <Link href={stepHref(item.step)} className="font-medium text-brand underline">
+                          Go to it
+                        </Link>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {checklist.ready && (
+                <p className="text-[13px] text-ink-soft">Then hand it to the TA System with the button below.</p>
+              )}
+            </div>
+          )}
+          {!position && !introAccepted && (
             <p className="rounded-[16px] bg-warn-soft px-4 py-3 text-[14px] text-warn">
-              The intro call is not marked as held yet, so the opening cannot be opened.{" "}
+              The intro call is not held and the agreement has not gone out yet, so the opening cannot be opened.{" "}
               <Link href={stepHref("intro")} className="font-medium underline">
                 Go to the intro call
               </Link>
             </p>
           )}
-          {!position && introHeldOrSkipped && !openingReady && !openedEarly && (
+          {!position && introAccepted && !openingReady && !openedEarly && mayManage && (
             <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
-              <span className={figmaLabel}>THE OPENING WAITS FOR TWO THINGS</span>
-              <ul className="flex flex-col gap-1.5 text-[14px]">
-                <li className={agreementDone ? "text-ink-soft" : "text-ink"}>
-                  {agreementDone ? "Done: " : "Waiting: "}the client&rsquo;s signed agreement.{" "}
-                  {!agreementDone && (
-                    <Link href={stepHref("agreement")} className="font-medium text-brand underline">
-                      The agreement
-                    </Link>
-                  )}
-                </li>
-                <li className={requirement && requirementBlanks.length === 0 ? "text-ink-soft" : "text-ink"}>
-                  {requirement && requirementBlanks.length === 0 ? "Done: " : "Waiting: "}the requirement, complete
-                  {requirement && requirementBlanks.length > 0 ? " (" + requirementBlanks.length + " blank)" : ""}.{" "}
-                  {!(requirement && requirementBlanks.length === 0) && (
-                    <Link href={stepHref("requirement")} className="font-medium text-brand underline">
-                      The requirement
-                    </Link>
-                  )}
-                </li>
-              </ul>
-              {mayManage && (
-                <form action={openEarly} className="flex flex-col gap-2 border-t border-rule pt-3">
-                  <input type="hidden" name="leadId" value={lead.id} />
-                  <span className={figmaLabel}>A CLIENT WE TRUST? OPEN IT NOW, WITHOUT WAITING</span>
-                  <input
-                    name="reason"
-                    placeholder="Why this client can be opened for without waiting, and who agreed (kept with the lead)"
-                    className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                  />
-                  <SubmitButton id="open-early" className={pillSecondary + " self-start"}>
-                    Open it now, without waiting
-                  </SubmitButton>
-                </form>
-              )}
+              <form action={openEarly} className="flex flex-col gap-2">
+                <input type="hidden" name="leadId" value={lead.id} />
+                <span className={figmaLabel}>A CLIENT WE TRUST? OPEN IT NOW, WITHOUT WAITING</span>
+                <input
+                  name="reason"
+                  placeholder="Why this client can be opened for without waiting, and who agreed (kept with the lead)"
+                  className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                />
+                <SubmitButton id="open-early" className={pillSecondary + " self-start"}>
+                  Open it now, without waiting
+                </SubmitButton>
+              </form>
             </div>
           )}
           {!position && openedEarly && (
@@ -1645,7 +1679,7 @@ export default async function LeadPage({
                 Open the position
               </Link>
             </div>
-          ) : !introHeldOrSkipped || !(openingReady || openedEarly) ? null : (
+          ) : !introAccepted || !(openingReady || openedEarly) ? null : (
             <>
               {mayManage && !roleKnown && (
                 <form action={saveRequirement} className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
@@ -1747,16 +1781,19 @@ export default async function LeadPage({
           <div className="flex flex-col gap-2.5">
             {/* Fold 5: Close lead & audit */}
             <FoldRow
-              title="Something different?"
+              title="Close this lead"
               summary={
                 closed
                   ? `Closed · ${STATE_MEANINGS[lead.state as LeadState] ?? lead.state}`
-                  : "Close with a reason · what happened to it"
+                  : "Only if it is not going ahead · what happened to it"
               }
             >
               <div className="flex flex-col gap-4">
                 {!closed && mayManage && (
                   <form action={closeLead} className="flex flex-col gap-3">
+                    <p className="text-[13px] text-ink-soft">
+                      This closes the lead. Use it only if it is not going ahead - nothing closes without a reason.
+                    </p>
                     <input type="hidden" name="leadId" value={lead.id} />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <label className="flex flex-col gap-1">
@@ -1799,7 +1836,7 @@ export default async function LeadPage({
                         key={entry.id}
                         className="flex flex-wrap items-baseline justify-between gap-2 border-t border-rule py-1.5 text-[13px] first:border-t-0"
                       >
-                        <span className="font-medium text-ink">{entry.action}</span>
+                        <span className="font-medium text-ink">{actionInWords(entry.action)}</span>
                         <span className="text-ink-soft">
                           {nameOf(entry.actorId)} · {whenLocal(entry.at)}
                           {entry.reason ? ` · ${entry.reason}` : ""}

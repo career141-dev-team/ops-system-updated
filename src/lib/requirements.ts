@@ -1,3 +1,5 @@
+import { introSatisfied } from "@/lib/leads";
+
 /**
  * The requirement, and handing it to the TA System (15, Phase 3).
  *
@@ -149,7 +151,7 @@ export function problemWithOpening(input: {
   fields: RequirementFields;
 }): string | null {
   if (!input.openEarly) {
-    const signed = input.esaState === "signed" || input.esaState === "countersigned";
+    const signed = agreementSigned(input.esaState);
     const missing: string[] = [];
     if (!signed) missing.push("the client has not signed the agreement yet");
     if (input.requirementBlanks.length) missing.push("the requirement still has blanks: " + input.requirementBlanks.join(", "));
@@ -180,4 +182,36 @@ export function handoverInWords(
   if (position.primaryTaId) bits.push("primary TA set");
   if (position.hundredPercentDay) bits.push("100% day " + position.hundredPercentDay);
   return bits.join(" · ");
+}
+
+/** One answer to "has the client signed", shared by the hand-over and its checklist so they cannot drift. */
+export function agreementSigned(esaState: string | null): boolean {
+  return esaState === "signed" || esaState === "countersigned";
+}
+
+/**
+ * "Before this becomes a role on Positions" (22 Nov): staff saved a requirement and saw no role,
+ * because the role is only made when handOverToTa passes. Each line is one of its conditions;
+ * the requirement line asks `problemWithOpening` itself, so the checklist and the refusal agree.
+ */
+export function handoverChecklist(input: {
+  intro: { meetings: { state: string }[]; esa: { state: string } | null; skipsIntro: boolean };
+  esaState: string | null;
+  requirementBlanks: string[];
+  openEarly: boolean;
+  fields: RequirementFields;
+}): { items: { step: "intro" | "agreement" | "requirement"; label: string; done: boolean }[]; ready: boolean } {
+  const introDone = introSatisfied(input.intro);
+  const named = problemWithHandover(input.fields) === null;
+  // Opened early, the signature and the blanks are waived; claiming them would be false.
+  const items = [
+    { step: "intro" as const, label: "The intro call is held (or the agreement has gone out)", done: introDone },
+    input.openEarly
+      ? { step: "agreement" as const, label: "Marked to open without waiting (agreement not needed yet)", done: true }
+      : { step: "agreement" as const, label: "The client has signed the agreement", done: agreementSigned(input.esaState) },
+    input.openEarly
+      ? { step: "requirement" as const, label: "The role's name and how many are written", done: named }
+      : { step: "requirement" as const, label: "The requirement is complete", done: named && input.requirementBlanks.length === 0 },
+  ];
+  return { items, ready: introDone && problemWithOpening(input) === null };
 }

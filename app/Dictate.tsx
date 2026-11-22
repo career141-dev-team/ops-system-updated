@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import Icon from "@/app/Icon";
+import { dictationProblem } from "@/lib/dictation";
 
 /**
  * The microphone beside a field (15, Phase 9 steps 5 and 6).
@@ -20,7 +21,25 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
   const [listening, setListening] = useState(false);
   const [can, setCan] = useState(false);
   const [said, setSaid] = useState("");
+  const [problem, setProblem] = useState("");
   const recognition = useRef<{ start: () => void; stop: () => void } | null>(null);
+
+  // Click to start, click to stop. start() throws if it is already running or the page may not listen.
+  const toggle = () => {
+    setProblem("");
+    if (listening) {
+      recognition.current?.stop();
+      setListening(false);
+      return;
+    }
+    try {
+      recognition.current?.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+      setProblem("Could not start listening. Press again, or type it instead.");
+    }
+  };
 
   useEffect(() => {
     const window_ = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
@@ -31,7 +50,7 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
           interimResults: boolean;
           onresult: (event: { results: { transcript: string }[][] }) => void;
           onend: () => void;
-          onerror: () => void;
+          onerror: (event: { error: string }) => void;
           start: () => void;
           stop: () => void;
         })
@@ -59,7 +78,10 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
       setSaid((before) => (before + " " + heard).trim());
     };
     engine.onend = () => setListening(false);
-    engine.onerror = () => setListening(false);
+    engine.onerror = (event) => {
+      setListening(false);
+      setProblem(dictationProblem(event.error));
+    };
     recognition.current = engine;
     return () => engine.stop();
   }, [into]);
@@ -72,17 +94,9 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
       <button
         type="button"
         aria-pressed={listening}
-        aria-label={listening ? "Listening - press to stop" : label}
-        title={listening ? "Listening - press to stop" : label}
-        onClick={() => {
-          if (listening) {
-            recognition.current?.stop();
-            setListening(false);
-            return;
-          }
-          setListening(true);
-          recognition.current?.start();
-        }}
+        aria-label={problem || (listening ? "Listening - press to stop" : label)}
+        title={problem || (listening ? "Listening - press to stop" : label)}
+        onClick={toggle}
         className={
           "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors " +
           (listening ? "bg-bg-warning text-warning" : "text-ink-soft hover:bg-sunk hover:text-ink")
@@ -105,15 +119,8 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
     <span className="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        onClick={() => {
-          if (listening) {
-            recognition.current?.stop();
-            setListening(false);
-            return;
-          }
-          setListening(true);
-          recognition.current?.start();
-        }}
+        aria-pressed={listening}
+        onClick={toggle}
         className={
           "rounded-full border px-3 py-1 text-[12px] " +
           (listening ? "border-warning text-warning" : "border-rule-strong hover:bg-paper")
@@ -121,6 +128,7 @@ export default function Dictate({ into, label = "Dictate", round = false }: { in
       >
         {listening ? "Listening — press to stop" : label}
       </button>
+      {problem && <span role="status" className="text-[12px] text-warn">{problem}</span>}
       {said && <span className="text-[12px] text-ink-faint">{said.split(/\s+/).length} words heard</span>}
     </span>
   );

@@ -14,6 +14,7 @@ import {
   runClocks,
 } from "@/data/desk";
 import { contactsFor } from "@/lib/contacts";
+import { colomboIsoWeek } from "@/lib/weekNumber";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
 import {
@@ -113,11 +114,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const visible = sp.all ? groups : groups.slice(0, SHOWN_CLIENTS);
   const openRows = view.rows.filter((r) => !r.closed);
   const mine = openRows.filter((r) => r.ownerId === me.id).length;
-  const week = (() => {
-    const d = new Date(now + COLOMBO);
-    const start = Date.UTC(d.getUTCFullYear(), 0, 1);
-    return Math.ceil(((d.getTime() - start) / DAY + new Date(start).getUTCDay() + 1) / 7);
-  })();
+  const week = colomboIsoWeek(now);
 
   const href = (over: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -269,7 +266,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
             </Link>
             <Link href={panelHref("/positions", sp, "add-enquiry")} scroll={false} className={pillPrimary}>
               <Icon name="plus" size={16} />
-              New role
+              New enquiry
             </Link>
           </div>
         }
@@ -322,7 +319,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
 
           {visible.length === 0 ? (
             <EmptyState icon="find" title={view.rows.length === 0 ? "No roles yet" : "No role matches"}>
-              {view.rows.length === 0 ? "A role appears here once a client's requirement has gone to the TA System." : "Try another filter or a different search."}
+              {view.rows.length === 0 ? "A role appears here after the intro call is held, the agreement is signed and the requirement is complete, and it is handed to the TA System. \"New enquiry\" starts a lead; it does not make a role." : "Try another filter or a different search."}
             </EmptyState>
           ) : (
             visible.map((g) => {
