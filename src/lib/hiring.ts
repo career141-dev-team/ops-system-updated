@@ -10,6 +10,7 @@
  */
 import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { dayWord } from "@/lib/calendarBoard";
+import { extensionOf, problemWithUpload } from "@/lib/files";
 
 export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
 
@@ -22,7 +23,7 @@ export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
 ];
 
 /** The panel a card's button opens, by the column it sits in. */
-export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" }>> = {
+export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" | "reject" }>> = {
   new: { label: "Call", panel: "call" },
   call: { label: "Call", panel: "call" },
   fits: { label: "Book an interview", panel: "book-interview" },
@@ -42,6 +43,8 @@ export interface Applicant {
   detail: string;
   /** Called and tried so far, of 3. */
   tries?: number;
+  /** The kept CV file (22 Nov: hiring had nowhere to put one); null until someone adds it. */
+  cvFileId?: string | null;
   /** What the later panels draw their messages from; absent until it is known. */
   draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
 }
@@ -105,6 +108,7 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           since: a.updatedAt,
           detail: a.detail,
           tries: a.tries,
+          cvFileId: a.cvFileId,
           draft: {
             interviewAt: a.interviewAt ?? undefined,
             interviewer: a.interviewer ?? undefined,
@@ -148,6 +152,32 @@ export function problemWithApplicant(name: string, source: string): string | nul
   if (name.trim().length < 2) return "Write the applicant's full name.";
   if (!source.trim()) return "Say where this CV came from.";
   return null;
+}
+
+/** A CV is a document the team reads: PDF or Word, within the size the file store allows (22 Nov). */
+export function problemWithCv(file: { name: string; size: number }): string | null {
+  const ext = extensionOf(file.name);
+  if (ext && ![".pdf", ".doc", ".docx"].includes(ext)) return "A CV must be a PDF or a Word file.";
+  return problemWithUpload(file);
+}
+
+/** The call result that closes the applicant without an interview (22 Nov, ops team: "can we reject without an interview?"). */
+export const CALL_NOT_FIT = "Talked - not a fit";
+
+/**
+ * Why a call result cannot be saved, or null. A check marked Not OK cannot be logged as plain
+ * "Talked" (22 Nov): that moved Hana to Called · fits with a "Not a culture fit" note. Rejecting
+ * from a call needs a reason, like every other reject.
+ */
+export function problemWithHiringCall(result: string, notOkChecks: number, note: string): string | null {
+  if (result === CALL_NOT_FIT) return note.trim().length < 4 ? "Write the reason in the note before marking not a fit." : null;
+  if (result === "Talked" && notOkChecks > 0) return `${notOkChecks === 1 ? "A check is" : "Some checks are"} marked Not OK. Log the call as "${CALL_NOT_FIT}", or change the check.`;
+  return null;
+}
+
+/** "2026-11-22T10:45" typed on the form is Colombo time; the server clock is not (22 Nov: 10:45 showed as 05:15). */
+export function colomboLocalToMs(typed: string): number {
+  return Date.parse(typed.trim() + ":00+05:30");
 }
 
 export function problemWithHiringDecision(decision: string, reason: string): string | null {
@@ -250,8 +280,8 @@ export function inviteMessage(a: Applicant, role: string): string | null {
   return `Hello ${first(a.name)}, we would like to meet you for an interview for ${role}, with ${d.interviewer} on ${when} at ${d.place}. Please reply to confirm. Thank you`;
 }
 
-export function rejectMessage(a: Applicant, role: string): string {
-  return `Hello ${first(a.name)}, thank you for meeting us for ${role}. We will not go further this time. We wish you well. Thank you`;
+export function rejectMessage(a: Applicant, role: string, afterCall = false): string {
+  return `Hello ${first(a.name)}, thank you for ${afterCall ? "speaking with us" : "meeting us"} for ${role}. We will not go further this time. We wish you well. Thank you`;
 }
 
 export function offerLetter(a: Applicant, role: string): string | null {

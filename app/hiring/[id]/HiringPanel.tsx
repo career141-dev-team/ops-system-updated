@@ -1,15 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { bookHiringInterview, decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
+import { addApplicantCv, bookHiringInterview,decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
 import Icon from "@/app/Icon";
 import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
-import { first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
-export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide";
+export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject";
 
 const small = "t-label inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] text-ink hover:bg-sunk";
 
@@ -30,7 +30,7 @@ function Why({ v, a, now }: { v: Vacancy; a: Applicant; now: number }) {
 }
 
 /** "Who and how": the person, the ways to reach them (open the phone or WhatsApp; nothing is sent from here). */
-function Who({ a, children, cv }: { a: Applicant; children?: ReactNode; cv?: boolean }) {
+function Who({ a, children, cvHref }: { a: Applicant; children?: ReactNode; cvHref?: string | null }) {
   const digits = (a.phone ?? "").replace(/\D/g, "");
   return (
     <PanelSection title="Who and how">
@@ -57,10 +57,10 @@ function Who({ a, children, cv }: { a: Applicant; children?: ReactNode; cv?: boo
         ) : (
           <span className="t-small text-ink-3">No phone number on file.</span>
         )}
-        {cv && (
-          <button type="button" disabled title="Not connected yet: the applicant's CV file is not stored." className={small + " opacity-50"}>
+        {cvHref && (
+          <a href={cvHref} target="_blank" rel="noreferrer" className={small}>
             <Icon name="copy" size={14} /> Open the CV
-          </button>
+          </a>
         )}
       </div>
       {children}
@@ -103,26 +103,39 @@ function Save({ happens }: { happens: string }) {
 const textarea = panelInput + " min-h-[72px]";
 
 /** The four panels of H2, wired to the internal hiring backend actions. */
-export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string }) {
+export default function HiringPanel({ kind, v, a, now, closeHref, cvHref }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string; cvHref?: string | null }) {
   const name = first(a.name);
   if (kind === "call") {
     const next = (a.tries ?? 0) + 1;
     return (
       <Panel kicker="Call" title={`Call ${a.name}`} sub={`${v.title} > Internal hiring > CV from ${a.source}, ${dayWord(a.since)}`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
-        <Who a={a} cv>
+        <Who a={a} cvHref={cvHref}>
           <div className="flex flex-col gap-1 pt-1">
             <span className="t-small text-ink-3">What to say</span>
             <p className="t-body text-ink-2">Hello {name}, this is Career141. We saw your CV for {v.title}. Do you have 5 minutes for a few questions?</p>
           </div>
         </Who>
+        <form action={addApplicantCv} encType="multipart/form-data">
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="CV">
+            <input type="file" name="cv" required accept=".pdf,.doc,.docx" aria-label="CV file" className={panelInput} />
+            <div>
+              <button type="submit" className={small}>
+                {cvHref ? "Replace CV" : "Add CV"}
+              </button>
+            </div>
+          </PanelSection>
+        </form>
         <form action={recordHiringCall}>
           <input type="hidden" name="vacancyId" value={v.id} />
           <input type="hidden" name="applicantId" value={a.id} />
           <input type="hidden" name="back" value={closeHref} />
           <PanelSection title="Log it here">
             <PanelField label="Call result">
-              <ChoiceGroup name="result" label="Call result" required options={["Talked", `No answer (try ${Math.min(next, 3)} of 3)`, "Call back on..."]} />
+              <ChoiceGroup name="result" label="Call result" required options={["Talked", CALL_NOT_FIT, `No answer (try ${Math.min(next, 3)} of 3)`, "Call back on..."]} />
             </PanelField>
             {v.checks.length > 0 && (
               <PanelField label={`The ${v.checks.length} checks`}>
@@ -145,11 +158,34 @@ export default function HiringPanel({ kind, v, a, now, closeHref }: { kind: Hiri
               </PanelField>
             )}
             <PanelField label="Note">
-              <textarea name="note" className={textarea} placeholder="What you heard" />
+              <textarea name="note" className={textarea} placeholder="What you heard (the reason, if not a fit)" />
             </PanelField>
           </PanelSection>
-          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. No answer: increments the try counter and keeps them in To call.`} />
+          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. Not a fit: ${name} moves to Rejected with your note as the reason, and no interview is booked. No answer: increments the try counter and keeps them in To call.`} />
         </form>
+        <Draft label={`Message if ${name} is not a fit`} text={rejectMessage(a, v.title, true)} copy="Copy message" missing="" />
+      </Panel>
+    );
+  }
+
+  if (kind === "reject") {
+    return (
+      <Panel kicker="Not a fit" title={`Reject ${a.name}`} sub={`Internal hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
+        <Why v={v} a={a} now={now} />
+        <Who a={a} cvHref={cvHref} />
+        <form action={decideHiringApplicant}>
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <input type="hidden" name="decision" value="reject" />
+          <PanelSection title="Log it here">
+            <PanelField label="The reason">
+              <textarea name="reason" required className={textarea} placeholder="Required" />
+            </PanelField>
+          </PanelSection>
+          <Save happens={`${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
+        </form>
+        <Draft label={`Message for ${name}`} text={rejectMessage(a, v.title, true)} copy="Copy message" missing="" />
       </Panel>
     );
   }
