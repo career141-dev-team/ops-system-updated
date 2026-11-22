@@ -5,10 +5,11 @@ import { addHiringApplicant } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, Card, EmptyState, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { desk } from "@/data/desk";
+import { desk, fileIn } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
 import { BOARD_COLUMNS, STAGE_ACTION, countOf, daysSince, first, hiringView, vacancyById, vacancyLine, type Applicant } from "@/lib/hiring";
+import { viewHref } from "@/lib/files";
 import { hiringSample } from "@/lib/hiringSample";
 import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
@@ -17,9 +18,9 @@ import { currentMember } from "@/lib/session";
 import HiringPanel, { type HiringPanelKind } from "./HiringPanel";
 import { HiringSendModal } from "./HiringSendModals";
 
-const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide"];
+const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject"];
 
-/** H2 · Vacancy detail: the numbers, the board of applicants, and the four panels. Nothing here saves (no backend). */
+/** H2 · Vacancy detail: the numbers, the board of applicants, and the panels (call, book, result, decide, not a fit). Every form saves through an action in app/actions.ts. */
 export default async function VacancyPage({
   params,
   searchParams,
@@ -59,6 +60,7 @@ export default async function VacancyPage({
   const oldest = Math.max(0, ...v.applicants.filter((a) => a.stage === "call" || a.stage === "new").map((a) => daysSince(a.since, now)));
   const openName = typeof sp.panel === "string" && PANELS.includes(sp.panel as HiringPanelKind) ? (sp.panel as HiringPanelKind) : null;
   const on = typeof sp.on === "string" ? v.applicants.find((a) => a.id === sp.on) : undefined;
+  const cvFile = on?.cvFileId ? fileIn(db, on.cvFileId) : null;
   const stand = [
     toCall > 0 ? `${toCall} ${toCall === 1 ? "person waits" : "people wait"} for a call.` : "Nobody waits for a call.",
     [n("fits") ? `${n("fits")} fit and need an interview booked.` : "", n("interview") ? `${n("interview")} in interview.` : "", n("decision") ? `${n("decision")} waiting for a decision.` : ""].filter(Boolean).join(" ") +
@@ -77,7 +79,7 @@ export default async function VacancyPage({
 
   const figures: [string, number, string, string][] = [
     ["New CVs", n("new"), "to look at", "text-ink"],
-    ["To call", toCall, toCall ? `oldest waits ${oldest} ${oldest === 1 ? "day" : "days"}` : "nobody waits", "text-warn"],
+    ["To call", toCall, toCall ? `${n("new") > 0 ? `includes ${n("new")} new ${n("new") === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${oldest} ${oldest === 1 ? "day" : "days"}` : "nobody waits", "text-warn"],
     ["Called · fits", n("fits"), "to book", "text-ink"],
     ["Interview", n("interview"), `${interviewers.length} this week`, "text-info"],
     ["Decision", n("decision"), "waiting for you", n("decision") ? "text-warn" : "text-ink"],
@@ -100,6 +102,11 @@ export default async function VacancyPage({
         {act && (
           <Link href={panelHref(path, sp, act.panel, a.id)} scroll={false} className="t-label inline-flex w-fit rounded-full bg-ink px-3 py-[7px] text-ink-inverse">
             {act.label}
+          </Link>
+        )}
+        {a.stage === "fits" && can(me, "client.manage") && (
+          <Link href={panelHref(path, sp, "reject", a.id)} scroll={false} className="t-label inline-flex w-fit rounded-full border border-rule bg-surface px-3 py-[7px] text-ink hover:bg-sunk">
+            Not a fit
           </Link>
         )}
       </div>
@@ -214,10 +221,10 @@ export default async function VacancyPage({
         </aside>
       </div>
 
-      {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} />}
+      {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} cvHref={cvFile ? viewHref(cvFile) : null} />}
       {sp.panel === "add-applicant" && can(me, "client.manage") && (
         <Panel kicker="Internal hiring" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
-          <form action={addHiringApplicant}>
+          <form action={addHiringApplicant} encType="multipart/form-data">
             <input type="hidden" name="vacancyId" value={v.id} />
             <input type="hidden" name="back" value={path} />
             <PanelSection title="Applicant details">
@@ -226,6 +233,9 @@ export default async function VacancyPage({
               </PanelField>
               <PanelField label="Source">
                 <input name="source" defaultValue="LinkedIn" required placeholder="LinkedIn, Referral, TopJobs" className={panelInput} />
+              </PanelField>
+              <PanelField label="CV (optional, PDF or Word)">
+                <input name="cv" type="file" accept=".pdf,.doc,.docx" className={panelInput} />
               </PanelField>
               <PanelField label="Phone (optional)">
                 <input name="phone" placeholder="077 123 4567" className={panelInput} />

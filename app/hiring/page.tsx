@@ -130,7 +130,12 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           <Card className="!flex-row items-center">
             <Figure label="New CVs" value={t.newCvs} line={`across ${t.newCvVacancies} ${t.newCvVacancies === 1 ? "vacancy" : "vacancies"}`} />
             <Chev />
-            <Figure label="To call" value={t.toCall} tone="text-warn" line={t.toCall ? `oldest waits ${t.oldestDays} ${t.oldestDays === 1 ? "day" : "days"}` : "nobody waits"} />
+            <Figure
+              label="To call"
+              value={t.toCall}
+              tone="text-warn"
+              line={t.toCall ? `${t.newCvs > 0 ? `includes ${t.newCvs} new ${t.newCvs === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${t.oldestDays} ${t.oldestDays === 1 ? "day" : "days"}` : "nobody waits"}
+            />
             <Chev />
             <Figure label="Interview" value={t.interview} tone="text-info" line={`${view.slots.length} this week`} />
             <Chev />

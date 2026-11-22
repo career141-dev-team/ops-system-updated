@@ -139,7 +139,7 @@ import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/ca
 import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
-import { problemWithApplicant, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
   problemWithInviteBack,
@@ -8260,12 +8260,46 @@ export async function addHiringApplicant(formData: FormData): Promise<void> {
   const source = String(formData.get("source") ?? "LinkedIn").trim();
   const phone = String(formData.get("phone") ?? "").trim() || null;
   const email = String(formData.get("email") ?? "").trim() || null;
-  const problem = problemWithApplicant(name, source);
+  const cv = formData.get("cv");
+  const file = cv instanceof File && cv.size > 0 ? cv : null;
+  const bytes = file ? new Uint8Array(await file.arrayBuffer()) : null;
+  const problem = problemWithApplicant(name, source) ?? (file && bytes ? problemWithCv(file) ?? problemWithCvBytes(bytes) : null);
   if (problem) redirect(withMsg(dest, problem));
-  await addApplicant({ vacancyId, name, source, phone, email, by: member.id });
+  const added = await addApplicant({ vacancyId, name, source, phone, email, by: member.id });
+  if (file && bytes) await keepApplicantCv(member.id, added.id, file, bytes);
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed(`${name} added.`, dest));
+}
+
+/** Keeps an applicant's CV in the file store (as keepFile does) and points the applicant at it (22 Nov). */
+async function keepApplicantCv(by: string, applicantId: string, file: File, bytes: Uint8Array): Promise<void> {
+  const key = keyFor("cv", "applicant", applicantId, file.name);
+  const mime = mimeFor(file.name);
+  await putBytes(key, bytes, mime);
+  const row = await addFile({ kind: "cv", key, name: safeName(file.name), size: bytes.length, mime, sha256: sha256(bytes), subjectType: "applicant", subjectId: applicantId, madeFrom: null, uploadedBy: by });
+  await patchApplicant(applicantId, { cvFileId: row.id }, by, "applicant.cvKept", safeName(file.name));
+}
+
+/** Internal hiring: add or replace an applicant's CV from the call drawer (22 Nov). */
+export async function addApplicantCv(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const cv = formData.get("cv");
+  if (!(cv instanceof File) || cv.size === 0) redirect(withMsg(dest, "Choose the CV file first."));
+  const file = cv as File;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const problem = problemWithCv(file) ?? problemWithCvBytes(bytes);
+  if (problem) redirect(withMsg(dest, problem));
+  const db = await desk();
+  if (!db.applicants.some((a) => a.id === applicantId && a.vacancyId === vacancyId)) redirect(withMsg(dest, "That applicant is gone."));
+  await keepApplicantCv(member.id, applicantId, file, bytes);
+  revalidatePath(`/hiring/${vacancyId}`);
+  redirect(dest + confirmed("CV saved.", dest));
 }
 
 /** Internal hiring: log screening call result (H2 -> Call panel). */
@@ -8283,7 +8317,15 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   const db = await desk();
   const app = db.applicants.find((a) => a.id === applicantId);
   if (!app) redirect(withMsg(dest, "That applicant is gone."));
+  const problem = problemWithHiringCall(result, note);
+  if (problem) redirect(withMsg(dest, problem));
   const tries = app.tries + 1;
+  if (result === CALL_NOT_FIT) {
+    await patchApplicant(applicantId, { stage: "rejected", tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
+    revalidatePath(`/hiring/${vacancyId}`);
+    revalidatePath("/hiring");
+    redirect(dest + confirmed("Marked rejected.", dest));
+  }
   const isFits = result === "Talked" || result === "Fits";
   const nextStage = isFits ? "fits" : "call";
   const detail = isFits ? `Called · fits${note ? " — " + note : ""}` : `${result} · try ${Math.min(tries, 3)} of 3`;
@@ -8304,7 +8346,7 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   const whenRaw = String(formData.get("interviewAt") ?? "").trim();
   const place = String(formData.get("place") ?? "Office").trim();
   const interviewer = String(formData.get("interviewer") ?? member.name).trim();
-  const interviewAt = whenRaw ? Date.parse(whenRaw) : NaN;
+  const interviewAt = whenRaw ? colomboLocalToMs(whenRaw) : NaN;
   if (Number.isNaN(interviewAt)) redirect(withMsg(dest, "Pick a valid interview date and time."));
   // An online interview gets a Teams link in the booker's calendar, the same way client interviews do (21 Nov).
   let joinUrl: string | null = null;
