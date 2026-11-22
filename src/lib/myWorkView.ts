@@ -53,6 +53,8 @@ export interface WorkRow {
 export interface BoardCard extends WorkRow {
   due: string;
   sub: string;
+  /** The system made it with a deadline: moving it later needs a reason. */
+  system: boolean;
 }
 
 interface Context {
@@ -124,6 +126,44 @@ export function buttonFor(t: OpsTask, ctx: Context, panel: (name: string, id: st
   }
   if (t.subjectType === "esa" || (t.subjectType === "lead" && /agreement/i.test(t.title))) return { label: "Chase the agreement", href: "/positions?panel=choose-ta" };
   return { label: t.kind === "approve" ? "Approve" : "Open", href: t.link ?? "/tasks/" + t.id };
+}
+
+/** The system made it for a deadline (it is about a record): the one definition the card flag and the move rule share. */
+export const isSystemTask = (t: { subjectType: string | null }): boolean => t.subjectType !== null;
+
+const SOURCES: Record<string, string> = {
+  report: "From the weekly report",
+  talentPulse: "From Talent Pulse",
+  esa: "From a client agreement",
+  invoice: "From an invoice",
+  guarantee: "From a guarantee",
+  placement: "From a placement",
+  lead: "From a lead",
+  client: "From a client",
+  position: "From a position",
+  clientSet: "From a CV set",
+  interview: "From an interview",
+  ad: "From an advert",
+  hold: "From a hold",
+  message: "From a message",
+  reference: "From a reference check",
+  close: "From closing a position",
+  timer: "From a timer",
+  meeting: "From a meeting",
+  chat: "From AURA",
+};
+
+/**
+ * The line under a board card: where the task came from (22 Nov: "where did
+ * these 2 late tasks come from?" - every card without a person said "Free
+ * task", even the ones the system made). The client or role when the record
+ * is found, else what kind of record it is about; "Free task" only when
+ * nothing is attached.
+ */
+export function taskSource(t: Pick<OpsTask, "subjectType" | "link">, who: string): string {
+  if (who) return who;
+  if (t.subjectType) return SOURCES[t.subjectType] ?? "From the system";
+  return t.link ? "From the system" : "Free task";
 }
 
 const days = (at: number, now: number) => lateInWords(at, now).replace(/ late$/, "").replace(/^A day$/, "1 day");
@@ -220,7 +260,8 @@ export function workView(
       ...asRow(t),
       title: t.title,
       line: t.body,
-      sub: who(t) || "Free task",
+      sub: taskSource(t, who(t)),
+      system: isSystemTask(t),
       due: k === "late" ? lateTag(t.dueAt, now) : k === "today" ? (t.dueAt >= start ? "Today · " + clockOf(t.dueAt) : "Today") : dayShort(t.dueAt),
     }));
   const nextLater = buckets.later[0] ? dayShort(buckets.later[0].dueAt) : null;

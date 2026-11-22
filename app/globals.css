@@ -252,7 +252,7 @@ textarea[aria-label^="Say what" i]:focus-visible {
 @keyframes toast {
   from {
     opacity: 0;
-    transform: translate(-50%, 6px);
+    transform: translate(-50%, 16px);
   }
   to {
     opacity: 1;
@@ -291,7 +291,7 @@ textarea[aria-label^="Say what" i]:focus-visible {
   }
 }
 .chat-in {
-  animation: chat-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  animation: chat-in 450ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 .chat-skeleton {
   background: linear-gradient(90deg, var(--color-shell-sunk) 0%, var(--color-surface) 50%, var(--color-shell-sunk) 100%);
@@ -391,7 +391,36 @@ body.welcome [data-welcome="page"] {
   animation: welcome-page 760ms cubic-bezier(0.23, 1, 0.32, 1) 140ms both;
 }
 
+/* The unread dot on the bell when a new item arrives: one soft pulse. */
+@keyframes badge-pulse {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.7); }
+  100% { transform: scale(1); }
+}
+.badge-pulse {
+  animation: badge-pulse 700ms cubic-bezier(0.23, 1, 0.32, 1) 2;
+}
+/* A dialog's dimmed backdrop fades in with the drawer. */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+dialog.panel[open]::backdrop,
+dialog.send-modal[open]::backdrop {
+  animation: backdrop-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* While TabSlide's pill moves it is the only filled one: every pill goes see-through so the ink is
+   never hidden under a neighbour (they sit on white, so nothing else changes); the active label stays inverse. */
+nav[data-sliding] > a {
+  background-color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .badge-pulse,
+  dialog.panel::backdrop,
+  dialog.send-modal::backdrop {
+    animation: none;
+  }
   .notch-bar,
   body.welcome [data-welcome] {
     animation: none;

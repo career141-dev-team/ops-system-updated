@@ -12,6 +12,8 @@ import test from "node:test";
 import {
   emailAllowed,
   groupPostIsManual,
+  healthLines,
+  senderMailbox,
   outreachInWords,
   outreachLiveInEnv,
   phoneAllowed,
@@ -109,4 +111,13 @@ test("the health screen says which of the two is off, not just that it is off", 
   for (const [a, b] of [[false, false], [false, true], [true, false]] as const) {
     assert.match(outreachInWords(a, b), /^test mode/);
   }
+});
+
+test("health lines show the sender and only the count of allowed addresses", () => {
+  const lines = healthLines({ OPS_SEND: "on", OPS_OUTBOUND_LOCK: "on", OPS_OUTBOUND_ALLOW_EMAILS: "a@x.test, b@x.test," }, "me@x.test");
+  assert.deepEqual(lines, ["Sending: on", "Sender mailbox: me@x.test", "Outbound lock: on, 2 addresses allowed"]);
+  assert.ok(!lines.join(" ").includes("a@x.test"));
+  assert.match(healthLines({}, "")[0], /switched off/);
+  assert.equal(senderMailbox("me@x.test", true, { OPS_DEV_SENDER_EMAIL: "dev@x.test" }), "dev@x.test");
+  assert.equal(senderMailbox("me@x.test", false, { OPS_DEV_SENDER_EMAIL: "dev@x.test" }), "me@x.test");
 });

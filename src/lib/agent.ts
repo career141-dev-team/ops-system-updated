@@ -91,6 +91,12 @@ export const RUNNABLE_NAMES = [
   "approveWeeklyReport",
   "compileTalentPulseNow",
   "summariseClient",
+  // Aura
+  "createLead",
+  "assignLeadOwner",
+  "bookIntroCall",
+  "bookRequirementMeeting",
+  "handOverToTa",
 ] as const;
 export type Runnable = (typeof RUNNABLE_NAMES)[number];
 
@@ -691,6 +697,74 @@ export const AGENT_ACTIONS: AgentAction[] = [
     fields: [{ name: "reportId", from: "report", required: true, asks: "Which week's report?" }],
   },
   { name: "compile_talent_pulse", says: "Compile this week's Talent Pulse now", action: "compileTalentPulseNow", needs: "advert.manage", money: false, fields: [] },
+  // ── Aura: whole jobs gathered by tools, one confirm card ─────────
+  {
+    name: "create_lead",
+    says: "Save a new lead with its contact and where it came from",
+    action: "createLead",
+    needs: "client.manage",
+    money: false,
+    fields: [
+      { name: "company", from: "text", required: true, asks: "Which company?" },
+      { name: "contactName", from: "text", required: true, asks: "Who is the contact?" },
+      { name: "contactEmail", from: "email", required: true, asks: "Their email?" },
+      { name: "contactPhone", from: "text", required: true, asks: "Their number?" },
+      { name: "source", from: "choice", required: true, asks: "Where did it come from?", choices: LEAD_SOURCES },
+      { name: "industry", from: "text", required: false, asks: "Which industry?" },
+      { name: "website", from: "text", required: false, asks: "Their website?" },
+      { name: "notes", from: "text", required: false, asks: "Any notes?" },
+    ],
+  },
+  {
+    name: "assign_lead_owner",
+    says: "Give a lead to another owner",
+    action: "assignLeadOwner",
+    needs: "task.reassign",
+    money: false,
+    fields: [
+      { name: "leadId", from: "lead", required: true, asks: "Which enquiry? Say the company." },
+      { name: "ownerId", from: "member", required: true, asks: "Who should own it?" },
+    ],
+  },
+  {
+    name: "book_intro_call",
+    says: "Book the intro call for an enquiry, as a Teams meeting with a TA lead joining",
+    action: "bookIntroCall",
+    needs: "client.manage",
+    money: false,
+    fields: [
+      { name: "leadId", from: "lead", required: true, asks: "Which enquiry? Say the company." },
+      { name: "at", from: "when", required: true, asks: "When? A day and a time, like 'Tuesday 10:00' or '2026-11-12 10:00'." },
+      { name: "taLeadId", from: "text", required: true, asks: "Which TA lead is joining? One is on every intro call." },
+    ],
+    // Every meeting gets a Teams link (owner, 21 Nov).
+    fixed: { makeTeams: "on" },
+  },
+  {
+    name: "book_requirement_meeting",
+    says: "Book the requirement meeting for an enquiry, as a Teams meeting",
+    action: "bookRequirementMeeting",
+    needs: "client.manage",
+    money: false,
+    fields: [
+      { name: "leadId", from: "lead", required: true, asks: "Which enquiry? Say the company." },
+      { name: "at", from: "when", required: true, asks: "When? A day and a time, like 'Tuesday 10:00' or '2026-11-12 10:00'." },
+      { name: "taLeadId", from: "text", required: true, asks: "Which TA lead is joining?" },
+    ],
+    fixed: { makeTeams: "on" },
+  },
+  {
+    name: "hand_over",
+    says: "Hand the written requirement over to the TA System",
+    action: "handOverToTa",
+    needs: "client.manage",
+    money: false,
+    fields: [
+      { name: "leadId", from: "lead", required: true, asks: "Which enquiry? Say the company." },
+      { name: "primaryTaId", from: "text", required: false, asks: "Which TA leads the search?" },
+      { name: "hundredPercentDay", from: "date", required: false, asks: "Which day is the 100% position?" },
+    ],
+  },
 ];
 
 /** For the prompt, and for "here is what I can". */
@@ -791,6 +865,9 @@ export function dayFrom(text: string, now: number): string | null {
 
 /** A day and a time, Colombo, as an ISO-like "yyyy-mm-ddThh:mm" the interview screens read. */
 export function whenFrom(text: string, now: number): string | null {
+  // The model (and Aura's tools) write it already: "2026-11-23T10:00".
+  const iso = text.trim().match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})$/);
+  if (iso) return iso[1] + "T" + iso[2] + ":" + iso[3];
   const m = text.trim().match(/^(.*?)\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
   if (!m) return null;
   const day = dayFrom(m[1] || "today", now);
@@ -866,6 +943,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         break;
       }
       case "date": {
+        if (!raw && !field.required) break;
         const day = dayFrom(raw, now);
         if (!day) return ask(field, (raw ? `I cannot read "${raw}" as a day. ` : "") + field.asks);
         out[field.name] = day;
@@ -892,7 +970,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
           if (field.required) return ask(field, field.asks + " I know: " + db.clients.slice(0, 6).map((c) => c.name).join(", ") + ".");
           break;
         }
-        const client = clientNamed(raw, db.clients) ?? onlyOne(db.clients.filter((c) => hasAllWords(c.name, raw)));
+        const client = db.clients.find((c) => c.id === raw.trim()) ?? clientNamed(raw, db.clients) ?? onlyOne(db.clients.filter((c) => hasAllWords(c.name, raw)));
         if (!client) {
           const near = db.clients.filter((c) => words(raw).some((w) => c.name.toLowerCase().includes(w))).slice(0, 4);
           return ask(field, `I do not know a client called "${raw}".` + (near.length ? " Did you mean: " + near.map((c) => c.name).join(", ") + "?" : ""));
@@ -911,10 +989,10 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
       }
       case "member": {
         const people = db.members.filter((m) => m.active);
-        const pick = onlyOne(people.filter((m) => raw && hasAllWords(m.name, raw)));
+        const pick = people.find((m) => m.id === raw.trim()) ?? onlyOne(people.filter((m) => raw && hasAllWords(m.name, raw)));
         if (!pick) return ask(field, field.asks + " The team: " + people.map((m) => m.name).join(", ") + ".");
         out[field.name] = pick.id;
-        show("To", pick.name);
+        show(field.name === "ownerId" ? "New owner" : "To", pick.name);
         break;
       }
       case "draft": {
@@ -971,7 +1049,8 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
       }
       case "lead": {
         const open = db.leads.filter((l) => !l.state.startsWith("closed") && l.state !== "declined_industry");
-        const pick = onlyOne(open.filter((l) => raw && hasAllWords(l.company + " " + l.contactName, raw)));
+        // Aura's find_lead hands back ids (21 Nov), so an exact id wins before the word match.
+        const pick = open.find((l) => l.id === raw.trim()) ?? onlyOne(open.filter((l) => raw && hasAllWords(l.company + " " + l.contactName, raw)));
         if (!pick) return ask(field, field.asks + (open.length ? " Open enquiries: " + open.slice(0, 6).map((l) => l.company).join(", ") + "." : " None is open."));
         out[field.name] = pick.id;
         show("Enquiry", pick.company, "/leads/" + pick.id);
@@ -992,7 +1071,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
       }
       case "position": {
         const open = db.positions.filter((p) => p.stage !== "closed");
-        const pick = onlyOne(open.filter((p) => raw && hasAllWords(p.title + " " + (clientFor(p.clientId) ?? ""), raw)));
+        const pick = open.find((p) => p.id === raw.trim()) ?? onlyOne(open.filter((p) => raw && hasAllWords(p.title + " " + (clientFor(p.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (open.length ? " Open: " + open.slice(0, 6).map((p) => p.title + " at " + (clientFor(p.clientId) ?? "?")).join("; ") + "." : " None is open."));
         out[field.name] = pick.id;
         show("Position", pick.title + " at " + (clientFor(pick.clientId) ?? "?"), "/positions/" + pick.id);

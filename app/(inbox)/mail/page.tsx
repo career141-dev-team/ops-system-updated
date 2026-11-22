@@ -127,7 +127,7 @@ export default async function InboxPage({
       {sp.msg && <p className="rounded-[16px] bg-sunk px-4 py-3 t-body">{sp.msg}</p>}
 
       {view === "whatsapp" && <WhatsAppPanel view={wa} now={now} />}
-      {view === "news" && <NewsPanel items={news} now={now} name={firstName(member.name)} />}
+      {view === "news" && <NewsPanel items={news} now={now} name={firstName(member.name)} memberId={member.id} />}
       {view === "mail" && (
         <div className="flex items-start gap-[22px] max-lg:flex-col">
           <div className="flex w-[620px] max-w-[45%] shrink-0 flex-col gap-3 max-lg:w-full max-lg:max-w-none">

@@ -198,6 +198,31 @@ export const repo = {
     return row;
   },
 
+  patchMember(
+    memberId: Id,
+    patch: Partial<Pick<OpsMember, "name" | "role" | "active">>,
+    by: Id,
+    what: string,
+    reason: string | null = null,
+  ): boolean {
+    const db = load();
+    const row = db.members.find((m) => m.id === memberId);
+    if (!row) return false;
+    const before = `${row.role}, active=${row.active}`;
+    Object.assign(row, patch);
+    audit({
+      actorId: by,
+      action: what,
+      subjectType: "member",
+      subjectId: memberId,
+      before,
+      after: `${row.role}, active=${row.active}`,
+      reason,
+    });
+    save();
+    return true;
+  },
+
   member(memberId: Id): OpsMember | null {
     return load().members.find((m) => m.id === memberId) ?? null;
   },
@@ -1545,6 +1570,15 @@ export const repo = {
     audit({ actorId: authorId, action: "teamNote.posted", subjectType: "teamNote", subjectId: row.id, before: null, after: body.slice(0, 120), reason: null });
     save();
     return row;
+  },
+
+  removeTeamNote(noteId: Id, actorId: Id): void {
+    const db = load();
+    const row = db.teamNotes.find((n) => n.id === noteId);
+    if (!row || row.authorId !== actorId) return; // author only, even if the action's check is skipped
+    db.teamNotes = db.teamNotes.filter((n) => n.id !== noteId);
+    audit({ actorId, action: "teamNote.deleted", subjectType: "teamNote", subjectId: noteId, before: row.body.slice(0, 120), after: null, reason: null });
+    save();
   },
 
   addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): OpsVacancy {

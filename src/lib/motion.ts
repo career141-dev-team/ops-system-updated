@@ -10,10 +10,10 @@ export const EASE_IN = "power2.in";
 export const EASE_SMOOTH = "expo.out";
 
 export const DUR = {
-  fast: 0.16,
-  base: 0.28,
-  panel: 0.34,
-  stagger: 0.035,
+  fast: 0.2,
+  base: 0.42,
+  panel: 0.48,
+  stagger: 0.05,
 } as const;
 
 /** SSR-safe check for user reduced-motion preference. */
@@ -21,3 +21,6 @@ export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return true;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+
+/** Fixed locale for animated numbers: server text and client text must match or hydration flashes. */
+export const NUMBER_LOCALE = "en-US";

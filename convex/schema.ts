@@ -55,6 +55,7 @@ export default defineSchema({
     role: v.union(
       v.literal("ops_owner"),
       v.literal("ops_lead"),
+      v.literal("admin"),
       v.literal("accounts"),
       v.literal("director_ops"),
       v.literal("marketing"),
@@ -567,6 +568,8 @@ export default defineSchema({
     interviewTaId: v.union(v.string(), v.null()),
     inviteMessageId: v.union(v.string(), v.null()),
     calendarEventId: v.optional(v.union(v.string(), v.null())),
+    calendarOrganiser: v.optional(v.union(v.string(), v.null())),
+    calendarLengthMin: v.optional(v.union(v.number(), v.null())),
     attendedAt: v.union(v.number(), v.null()),
     decision: v.union(v.string(), v.null()),
     decisionReason: v.union(v.string(), v.null()),
@@ -813,6 +816,9 @@ export default defineSchema({
     startDate: v.union(v.string(), v.null()),
     rejectReason: v.union(v.string(), v.null()),
     cvFileId: v.union(v.string(), v.null()),
+    /** Teams link and Outlook event for an online internal interview (21 Nov). */
+    joinUrl: v.optional(v.union(v.string(), v.null())),
+    graphEventId: v.optional(v.union(v.string(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

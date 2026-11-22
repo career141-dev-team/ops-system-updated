@@ -15,6 +15,7 @@ export default function MotionStage({ children }: { children: ReactNode }) {
   const path = usePathname() ?? "/";
   const params = useSearchParams();
   const view = params.get("view") ?? "";
+  const tab = params.get("tab") ?? "";
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,15 +24,16 @@ export default function MotionStage({ children }: { children: ReactNode }) {
 
     const ctx = gsap.context(() => {
       // Collect top-level visible cards/sections (skip dialogs/modals which animate themselves)
-      const candidates = Array.from(el.querySelectorAll<HTMLElement>("section, article")).filter(
-        (node) => !node.closest("dialog") && node.offsetParent !== null,
-      );
+      const live = (node: HTMLElement) => !node.closest("dialog") && node.offsetParent !== null;
+      // [data-stagger] containers stagger their own children; otherwise the top-level cards.
+      const marked = Array.from(el.querySelectorAll<HTMLElement>("[data-stagger]")).filter(live).flatMap((c) => Array.from(c.children) as HTMLElement[]);
+      const candidates = marked.length ? marked : Array.from(el.querySelectorAll<HTMLElement>("section, article")).filter(live);
       const targets = candidates.slice(0, 8);
 
       if (targets.length > 0) {
         gsap.fromTo(
           targets,
-          { y: 10, opacity: 0 },
+          { y: 12, opacity: 0 },
           {
             y: 0,
             opacity: 1,
@@ -45,7 +47,7 @@ export default function MotionStage({ children }: { children: ReactNode }) {
       } else {
         gsap.fromTo(
           el,
-          { y: 8, opacity: 0 },
+          { y: 12, opacity: 0 },
           {
             y: 0,
             opacity: 1,
@@ -59,7 +61,7 @@ export default function MotionStage({ children }: { children: ReactNode }) {
     }, el);
 
     return () => ctx.revert();
-  }, [path, view]);
+  }, [path, view, tab]);
 
   return <div ref={root}>{children}</div>;
 }

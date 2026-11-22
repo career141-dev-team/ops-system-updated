@@ -144,3 +144,40 @@ test("yesterday in one line, counted from the thread, and nothing when yesterday
   assert.equal(yesterdayInWords(rows, NOW), "Yesterday here: 2 things done, 1 refused, 3 replies.");
   assert.equal(yesterdayInWords([{ who: "desk", state: "done", actionName: "x", at: NOW }], NOW), null);
 });
+
+test("Aura catalogue: lead, owner, meetings and hand over resolve names to ids", () => {
+  const db = desk();
+  const made = resolveIntent(say("create_lead", { company: "New Co", contactName: "A", contactEmail: "a@new.test", contactPhone: "077", source: "referral" }), db, owner, NOW);
+  assert.equal(made.kind, "proposal");
+  assert.equal(resolveIntent(say("create_lead", { company: "New Co" }), db, owner, NOW).kind, "ask");
+
+  const assign = resolveIntent(say("assign_lead_owner", { leadId: "Lanka Tiles", ownerId: "Rushda" }), db, lead, NOW);
+  assert.equal(assign.kind === "proposal" && assign.buttons[0].fields.ownerId, "m_owner");
+  assert.equal(resolveIntent(say("assign_lead_owner", { leadId: "Lanka Tiles", ownerId: "Rushda" }), db, owner, NOW).kind, "refuse");
+
+  const book = resolveIntent(say("book_requirement_meeting", { leadId: "Lanka Tiles", at: "2026-11-23T10:00", taLeadId: "ta_1" }), db, owner, NOW);
+  assert.equal(book.kind === "proposal" && book.buttons[0].fields.at, "2026-11-23T10:00");
+  assert.equal(book.kind === "proposal" && book.buttons[0].fields.makeTeams, "on");
+  assert.equal(book.kind === "proposal" && book.buttons[0].fields.leadId, "lead_1");
+  assert.equal(book.kind === "proposal" && book.buttons[0].action, "bookRequirementMeeting");
+  assert.equal(resolveIntent(say("book_intro_call", { leadId: "Lanka Tiles", at: "2026-11-23T10:00" }), db, owner, NOW).kind, "ask");
+
+  const hand = resolveIntent(say("hand_over", { leadId: "Lanka Tiles" }), db, owner, NOW);
+  assert.equal(hand.kind === "proposal" && hand.buttons[0].action, "handOverToTa");
+});
+
+test("an id from Aura's lookup tools resolves as well as a name does (21 Nov)", () => {
+  const db = desk();
+  const cases: [string, Record<string, string>, string, string][] = [
+    ["start_agreement", { leadId: "lead_1" }, "leadId", "lead_1"],
+    ["record_linkedin", { positionId: "pos_1", url: "https://x" }, "positionId", "pos_1"],
+    ["move_client_owner", { clientId: "cl_1", ownerId: "m_lead", reason: "holiday" }, "ownerId", "m_lead"],
+  ];
+  for (const [intent, fields, name, id] of cases) {
+    const got = resolveIntent(say(intent, fields), db, lead, NOW);
+    assert.equal(got.kind, "proposal", intent + " should propose, got " + JSON.stringify(got));
+    if (got.kind === "proposal") assert.equal(got.buttons[0].fields[name], id);
+  }
+  // A closed lead's id still does not resolve.
+  assert.notEqual(resolveIntent(say("start_agreement", { leadId: "lead_2" }), db, lead, NOW).kind, "proposal");
+});

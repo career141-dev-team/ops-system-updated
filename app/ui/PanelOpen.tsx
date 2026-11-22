@@ -32,7 +32,7 @@ export default function PanelOpen({ closeHref }: { closeHref: string }) {
         gsap.fromTo(
           me,
           { y: 14, scale: 0.97, opacity: 0 },
-          { y: 0, scale: 1, opacity: 1, duration: 0.3, ease: EASE_OUT, clearProps: "transform,opacity" },
+          { y: 0, scale: 1, opacity: 1, duration: DUR.base, ease: EASE_OUT, clearProps: "transform,opacity" },
         );
       } else {
         gsap.fromTo(
@@ -48,9 +48,9 @@ export default function PanelOpen({ closeHref }: { closeHref: string }) {
             {
               y: 0,
               opacity: 1,
-              duration: 0.24,
-              stagger: 0.04,
-              delay: 0.06,
+              duration: DUR.base,
+              stagger: DUR.stagger,
+              delay: DUR.fast,
               ease: EASE_OUT,
               clearProps: "transform,opacity",
             },

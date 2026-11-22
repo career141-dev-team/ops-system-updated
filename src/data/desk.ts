@@ -44,6 +44,7 @@ import type {
   OpsApplicant,
 } from "./types";
 import { DAY, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
+import { endOfWorkDay } from "@/lib/taskMove";
 import {
   AI_TASKS,
   type AiSwitches,
@@ -3278,7 +3279,9 @@ export async function buildWeeklyReport(by: Id, now = Date.now()): Promise<OpsRe
       ? "One line per open position, built from the TA System and our own rows. Read it, correct nothing silently - if a line is wrong, say so on the position - then approve it and the Director's email is drafted."
       : "No position is open, so there is nothing in it. Nothing goes to the Director.",
     assigneeId: owner,
-    dueAt: now,
+    // 22 Nov: it was due "now", so it showed "Late" before anyone could read it.
+    // The working day it lands on is the time to read it.
+    dueAt: endOfWorkDay(now),
     subjectType: "report",
     subjectId: report.id,
     link: "/reports/" + report.id,
@@ -3750,6 +3753,18 @@ export async function addMember(input: Omit<OpsMember, "id">, by: Id): Promise<O
   return (await convexMutation<OpsMember>("ops/data:addMember", { ...input, by })) as OpsMember;
 }
 
+export async function patchMember(
+  memberId: Id,
+  patch: Partial<Pick<OpsMember, "name" | "role" | "active">>,
+  by: Id,
+  what: string,
+  reason: string | null = null,
+): Promise<boolean> {
+  if (!usingConvex()) return repo.patchMember(memberId, patch, by, what, reason);
+  const res = await convexMutation<{ ok: boolean }>("ops/data:patchMember", { memberId, patch, by, what, reason });
+  return Boolean(res?.ok);
+}
+
 export async function addHolidays(days: { date: string; name: string }[], by: Id): Promise<number> {
   if (!usingConvex()) return repo.addHolidays(days, by);
   return convexMutation<number>("ops/data:addHolidays", { days, by });
@@ -4043,6 +4058,14 @@ export async function addTeamNote(authorId: Id, body: string): Promise<OpsTeamNo
     return (await convexMutation("ops/data:addTeamNote", { authorId, body })) as OpsTeamNote;
   }
   return repo.addTeamNote(authorId, body);
+}
+
+export async function removeTeamNote(noteId: Id, actorId: Id): Promise<void> {
+  if (usingConvex()) {
+    await convexMutation("ops/data:removeTeamNote", { noteId, actorId });
+    return;
+  }
+  repo.removeTeamNote(noteId, actorId);
 }
 
 export async function addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): Promise<OpsVacancy> {

@@ -82,7 +82,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {cards.length === 0 ? "A client appears here when an enquiry becomes a company we work for." : "Try another filter, or clear the search."}
             </EmptyState>
           ) : (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
               {visible.map((c) => (
                 <article key={c.id} className="relative flex min-h-[239px] flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:shadow-float">
                   <div className="flex items-center gap-3">

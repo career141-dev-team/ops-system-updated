@@ -167,6 +167,7 @@ export const seed = internalMutation({
         role: v.union(
           v.literal("ops_owner"),
           v.literal("ops_lead"),
+          v.literal("admin"),
           v.literal("accounts"),
           v.literal("director_ops"),
           v.literal("marketing"),
@@ -635,6 +636,7 @@ export const addMember = internalMutation({
     role: v.union(
       v.literal("ops_owner"),
       v.literal("ops_lead"),
+      v.literal("admin"),
       v.literal("accounts"),
       v.literal("director_ops"),
       v.literal("marketing"),
@@ -657,6 +659,33 @@ export const addMember = internalMutation({
     });
     const written = await ctx.db.get(id);
     return written ? row(written) : null;
+  },
+});
+
+/** Update a member's name, role, or active status (20 Nov, Account & help people management). */
+export const patchMember = internalMutation({
+  args: {
+    memberId: v.string(),
+    patch: v.any(),
+    by: v.string(),
+    what: v.string(),
+    reason: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.memberId as Id<"opsMembers">);
+    if (!found) return { ok: false };
+    await ctx.db.patch(found._id, args.patch);
+    const after = await ctx.db.get(found._id);
+    await writeAudit(ctx, {
+      actorId: args.by,
+      action: args.what,
+      subjectType: "member",
+      subjectId: found._id as string,
+      before: `${found.role}, active=${found.active}`,
+      after: after ? `${after.role}, active=${after.active}` : null,
+      reason: args.reason,
+    });
+    return { ok: true };
   },
 });
 
@@ -1106,6 +1135,8 @@ export const addInterview = internalMutation({
     interviewTaId: v.union(v.string(), v.null()),
     inviteMessageId: v.union(v.string(), v.null()),
     calendarEventId: v.optional(v.union(v.string(), v.null())),
+    calendarOrganiser: v.optional(v.union(v.string(), v.null())),
+    calendarLengthMin: v.optional(v.union(v.number(), v.null())),
     attendedAt: v.union(v.number(), v.null()),
     decision: v.union(v.string(), v.null()),
     decisionReason: v.union(v.string(), v.null()),
@@ -2228,6 +2259,24 @@ export const addTeamNote = internalMutation({
       after: args.body.slice(0, 120),
     });
     return { id: id as string, authorId: args.authorId, body: args.body, createdAt: now };
+  },
+});
+
+/** Delete a team note; the author check is in the action (22 Nov). */
+export const removeTeamNote = internalMutation({
+  args: { noteId: v.string(), actorId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.noteId as Id<"opsTeamNotes">);
+    if (!row || row.authorId !== args.actorId) return { ok: false }; // author only
+    await ctx.db.delete(row._id);
+    await writeAudit(ctx, {
+      actorId: args.actorId,
+      action: "teamNote.deleted",
+      subjectType: "teamNote",
+      subjectId: args.noteId,
+      before: row.body.slice(0, 120),
+    });
+    return { ok: true };
   },
 });
 

@@ -1,8 +1,9 @@
 import Link from "next/link";
 
-import { postTeamNote } from "@/app/actions";
+import { deleteTeamNote, postTeamNote } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { EmptyState, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { SubmitButton } from "@/app/ui/SubmitButton";
 import { groupByDay, type NewsItem, type WhatsAppView } from "@/lib/inboxChannels";
 import { bubbleWhen, initialsOf, shortWhen } from "@/lib/myWork";
 import CopyButton from "./CopyButton";
@@ -89,8 +90,8 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
 
 const TONE = { good: "bg-bg-ok text-success", info: "bg-info-soft text-info", warn: "bg-warn-soft text-warn" } as const;
 
-/** I3 (133:384). No team feed is stored yet, so the post box is disabled and the list says so unless items exist. */
-export function NewsPanel({ items, now, name }: { items: NewsItem[]; now: number; name: string }) {
+/** I3 (133:384). Posted team notes merged with desk milestones; authors can delete their own note (22 Nov). */
+export function NewsPanel({ items, now, name, memberId }: { items: NewsItem[]; now: number; name: string; memberId: string }) {
   const days = groupByDay(items);
   const dayLabel = (d: string) => {
     const today = new Date(now + 5.5 * 3_600_000).toISOString().slice(0, 10);
@@ -106,7 +107,7 @@ export function NewsPanel({ items, now, name }: { items: NewsItem[]; now: number
           <input type="hidden" name="back" value="/mail?view=news" />
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-soft t-label text-brand">{initialsOf(name)}</span>
           <input name="body" required minLength={2} maxLength={500} aria-label="Write a note to the team" placeholder="Write a note to the team" className="min-w-0 flex-1 rounded-full bg-sunk px-4 py-3 t-body outline-none placeholder:text-ink-3 focus:ring-2 focus:ring-ink/20" />
-          <button type="submit" className={pillPrimary + " !py-2"}>Post</button>
+          <SubmitButton id="post-note" className={pillPrimary + " !py-2"}>Post</SubmitButton>
         </form>
         {days.length === 0 ? (
           <EmptyState icon="bell" title="No team news yet">
@@ -131,6 +132,13 @@ export function NewsPanel({ items, now, name }: { items: NewsItem[]; now: number
                     <p className="t-body-m">{n.text}</p>
                     {n.about && (n.href ? <Link href={n.href} className="t-small text-brand hover:underline">{n.about}</Link> : <span className="t-small text-brand">{n.about}</span>)}
                   </div>
+                  {n.authorId === memberId && (
+                    <form action={deleteTeamNote}>
+                      <input type="hidden" name="back" value="/mail?view=news" />
+                      <input type="hidden" name="id" value={n.id} />
+                      <SubmitButton id={"del-" + n.id} aria-label={"Delete your note: " + n.text.slice(0, 40)} className={pillSecondary + " !py-1.5"}>Delete</SubmitButton>
+                    </form>
+                  )}
                 </div>
               ))}
             </div>

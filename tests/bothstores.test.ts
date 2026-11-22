@@ -32,6 +32,18 @@ process.env.OPS_DATA_DIR ??= fs.mkdtempSync(path.join(os.tmpdir(), "ops-both-"))
 const { addChatRow, addLead, chatFor, desk, draftMessage, settleMessage, startTimer, updateChatRow } = await import("@/data/desk");
 const { usingConvex } = await import("@/data/convexClient");
 
+test("a team note can be posted, seen and deleted by its author only, and the delete is audited", async () => {
+  const { addTeamNote, removeTeamNote } = await import("@/data/desk");
+  const note = await addTeamNote("m_owner", "Round trip note " + Date.now());
+  assert.ok((await desk()).teamNotes.some((n) => n.id === note.id));
+  await removeTeamNote(note.id, "m_other");
+  assert.ok((await desk()).teamNotes.some((n) => n.id === note.id), "someone else cannot delete it");
+  await removeTeamNote(note.id, "m_owner");
+  const after = await desk();
+  assert.ok(!after.teamNotes.some((n) => n.id === note.id));
+  assert.ok(after.audit.some((a) => a.action === "teamNote.deleted" && a.subjectId === note.id));
+});
+
 const WHICH = usingConvex() ? "convex" : "json";
 
 /**

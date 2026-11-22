@@ -10,6 +10,7 @@
  */
 import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { dayWord } from "@/lib/calendarBoard";
+import { extensionOf, problemWithUpload } from "@/lib/files";
 
 export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
 
@@ -22,7 +23,7 @@ export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
 ];
 
 /** The panel a card's button opens, by the column it sits in. */
-export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" }>> = {
+export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" | "reject" }>> = {
   new: { label: "Call", panel: "call" },
   call: { label: "Call", panel: "call" },
   fits: { label: "Book an interview", panel: "book-interview" },
@@ -42,6 +43,8 @@ export interface Applicant {
   detail: string;
   /** Called and tried so far, of 3. */
   tries?: number;
+  /** The kept CV file (22 Nov: hiring had nowhere to put one); null until someone adds it. */
+  cvFileId?: string | null;
   /** What the later panels draw their messages from; absent until it is known. */
   draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
 }
@@ -105,6 +108,7 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           since: a.updatedAt,
           detail: a.detail,
           tries: a.tries,
+          cvFileId: a.cvFileId,
           draft: {
             interviewAt: a.interviewAt ?? undefined,
             interviewer: a.interviewer ?? undefined,
@@ -148,6 +152,42 @@ export function problemWithApplicant(name: string, source: string): string | nul
   if (name.trim().length < 2) return "Write the applicant's full name.";
   if (!source.trim()) return "Say where this CV came from.";
   return null;
+}
+
+/** The most a CV may be (22 Nov). Below the 25 MB the file store allows: a CV is text; a bigger one is a scan. */
+export const MAX_CV_BYTES = 10 * 1024 * 1024;
+
+/** A CV is a document the team reads: PDF or Word, within the size above (22 Nov). */
+export function problemWithCv(file: { name: string; size: number }): string | null {
+  const ext = extensionOf(file.name);
+  if (ext && ![".pdf", ".doc", ".docx"].includes(ext)) return "A CV must be a PDF or a Word file.";
+  if (file.size > MAX_CV_BYTES) return "That CV is bigger than 10 MB. Save it smaller, or as a PDF, and add it again.";
+  return problemWithUpload(file);
+}
+
+/** The name can lie; the first bytes cannot: %PDF, PK (docx) or D0CF11E0 (old .doc). */
+export function problemWithCvBytes(bytes: Uint8Array): string | null {
+  const is = (...b: number[]) => b.every((x, i) => bytes[i] === x);
+  return is(0x25, 0x50, 0x44, 0x46) || is(0x50, 0x4b) || is(0xd0, 0xcf, 0x11, 0xe0) ? null : "That file is not a real PDF or Word file. Open it, save it again as a PDF, and add it again.";
+}
+
+/** The call result that closes the applicant without an interview (22 Nov, ops team: "can we reject without an interview?"). */
+export const CALL_NOT_FIT = "Talked - not a fit";
+
+/** Not a fit rejects, so it needs a reason like every other reject. */
+export function problemWithHiringCall(result: string, note: string): string | null {
+  if (result === CALL_NOT_FIT && note.trim().length < 4) return "Write the reason in the note before marking not a fit.";
+  return null;
+}
+
+/**
+ * "2026-11-22T10:45" typed on the form is Colombo time (22 Nov). It was read in the server's own
+ * zone, so on a UTC server every interview was saved 5h30 late. (The exact "Sun 05:15" the team
+ * reported was not reproduced.) NaN when it is not a date.
+ */
+export function colomboLocalToMs(typed: string): number {
+  const t = typed.trim();
+  return Date.parse(t + (/T\d\d:\d\d$/.test(t) ? ":00" : "") + "+05:30");
 }
 
 export function problemWithHiringDecision(decision: string, reason: string): string | null {
@@ -250,8 +290,8 @@ export function inviteMessage(a: Applicant, role: string): string | null {
   return `Hello ${first(a.name)}, we would like to meet you for an interview for ${role}, with ${d.interviewer} on ${when} at ${d.place}. Please reply to confirm. Thank you`;
 }
 
-export function rejectMessage(a: Applicant, role: string): string {
-  return `Hello ${first(a.name)}, thank you for meeting us for ${role}. We will not go further this time. We wish you well. Thank you`;
+export function rejectMessage(a: Applicant, role: string, afterCall = false): string {
+  return `Hello ${first(a.name)}, thank you for ${afterCall ? "speaking with us" : "meeting us"} for ${role}. We will not go further this time. We wish you well. Thank you`;
 }
 
 export function offerLetter(a: Applicant, role: string): string | null {

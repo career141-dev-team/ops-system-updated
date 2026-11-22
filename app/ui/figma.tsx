@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import TabSlide from "@/app/ui/TabSlide";
 import Icon, { type IconName } from "@/app/Icon";
 
 /**
@@ -759,16 +760,16 @@ export function SegmentedBar({
 
 /** Figma button class helpers matching node `1:131`. */
 export const pillPrimary =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink-inverse transition-transform active:scale-[0.98] cursor-pointer";
+  "inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink-inverse transition-transform duration-150 motion-safe:active:scale-[0.97] cursor-pointer";
 
 export const pillSecondary =
-  "inline-flex items-center justify-center gap-2 rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink transition-colors hover:bg-sunk active:scale-[0.98] cursor-pointer";
+  "inline-flex items-center justify-center gap-2 rounded-full border border-rule-strong bg-surface px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink transition-[background-color,transform] duration-150 hover:bg-sunk motion-safe:active:scale-[0.97] cursor-pointer";
 
 export const pillDanger =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-bg-danger px-5 py-[11px] text-[14px] font-medium leading-[21px] text-danger transition-transform active:scale-[0.98] cursor-pointer";
+  "inline-flex items-center justify-center gap-2 rounded-full bg-bg-danger px-5 py-[11px] text-[14px] font-medium leading-[21px] text-danger transition-transform duration-150 motion-safe:active:scale-[0.97] cursor-pointer";
 
 export const pillBrand =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-brand px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink-inverse transition-transform active:scale-[0.98] cursor-pointer";
+  "inline-flex items-center justify-center gap-2 rounded-full bg-brand px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink-inverse transition-transform duration-150 motion-safe:active:scale-[0.97] cursor-pointer";
 
 export const pillGhost =
   "inline-flex items-center justify-center gap-2 rounded-full px-5 py-[11px] text-[14px] font-medium leading-[21px] text-ink-soft transition-colors hover:text-ink cursor-pointer";
@@ -854,7 +855,7 @@ export function PillTabs({
   active: string;
 }) {
   return (
-    <nav className="flex items-center gap-2 max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 md:flex-wrap">
+    <nav className="relative flex items-center gap-2 max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 md:flex-wrap">
       {items.map((item) => {
         const on = item.key === active;
         return (
@@ -864,7 +865,7 @@ export function PillTabs({
             scroll={false}
             aria-current={on ? "page" : undefined}
             className={
-              "t-body-m inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 transition-colors " +
+              "t-body-m inline-flex shrink-0 items-center gap-2 relative z-[1] whitespace-nowrap rounded-full px-4 py-2.5 transition-colors " +
               (on ? "bg-ink text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")
             }
           >
@@ -873,6 +874,7 @@ export function PillTabs({
           </Link>
         );
       })}
+      <TabSlide active={active} />
     </nav>
   );
 }

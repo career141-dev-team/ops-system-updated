@@ -63,6 +63,8 @@ export interface NewsItem {
   text: string;
   about: string | null;
   href: string | null;
+  /** Set on team notes only: who may delete it (22 Nov). */
+  authorId?: string;
 }
 
 const MILESTONES: Record<string, { kind: string; tone: "good" | "info" | "warn"; verb: string }> = {
@@ -86,6 +88,7 @@ export function teamNewsView(db: OpsDatabase): NewsItem[] {
     kind: "Note",
     tone: "info",
     by: nameOf(n.authorId),
+    authorId: n.authorId,
     at: n.createdAt,
     text: n.body,
     about: null,

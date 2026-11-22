@@ -352,3 +352,23 @@ export function groupPostIsManual(): SendOutcome {
       "Meta gives no way for the system to join one it did not create (6 Nov).",
   };
 }
+
+/**
+ * The mailbox a member's mail goes out from: the dev sender when dev sign-in is
+ * active and one is set, else the member's own address (17 Nov).
+ */
+export function senderMailbox(memberEmail: string, devSignIn: boolean, env: Record<string, string | undefined> = process.env): string {
+  const dev = (env.OPS_DEV_SENDER_EMAIL ?? "").trim();
+  return devSignIn && dev ? dev : memberEmail;
+}
+
+/** The email half of the Health page as plain lines: the sender mailbox, and only a count of the allowed addresses (never the list). */
+export function healthLines(env: Record<string, string | undefined>, sender: string): string[] {
+  const on = (k: string) => (env[k] ?? "").trim().toLowerCase() === "on";
+  const allowed = (env.OPS_OUTBOUND_ALLOW_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean).length;
+  return [
+    "Sending: " + (on("OPS_SEND") ? "on" : "switched off (OPS_SEND)"),
+    "Sender mailbox: " + (sender || "none"),
+    "Outbound lock: " + (on("OPS_OUTBOUND_LOCK") ? "on, " + allowed + " address" + (allowed === 1 ? "" : "es") + " allowed" : "off"),
+  ];
+}

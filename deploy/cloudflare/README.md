@@ -30,6 +30,16 @@ built Worker at about 2.1 MiB compressed (the free plan allows 3).
    the Ops lead. In the Worker's **Settings > Domains & Routes**, switch on **Cloudflare Access** so only people you
    name can open it.
 
+## Drift (21 Nov): this page and `wrangler.jsonc` disagree
+
+This page says the demo uses invented data only and that `CONVEX_*` is never set. `wrangler.jsonc` at the repository root
+no longer matches: it sets `OPS_STORE` to `convex`, points `CONVEX_SELF_HOSTED_URL` at a `convex.cloud` address, and
+carries the Clerk sign-in settings. That is a store that keeps data and a real sign-in, not the JSON file in memory
+described above. Which Convex deployment that address is has not been checked, and nothing here changes it. **The owner
+decides** whether the demo goes back to invented data (set `OPS_STORE` to the JSON store, remove the `CONVEX_*` and
+Clerk lines) or this page is rewritten to say what the Worker now does. AGENTS.md rules 1 and 2 apply either way: it
+must never be the TA backend, and never a deploy of functions from a laptop.
+
 ## Try it on your machine first
 
 ```sh
