@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bucketOf, buttonFor, clockOf, dayBounds, firstLines, standsLine, workView } from "@/lib/myWorkView";
+import { bucketOf, buttonFor, clockOf, dayBounds, firstLines, standsLine, taskSource, workView } from "@/lib/myWorkView";
 import type { OpsDatabase, OpsTask } from "@/data/types";
 
 const NOW = Date.parse("2026-11-19T05:00:00Z"); // 10:30 in Colombo
@@ -48,4 +48,11 @@ test("words", () => {
   assert.equal(standsLine(2, 4), "2 late, then 4 need you.");
   assert.equal(standsLine(0, 0), "Nothing is waiting on you.");
   assert.equal(firstLines("One. Two. Three."), "One.");
+});
+
+test("a board card says where the task came from; only a task with nothing attached is free", () => {
+  assert.equal(taskSource({ subjectType: "report", link: "/reports/r1" }, ""), "From the weekly report");
+  assert.equal(taskSource({ subjectType: "client", link: null }, "Nippon Paint"), "Nippon Paint");
+  assert.equal(taskSource({ subjectType: null, link: "/x" }, ""), "From the system");
+  assert.equal(taskSource({ subjectType: null, link: null }, ""), "Free task");
 });

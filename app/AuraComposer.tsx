@@ -39,8 +39,8 @@ export default function AuraComposer() {
         name="text"
         required
         autoComplete="off"
-        placeholder="Tell AURA what happened, or ask anything"
-        aria-label="Tell AURA what happened, or ask anything"
+        placeholder="Ask a question, or say what to do"
+        aria-label="Ask a question, or say what to do"
         className="min-w-0 flex-1 bg-transparent px-2 text-[16px] leading-[26px] text-ink outline-none placeholder:text-ink-faint"
       />
       <Dictate into="aura-text" label="Speak to AURA" round />

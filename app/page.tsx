@@ -295,7 +295,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
         ]}
       />
       <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
-        <Card title="Board" sub="Late first. Each card has one button.">
+        <Card title="Board" sub="Late first. Each card says where it came from.">
           <div data-stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {cols.map((col) => (
               <div key={col.key} className="flex flex-col gap-3 rounded-[18px] bg-sunk p-3">
@@ -309,21 +309,40 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
                     <p className="t-body-m">{t.title}</p>
                     <p className="t-small text-ink-3">{t.sub}</p>
                     <p className={"t-small " + (col.key === "late" ? "text-danger" : col.key === "waits" ? "text-warn" : "text-ink-3")}>{t.due}</p>
-                    <div className="pt-2">
-                      {col.key === "waits" ? (
-                        <form action={snoozeTaskAction}>
-                          <input type="hidden" name="taskId" value={t.key} />
-                          <input type="hidden" name="back" value="/?view=tasks" />
-                          <button type="submit" className={ghost}>
-                            Later
-                          </button>
-                        </form>
-                      ) : (
-                        // Done opens the task: nothing closes without a line about what happened.
+                    <div className="flex flex-wrap items-start gap-2 pt-2">
+                      {/* Done opens the task: nothing closes without a line about what happened. */}
+                      {col.key !== "waits" && (
                         <Link href={"/tasks/" + t.key} className={ghost}>
                           Done
                         </Link>
                       )}
+                      <details className="w-full">
+                        <summary className={ghost + " inline-flex cursor-pointer"}>Move to</summary>
+                        <form action={snoozeTaskAction} className="mt-2 flex flex-col gap-2">
+                          <input type="hidden" name="taskId" value={t.key} />
+                          <input type="hidden" name="back" value="/?view=tasks" />
+                          <label className="t-small flex flex-col gap-1 text-ink-3">
+                            Move to
+                            <select name="to" defaultValue="today" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink">
+                              <option value="today">Today</option>
+                              <option value="tomorrow">Tomorrow</option>
+                            </select>
+                          </label>
+                          <label className="t-small flex flex-col gap-1 text-ink-3">
+                            Or a date (this wins)
+                            <input type="date" name="date" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink" />
+                          </label>
+                          {t.system && (
+                            <label className="t-small flex flex-col gap-1 text-ink-3">
+                              Reason
+                              <input name="reason" placeholder="Why it is moving later than its deadline" className="t-small rounded-[10px] bg-sunk px-2 py-1.5 text-ink" />
+                            </label>
+                          )}
+                          <button type="submit" className={ghost}>
+                            Move
+                          </button>
+                        </form>
+                      </details>
                     </div>
                   </article>
                 ))}
