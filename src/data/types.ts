@@ -141,7 +141,8 @@ export interface OpsInbound {
   providerId: string;
   inReplyTo: string | null;
   /** How it was matched, and to what. Null until somebody or something files it. */
-  matchedBy: "reference" | "thread" | "house" | "domain" | "manual" | "none";
+  /** "phone" (23 Nov): a WhatsApp number that is exactly one known person's. */
+  matchedBy: "reference" | "thread" | "house" | "domain" | "phone" | "manual" | "none";
   subjectType: string | null;
   subjectId: string | null;
   clientId: string | null;
@@ -1102,6 +1103,8 @@ export interface OpsApplicant {
   laptop?: string | null;
   /** The Scoop batch the CV came in, so its summary can find the people it added. */
   scoopId?: string | null;
+  /** When they last wrote back to us on WhatsApp (23 Nov), so a Scoop's summary counts a reply as a response. */
+  repliedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }

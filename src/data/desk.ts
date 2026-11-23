@@ -15,6 +15,8 @@ import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
 import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
 import { MAX_PER_BATCH, PER_PASS, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
+import { matchPhone, type WaMessage } from "@/lib/whatsapp";
+import { cancelTeamsEvent } from "@/lib/graphCalendar";
 import type {
   Id,
   OpsBaseline,
@@ -3034,11 +3036,19 @@ export async function noticeCandidateOut(
     reason,
   );
   await cancelClocksFor(db, "interview", interviewId, by ?? interview.ownerId, "The candidate came out of it.", null);
+  // The Teams meeting goes with them (23 Nov): it was left in the organiser's calendar, with a join link for nobody.
+  let calendarNote = "";
+  if (interview.calendarEventId) {
+    const organiser = interview.calendarOrganiser || member(db, interview.ownerId)?.email || "";
+    const gone = await cancelTeamsEvent(organiser, interview.calendarEventId, switchedOn(db, "switch.teamsEnabled"));
+    if (gone && !gone.ok) calendarNote = "\n\nThe Outlook event could not be cancelled, so cancel it by hand: " + gone.reason;
+    else await patchInterview(interviewId, { calendarEventId: null, calendarOrganiser: null, calendarLengthMin: null }, by, "interview.calendarCleared", null);
+  }
   await createTask({
     kind: "check",
     title: "A back-up for " + interview.candidateName,
     body:
-      standing.what +
+      standing.what + calendarNote +
       "\n\nThe notice to the client is drafted and waiting for you. Then ask the TA for the back-up they kept: the position cannot sit on one candidate.",
     assigneeId: interview.ownerId,
     dueAt: now,
@@ -4298,7 +4308,7 @@ export async function runScoopSummary(by: Id, now = Date.now()): Promise<{ made:
   await noteSetting(SUMMARISED_ON, today);
   if (!batches.length) return { made: false, batches: 0 };
 
-  const people = db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null }));
+  const people = db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }));
   const body = batches
     .map((b) => (b.source === "mail" ? (b.subject || "A Scoop") + " (from " + (b.from || "email") + ")" : "CVs added by hand") + "\n" + summaryOf(b, people).lines.join("\n"))
     .join("\n\n");
@@ -4315,4 +4325,71 @@ export async function runScoopSummary(by: Id, now = Date.now()): Promise<{ made:
   });
   for (const b of batches) await saveBatch({ ...b, summarisedAt: now });
   return { made: true, batches: batches.length };
+}
+
+
+/* ── Inbound WhatsApp (23 Nov, the ops team's feedback) ─────────────────────────────── */
+
+/**
+ * What came in on the Ops WhatsApp number, recorded and filed to whose number it is.
+ *
+ * Recorded once by Meta's own message id, so a webhook retry adds nothing. A number that is exactly one known
+ * person's is filed to them: a client's contact (and, as with a reply by email, the chasing of that client stops),
+ * an enquiry's contact, or an applicant to us (who is marked as having replied, so a Scoop's summary counts them
+ * as responded). Anything else is filed as nobody's, with the reason on it, and waits for a person. Nothing is sent.
+ */
+export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now()): Promise<{ recorded: number; already: number; filed: number; waiting: number; chasesStopped: number }> {
+  let recorded = 0;
+  let already = 0;
+  let filed = 0;
+  let waiting = 0;
+  let chasesStopped = 0;
+  for (const m of messages) {
+    const db = await desk();
+    const match = matchPhone(m.from, {
+      clients: db.clients.filter((c) => c.stage !== "closed").map((c) => ({ id: c.id, name: c.name, leadId: c.leadId, contacts: c.contacts })),
+      leads: db.leads.map((l) => ({ id: l.id, company: l.company, contactName: l.contactName, contactPhone: l.contactPhone })),
+      applicants: db.applicants.map((a) => ({ id: a.id, name: a.name, phone: a.phone, vacancyId: a.vacancyId })),
+    });
+    const subjectType = match.kind === "none" ? null : match.kind === "applicant" ? "applicant" : match.kind === "lead" ? "lead" : "client";
+    const row = {
+      channel: "whatsapp" as const,
+      mailbox: "whatsapp",
+      from: "+" + m.from,
+      // Whose number it is, in our words, when we know; else what they call themselves on WhatsApp.
+      fromName: match.kind !== "none" ? match.name : m.name,
+      receivedAt: m.at || now,
+      subject: "WhatsApp from " + (match.name || m.name || "+" + m.from),
+      // A picture or a voice note is not kept; the person is told it came, and what kind.
+      body: m.text || "[" + m.kind + ": open it in WhatsApp]",
+      providerId: m.id,
+      inReplyTo: null,
+      matchedBy: match.kind === "none" ? ("none" as const) : ("phone" as const),
+      subjectType,
+      subjectId: match.id,
+      clientId: match.clientId,
+      note: match.note,
+    };
+    const saved = usingConvex() ? await convexMutation<{ id: string; already: boolean }>("ops/data:recordInbound", row) : repo.recordInbound(row);
+    if (saved.already) {
+      already += 1;
+      continue;
+    }
+    recorded += 1;
+    if (match.kind === "none") {
+      waiting += 1;
+      continue;
+    }
+    filed += 1;
+    if (match.kind === "applicant") {
+      await patchApplicant(match.id, { repliedAt: row.receivedAt }, by, "applicant.repliedOnWhatsApp", null);
+    } else if (match.kind === "client") {
+      // A client who replies is not chased: the agreement's chase and the CV sets' feedback chases stop.
+      const client = db.clients.find((c) => c.id === match.id);
+      const esa = client?.leadId ? agreementForLead(db, client.leadId) : null;
+      if (esa) chasesStopped += await recordReply("esa", esa.id, by);
+      for (const set of db.clientSets.filter((s) => s.clientId === match.id)) chasesStopped += await recordReply("clientSet", set.id, by);
+    }
+  }
+  return { recorded, already, filed, waiting, chasesStopped };
 }

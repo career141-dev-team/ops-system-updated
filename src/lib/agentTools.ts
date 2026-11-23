@@ -22,7 +22,10 @@ import type { OpsDatabase, OpsMember } from "@/data/types";
 import type { ToolDef, ToolRun } from "@/lib/ai";
 import { catalogueInWords, resolveIntent } from "@/lib/agent";
 import { colomboDate, colomboHour } from "@/lib/calendar";
-import { parseSurface } from "@/lib/a2ui";
+import { TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, parseSurface } from "@/lib/a2ui";
+import { filterSummary, summaryRows } from "@/lib/interviewSummary";
+import { STAGE_LABEL } from "@/lib/hiringTable";
+import { batchesOf, summaryOf } from "@/lib/scoop";
 import { can, seesWholeDesk } from "@/lib/roles";
 
 const MAX_ROWS = 20;
@@ -71,6 +74,33 @@ export const AGENT_TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: { query: { type: "string" } }, required: [] },
   },
   {
+    name: "find_candidates",
+    description:
+      "Look up the people applying to Career 141's own vacancies (internal hiring) by name, vacancy or position applied for. Optional stage: new, call, fits, interview, decision, hired or rejected. Returns name, vacancy, stage, applied for, calls tried, phone and the one-line note. Never the NIC.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, stage: { type: "string" } }, required: [] },
+  },
+  {
+    name: "find_interviews",
+    description:
+      "Look up interviews, client and internal, by client or candidate. Optional status (Scheduled, Pending, Attended, Withdrew, No-show, Cancelled), mode (On-site, Online, Phone) and from / to dates (yyyy-mm-dd). Returns client, candidate, detail, mode, when and status.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, status: { type: "string" }, mode: { type: "string" }, from: { type: "string" }, to: { type: "string" } }, required: [] },
+  },
+  {
+    name: "scoop_status",
+    description: "How the latest Scoops (batches of CVs) stand: CVs processed, responded, did not answer, not called yet, interviews booked. Newest first.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "show_table",
+    description:
+      "Finish with this when the answer is rows of records the person asked for as a status update (candidates, interviews, Scoops): a compact table in the chat. Display only. text is one short lead sentence. columns are up to " + TABLE_MAX_COLUMNS + " short headings; rows are up to " + TABLE_MAX_ROWS + " arrays of words, one per column, copied exactly from what the tools returned - never made up. Use show_ui for cards, propose_action for something to be done.",
+    input_schema: {
+      type: "object",
+      properties: { text: { type: "string" }, columns: { type: "array", items: { type: "string" } }, rows: { type: "array", items: { type: "array", items: { type: "string" } } } },
+      required: ["text", "columns", "rows"],
+    },
+  },
+  {
     name: "show_ui",
     description:
       "Finish with this when the answer is a list or a few records that read better as cards than as a sentence (clients, positions, tasks, free times). Display only: never use it for something to be done - that is propose_action. text is one short lead sentence. components is an A2UI v1.0 flat list: {id, component, ...} with one id \"root\". Allowed: Text {text, variant: body|caption}, Row/Column/List {children: [ids]}, Card {child: id}, Divider, Button {child: id of a Text, variant: default|primary, action: {event: {name: \"say\", context: {text: words to send as if typed}}}}. Literal strings only.",
@@ -102,6 +132,7 @@ export function agentSystemPrompt(member: OpsMember, today: string): string {
     "Never invent an id, email, phone number, time or money figure. Never mention fees, salaries or invoice amounts.",
     "If propose_action comes back with a problem, fix it with the tools or ask the one question it needs.",
     "Keep every reply short and plain. When a list or a few records read better as cards, finish with show_ui instead of words; never for an action.",
+    "When the person asks for the status of candidates, interviews or Scoops, look them up and finish with show_table: a compact table, rows copied exactly from the tools. Never put an NIC, a salary or a fee in a table.",
     "",
     "Actions you may propose (intent: what it does (fields)):",
     ...catalogueInWords(member).map((l) => "- " + l),
@@ -213,6 +244,53 @@ export async function runAgentTool(ctx: ToolContext, name: string, input: Record
     case "find_ta_lead":
       if (!can(member, "client.manage")) return NOT_ALLOWED;
       return ctx.findTaLead ? ctx.findTaLead(String(input.query ?? "")) : "The TA System is not reachable from here.";
+    case "find_candidates": {
+      if (!can(member, "client.manage")) return NOT_ALLOWED;
+      const stage = String(input.stage ?? "").trim().toLowerCase();
+      return rows(
+        db.applicants
+          .filter((a) => matches(input.query, a.name, a.targetPosition ?? "", db.vacancies.find((v) => v.id === a.vacancyId)?.title ?? ""))
+          .filter((a) => !stage || (stage === "call" ? a.stage === "call" || a.stage === "new" : a.stage === stage))
+          .map((a) => ({
+            name: a.name,
+            vacancy: db.vacancies.find((v) => v.id === a.vacancyId)?.title ?? "",
+            stage: STAGE_LABEL[a.stage] ?? a.stage,
+            applied_for: a.targetPosition ?? "",
+            calls_tried: a.tries,
+            phone: a.phone ?? "",
+            note: a.detail,
+          })),
+      );
+    }
+    case "find_interviews": {
+      if (!can(member, "client.manage")) return NOT_ALLOWED;
+      const when = (at: number | null) => (at === null ? "No time yet" : new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " "));
+      // The date, mode and status are the table's own filters; the words match the client, the candidate or the position.
+      const all = filterSummary(summaryRows(db, now), {
+        mode: String(input.mode ?? ""),
+        status: String(input.status ?? ""),
+        from: String(input.from ?? ""),
+        to: String(input.to ?? ""),
+      }).filter((r) => matches(input.query, r.client, r.candidate, r.detail));
+      return rows(all.map((r) => ({ client: r.client, candidate: r.candidate, detail: r.detail, mode: r.mode ?? "Not set", when: when(r.at), status: r.status })));
+    }
+    case "scoop_status": {
+      if (!can(member, "client.manage")) return NOT_ALLOWED;
+      const people = db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }));
+      return rows(
+        batchesOf(db.settings)
+          .slice(0, 8)
+          .map((b) => {
+            const s = summaryOf(b, people);
+            return { scoop: b.source === "mail" ? b.subject || "Scoop by email" : "Added by hand", date: colomboDate(b.at), cvs: s.processed, responded: s.responded, no_answer: s.noAnswer, not_called: s.notCalled, interviews: s.interviews };
+          }),
+      );
+    }
+    case "show_table": {
+      const got = parseSurface([{ id: "root", component: "Table", columns: input.columns, rows: input.rows }]);
+      if (!got.ok) return "Not drawn: send columns (words) and rows (arrays of words), or answer in words.";
+      return { stop: true, value: { kind: "ui", text: String(input.text ?? "").trim(), ui: JSON.stringify(got.surface) } };
+    }
     case "show_ui": {
       const got = parseSurface(input.components);
       if (!got.ok) return "Not drawn: " + got.why + " Fix it, or answer in words.";

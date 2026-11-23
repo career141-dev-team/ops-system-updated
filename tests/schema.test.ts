@@ -37,7 +37,7 @@ const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "ui", "slotAnswers", "
   // The stage an internal-hiring applicant was in when rejected (23 Nov): a row from before has none.
   "rejectedAtStage",
   // A Scoop CV (23 Nov): read from the CV, or asked on the call.
-  "nic", "targetPosition", "packageSaid", "laptop", "scoopId"];
+  "nic", "targetPosition", "packageSaid", "laptop", "scoopId", "repliedAt"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

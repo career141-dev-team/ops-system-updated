@@ -15,8 +15,10 @@ export interface WaReply {
   quote: string;
   /** What it is about, in words; null when it is not filed. */
   about: string | null;
-  /** Where "Record" goes: the set's role page, or null when we cannot tell which role. */
+  /** Where "Record" goes: the set's role page, the applicant's vacancy or the client's page, or null when nobody's. */
   recordHref: string | null;
+  /** The inbound row, so the reply can be marked dealt with. */
+  inboundId: string;
 }
 export interface WaReady {
   id: string;
@@ -32,18 +34,24 @@ export interface WhatsAppView {
 
 export function whatsappView(db: OpsDatabase): WhatsAppView {
   const replies = db.inbound
-    .filter((i) => i.channel === "whatsapp" && (i.direction ?? "in") === "in" && i.readState === "new")
+    // Not dealt with: new (nobody's yet) or filed to somebody (23 Nov: a reply filed by its number still waits to be read).
+    .filter((i) => i.channel === "whatsapp" && (i.direction ?? "in") === "in" && i.readState !== "actioned")
     .sort((a, b) => b.receivedAt - a.receivedAt)
     .map((i): WaReply => {
       const set = i.subjectType === "clientSet" ? db.clientSets.find((s) => s.id === i.subjectId) : undefined;
       const position = set ? db.positions.find((p) => p.openingTaId === set.openingTaId) : undefined;
+      const applicant = i.subjectType === "applicant" ? db.applicants.find((a) => a.id === i.subjectId) : undefined;
+      const vacancy = applicant ? db.vacancies.find((v) => v.id === applicant.vacancyId) : undefined;
+      const client = i.subjectType === "client" ? db.clients.find((c) => c.id === i.subjectId) : undefined;
       return {
         id: i.id,
         who: i.fromName || i.from,
         at: i.receivedAt,
         quote: i.body.trim(),
-        about: set ? set.name : null,
-        recordHref: position ? `/positions/${position.id}?view=sets&panel=record-answer&on=${set!.id}` : null,
+        about: set ? set.name : applicant ? "Applied: " + (vacancy?.title ?? "internal hiring") : client ? client.name : i.note || null,
+        recordHref: position ? `/positions/${position.id}?view=sets&panel=record-answer&on=${set!.id}` : applicant ? `/hiring/${applicant.vacancyId}` : client ? `/clients/${client.id}` : null,
+        // The mail "done" action works on any inbound row, so a reply can be cleared once it is dealt with.
+        inboundId: i.id,
       };
     });
   const ready = db.messages

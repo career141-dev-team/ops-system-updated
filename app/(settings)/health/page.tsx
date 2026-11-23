@@ -5,7 +5,8 @@ import { healthCheckMicrosoft, healthSendTestEmail } from "@/app/actions";
 import { can } from "@/lib/roles";
 import { healthLines, senderMailbox, outboundLocked, outreachInWords, outreachLiveInEnv } from "@/lib/senders";
 import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
-import { desk, liveTimers, switchedOn } from "@/data/desk";
+import { desk, liveTimers, scoopBatches, scoopConfig, switchedOn } from "@/data/desk";
+import { scoopLines, whatsappLines } from "@/lib/integrationHealth";
 import { usingConvex } from "@/data/convexClient";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 import { people, readsEnabled, writesEnabled } from "@/lib/ta";
@@ -80,6 +81,28 @@ export default async function HealthPage() {
             {mailboxesInWords()}
             {outboundLocked() ? " · the outbound lock allows only named addresses and numbers" : ""}
           </p>
+        </div>
+      </section>
+
+      <section className={card}>
+        <h2 className="t-h2">WhatsApp</h2>
+        <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
+          {whatsappLines(
+            process.env,
+            { count: db.inbound.filter((i) => i.channel === "whatsapp" && (i.direction ?? "in") === "in").length, lastAt: db.inbound.filter((i) => i.channel === "whatsapp").reduce<number | null>((m, i) => (m === null || i.receivedAt > m ? i.receivedAt : m), null) },
+            Date.now(),
+          ).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
+      </section>
+
+      <section className={card}>
+        <h2 className="t-h2">Scoops</h2>
+        <div className="mt-2 flex flex-col gap-1 text-[13.5px]">
+          {scoopLines(scoopConfig(db), readerEnabled(), scoopBatches(db).length, Number(db.settings.find((s) => s.key === "scoop.reached")?.value) || null).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
         </div>
       </section>
 

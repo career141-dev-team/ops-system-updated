@@ -579,3 +579,16 @@ Stage 2 of the ops team's feedback. The decision is in [09](09-DECISIONS-AND-QUE
 | **Scoops view and the day's summary** | `src/lib/scoop.ts`, `?view=scoops`, `runScoopSummary` | each batch with its counts and the files to look at; at 17:30 Colombo on a working day one task for the Ops lead with, per Scoop, how many CVs, who responded and who did not, who was turned away at screening and why, and the interviews booked |
 
 Proved by `tests/cvparse.test.ts`, `tests/scoop.test.ts` and `tests/scoopintake.test.ts` (real PDFs made on the fly and a fake mailbox). **Not run against a real mailbox** (it needs the Microsoft consent and the owner's go-ahead) **or the Convex store.** Not built: reading the CVs in an old binary .doc; the TA read ("is this person already in TA"), which was left out because it would need the stage map of [32](32-TA-SHORTLIST-FEED.md) first.
+
+## Built: Aura tables, inbound WhatsApp, the Health checks (23 Nov, on branch `rayan/integrations`, not merged and not live)
+
+Stage 3 of the ops team's feedback. The decisions are in [09](09-DECISIONS-AND-QUESTIONS.md) (23 Nov: Aura in tables, WhatsApp in, and the checks).
+
+| Piece | Where | What it does |
+|---|---|---|
+| **Aura answers in tables** | `Table` in `src/lib/a2ui.ts` and `app/A2ui.tsx`; `find_candidates`, `find_interviews`, `scoop_status`, `show_table` in `src/lib/agentTools.ts` | "How are the interviews this week?" comes back as a compact table in the chat. The tools are read-only and filtered by role; the NIC is never returned. Built on the existing `show_ui` path, so there is no new storage |
+| **Inbound WhatsApp** | `src/lib/whatsapp.ts`, `app/api/whatsapp/route.ts`, `takeWhatsApp` in `src/data/desk.ts`, the WhatsApp view of `/mail` | a signed webhook; a message filed to whose number it is; a client who replies not chased; an applicant who replies counted as responded in the Scoop summary; recorded once; a "Done" to clear it. Refuses everything until `OPS_WHATSAPP_APP_SECRET` is set |
+| **Health: what is missing, named** | `src/lib/integrationHealth.ts`, `app/(settings)/health/page.tsx`, `healthCheckMicrosoft` | "Check Microsoft" lists which permission is not granted; new WhatsApp and Scoops sections say what is set and what is not |
+| **Teams follows the interview** | `noticeCandidateOut` in `src/data/desk.ts`, `dropApplicantEvent` in `app/actions.ts` | a candidate pulling out, and an internal applicant rejected before their interview, cancel the Outlook event |
+
+Proved by `tests/auratable.test.ts`, `tests/whatsapp.test.ts`, `tests/whatsappintake.test.ts`, `tests/integrationhealth.test.ts` and a case in `tests/interviews.test.ts` (a recorded Meta payload, a computed signature, real PDFs from Stage 2). **Not run against Microsoft, Meta, an Anthropic key (Aura's tools are tested without a model), or the Convex store.** Nothing here is switched on.

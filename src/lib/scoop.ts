@@ -109,6 +109,8 @@ export interface ApplicantLike {
   interviewAt: number | null;
   rejectReason: string | null;
   rejectedAtStage?: string | null;
+  /** They wrote back to us on WhatsApp (23 Nov). */
+  repliedAt?: number | null;
 }
 
 export interface ScoopSummary {
@@ -133,10 +135,11 @@ export function summaryOf(batch: ScoopBatch, applicants: ApplicantLike[]): Scoop
   const mine = applicants.filter((a) => batch.applicantIds.includes(a.id));
   const rejected = mine.filter((a) => a.stage === "rejected");
   const screeningRejects = rejected.filter((a) => rejectKind(a.rejectedAtStage) === "screening").map((a) => ({ name: a.name, reason: a.rejectReason ?? "No reason written" }));
-  const reached = (a: ApplicantLike) => ["fits", "interview", "decision", "hired"].includes(a.stage) || (a.stage === "rejected" && a.tries > 0);
+  // Responded: spoken to on a call, or wrote back to us on WhatsApp. Somebody who wrote back is not "no answer".
+  const reached = (a: ApplicantLike) => ["fits", "interview", "decision", "hired"].includes(a.stage) || (a.stage === "rejected" && a.tries > 0) || !!a.repliedAt;
   const responded = mine.filter(reached).length;
-  const noAnswer = mine.filter((a) => a.stage === "call" && a.tries > 0).length;
-  const notCalled = mine.filter((a) => a.stage === "new" || (a.stage === "call" && a.tries === 0)).length;
+  const noAnswer = mine.filter((a) => a.stage === "call" && a.tries > 0 && !a.repliedAt).length;
+  const notCalled = mine.filter((a) => !a.repliedAt && (a.stage === "new" || (a.stage === "call" && a.tries === 0))).length;
   const interviews = mine.filter((a) => a.interviewAt !== null).length;
   const n = (count: number, one: string, many: string) => count + " " + (count === 1 ? one : many);
   const lines = [

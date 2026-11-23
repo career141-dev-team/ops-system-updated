@@ -760,6 +760,7 @@ export default defineSchema({
       v.literal("thread"),
       v.literal("house"),
       v.literal("domain"),
+      v.literal("phone"),
       v.literal("manual"),
       v.literal("none"),
     ),
@@ -827,6 +828,7 @@ export default defineSchema({
     packageSaid: v.optional(v.union(v.string(), v.null())),
     laptop: v.optional(v.union(v.string(), v.null())),
     scoopId: v.optional(v.union(v.string(), v.null())),
+    repliedAt: v.optional(v.union(v.number(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

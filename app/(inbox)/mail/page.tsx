@@ -72,7 +72,7 @@ export default async function InboxPage({
     view === "mail"
       ? `${inbox.length} ${inbox.length === 1 ? "conversation" : "conversations"} · ${needsYou.length} need you`
       : view === "whatsapp"
-        ? `${wa.replies.length} client ${wa.replies.length === 1 ? "reply" : "replies"} to record · ${wa.ready.length} ${wa.ready.length === 1 ? "message" : "messages"} ready to copy`
+        ? `${wa.replies.length} ${wa.replies.length === 1 ? "reply" : "replies"} on WhatsApp · ${wa.ready.length} ${wa.ready.length === 1 ? "message" : "messages"} ready to copy`
         : "What happened across the team";
 
   const card = (t: Thread) => {
