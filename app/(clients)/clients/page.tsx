@@ -91,12 +91,20 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                     <Link href={c.href} className="t-body-m min-w-0 flex-1 after:absolute after:inset-0 after:rounded-[24px]">
                       {c.name}
                     </Link>
-                    <span className="t-small shrink-0 text-ink-3">{c.owner}</span>
-                    {can(me, "client.manage") && (
-                      <Link href={"/clients/" + c.id + "?view=contacts"} className="t-label relative z-10 shrink-0 text-brand hover:underline">
-                        Edit
-                      </Link>
-                    )}
+                    {/* The owner and Edit sit behind one menu (23 Nov), so the card name has the room. */}
+                    <details className="relative z-10 shrink-0">
+                      <summary aria-label={"More for " + c.name} className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-ink-3 hover:bg-sunk [&::-webkit-details-marker]:hidden">
+                        <span aria-hidden="true" className="text-[18px] leading-none">&#8942;</span>
+                      </summary>
+                      <div className="absolute right-0 mt-1 flex w-44 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
+                        <p className="t-small px-3 py-2 text-ink-3">Owner: {c.owner}</p>
+                        {can(me, "client.manage") && (
+                          <Link href={"/clients/" + c.id + "?view=contacts"} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
+                            Edit
+                          </Link>
+                        )}
+                      </div>
+                    </details>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <p className="t-small min-w-0 flex-1">{c.person ? [c.person.name, c.person.role ? c.person.role.toUpperCase() : ""].filter(Boolean).join(" · ") : "No contact written down"}</p>
