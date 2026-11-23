@@ -22,6 +22,7 @@ import type { OpsDatabase, OpsMember } from "@/data/types";
 import type { ToolDef, ToolRun } from "@/lib/ai";
 import { catalogueInWords, resolveIntent } from "@/lib/agent";
 import { colomboDate, colomboHour } from "@/lib/calendar";
+import { parseSurface } from "@/lib/a2ui";
 import { can, seesWholeDesk } from "@/lib/roles";
 
 const MAX_ROWS = 20;
@@ -70,6 +71,16 @@ export const AGENT_TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: { query: { type: "string" } }, required: [] },
   },
   {
+    name: "show_ui",
+    description:
+      "Finish with this when the answer is a list or a few records that read better as cards than as a sentence (clients, positions, tasks, free times). Display only: never use it for something to be done - that is propose_action. text is one short lead sentence. components is an A2UI v1.0 flat list: {id, component, ...} with one id \"root\". Allowed: Text {text, variant: body|caption}, Row/Column/List {children: [ids]}, Card {child: id}, Divider, Button {child: id of a Text, variant: default|primary, action: {event: {name: \"say\", context: {text: words to send as if typed}}}}. Literal strings only.",
+    input_schema: {
+      type: "object",
+      properties: { text: { type: "string" }, components: { type: "array", items: { type: "object" } } },
+      required: ["text", "components"],
+    },
+  },
+  {
     name: "propose_action",
     description:
       "Finish with this: the ONE action for the person to confirm. intent is a name from the list in the system prompt; fields are its fields, using names the desk can match (a company, a person's name, 'yyyy-mm-ddThh:mm' for times). Never guess a missing value.",
@@ -90,7 +101,7 @@ export function agentSystemPrompt(member: OpsMember, today: string): string {
     "Ask ONE short question, in plain words with no tools, only when a value is truly missing and cannot be found (for example the contact's email).",
     "Never invent an id, email, phone number, time or money figure. Never mention fees, salaries or invoice amounts.",
     "If propose_action comes back with a problem, fix it with the tools or ask the one question it needs.",
-    "Keep every reply short and plain.",
+    "Keep every reply short and plain. When a list or a few records read better as cards, finish with show_ui instead of words; never for an action.",
     "",
     "Actions you may propose (intent: what it does (fields)):",
     ...catalogueInWords(member).map((l) => "- " + l),
@@ -202,6 +213,11 @@ export async function runAgentTool(ctx: ToolContext, name: string, input: Record
     case "find_ta_lead":
       if (!can(member, "client.manage")) return NOT_ALLOWED;
       return ctx.findTaLead ? ctx.findTaLead(String(input.query ?? "")) : "The TA System is not reachable from here.";
+    case "show_ui": {
+      const got = parseSurface(input.components);
+      if (!got.ok) return "Not drawn: " + got.why + " Fix it, or answer in words.";
+      return { stop: true, value: { kind: "ui", text: String(input.text ?? "").trim(), ui: JSON.stringify(got.surface) } };
+    }
     case "propose_action": {
       const fields: Record<string, string> = {};
       for (const [k, v] of Object.entries((input.fields ?? {}) as Record<string, unknown>)) if (v !== null && v !== undefined) fields[k] = String(v);

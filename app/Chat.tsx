@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
+import A2ui from "@/app/A2ui";
 import Icon from "@/app/Icon";
 import { chatDo, chatSay, deleteChat, newChat, openChat, renameChat } from "@/app/actions";
 import type { OpsChatRow, OpsChatThread } from "@/data/types";
@@ -122,23 +123,12 @@ export default function Chat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Chats chats={chats} open={open} back={path} />
-      {/* Pinned: where you stand, in four chips. */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-rule px-4 py-2.5">
-        <span className="mr-1 text-[10px] uppercase tracking-[0.08em] text-ink-faint">Your desk</span>
-        {pins.map((pin) => (
-          <span
-            key={pin.label}
-            className={
-              "rounded-full border px-2 py-0.5 text-[11px] " +
-              (pin.late ? "border-danger/30 bg-bg-danger text-danger" : "border-rule bg-surface text-ink-soft")
-            }
-          >
-            {pin.label} <span className="font-medium text-ink">{pin.value}</span>
-          </span>
-        ))}
+      <div className="flex items-stretch border-b border-rule">
+        <div className="min-w-0 flex-1">
+          <Chats chats={chats} open={open} back={path} />
+        </div>
+        <Desk pins={pins} />
       </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [overflow-anchor:none] [scrollbar-gutter:stable]">
         {yesterday && <p className="mb-3 rounded-lg bg-sunk px-3 py-1.5 text-[11.5px] text-ink-soft">{yesterday}</p>}
         {all.length === 0 && !sending && (
@@ -148,7 +138,7 @@ export default function Chat({
           </Said>
         )}
         {all.map((row) => (
-          <Line key={row.id} row={row} back={path} onSend={setSending} />
+          <Line key={row.id} row={row} back={path} onSend={setSending} say={sendNow} />
         ))}
         {sending && (
           <>
@@ -293,7 +283,7 @@ function Steps({ state, found }: { state: string; found: number }) {
   );
 }
 
-function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (text: string) => void }) {
+function Line({ row, back, onSend, say }: { row: OpsChatRow; back: string; onSend: (text: string) => void; say: (text: string) => void }) {
   // The one line being changed, and its words as typed so far.
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState("");
@@ -347,6 +337,7 @@ function Line({ row, back, onSend }: { row: OpsChatRow; back: string; onSend: (t
   return (
     <Said tone={row.state === "refused" && !button ? "dark:text-danger" : ""}>
       <p className="whitespace-pre-wrap">{first}</p>
+      {row.ui && <A2ui ui={row.ui} say={say} />}
       {waiting && <p className="mt-1 text-[11.5px] text-ink-faint">Type the answer below, or &ldquo;never mind&rdquo;.</p>}
       {!button && <Cites cites={cites} />}
 
@@ -492,20 +483,16 @@ function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement 
     el.style.height = Math.min(el.scrollHeight, 192) + "px";
   };
   return (
-    <>
-    <p className="t-small px-3 pb-1.5 text-ink-3">
-      Ask a question, or tell AURA what to do (&quot;approve the last email&quot;). The answer appears above. Anything it would change shows one button first: nothing happens until you press it.
-    </p>
-    <div className="flex items-end gap-2 rounded-3xl bg-surface py-2.5 pl-4 pr-2.5 shadow-float">
+    <div className="flex items-end gap-2 rounded-3xl bg-surface py-2 pl-4 pr-2 shadow-float">
       <textarea
         ref={boxRef}
         name="text"
         required
-        rows={3}
+        rows={1}
         readOnly={pending}
         placeholder={waiting ? "Type the answer…" : "Ask a question, or say what to do"}
         aria-label="Say what you want done"
-        className="min-h-[72px] max-h-[192px] min-w-0 flex-1 resize-none bg-transparent text-[16px] leading-6 text-ink outline-none [field-sizing:content] placeholder:text-ink-faint"
+        className="min-h-6 max-h-[192px] min-w-0 flex-1 resize-none self-center bg-transparent text-[16px] leading-6 text-ink outline-none [field-sizing:content] placeholder:text-ink-faint"
         onInput={(e) => grow(e.currentTarget)}
         onKeyDown={(e) => {
           // Enter sends; Shift+Enter is a new line, as every chat does it.
@@ -523,7 +510,6 @@ function Box({ boxRef, waiting }: { boxRef: React.RefObject<HTMLTextAreaElement 
         <Icon name="send" size={18} />
       </button>
     </div>
-    </>
   );
 }
 
@@ -543,7 +529,7 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
     </>
   );
   return (
-    <details className="group border-b border-rule">
+    <details className="group">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[12.5px] hover:bg-sunk">
         <span className="min-w-0 flex-1 truncate font-medium text-ink">{current?.name ?? "New chat"}</span>
         <span className="shrink-0 text-[11px] text-ink-faint">
@@ -599,6 +585,31 @@ function Chats({ chats, open, back }: { chats: OpsChatThread[]; open: string | n
           </div>
         ))}
       </div>
+    </details>
+  );
+}
+
+/**
+ * Where you stand - to approve, new email, tasks, late - folded into one small dropdown beside History, so the
+ * column is a clean chat (23 Nov, the owner; four chips under the header before). A dot when anything is late.
+ */
+function Desk({ pins }: { pins: { label: string; value: string; late?: boolean }[] }) {
+  if (!pins.length) return null;
+  const late = pins.some((p) => p.late);
+  return (
+    <details className="group relative shrink-0 border-l border-rule">
+      <summary className="flex h-full cursor-pointer list-none items-center gap-1.5 px-4 text-[11px] text-ink-faint hover:bg-sunk">
+        {late && <span aria-label="Something is late" className="size-1.5 rounded-full bg-danger" />}
+        Your desk <span className="inline-block transition-transform group-open:rotate-180">▾</span>
+      </summary>
+      <dl className="absolute right-2 top-full z-10 mt-1 grid w-48 grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 rounded-xl border border-rule bg-surface px-3 py-2.5 text-[12.5px] shadow-float">
+        {pins.map((pin) => (
+          <div key={pin.label} className="contents">
+            <dt className={pin.late ? "text-danger" : "text-ink-soft"}>{pin.label}</dt>
+            <dd className={"text-right font-medium " + (pin.late ? "text-danger" : "text-ink")}>{pin.value}</dd>
+          </div>
+        ))}
+      </dl>
     </details>
   );
 }

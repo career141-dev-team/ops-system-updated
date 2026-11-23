@@ -701,6 +701,7 @@ export const addChatRow = internalMutation({
     runId: v.union(v.string(), v.null()),
     at: v.number(),
     thread: v.optional(v.string()),
+    ui: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("opsChat", args);

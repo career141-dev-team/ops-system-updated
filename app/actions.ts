@@ -7698,7 +7698,9 @@ export async function chatSay(formData: FormData): Promise<void> {
           input,
         ),
     });
-    const proposal = result.outcome === "stopped" ? (result.stopValue as ReturnType<typeof resolveIntent>) : null;
+    // show_ui stops with a drawing, not a proposal (23 Nov): words plus an A2UI surface, nothing to press but "say".
+    const drawn = result.outcome === "stopped" && (result.stopValue as { kind?: string })?.kind === "ui" ? (result.stopValue as { text: string; ui: string }) : null;
+    const proposal = result.outcome === "stopped" && !drawn ? (result.stopValue as ReturnType<typeof resolveIntent>) : null;
     // One ledger row for the whole chat turn, with the summed usage, as runAi writes one.
     const worked = result.outcome === "stopped" || result.outcome === "done";
     const run = await addAiRun({
@@ -7720,7 +7722,9 @@ export async function chatSay(formData: FormData): Promise<void> {
       by: member.id,
       at: now,
     });
-    if (proposal && proposal.kind === "proposal") {
+    if (drawn) {
+      await addChatRow({ thread, memberId: member.id, who: "desk", text: drawn.text || "Here it is.", buttons: [], state: "done", actionName: null, runId: run.id, at: Date.now(), ui: drawn.ui });
+    } else if (proposal && proposal.kind === "proposal") {
       // A TA lead is shown by name, not by the id the tool found.
       await sayResolved(member.id, thread, proposal, run.id);
     } else {

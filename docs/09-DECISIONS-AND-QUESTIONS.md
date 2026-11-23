@@ -260,3 +260,10 @@ confirm each one while walking the flow.
 - **CV upload** on Add applicant and on the call drawer: PDF or Word, up to 10 MB, checked by its first bytes, kept as a `cv` file. The server-action and proxy body limits are both raised to 26 MB in `next.config.ts` (the action limit was 1 MB, the proxy's 10 MB, so a 3 MB CV failed with a raw error); this also covers the older Files upload.
 - **Reject without an interview:** the call result "Talked - not a fit" (reason required) and a "Not a fit" button on Called · fits cards both move the person to Rejected and show the message to copy. A Not OK check does not force it; the person decides.
 - **Interview time:** the typed time was read in the server zone, so on a UTC server it was saved 5h30 late; it is now read as Colombo time. The exact "Sun 05:15" the team saw was not reproduced. **Interviews booked on a UTC server before this fix are 5h30 late and must be re-entered** (open `/hiring/<vacancy id>?panel=book-interview&on=<applicant id>`, which works for a person already in Interview, enter the right time and save, then check the Calendar; an online interview also gets a new Teams event); bookings made on a laptop are fine. No migration.
+
+## 23 Nov: AURA as a clean chat, and A2UI answers (owner; branch `hdbinath/aura-clean-a2ui`)
+
+- **An AURA button bottom right on every page**, a fixed 480px column with no drag (the width cookie is gone), the helper text removed, "Your desk" folded into a dropdown, and a one-line box that grows. Details in [31](31-AGENT.md) and [07](07-SCREENS.md) (exception 5).
+- **A2UI is drawn by our own small renderer, not `@a2ui/react`.** That package needs zod 3 and this project is on zod 4, and it is pre-1.0. We draw a part of the v1.0 basic catalog, with literal strings only (no data binding).
+- **An A2UI surface never runs an action.** A Button can only send words into the chat as if typed, so every change still needs the confirm card and its one click. The A2UI skill (`.claude/skills/a2ui`) is in the repo for whoever extends it.
+

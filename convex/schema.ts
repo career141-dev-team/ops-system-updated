@@ -397,6 +397,7 @@ export default defineSchema({
     runId: v.union(v.string(), v.null()),
     at: v.number(),
     thread: v.optional(v.string()),
+    ui: v.optional(v.string()),
   })
     .index("by_member", ["memberId", "at"])
     .index("by_at", ["at"]),
