@@ -43,7 +43,7 @@ export const REQUIREMENT_FIELDS: RequirementField[] = [
   { key: "jdNotes", label: "The brief", required: true, why: "What they said the job is. TA drafts the JD from this." },
   { key: "insights", label: "Anything else said on the call", required: false, why: "Why the last person left, who they report to, what they will not accept." },
   { key: "reportsTo", label: "Reports to", required: false, why: "Asked by every candidate at interview." },
-  { key: "incumbentNote", label: "Incumbent or reference profile", required: false, why: "A person already in the job, or a profile the client points to, for the TAs to search from." },
+  { key: "incumbentNote", label: "Incumbent / reference profile", required: false, why: "Who did the job before, or who the client has in mind: a note TA reads before sourcing." },
 ];
 
 export type RequirementFields = Record<string, string>;
@@ -77,7 +77,7 @@ export function briefText(fields: RequirementFields): string {
   add("Location", "locations");
   add("Package", "salary");
   add("Reports to", "reportsTo");
-  add("Incumbent or reference profile", "incumbentNote");
+  add("Incumbent / reference profile", "incumbentNote");
   const brief = (fields.jdNotes ?? "").trim();
   if (brief) lines.push("", "Brief:", brief);
   const extra = (fields.insights ?? "").trim();
@@ -216,4 +216,17 @@ export function handoverChecklist(input: {
       : { step: "requirement" as const, label: "The requirement is complete", done: named && input.requirementBlanks.length === 0 },
   ];
   return { items, ready: introDone && problemWithOpening(input) === null };
+}
+
+/**
+ * "New position" (23 Nov, the owner): a position for a client we already have, written straight on the
+ * Positions page. The agreement is not asked for here (the client page says when it is not signed, and CVs
+ * do not go to the client without it); what TA cannot do without is the name, the number and the package.
+ */
+export function problemWithNewPosition(fields: RequirementFields, clientFound: boolean): string | null {
+  if (!clientFound) return "Pick the client this position is for.";
+  const handover = problemWithHandover(fields);
+  if (handover) return handover;
+  if (!(fields.salary ?? "").trim()) return "Write the package details: TA and every candidate ask for them first.";
+  return null;
 }

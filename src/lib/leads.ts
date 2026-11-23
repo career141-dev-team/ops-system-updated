@@ -22,11 +22,7 @@
 export const LEAD_SOURCES = ["website", "whatsapp", "call", "email", "referral", "director", "linkedin", "walk_in", "other"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
-/** Made by "New position" for a client we already work for (23 Nov). Never offered as a place an enquiry came from. */
-export const EXISTING_CLIENT_SOURCE = "client";
-
-export const SOURCE_MEANINGS: Record<LeadSource | typeof EXISTING_CLIENT_SOURCE, string> = {
-  client: "A client we already work for",
+export const SOURCE_MEANINGS: Record<LeadSource, string> = {
   website: "The website form",
   whatsapp: "WhatsApp",
   call: "A phone call",
@@ -162,6 +158,24 @@ export function problemWithNewLead(lead: NewLead): string | null {
   return null;
 }
 
+/**
+ * "Add a client" (23 Nov, the owner): a client is added by hand, with no enquiry or discovery step in front.
+ * Same rules as a lead for the name and for one way to reach them; no source, since nobody enquired.
+ */
+export function problemWithNewClient(
+  c: { company: string; contactEmail: string; contactPhone: string; billingEmail: string },
+  sameNameExists: boolean,
+): string | null {
+  const reach = problemWithNewLead({ ...c, source: LEAD_SOURCES[0] } as never);
+  if (reach) return reach;
+  if (c.billingEmail.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.billingEmail.trim())) {
+    return "The billing email address does not look like one.";
+  }
+  // One company, one record, one owner.
+  if (sameNameExists) return "We already have a client with that name. Find them in Clients instead of adding them twice.";
+  return null;
+}
+
 export interface ClientLike {
   id: string;
   name: string;
@@ -256,7 +270,7 @@ export function existingClientOf(
     !meetings.some((m) => m.kind === "intro") &&
     ["requirement", "waiting_agreement", "handed_over"].includes(lead.state);
   return {
-    skipsIntro: lead.source === "director" || lead.source === EXISTING_CLIENT_SOURCE || existing,
+    skipsIntro: lead.source === "director" || existing,
     signedOnFile: existing && !esa && ["requirement", "handed_over"].includes(lead.state),
   };
 }

@@ -117,6 +117,22 @@ export function whereTheyStand(client: {
 }
 
 /**
+ * Which call a client's page offers (23 Nov, the owner): the intro call is for a client we have not worked
+ * for yet, and the requirement call for one opening a new role. Never both, so the two do not overlap.
+ * A client is "new" until a call has been held with them or they have a position.
+ */
+export function callKindFor(c: { stage: string; hasPosition: boolean; heldCall: boolean }): "intro" | "requirement" {
+  return c.stage === "lead" && !c.hasPosition && !c.heldCall ? "intro" : "requirement";
+}
+
+/** Renaming a client (23 Nov): one company, one record, so a name another client already has is refused. */
+export function problemWithClientRename(name: string, clash: boolean): string | null {
+  if (name.trim().length < 2) return "Write the client's name.";
+  if (clash) return "Another client already has that name. One company has one record.";
+  return null;
+}
+
+/**
  * The client a lead belongs to. A returning company keeps its first lead's id on its record, so a second
  * lead finds it by name or by the TA client, the same way the desk makes one (23 Nov: a position made from
  * the second lead had no client and showed under no client at all).
@@ -131,23 +147,4 @@ export function clientForLead(db: OpsDatabase, leadId: string): OpsClient | null
     (lead.clientTaId ? db.clients.find((c) => c.taClientId === lead.clientTaId) : undefined) ??
     null
   );
-}
-
-/**
- * Renaming a client (23 Nov): a company is renamed, or was typed wrongly. One company is one record,
- * so a name another client already has is refused, and the change needs a reason that is kept in the audit.
- */
-export function problemWithRename(
-  newName: string,
-  reason: string,
-  others: { id: string; name: string; nameKey: string }[],
-  selfId: string,
-  keyOf: (name: string) => string,
-): string | null {
-  if (newName.trim().length < 2) return "Write the client's new name.";
-  if (reason.trim().length < 4) return "Say why the name is changing. It is kept with the change.";
-  const key = keyOf(newName);
-  const clash = others.find((c) => c.id !== selfId && c.nameKey === key);
-  if (clash) return clash.name + " is already a client. One company is one record, so it cannot take the same name.";
-  return null;
 }

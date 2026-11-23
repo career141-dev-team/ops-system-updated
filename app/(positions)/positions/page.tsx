@@ -32,7 +32,7 @@ import { recipientsFrom } from "@/lib/reports";
 import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
 
-import { AskTaPanel, ChaseHrPanel, ChooseTaPanel, WeeklyReportPanel } from "./Panels";
+import { AskTaPanel, ChaseHrPanel, ChooseTaPanel, WeeklyReportPanel, NewPositionPanel } from "./Panels";
 import { PositionSendModal } from "./PositionSendModals";
 
 export const dynamic = "force-dynamic";
@@ -184,7 +184,19 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const rolesOf = (id: string) => openRows.filter((r) => byId.get(r.id)?.primaryTaId === id).length;
 
   let panel = null;
-  if (sp.panel === "weekly-report") {
+  if (sp.panel === "new-position") {
+    // The latest held call of the picked client, for the brief, the role and the package.
+    const picked = sp.on ? clientIn(db, sp.on) : null;
+    const held = picked?.leadId ? db.meetings.filter((m) => m.leadId === picked.leadId && m.heldAt !== null).sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0] : undefined;
+    panel = (
+      <NewPositionPanel
+        closeHref={here}
+        clients={db.clients.filter((c) => c.stage !== "closed").map((c) => ({ id: c.id, name: c.name }))}
+        pickedId={picked?.id ?? ""}
+        call={held ? { id: held.id, when: new Date(held.heldAt! + 5.5 * 3_600_000).toISOString().slice(0, 10), role: held.role, packageSaid: held.packageSaid, brief: held.brief } : null}
+      />
+    );
+  } else if (sp.panel === "weekly-report") {
     const latest = reportsNewestFirst(db)[0] ?? null;
     panel = (
       <WeeklyReportPanel
@@ -264,7 +276,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
             <Link href={panelHref("/positions", sp, "weekly-report")} scroll={false} className={pillSecondary}>
               Weekly report
             </Link>
-            <Link href={panelHref("/positions", sp, "add-position")} scroll={false} className={pillPrimary}>
+            <Link href={panelHref("/positions", sp, "new-position")} scroll={false} className={pillPrimary}>
               <Icon name="plus" size={16} />
               New position
             </Link>

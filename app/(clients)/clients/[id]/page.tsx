@@ -3,16 +3,19 @@ import { notFound, redirect } from "next/navigation";
 
 import PipelineHistory from "@/app/ui/PipelineHistory";
 import { pipelineHistory } from "@/lib/pipelineHistory";
-import { approveTheHold, liftTheHold, moveClientOwner, moveClientStage, renameClient, saveClientDetails, summariseClient } from "@/app/actions";
+import { bookClientCall, approveTheHold, liftTheHold, moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
+import { MeetingBookingForm } from "@/app/(clients)/leads/[id]/MeetingBookingForm";
+import { teamsFake } from "@/lib/graphCalendar";
+import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
+import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
-import { STAGE_MEANINGS, type ClientStage, canMoveStage } from "@/lib/clients";
+import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
 import { lastTalkWords } from "@/lib/clientsBoard";
 import { checkInText, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
@@ -91,6 +94,13 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           .map((g) => ({ ...g, entries: g.entries.filter((e) => !search || (e.said + " " + e.about + " " + (e.because ?? "")).toLowerCase().includes(search)) }))
           .filter((g) => g.entries.length)
       : [];
+
+  // The one call this client's page offers: intro for a new client, requirement for a new role (23 Nov).
+  const calls = client.leadId ? meetingsForLead(db, client.leadId) : [];
+  const callKind = callKindFor({ stage: client.stage, hasPosition: db.positions.some((p) => p.clientId === client.id), heldCall: calls.some((m) => m.heldAt !== null) });
+  const taSide = view === "overview" && mayManage ? await taPeople() : null;
+  const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
+  const whenIn = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   const holdForm = (
     <>
@@ -192,6 +202,50 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   {holdForm}
                 </Card>
               )}
+              <Card
+                title={callKind === "intro" ? "Intro call" : "Requirement call"}
+                sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
+                right={
+                  <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
+                    <Icon name="plus" size={14} />
+                    New position
+                  </Link>
+                }
+              >
+                {calls.length > 0 && (
+                  <div className="flex flex-col">
+                    {calls.map((m) => (
+                      <div key={m.id} className="flex flex-wrap items-center gap-3 border-t border-rule py-2.5 first:border-t-0 first:pt-0">
+                        <span className="t-body-m">{m.kind === "intro" ? "Intro call" : "Requirement call"}</span>
+                        <span className="t-small text-ink-3">{whenIn(m.at)} · {m.state.replace(/_/g, " ")}</span>
+                        <Link href={"/leads/" + client.leadId + "?step=" + (m.kind === "intro" ? "intro" : "requirement")} className="t-body-m ml-auto text-brand hover:underline">
+                          {m.heldAt ? "Open" : "Mark held or rebook"}
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {mayManage && (
+                  <details open={calls.length === 0}>
+                    <summary className="t-body-m cursor-pointer text-brand hover:underline">{callKind === "intro" ? "Book the intro call" : "Book the requirement call"}</summary>
+                    <div className="pt-3">
+                      <MeetingBookingForm
+                        action={bookClientCall}
+                        leadId=""
+                        hidden={{ clientId: client.id }}
+                        contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
+                        taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
+                        members={db.members}
+                        organiserId={client.ownerId}
+                        teamsOn={teamsOn}
+                        submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
+                        primary
+                        offerAlsoRequirement={callKind === "intro"}
+                      />
+                    </div>
+                  </details>
+                )}
+              </Card>
               <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[1.05fr_1fr]">
                 <Card title="Agreement" sub={esa ? (esa.state === "countersigned" || esa.state === "signed" ? "Signed and active" : (ESA_STATES[esa.state as EsaState] ?? esa.state)) : "No agreement on file here"} right={esa ? <StatusChip label={esa.state === "countersigned" ? "Signed" : (ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state)} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} /> : undefined}>
                   {esa ? (
@@ -347,32 +401,13 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 heading="PEOPLE WE WRITE TO"
                 hint="Their standard contacts get everything: CV sets, interview times, meeting invites. A person marked hr receives the CV sets."
               />
-              {mayManage && (
-                <Card title="Client name" sub="If the company was renamed or typed wrongly. Sets already sent keep the name they went out under.">
-                  <form action={renameClient} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <input type="hidden" name="clientId" value={client.id} />
-                    <label className="flex flex-col gap-1.5">
-                      <span className="t-small text-ink-3">Name</span>
-                      <input name="name" required defaultValue={client.name} className={panelInput} />
-                    </label>
-                    <label className="flex flex-col gap-1.5">
-                      <span className="t-small text-ink-3">Why it is changing</span>
-                      <input name="reason" required className={panelInput} />
-                    </label>
-                    <div className="sm:col-span-2">
-                      <button type="submit" className={pillPrimary}>
-                        Rename
-                      </button>
-                    </div>
-                  </form>
-                </Card>
-              )}
               <Card title="Billing and details" sub="Who we invoice and which WhatsApp group is theirs">
                 {mayManage ? (
                   <form action={saveClientDetails} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <input type="hidden" name="clientId" value={client.id} />
                     {(
                       [
+                        ["name", "Client name", client.name],
                         ["billingName", "Billing name", client.billingName],
                         ["billingEmail", "Invoice email", client.billingEmail],
                         ["billingAddress", "Billing address", client.billingAddress ?? ""],

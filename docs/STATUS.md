@@ -541,17 +541,15 @@ The ops team replaced their Excel trackers with Ops and sent a list of small fix
 
 | Thing | Where | What it does |
 |---|---|---|
-| **New position** (was "New enquiry" on Positions) | `newPosition` in `app/actions.ts`, `AddPanel` in `app/QuickAdd.tsx`, `problemWithNewPosition` in `src/lib/quickAdd.ts`, `incumbentNote` in `REQUIREMENT_FIELDS` | for a client we already work for: position name, designation, package, an optional incumbent or reference-profile note. It starts a requirement draft on a lead made for the occasion (`EXISTING_CLIENT_SOURCE`, which skips the intro call); the position is still made by the hand-over to TA, so none of its checks is skipped. Coordinator details stay under Contact Point |
-| **Clients and positions show up where they belong** | `clientForLead` in `src/lib/clients.ts`, `clientFromLead` in `src/data/desk.ts` | a second lead for a returning company now finds its client (by lead, then name, then TA client), so its position is no longer orphaned; a client made as a lead moves to onboarding when the agreement goes out |
-| **Edit a client and its contacts** | `renameClient`, `updateContact` in `app/actions.ts`, `app/ui/Contacts.tsx`, an Edit link on each client card | rename with a reason (a name another client has is refused; sets already sent keep their name because their subject line is how a reply finds them); edit a contact in place or make them the main (hr) one |
-| **Requirement call only for existing clients** | `app/(clients)/leads/[id]/page.tsx`, `tabs/Requirement.tsx` | the intro-call booking is never shown to a lead that skips the intro; the position's Requirement tab links to booking the requirement call |
+| **Clients and positions show up where they belong** | `clientForLead` in `src/lib/clients.ts`, `clientFromLead` in `src/data/desk.ts` (the Active filter showing a client with an open position is from the "Add a client" work) | a second lead for a returning company now finds its client (by lead, then name, then TA client), so its position is no longer orphaned; a client made as a lead moves to onboarding when the agreement goes out |
+| **Requirement call only for existing clients** | `app/(clients)/leads/[id]/page.tsx`, `tabs/Requirement.tsx` | the intro-call booking is never shown to a lead that skips the intro; the position's Requirement tab links to booking the requirement call (the client page's own intro or requirement call is `callKindFor`, from the "Add a client" work) |
 | **Reject from any stage, tagged** | `rejectKind`, `rejectedByKind` in `src/lib/hiring.ts`, the card menu on `app/hiring/[id]` | a three-dot menu on every applicant card; `rejectedAtStage` is kept (additive, optional) so the Rejected list says Screening reject or Final reject |
 | **Hold by hand** | `holdByHand` in `app/actions.ts`, `HoldPanel.tsx` | a hold was only ever proposed by the clock; now a person can start one, through the same approval, TA write and thirty-day review. The button is on the Requirement tab as well |
 | **Delete a team note** | `canDeleteTeamNote` in `src/lib/panelActions.ts` | an Ops lead or Admin can delete anybody's note on Inbox, Team news |
 | **No invented tasks** | `src/data/seed.ts`, `freshSeed` in `src/data/store.ts` | the JSON store follows the same "sample only where `OPS_SAMPLE_DESK=on`" rule as Convex, and the sample desk no longer ships two invented tasks |
 | **Add or replace an applicant's CV at any stage** | the `cv` panel in `app/hiring/[id]/HiringPanel.tsx` | the form used to live only in the call drawer |
 
-Proved by `tests/uifixes.test.ts`. Not walked in a browser, and not run against the Convex store.
+Proved by `tests/uifixes.test.ts`. Not walked in a browser, and not run against the Convex store. The New position form, the contact edit and the client rename are the ones merged from `hdbinath/add-client-intro-call-new-position` (PR 32), which built the same things first; this branch's own versions of them were dropped in the merge.
 
 ## Built: the ops team's first feedback round, stage 1B, the new views (23 Nov, on branch `rayan/UI-fixes`, not merged and not live)
 

@@ -196,9 +196,11 @@ export function filterCards(cards: ClientCard[], filter: string, q: string, meId
   const s = q.trim().toLowerCase();
   return cards.filter((c) => {
     if (s && ![c.name, c.person?.name, c.person?.email].some((v) => (v ?? "").toLowerCase().includes(s))) return false;
-    if (filter === "active") return c.stage === "active" || c.stage === "onboarding";
+    // A client with an open position is in work, whatever its stage says (23 Nov: a new client's first position
+    // used to stay hidden under Leads).
+    if (filter === "active") return c.stage === "active" || c.stage === "onboarding" || c.openRoles.length > 0;
     if (filter === "quiet") return c.quietDays !== null && c.quietDays > QUIET_AFTER;
-    if (filter === "leads") return c.stage === "lead";
+    if (filter === "leads") return c.stage === "lead" && c.openRoles.length === 0;
     if (filter === "dormant") return c.stage === "dormant";
     if (filter === "mine") return c.ownerId === meId;
     return true;

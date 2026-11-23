@@ -77,7 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const bell = member && db ? bellOf(db, member.id, now) : { waiting: 0, late: 0, inbox: 0 };
   // The clients' names, for the quick-add box to file a call or a note under.
   const chips = member && real ? previewList(real.role).map((role) => ({ role, label: ROLE_LABEL[role], active: role === member.role })) : [];
-  const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name, active: c.stage === "active" })) : [];
+  const clients = db ? db.clients.map((c) => ({ id: c.id, name: c.name })) : [];
   // AURA's column (the desk assistant, named AURA 13 Nov), open or shut (8 Nov, docs/31). A cookie, so
   // the page is rendered with it already there rather than appearing after.
   const jar = await cookies();

@@ -72,31 +72,3 @@ export function setRecipients(parts: Parameters<typeof contactsFor>[0]): string[
     .filter((c) => positionOnly.has(c.email.toLowerCase()) || c.role === "hr")
     .map((c) => c.email);
 }
-
-/**
- * One contact edited in place (23 Nov): somebody leaves and their replacement takes the row, or a
- * phone number changes. The address is how a row is found, and it may itself change as long as it is
- * not another row's. "Make primary" moves the row to the front and marks it hr, which is how the
- * client's Contact Point and the CV sets pick who to write to.
- */
-export function contactsAfterEdit(
-  contacts: ContactRow[],
-  originalEmail: string,
-  person: ContactRow,
-  makePrimary: boolean,
-): { contacts: ContactRow[] } | { problem: string } {
-  const bad = problemWithContact(person);
-  if (bad) return { problem: bad };
-  const at = contacts.findIndex((c) => c.email.toLowerCase() === originalEmail.trim().toLowerCase());
-  if (at < 0) return { problem: "That contact is gone. Reload the page." };
-  const clash = contacts.some((c, i) => i !== at && c.email.toLowerCase() === person.email.trim().toLowerCase());
-  if (clash) return { problem: "That address is already on the list for somebody else." };
-  const edited: ContactRow = {
-    name: person.name.trim(),
-    email: person.email.trim(),
-    phone: person.phone.trim(),
-    role: makePrimary ? "hr" : person.role.trim().toLowerCase() || contacts[at].role,
-  };
-  const rest = contacts.filter((_, i) => i !== at);
-  return { contacts: makePrimary ? [edited, ...rest] : [...rest.slice(0, at), edited, ...rest.slice(at)] };
-}
