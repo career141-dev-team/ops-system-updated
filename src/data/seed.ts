@@ -36,6 +36,9 @@ export function seed(now = Date.now()): OpsDatabase {
       // Who the Monday report goes to. Addresses, separated by commas; the
       // Director's real address is the owner's to put in.
       { key: "report.recipients", value: "", updatedBy: null, updatedAt: null },
+      // The Scoop mailbox and who sends a Scoop (23 Nov). Empty: no Scoop is read from email until they are set.
+      { key: "scoop.mailbox", value: "", updatedBy: null, updatedAt: null },
+      { key: "scoop.senders", value: "", updatedBy: null, updatedAt: null },
       // Interviews (15, Phase 5 step 19 and the owner's notice rule).
       { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
       { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },
@@ -54,6 +57,7 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "switch.aiEnabled", value: false, updatedBy: null, updatedAt: null },
       { key: "ai.dailyBudget", value: 500, updatedBy: null, updatedAt: null },
       { key: "ai.task.dictate.fields", value: true, updatedBy: null, updatedAt: null },
+      { key: "ai.task.cv.fields", value: true, updatedBy: null, updatedAt: null },
       { key: "ai.task.inbound.read", value: true, updatedBy: null, updatedAt: null },
       { key: "ai.task.draft.improve", value: true, updatedBy: null, updatedAt: null },
       { key: "ai.task.draft.reply", value: true, updatedBy: null, updatedAt: null },

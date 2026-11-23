@@ -24,6 +24,7 @@
 /** Every task the layer does. One name, used by the settings and the ledger. */
 export type AiTask =
   | "dictate.fields"
+  | "cv.fields"
   | "inbound.read"
   | "draft.improve"
   | "draft.reply"
@@ -37,6 +38,11 @@ export const AI_TASKS: Record<AiTask, { what: string; judgment: boolean; reads: 
     what: "Turn a dictated brief into our own fields",
     judgment: false,
     reads: "only what was said",
+  },
+  "cv.fields": {
+    what: "Read the name and the position applied for from a CV",
+    judgment: false,
+    reads: "the text of the CV, and nothing else",
   },
   "inbound.read": {
     what: "Read what a client sent and propose what it means",

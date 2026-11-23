@@ -47,6 +47,12 @@ export interface Applicant {
   /** Why they were rejected and the stage they were in then (23 Nov), so the rejected list can say which kind. */
   rejectReason?: string | null;
   rejectedAtStage?: string | null;
+  /** What a Scoop CV gives, and what Ops fills after the call (23 Nov). */
+  email?: string | null;
+  nic?: string | null;
+  targetPosition?: string | null;
+  packageSaid?: string | null;
+  laptop?: string | null;
   /** What the later panels draw their messages from; absent until it is known. */
   draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
 }
@@ -113,6 +119,11 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           cvFileId: a.cvFileId,
           rejectReason: a.rejectReason,
           rejectedAtStage: a.rejectedAtStage ?? null,
+          email: a.email,
+          nic: a.nic ?? null,
+          targetPosition: a.targetPosition ?? null,
+          packageSaid: a.packageSaid ?? null,
+          laptop: a.laptop ?? null,
           draft: {
             interviewAt: a.interviewAt ?? undefined,
             interviewer: a.interviewer ?? undefined,
@@ -340,3 +351,15 @@ export function initialsOf(name: string): string {
 
 /** The fields the real backend must hold; the screens' forms stay disabled until then. */
 export const HIRING_BACKEND_GAPS = "vacancies, applicants, calls, interviews, results and decisions";
+
+/** The laptop answer is one of three, so the table can be counted: yes, no, or not asked yet. */
+export const LAPTOP_ANSWERS = ["", "Yes", "No"] as const;
+
+/** What is wrong with the details typed after a call, or null. Every field is optional; one that is typed must look right. */
+export function problemWithApplicantDetails(d: { email: string; nic: string; phone: string; laptop: string }): string | null {
+  if (d.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email.trim())) return "That email address does not look like one.";
+  if (d.nic.trim() && !/^(\d{9}[VvXx]|(19|20)\d{10})$/.test(d.nic.trim())) return "An NIC is nine digits and a V, or twelve digits.";
+  if (d.phone.trim() && d.phone.replace(/\D/g, "").length < 9) return "That phone number is too short.";
+  if (!(LAPTOP_ANSWERS as readonly string[]).includes(d.laptop)) return "Laptop is Yes, No, or left empty.";
+  return null;
+}

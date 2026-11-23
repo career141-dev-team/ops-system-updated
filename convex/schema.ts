@@ -821,6 +821,12 @@ export default defineSchema({
     /** Teams link and Outlook event for an online internal interview (21 Nov). */
     joinUrl: v.optional(v.union(v.string(), v.null())),
     graphEventId: v.optional(v.union(v.string(), v.null())),
+    // A Scoop CV (23 Nov): read from the CV, or asked on the call. Rows from before have none.
+    nic: v.optional(v.union(v.string(), v.null())),
+    targetPosition: v.optional(v.union(v.string(), v.null())),
+    packageSaid: v.optional(v.union(v.string(), v.null())),
+    laptop: v.optional(v.union(v.string(), v.null())),
+    scoopId: v.optional(v.union(v.string(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

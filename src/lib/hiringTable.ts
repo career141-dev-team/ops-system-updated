@@ -32,6 +32,10 @@ export interface ApplicantRow {
   since: number;
   detail: string;
   hasCv: boolean;
+  nic: string;
+  targetPosition: string;
+  packageSaid: string;
+  laptop: string;
 }
 
 /** Everyone, oldest waiting first inside a stage: the longest-waiting CV is the next call. */
@@ -48,6 +52,10 @@ export function applicantRows(view: HiringView): ApplicantRow[] {
       since: a.since,
       detail: a.detail,
       hasCv: !!a.cvFileId,
+      nic: a.nic ?? "",
+      targetPosition: a.targetPosition ?? "",
+      packageSaid: a.packageSaid ?? "",
+      laptop: a.laptop ?? "",
     })),
   );
   return rows.sort((a, b) => a.since - b.since);
@@ -66,7 +74,7 @@ export function filterApplicants(rows: ApplicantRow[], f: ApplicantFilter): Appl
     if (f.vacancyId && r.vacancyId !== f.vacancyId) return false;
     // "To call" holds the new CVs too, as on the vacancy board.
     if (f.stage && !(f.stage === "call" ? r.stage === "call" || r.stage === "new" : r.stage === f.stage)) return false;
-    const text = [r.name, r.source, r.phone ?? "", r.vacancy].join(" ").toLowerCase();
+    const text = [r.name, r.source, r.phone ?? "", r.vacancy, r.nic, r.targetPosition].join(" ").toLowerCase();
     return words.every((w) => text.includes(w));
   });
 }

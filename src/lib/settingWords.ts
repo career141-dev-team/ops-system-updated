@@ -42,13 +42,16 @@ const WORDS: Record<string, Words> = {
   "guarantee.warnDay": { label: "Guarantee warning", about: "Day on which the owner is warned", value: (v) => `Day ${v}` },
   "ai.dailyBudget": { label: "AURA's daily budget", about: "Most AURA may do in a day", value: (v) => String(v) },
   "report.recipients": { label: "Weekly report goes to", about: "The Director's address", value: (v) => (String(v) || "Nobody yet") },
+  "scoop.mailbox": { label: "Scoop mailbox", about: "The mailbox the Scoop emails arrive in", value: (v) => (String(v) || "Not set") },
+  "scoop.senders": { label: "Scoop senders", about: "Who sends a Scoop: addresses or whole domains, separated by commas", value: (v) => (String(v) || "Nobody yet") },
   "invoice.series": { label: "Invoice numbers start", about: "The series prefix", value: (v) => String(v) },
   "ad.days": { label: "Advert runs for", about: "Then it is taken down", value: n("days", "day") },
 };
 
 /** Machine state kept beside the settings. Not a thing a person sets, so not shown. */
 export // bank.* are the owner's bank details for the invoice: kept by their own form on this screen, not listed as rules.
-const INTERNAL = ["ta.", "clock.", "bank."];
+// scoop.batch.*, scoop.reached and scoop.summarisedOn are the Scoop reader's own record of where it got to (23 Nov).
+const INTERNAL = ["ta.", "clock.", "bank.", "scoop.batch.", "scoop.reached", "scoop.summarisedOn"];
 
 export const isInternal = (key: string): boolean => INTERNAL.some((p) => key.startsWith(p));
 

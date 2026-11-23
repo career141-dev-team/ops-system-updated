@@ -7,6 +7,14 @@ import { sampleDesk } from "./sampleDesk";
 import { repo } from "./store";
 import { seed } from "./seed";
 import { firstRunDesk, wantsSampleDesk } from "@/lib/firstRun";
+import { cvText } from "./cvText";
+import { putBytes } from "./fileStore";
+import { duplicateOf, matchVacancy, readCv, type CvFields } from "@/lib/cvParse";
+import { cvFieldsPrompt, type CvFieldsSaid } from "@/lib/aiTasks";
+import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
+import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
+import { MAX_PER_BATCH, PER_PASS, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
+import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
 import type {
   Id,
   OpsBaseline,
@@ -4098,4 +4106,213 @@ export async function patchApplicant(applicantId: Id, patch: Partial<OpsApplican
     return;
   }
   repo.patchApplicant(applicantId, patch, by, action, reason);
+}
+
+
+/* ── Scoops: CVs read into internal hiring (23 Nov, the ops team's feedback) ─────────── */
+
+/** The vacancy a CV goes to when nothing says which. People can be told apart later; they are never lost. */
+export const UNSORTED_VACANCY = "Scoop: to sort";
+
+export interface CvResult {
+  name: string;
+  status: "added" | "duplicate" | "unreadable";
+  applicantId?: string;
+  /** For a duplicate, whom it matched; for an unreadable one, why. */
+  why?: string;
+  /** Fields the CV did not give, so a person knows what to type. */
+  missing?: string[];
+}
+
+async function unsortedVacancy(db: OpsDatabase, by: Id): Promise<Id> {
+  const have = db.vacancies.find((v) => v.title === UNSORTED_VACANCY);
+  if (have) return have.id;
+  return (await addVacancy({ title: UNSORTED_VACANCY, places: 1, checks: [], ownerId: by })).id;
+}
+
+/**
+ * One CV file into internal hiring. The file is kept (never overwritten, hashed), its text is read, the five fields
+ * are found, and a person is made of it: in the vacancy asked for, else the one its position matches, else the
+ * unsorted one. Somebody already on file (same email, NIC or number, or the very same file) is not added twice.
+ * A scan with no text still makes a person, named from the file, so a CV is never lost for being unreadable.
+ */
+export async function ingestCv(
+  file: { name: string; bytes: Uint8Array },
+  ctx: { by: Id; scoopId: string; vacancyId?: Id | null; now?: number },
+): Promise<CvResult> {
+  const now = ctx.now ?? Date.now();
+  const bad = problemWithCv({ name: file.name, size: file.bytes.length }) ?? problemWithCvBytes(file.bytes);
+  if (bad) return { name: file.name, status: "unreadable", why: bad };
+
+  const db = await desk();
+  const hash = sha256(file.bytes);
+  const same = db.files.find((f) => f.kind === "cv" && f.sha256 === hash && f.subjectType === "applicant");
+  if (same) {
+    const of = db.applicants.find((a) => a.id === same.subjectId);
+    return { name: file.name, status: "duplicate", why: "The same file is already on " + (of?.name ?? "somebody") + "." };
+  }
+
+  const read = await cvText(file.bytes, file.name);
+  let ai: { name?: string; targetPosition?: string } | null = null;
+  if (read.text.replace(/\s+/g, "").length > 40) {
+    const answer = await runAi<CvFieldsSaid>("cv.fields", cvFieldsPrompt(read.text.slice(0, 6000)), ctx.by, { type: "scoop", id: ctx.scoopId }, ["a CV"], now);
+    if (answer.proposal.ok && answer.proposal.data) ai = answer.proposal.data;
+  }
+  const cv = readCv(read.text, ai);
+  const fields: CvFields = cv.fields;
+
+  const match = duplicateOf(fields, db.applicants.map((a) => ({ id: a.id, email: a.email, phone: a.phone, nic: a.nic ?? null, name: a.name })));
+  if (match) return { name: file.name, status: "duplicate", why: "Already on file: " + match.name + "." };
+
+  const open = db.vacancies.filter((v) => v.status === "open" && v.title !== UNSORTED_VACANCY);
+  const vacancyId = ctx.vacancyId ?? matchVacancy(fields.targetPosition, open) ?? (await unsortedVacancy(db, ctx.by));
+  const person = await addApplicant({
+    vacancyId,
+    name: fields.name || file.name.replace(/\.[A-Za-z0-9]+$/, "").replace(/[-_]+/g, " ").trim().slice(0, 80) || "Unnamed CV",
+    source: "Scoop",
+    phone: fields.phone || null,
+    email: fields.email || null,
+    by: ctx.by,
+  });
+  const key = keyFor("cv", "applicant", person.id, file.name, now);
+  const mime = mimeFor(file.name);
+  await putBytes(key, file.bytes, mime);
+  const kept = await addFile({ kind: "cv", key, name: safeName(file.name), size: file.bytes.length, mime, sha256: hash, subjectType: "applicant", subjectId: person.id, madeFrom: null, uploadedBy: ctx.by });
+  const unread = cv.scanned || read.why;
+  await patchApplicant(
+    person.id,
+    {
+      cvFileId: kept.id,
+      nic: fields.nic || null,
+      targetPosition: fields.targetPosition || null,
+      scoopId: ctx.scoopId,
+      detail: unread ? "CV could not be read: " + (read.why ?? "it is a scan") + " Type the details in." : "CV came " + colomboDate(now) + (cv.missing.length ? " · not found: " + cv.missing.join(", ") : ""),
+    },
+    ctx.by,
+    "applicant.fromScoop",
+    "Read from " + safeName(file.name),
+  );
+  return unread
+    ? { name: file.name, status: "unreadable", applicantId: person.id, why: read.why ?? "It is a scan with no text, so the details are to be typed.", missing: cv.missing }
+    : { name: file.name, status: "added", applicantId: person.id, missing: cv.missing };
+}
+
+async function saveBatch(batch: ScoopBatch): Promise<void> {
+  await noteSetting(scoopKeyOf(batch.id), JSON.stringify(batch));
+}
+
+export function scoopBatches(db: OpsDatabase): ScoopBatch[] {
+  return batchesOf(db.settings);
+}
+
+function tallyResult(batch: ScoopBatch, r: CvResult): void {
+  if (r.applicantId) batch.applicantIds.push(r.applicantId);
+  if (r.status === "duplicate") batch.duplicates.push({ name: r.name, of: r.why ?? "" });
+  if (r.status === "unreadable") batch.unreadable.push({ name: r.name, why: r.why ?? "" });
+}
+
+/** CVs added by hand, all at once: the same reading as a Scoop by email, so nobody has to wait for the mailbox. */
+export async function ingestScoopFiles(files: { name: string; bytes: Uint8Array }[], by: Id, vacancyId: Id | null, now = Date.now()): Promise<ScoopBatch> {
+  const batch = newBatch({ id: "upload-" + now, at: now, source: "upload", found: Math.min(files.length, MAX_PER_BATCH) });
+  for (const file of files.slice(0, MAX_PER_BATCH)) {
+    tallyResult(batch, await ingestCv(file, { by, scoopId: batch.id, vacancyId, now }));
+  }
+  batch.complete = true;
+  await saveBatch(batch);
+  return batch;
+}
+
+/** Where the Scoop mailbox and its senders are named: the settings first (an Ops lead can change them), then the environment. */
+export function scoopConfig(db: OpsDatabase): { mailbox: string; senders: string[] } {
+  return {
+    mailbox: textOf(db, "scoop.mailbox", (process.env.OPS_SCOOP_MAILBOX ?? "").trim()),
+    senders: sendersFrom(textOf(db, "scoop.senders", process.env.OPS_SCOOP_SENDERS ?? "")),
+  };
+}
+
+const SCOOP_REACHED = "scoop.reached";
+
+/**
+ * One pass over the Scoop mailbox: take the next few files off the next Scoop email. A Scoop of sixty is spread
+ * over passes (PER_PASS a pass) so none runs long; each pass carries on from where the last one stopped, and the
+ * mailbox's cursor moves past an email only when every file on it has been handled.
+ */
+export async function runScoopPass(by: Id, now = Date.now(), source?: ScoopSource): Promise<{ ok: boolean; reason?: string; handled: number; added: number }> {
+  const db = await desk();
+  const config = scoopConfig(db);
+  const problem = source ? null : scoopProblem(config.mailbox, config.senders);
+  if (problem) return { ok: false, reason: problem, handled: 0, added: 0 };
+  const src = source ?? graphScoopSource(config.mailbox, config.senders, isScoopSender);
+
+  const reached = Number(textOf(db, SCOOP_REACHED, "")) || now - 2 * 86_400_000;
+  const listed = await src.messages(reached);
+  if (!listed.ok) return { ok: false, reason: listed.reason, handled: 0, added: 0 };
+
+  let budget = PER_PASS;
+  let handled = 0;
+  let added = 0;
+  for (const message of listed.messages) {
+    const stored = scoopBatches(await desk()).find((b) => b.id === message.id);
+    if (stored?.complete) {
+      await noteSetting(SCOOP_REACHED, String(message.at));
+      continue;
+    }
+    const files = (await src.attachments(message.id)).filter((a) => problemWithCv({ name: a.name, size: a.size }) === null).slice(0, MAX_PER_BATCH);
+    const batch = stored ?? newBatch({ id: message.id, at: message.at, source: "mail", mailbox: config.mailbox, from: message.from, subject: message.subject, found: files.length });
+    batch.found = files.length;
+    for (const f of files) {
+      if (budget <= 0) break;
+      if (batch.done.includes(f.id)) continue;
+      const bytes = await src.bytes(message.id, f.id);
+      budget -= 1;
+      handled += 1;
+      const result: CvResult = bytes ? await ingestCv({ name: f.name, bytes }, { by, scoopId: batch.id, now: message.at }) : { name: f.name, status: "unreadable", why: "The file could not be taken from the email." };
+      if (result.status === "added") added += 1;
+      tallyResult(batch, result);
+      batch.done.push(f.id);
+      await saveBatch(batch);
+    }
+    batch.complete = files.every((f) => batch.done.includes(f.id));
+    await saveBatch(batch);
+    if (!batch.complete) break; // carry on with this one next pass; never skip past an unfinished email
+    await noteSetting(SCOOP_REACHED, String(message.at));
+  }
+  return { ok: true, handled, added };
+}
+
+const SUMMARISED_ON = "scoop.summarisedOn";
+
+/**
+ * The end of the day's report on each Scoop that came in (17:30 Colombo on a working day), once a day: one task for
+ * the Ops lead with a few lines per batch. Read off the applicants as they stand, so a call made this afternoon counts.
+ * Quiet on a day with no Scoop. Asked for on every clock pass, and does nothing until its time and nothing twice.
+ */
+export async function runScoopSummary(by: Id, now = Date.now()): Promise<{ made: boolean; batches: number }> {
+  const db = await desk();
+  const today = colomboDate(now);
+  if (textOf(db, SUMMARISED_ON, "") === today) return { made: false, batches: 0 };
+  const due = nextSummaryAt(Date.parse(today + "T00:00:00+05:30") - 1, db.holidays.map((h) => h.date));
+  if (colomboDate(due) !== today || now < due) return { made: false, batches: 0 };
+
+  const batches = batchesOn(scoopBatches(db), now).filter((b) => b.complete || b.applicantIds.length > 0);
+  await noteSetting(SUMMARISED_ON, today);
+  if (!batches.length) return { made: false, batches: 0 };
+
+  const people = db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null }));
+  const body = batches
+    .map((b) => (b.source === "mail" ? (b.subject || "A Scoop") + " (from " + (b.from || "email") + ")" : "CVs added by hand") + "\n" + summaryOf(b, people).lines.join("\n"))
+    .join("\n\n");
+  const owner = db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? by;
+  await createTask({
+    kind: "record",
+    title: "Scoop summary for " + colomboDateInWords(now),
+    body,
+    assigneeId: owner,
+    dueAt: now,
+    subjectType: null,
+    subjectId: null,
+    link: "/hiring?view=scoops",
+  });
+  for (const b of batches) await saveBatch({ ...b, summarisedAt: now });
+  return { made: true, batches: batches.length };
 }
