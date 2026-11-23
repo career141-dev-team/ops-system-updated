@@ -96,8 +96,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                       <summary aria-label={"More for " + c.name} className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-ink-3 hover:bg-sunk [&::-webkit-details-marker]:hidden">
                         <span aria-hidden="true" className="text-[18px] leading-none">&#8942;</span>
                       </summary>
-                      <div className="absolute right-0 mt-1 flex w-44 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
-                        <p className="t-small px-3 py-2 text-ink-3">Owner: {c.owner}</p>
+                      <div className="absolute left-full top-0 ml-1 flex w-36 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
+                        <Link href={c.href} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
+                          View
+                        </Link>
                         {can(me, "client.manage") && (
                           <Link href={"/clients/" + c.id + "?view=contacts"} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
                             Edit
