@@ -41,8 +41,10 @@ test("starting a clock records it as running and leaves a trail", () => {
 });
 
 test("a task is closed with what happened, and by whom", () => {
+  // The sample desk no longer ships invented tasks (23 Nov), so this test makes its own.
+  repo.createTask({ kind: "remind", title: "A task to close", body: "", assigneeId: "m_owner", dueAt: Date.now(), subjectType: null, subjectId: null, link: null });
   const task = repo.openTasksFor("m_owner")[0];
-  assert(task, "the sample data gives the owner something to do");
+  assert(task, "the owner has something to do");
   repo.finishTask(task.id, "m_owner", "  Will send slots on Friday  ");
   const after = repo.task(task.id);
   assert.equal(after?.state, "done");

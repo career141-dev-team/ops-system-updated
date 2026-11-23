@@ -264,9 +264,9 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
             <Link href={panelHref("/positions", sp, "weekly-report")} scroll={false} className={pillSecondary}>
               Weekly report
             </Link>
-            <Link href={panelHref("/positions", sp, "add-enquiry")} scroll={false} className={pillPrimary}>
+            <Link href={panelHref("/positions", sp, "add-position")} scroll={false} className={pillPrimary}>
               <Icon name="plus" size={16} />
-              New enquiry
+              New position
             </Link>
           </div>
         }
@@ -319,7 +319,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
 
           {visible.length === 0 ? (
             <EmptyState icon="find" title={view.rows.length === 0 ? "No roles yet" : "No role matches"}>
-              {view.rows.length === 0 ? "A role appears here after the intro call is held, the agreement is signed and the requirement is complete, and it is handed to the TA System. \"New enquiry\" starts a lead; it does not make a role." : "Try another filter or a different search."}
+              {view.rows.length === 0 ? "A role appears here after the intro call is held, the agreement is signed and the requirement is complete, and it is handed to the TA System. \"New position\" starts a requirement for a client we already work for; an enquiry for a new company is added from Clients." : "Try another filter or a different search."}
             </EmptyState>
           ) : (
             visible.map((g) => {

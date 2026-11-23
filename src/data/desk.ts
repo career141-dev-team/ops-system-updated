@@ -66,7 +66,7 @@ import type { DayItem } from "@/lib/whatFirst";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
-import { problemWithInvoiceBilling } from "@/lib/clients";
+import { clientForLead, problemWithInvoiceBilling } from "@/lib/clients";
 import {
   CLOSE_TRIGGERS,
   GUARANTEE_DAYS,
@@ -3557,9 +3557,7 @@ export function clientIn(db: OpsDatabase, clientId: Id): OpsClient | null {
   return db.clients.find((c) => c.id === clientId) ?? null;
 }
 
-export function clientForLead(db: OpsDatabase, leadId: Id): OpsClient | null {
-  return db.clients.find((c) => c.leadId === leadId) ?? null;
-}
+export { clientForLead };
 
 export function clientsNewestFirst(db: OpsDatabase): OpsClient[] {
   return [...db.clients].sort((a, b) => b.createdAt - a.createdAt);
@@ -3590,11 +3588,12 @@ export async function clientFromLead(
     const patch: Partial<OpsClient> = {};
     if (already.taClientId === null && lead.clientTaId) patch.taClientId = lead.clientTaId;
     if (already.leadId === null) patch.leadId = lead.id;
-    if (already.stage !== stage && stage === "active") patch.stage = stage;
+    // lead -> onboarding -> active (23 Nov: a client made as a lead when the agreement went out stayed under Leads).
+    if (already.stage !== stage && (stage === "active" || (stage === "onboarding" && already.stage === "lead"))) patch.stage = stage;
     if (Object.keys(patch).length) {
       // The audit says what happened, not that something did: a client turning
       // active is the countersignature, and reads that way a year later.
-      await patchClient(already.id, patch, by, patch.stage ? "client.agreementDone" : "client.updated", null);
+      await patchClient(already.id, patch, by, patch.stage === "active" ? "client.agreementDone" : "client.updated", null);
     }
     return { ...already, ...patch };
   }

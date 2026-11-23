@@ -17,6 +17,7 @@ import {
 import { entryInWords, gather } from "@/lib/timeline";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
+import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { CheckInSendModal } from "../ClientSendModals";
 import CopyButton from "../CopyButton";
@@ -91,6 +92,11 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                       {c.name}
                     </Link>
                     <span className="t-small shrink-0 text-ink-3">{c.owner}</span>
+                    {can(me, "client.manage") && (
+                      <Link href={"/clients/" + c.id + "?view=contacts"} className="t-label relative z-10 shrink-0 text-brand hover:underline">
+                        Edit
+                      </Link>
+                    )}
                   </div>
                   <div className="flex items-center gap-2.5">
                     <p className="t-small min-w-0 flex-1">{c.person ? [c.person.name, c.person.role ? c.person.role.toUpperCase() : ""].filter(Boolean).join(" · ") : "No contact written down"}</p>

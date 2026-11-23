@@ -9,7 +9,7 @@ import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
 import { CALL_NOT_FIT, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
-export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject";
+export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv";
 
 const small = "t-label inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] text-ink hover:bg-sunk";
 
@@ -105,6 +105,29 @@ const textarea = panelInput + " min-h-[72px]";
 /** The four panels of H2, wired to the internal hiring backend actions. */
 export default function HiringPanel({ kind, v, a, now, closeHref, cvHref }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string; cvHref?: string | null }) {
   const name = first(a.name);
+  // The CV on its own, at any stage (23 Nov): the form used to live only in the call drawer, so a person
+  // already past the call had no way to add the CV that was missed.
+  if (kind === "cv") {
+    return (
+      <Panel kicker="CV" title={cvHref ? `Replace ${a.name}'s CV` : `Add ${a.name}'s CV`} sub={`${v.title} > Internal hiring`} closeHref={closeHref}>
+        <Who a={a} cvHref={cvHref} />
+        <form action={addApplicantCv} encType="multipart/form-data">
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="CV">
+            <input type="file" name="cv" required accept=".pdf,.doc,.docx" aria-label="CV file" className={panelInput} />
+            <p className="t-small text-ink-3">A PDF or Word file, up to 10 MB. A new file replaces the old one on the card; the old one stays in Files.</p>
+            <div>
+              <button type="submit" className={small}>
+                {cvHref ? "Replace CV" : "Add CV"}
+              </button>
+            </div>
+          </PanelSection>
+        </form>
+      </Panel>
+    );
+  }
   if (kind === "call") {
     const next = (a.tries ?? 0) + 1;
     return (

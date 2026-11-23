@@ -133,6 +133,9 @@ import {
   textOf,
   startTimer,
   switchedOn,
+  clientForLead,
+  addHold,
+  liveHoldFor,
 } from "@/data/desk";
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
@@ -222,7 +225,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
-import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
+import { type QuickKind, QUICK_KINDS, clientNamed, newPositionFields, noteToTask, problemWithNewPosition, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
@@ -314,13 +317,14 @@ import {
   introSatisfied,
   problemWithNewLead,
   routeLead,
+  EXISTING_CLIENT_SOURCE,
 } from "@/lib/leads";
 import { clients as taClients, fakeTa, people as taPeople, preparedCv } from "@/lib/ta";
 import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, listEvents, moveTeamsEvent, teamsFake } from "@/lib/graphCalendar";
 import { clashWith } from "@/lib/outlook";
 import { trimForAi, vttToText } from "@/lib/transcript";
 import { stampCountersignature } from "@/lib/countersign";
-import { type ContactRow, contactsFor, problemWithContact, setRecipients } from "@/lib/contacts";
+import { type ContactRow, contactsAfterEdit, contactsFor, problemWithContact, setRecipients } from "@/lib/contacts";
 import {
   type Attendee,
   DEFAULT_LENGTH,
@@ -355,6 +359,7 @@ import {
   problemWithBilling,
   problemWithInvoiceBilling,
   problemWithStageMove,
+  problemWithRename,
 } from "@/lib/clients";
 import { invoiceHoles, problemWithInvoiceFill } from "@/lib/invoiceDoc";
 import {
@@ -2979,6 +2984,66 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   back("Saved.");
 }
 
+/**
+ * Rename a client (23 Nov, the ops team's feedback). The name and its comparison key change, and so
+ * does the enquiry it began as. Sets already sent keep the name they went out under: their subject
+ * line is how the client's reply finds its set, so it must not move.
+ */
+export async function renameClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const here = "/clients/" + clientId;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
+  const row = client as NonNullable<typeof client>;
+
+  const name = String(formData.get("name") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithRename(name, reason, db.clients, row.id, nameKey);
+  if (problem) back(problem);
+
+  await patchClient(clientId, { name, nameKey: nameKey(name) }, member.id, "client.renamed", reason + " (was " + row.name + ")");
+  const lead = row.leadId ? db.leads.find((l) => l.id === row.leadId) : undefined;
+  if (lead) await patchLead(lead.id, { company: name, nameKey: nameKey(name) }, member.id, "lead.renamed", reason);
+  revalidatePath("/clients");
+  revalidatePath(here);
+  back("Renamed to " + name + ".");
+}
+
+/** Change a contact in place, or make them the primary one (23 Nov): somebody leaves and a colleague takes over. */
+export async function updateContact(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const scope = String(formData.get("scope") ?? "") === "position" ? "position" : "client";
+  const id = String(formData.get("id") ?? "");
+  const here = scope === "position" ? "/positions/" + id : "/clients/" + id;
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const holder = scope === "position" ? positionIn(db, id) : clientIn(db, id);
+  if (!holder) redirect("/" + scope + "s?msg=" + encodeURIComponent("That " + scope + " is gone."));
+  const person = {
+    name: String(formData.get("name") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+    role: String(formData.get("role") ?? ""),
+  };
+  const have = (holder as { contacts?: ContactRow[] }).contacts ?? [];
+  const edited = contactsAfterEdit(have, String(formData.get("originalEmail") ?? ""), person, formData.get("primary") === "on");
+  if ("problem" in edited) back(edited.problem);
+  const contacts = (edited as { contacts: ContactRow[] }).contacts;
+  const what = String(formData.get("originalEmail") ?? "") + " -> " + person.email.trim();
+  if (scope === "position") await patchPosition(id, { contacts }, member.id, "position.contactEdited", what);
+  else await patchClient(id, { contacts }, member.id, "client.contactEdited", what);
+  revalidatePath(here);
+  back(person.name.trim() + " saved.");
+}
+
 /** Live, quiet or finished. Going quiet needs a reason, like closing does. */
 export async function moveClientStage(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -3581,6 +3646,49 @@ export async function recordClientDecision(formData: FormData): Promise<void> {
  * held once a person has approved it. The thirty-day review starts at the same
  * time, because the owner's rule is that a hold never closes by itself.
  */
+/**
+ * Put a position on hold by hand (23 Nov: the Hold button did nothing, because a hold was only ever
+ * proposed by the clock after a set went quiet). It records the hold the same way the clock's proposal
+ * would, then hands it to approveTheHold, so the notice, the TA write and the thirty-day review are
+ * exactly the same, and the notice still waits for a person to approve it.
+ */
+export async function holdByHand(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/positions/" + positionId);
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet, so there is nothing to pause. Try again once it has.");
+  if (liveHoldFor(db, row.openingTaId ?? "")) back("This position is already on hold.");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithHold(reason);
+  if (problem) back(problem);
+
+  const hold = await addHold({
+    openingTaId: row.openingTaId as string,
+    setId: null,
+    clientId: row.clientId,
+    state: "proposed",
+    reason,
+    liftedReason: null,
+    noticeMessageId: null,
+    proposedAt: Date.now(),
+    heldAt: null,
+    liftedAt: null,
+    reviewAt: null,
+    ownerId: row.ownerId,
+  });
+  const next = new FormData();
+  next.set("holdId", hold.id);
+  next.set("reason", reason);
+  await approveTheHold(next);
+}
+
 export async function approveTheHold(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -3610,7 +3718,8 @@ export async function approveTheHold(formData: FormData): Promise<void> {
 
   const message = await draftMessage({
     channel: "email",
-    to: set?.sentTo ?? [],
+    // A hold made by hand has no set to read the recipients from: write to the client's standard contacts.
+    to: set?.sentTo?.length ? set.sentTo : (client?.contacts ?? []).filter((c) => c.role === "hr").map((c) => c.email),
     subject: fill(wording?.subject ?? "{{client}} > {{position}} - on hold"),
     body: fill(wording?.body ?? "Dear all,"),
     templateKey: "inactive.notice",
@@ -3842,7 +3951,7 @@ export async function saveRequirement(formData: FormData): Promise<void> {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value).trim();
   }
 
-  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const client = clientForLead(db, leadId);
   // A requirement meeting, or an intro call that was also one (17 Nov).
   const held =
     meetingsForLead(db, leadId).find(
@@ -4029,7 +4138,7 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   });
   if (problem) back(problem);
 
-  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const client = clientForLead(db, leadId);
   const now = Date.now();
   const title = (req.fields.title ?? "").trim();
 
@@ -7479,6 +7588,75 @@ export async function quickAdd(formData: FormData): Promise<void> {
 }
 
 /**
+ * A new position for a client we already work for (23 Nov, the ops team's feedback).
+ *
+ * It starts a requirement draft on a lead made for the occasion, and nothing more: the position is
+ * still made by handOverToTa, after the requirement call and a complete requirement, so none of those
+ * checks is skipped. The coordinator is not asked for here; it stays under the client's Contact Point.
+ */
+export async function newPosition(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = backTo(formData, "/positions");
+  const said = (line: string) => redirect(back + confirmed(line, back));
+  if (!can(member, "client.manage")) said("Not saved: " + refusal("client.manage"));
+
+  const db = await desk();
+  const client = clientNamed(String(formData.get("client") ?? ""), db.clients.filter((c) => c.stage === "active"));
+  if (!client) said("Not saved: pick one of our active clients. A company we have not signed starts as an enquiry.");
+  const row = client as NonNullable<typeof client>;
+  const contact = row.contacts?.find((c) => c.role === "hr") ?? row.contacts?.[0];
+  if (!contact) said("Not saved: " + row.name + " has no contact point yet. Add one on their page first.");
+  const input = {
+    title: String(formData.get("title") ?? ""),
+    level: String(formData.get("level") ?? ""),
+    salary: String(formData.get("salary") ?? ""),
+    incumbentNote: String(formData.get("incumbentNote") ?? ""),
+  };
+  const problem = problemWithNewPosition(input);
+  if (problem) said("Not saved: " + problem);
+
+  const who = contact as NonNullable<typeof contact>;
+  const lead = await addLead({
+    company: row.name,
+    nameKey: row.nameKey,
+    contactName: who.name,
+    contactEmail: who.email,
+    contactPhone: who.phone,
+    source: EXISTING_CLIENT_SOURCE,
+    industry: "",
+    website: "",
+    notes: "",
+    industryFlagged: false,
+    industryBecause: null,
+    industryConfirmedBy: null,
+    // An active client has a signed agreement: the requirement is the next thing, with no intro call.
+    state: "requirement",
+    reason: null,
+    doNotInvite: false,
+    clientTaId: row.taClientId,
+    ownerId: row.ownerId ?? member.id,
+    createdBy: member.id,
+  });
+  await addRequirement({
+    leadId: lead.id,
+    clientId: row.id,
+    clientTaId: row.taClientId ?? "",
+    meetingId: null,
+    version: 1,
+    fields: newPositionFields(input),
+    practical: true,
+    reason: null,
+    inviteBackAt: null,
+    openedAt: null,
+    ownerId: lead.ownerId,
+  });
+  revalidatePath("/leads");
+  revalidatePath("/positions");
+  redirect("/leads/" + lead.id + "?step=requirement" + confirmed("Saved as a requirement draft for " + row.name + ". Book the requirement call and finish the brief, then hand it to TA.", "/leads/x?"));
+}
+
+/**
  * Why today's first thing is first, in the model's one line (8 Nov, UX
  * order 6; Phase 9 step 12).
  *
@@ -8228,7 +8406,7 @@ export async function deleteTeamNote(formData: FormData): Promise<void> {
   const noteId = String(formData.get("id") ?? "");
   const note = ((await desk()).teamNotes ?? []).find((n) => n.id === noteId);
   if (!note) redirect(dest + confirmed("That note is already deleted.", dest));
-  if (!canDeleteTeamNote(note, member.id)) redirect(withMsg(dest, "You can only delete your own notes."));
+  if (!canDeleteTeamNote(note, member.id, can(member, "task.reassign"))) redirect(withMsg(dest, "You can only delete your own notes."));
   await removeTeamNote(noteId, member.id);
   revalidatePath("/mail");
   redirect(dest + confirmed("Note deleted.", dest));
@@ -8323,7 +8501,7 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   if (problem) redirect(withMsg(dest, problem));
   const tries = app.tries + 1;
   if (result === CALL_NOT_FIT) {
-    await patchApplicant(applicantId, { stage: "rejected", tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
+    await patchApplicant(applicantId, { stage: "rejected", rejectedAtStage: app.stage, tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
     revalidatePath(`/hiring/${vacancyId}`);
     revalidatePath("/hiring");
     redirect(dest + confirmed("Marked rejected.", dest));
@@ -8423,6 +8601,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
       score,
       notes: notes || null,
       rejectReason: result === "fail" ? reason : null,
+      ...(result === "fail" ? { rejectedAtStage: "interview" } : {}),
       detail: result === "pass" ? "Passed interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
     },
     member.id,
@@ -8452,10 +8631,12 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   const db = await desk();
   const vac = db.vacancies.find((v) => v.id === vacancyId);
   const nextStage = decision === "hire" ? "hired" : decision === "reject" ? "rejected" : "decision";
+  const before = db.applicants.find((a) => a.id === applicantId);
   await patchApplicant(
     applicantId,
     {
       stage: nextStage,
+      ...(decision === "reject" ? { rejectedAtStage: before?.stage ?? null } : {}),
       startDate,
       salary,
       rejectReason: decision === "reject" ? reason : null,

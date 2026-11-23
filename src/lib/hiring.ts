@@ -45,6 +45,9 @@ export interface Applicant {
   tries?: number;
   /** The kept CV file (22 Nov: hiring had nowhere to put one); null until someone adds it. */
   cvFileId?: string | null;
+  /** Why they were rejected and the stage they were in then (23 Nov), so the rejected list can say which kind. */
+  rejectReason?: string | null;
+  rejectedAtStage?: string | null;
   /** What the later panels draw their messages from; absent until it is known. */
   draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
 }
@@ -109,6 +112,8 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           detail: a.detail,
           tries: a.tries,
           cvFileId: a.cvFileId,
+          rejectReason: a.rejectReason,
+          rejectedAtStage: a.rejectedAtStage ?? null,
           draft: {
             interviewAt: a.interviewAt ?? undefined,
             interviewer: a.interviewer ?? undefined,
@@ -194,6 +199,27 @@ export function problemWithHiringDecision(decision: string, reason: string): str
   if (!["hire", "hold", "reject"].includes(decision)) return "Pick Hire, Hold, or Reject.";
   if (decision === "reject" && reason.trim().length < 4) return "Write the reason before rejecting.";
   return null;
+}
+
+/**
+ * Which kind of rejection it was (23 Nov): somebody turned away before an interview is a screening
+ * reject, after it a final reject. A row from before the stage was kept has none, and counts as screening
+ * only if it never reached an interview, which is all we can say.
+ */
+export type RejectKind = "screening" | "final";
+export const REJECT_KIND_LABEL: Record<RejectKind, string> = { screening: "Screening reject", final: "Final reject" };
+
+export function rejectKind(atStage: string | null | undefined): RejectKind {
+  return atStage === "interview" || atStage === "decision" ? "final" : "screening";
+}
+
+/** The rejected people of a vacancy, split by kind, newest first. */
+export function rejectedByKind(applicants: Applicant[]): Record<RejectKind, Applicant[]> {
+  const out: Record<RejectKind, Applicant[]> = { screening: [], final: [] };
+  for (const a of applicants.filter((x) => x.stage === "rejected").sort((x, y) => y.since - x.since)) {
+    out[rejectKind(a.rejectedAtStage)].push(a);
+  }
+  return out;
 }
 
 export function countOf(v: Vacancy, stage: ApplicantStage): number {

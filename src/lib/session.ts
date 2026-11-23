@@ -16,6 +16,7 @@
  */
 
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { addMember, desk, member as findMember } from "@/data/desk";
 import type { OpsMember } from "@/data/types";
@@ -81,17 +82,24 @@ async function memberIdFromCookie(): Promise<string | null> {
  * Resolves the current Clerk session (when Clerk is configured) against the Ops allow-list.
  * Returns whether the user is signed into Clerk, their matched/provisioned OpsMember, or a refusal message.
  */
-export async function clerkSessionState(): Promise<{
+// cache(): the layout and the page both ask, and each ask is a network call to Clerk.
+export const clerkSessionState = cache(async (): Promise<{
   signedIn: boolean;
   member: OpsMember | null;
   problem: string | null;
-}> {
+}> => {
   if (!clerkSignInConfigured()) return { signedIn: false, member: null, problem: null };
   const { auth, currentUser } = await import("@clerk/nextjs/server");
   const { userId } = await auth();
   if (!userId) return { signedIn: false, member: null, problem: null };
 
-  const user = await currentUser();
+  let user;
+  try {
+    user = await currentUser();
+  } catch {
+    // 23 Nov: Clerk unreachable ("fetch failed") crashed every page; say so instead.
+    return { signedIn: true, member: null, problem: "Could not reach Clerk to check your account. Check the internet connection and reload." };
+  }
   const primary =
     user?.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ??
     user?.emailAddresses[0]?.emailAddress ??
@@ -122,7 +130,7 @@ export async function clerkSessionState(): Promise<{
 
   const found = findMember(db, door.memberId);
   return { signedIn: true, member: found && found.active ? found : null, problem: null };
-}
+});
 
 /** The person who signed in, whatever role they are previewing. */
 export async function realMember(): Promise<OpsMember | null> {

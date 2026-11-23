@@ -12,6 +12,7 @@
  *
  * Nothing here touches a database or sends anything.
  */
+import type { OpsClient, OpsDatabase } from "@/data/types";
 
 export type ClientStage = "lead" | "onboarding" | "active" | "dormant" | "closed";
 
@@ -113,4 +114,40 @@ export function whereTheyStand(client: {
   const tail = missing.length ? " · " + missing.join(", ") : "";
   const why = client.reason ? " · " + client.reason : "";
   return stage + tail + why;
+}
+
+/**
+ * The client a lead belongs to. A returning company keeps its first lead's id on its record, so a second
+ * lead finds it by name or by the TA client, the same way the desk makes one (23 Nov: a position made from
+ * the second lead had no client and showed under no client at all).
+ */
+export function clientForLead(db: OpsDatabase, leadId: string): OpsClient | null {
+  const byLead = db.clients.find((c) => c.leadId === leadId);
+  if (byLead) return byLead;
+  const lead = db.leads.find((l) => l.id === leadId);
+  if (!lead) return null;
+  return (
+    db.clients.find((c) => c.nameKey === lead.nameKey) ??
+    (lead.clientTaId ? db.clients.find((c) => c.taClientId === lead.clientTaId) : undefined) ??
+    null
+  );
+}
+
+/**
+ * Renaming a client (23 Nov): a company is renamed, or was typed wrongly. One company is one record,
+ * so a name another client already has is refused, and the change needs a reason that is kept in the audit.
+ */
+export function problemWithRename(
+  newName: string,
+  reason: string,
+  others: { id: string; name: string; nameKey: string }[],
+  selfId: string,
+  keyOf: (name: string) => string,
+): string | null {
+  if (newName.trim().length < 2) return "Write the client's new name.";
+  if (reason.trim().length < 4) return "Say why the name is changing. It is kept with the change.";
+  const key = keyOf(newName);
+  const clash = others.find((c) => c.id !== selfId && c.nameKey === key);
+  if (clash) return clash.name + " is already a client. One company is one record, so it cannot take the same name.";
+  return null;
 }

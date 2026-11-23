@@ -5,6 +5,7 @@
  */
 import type { OpsClient, OpsDatabase, OpsEsa, OpsLead, OpsMeeting } from "@/data/types";
 import { agoShort, sourceShort } from "@/lib/clientCards";
+import { clientForLead } from "@/lib/clients";
 import {
   type AgreementColumn,
   type EnquiryColumn,
@@ -293,7 +294,7 @@ export function agreementCards(db: OpsDatabase, now: number): AgreementCard[] {
     const column = agreementColumn(esa, now);
     if (!column) continue;
     const lead = db.leads.find((l) => l.id === esa.leadId) ?? null;
-    const client = db.clients.find((c) => c.leadId === esa.leadId) ?? null;
+    const client = clientForLead(db, esa.leadId);
     const company = esa.fields.companyName || lead?.company || client?.name || "Client";
     const person = client ? contactOf(client, lead) : null;
     const replied = client ? repliedSince(db, client, esa.sentAt) : false;

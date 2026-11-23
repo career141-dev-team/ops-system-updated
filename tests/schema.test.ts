@@ -33,7 +33,9 @@ const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "ui", "slotAnswers", "
   // People on an opening besides the Primary TA (17 Nov): an opening made before has none.
   "team",
   // Candidate phone on placements & start date on unreported-hire surcharge invoices (19 Nov).
-  "candidatePhone", "hiredStartDate"];
+  "candidatePhone", "hiredStartDate",
+  // The stage an internal-hiring applicant was in when rejected (23 Nov): a row from before has none.
+  "rejectedAtStage"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);

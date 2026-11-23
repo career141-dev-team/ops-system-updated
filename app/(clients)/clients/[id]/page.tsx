@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { approveTheHold, liftTheHold, moveClientOwner, moveClientStage, saveClientDetails, summariseClient } from "@/app/actions";
+import { approveTheHold, liftTheHold, moveClientOwner, moveClientStage, renameClient, saveClientDetails, summariseClient } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
@@ -345,6 +345,26 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 heading="PEOPLE WE WRITE TO"
                 hint="Their standard contacts get everything: CV sets, interview times, meeting invites. A person marked hr receives the CV sets."
               />
+              {mayManage && (
+                <Card title="Client name" sub="If the company was renamed or typed wrongly. Sets already sent keep the name they went out under.">
+                  <form action={renameClient} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <input type="hidden" name="clientId" value={client.id} />
+                    <label className="flex flex-col gap-1.5">
+                      <span className="t-small text-ink-3">Name</span>
+                      <input name="name" required defaultValue={client.name} className={panelInput} />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="t-small text-ink-3">Why it is changing</span>
+                      <input name="reason" required className={panelInput} />
+                    </label>
+                    <div className="sm:col-span-2">
+                      <button type="submit" className={pillPrimary}>
+                        Rename
+                      </button>
+                    </div>
+                  </form>
+                </Card>
+              )}
               <Card title="Billing and details" sub="Who we invoice and which WhatsApp group is theirs">
                 {mayManage ? (
                   <form action={saveClientDetails} className="grid grid-cols-1 gap-4 sm:grid-cols-2">

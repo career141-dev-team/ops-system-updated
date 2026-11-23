@@ -22,7 +22,11 @@
 export const LEAD_SOURCES = ["website", "whatsapp", "call", "email", "referral", "director", "linkedin", "walk_in", "other"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
-export const SOURCE_MEANINGS: Record<LeadSource, string> = {
+/** Made by "New position" for a client we already work for (23 Nov). Never offered as a place an enquiry came from. */
+export const EXISTING_CLIENT_SOURCE = "client";
+
+export const SOURCE_MEANINGS: Record<LeadSource | typeof EXISTING_CLIENT_SOURCE, string> = {
+  client: "A client we already work for",
   website: "The website form",
   whatsapp: "WhatsApp",
   call: "A phone call",
@@ -252,7 +256,7 @@ export function existingClientOf(
     !meetings.some((m) => m.kind === "intro") &&
     ["requirement", "waiting_agreement", "handed_over"].includes(lead.state);
   return {
-    skipsIntro: lead.source === "director" || existing,
+    skipsIntro: lead.source === "director" || lead.source === EXISTING_CLIENT_SOURCE || existing,
     signedOnFile: existing && !esa && ["requirement", "handed_over"].includes(lead.state),
   };
 }

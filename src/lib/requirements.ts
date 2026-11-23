@@ -43,6 +43,7 @@ export const REQUIREMENT_FIELDS: RequirementField[] = [
   { key: "jdNotes", label: "The brief", required: true, why: "What they said the job is. TA drafts the JD from this." },
   { key: "insights", label: "Anything else said on the call", required: false, why: "Why the last person left, who they report to, what they will not accept." },
   { key: "reportsTo", label: "Reports to", required: false, why: "Asked by every candidate at interview." },
+  { key: "incumbentNote", label: "Incumbent or reference profile", required: false, why: "A person already in the job, or a profile the client points to, for the TAs to search from." },
 ];
 
 export type RequirementFields = Record<string, string>;
@@ -76,6 +77,7 @@ export function briefText(fields: RequirementFields): string {
   add("Location", "locations");
   add("Package", "salary");
   add("Reports to", "reportsTo");
+  add("Incumbent or reference profile", "incumbentNote");
   const brief = (fields.jdNotes ?? "").trim();
   if (brief) lines.push("", "Brief:", brief);
   const extra = (fields.insights ?? "").trim();

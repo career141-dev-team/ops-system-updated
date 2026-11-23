@@ -6,7 +6,7 @@ import { startInterview } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Card, ChoiceGroup, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { clientIn, desk, interviewsNewestFirst, positionIn, switchedOn } from "@/data/desk";
+import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn, switchedOn } from "@/data/desk";
 import { CALENDAR_FILTERS, clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel, type CalendarKind } from "@/lib/calendarBoard";
 import { listEvents, teamsFake } from "@/lib/graphCalendar";
 import { FORMAT_MEANINGS, boardStatus, weekDays, type InterviewFormat } from "@/lib/interviews";
@@ -100,7 +100,7 @@ export default async function CalendarPage({
     .filter((m) => m.state === "booked" && m.at)
     .map((m) => {
       const lead = db.leads.find((l) => l.id === m.leadId);
-      const client = db.clients.find((c) => c.leadId === m.leadId) ?? null;
+      const client = clientForLead(db, m.leadId);
       const who = client?.name ?? lead?.company ?? "Client";
       const label = m.kind === "requirement" ? "Requirement meeting" : "Intro call";
       return {

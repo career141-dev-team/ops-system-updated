@@ -64,3 +64,29 @@ export function clientNamed<T extends { id: string; name: string }>(name: string
   if (!key) return null;
   return clients.find((c) => c.name.trim().replace(/\s+/g, " ").toLowerCase() === key) ?? null;
 }
+
+/**
+ * A new position for a client we already work for (23 Nov): a requirement draft, not a position.
+ * The position itself still comes from the normal hand-over to TA, so the checks on it stay.
+ * Coordinator details are not asked here; they live under the client's Contact Point.
+ */
+export interface NewPositionInput {
+  title: string;
+  level: string;
+  salary: string;
+  incumbentNote: string;
+}
+
+export function problemWithNewPosition(input: NewPositionInput): string | null {
+  if (input.title.trim().length < 2) return "Write the position's name.";
+  if (!input.level.trim()) return "Write the designation.";
+  if (!input.salary.trim()) return "Write the package details.";
+  return null;
+}
+
+/** The requirement fields this form fills. The rest of the brief is written on the lead page. */
+export function newPositionFields(input: NewPositionInput): Record<string, string> {
+  const fields: Record<string, string> = { title: input.title.trim(), level: input.level.trim(), salary: input.salary.trim() };
+  if (input.incumbentNote.trim()) fields.incumbentNote = input.incumbentNote.trim();
+  return fields;
+}

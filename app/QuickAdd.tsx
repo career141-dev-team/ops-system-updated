@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-import { quickAdd } from "@/app/actions";
+import { newPosition, quickAdd } from "@/app/actions";
 import Icon, { type IconName } from "@/app/Icon";
 import { panelInput } from "@/app/ui/figma";
 import Panel from "@/app/ui/Panel";
@@ -35,7 +35,7 @@ export default function QuickAdd({ phone = false }: { phone?: boolean }) {
     { icon: "calendar", what: "Meeting", href: "/calendar" },
     { icon: "file", what: "File", href: "/files" },
     { icon: "inbox", what: "Enquiry", href: open("add-enquiry") },
-    { icon: "briefcase", what: "Role", href: "/positions" },
+    { icon: "briefcase", what: "Position", href: open("add-position") },
     { icon: "user", what: "Candidate", href: "/candidates/add" },
     "line",
     { icon: "building", what: "Vacancy (internal)", href: "/hiring" },
@@ -89,12 +89,49 @@ const save = "t-body-m inline-flex w-fit cursor-pointer items-center rounded-ful
  * The three Add panels, for the layout to draw: it reads `?panel=` and shows one of `add-note`,
  * `add-call`, `add-enquiry`, or nothing. Pages never use these names, so they keep their own.
  */
-export function AddPanel({ clients }: { clients: { id: string; name: string }[] }) {
+export function AddPanel({ clients }: { clients: { id: string; name: string; active?: boolean }[] }) {
   const path = usePathname() ?? "/";
   const params = useSearchParams();
   const which = params.get("panel");
-  if (which !== "add-note" && which !== "add-call" && which !== "add-enquiry") return null;
+  if (which !== "add-note" && which !== "add-call" && which !== "add-enquiry" && which !== "add-position") return null;
   const close = closeHref(path, params);
+
+  // A new position is for a client we already work for, and it is its own form (23 Nov).
+  if (which === "add-position") {
+    return (
+      <Panel kicker="Add" closeHref={close} title="New position" sub="For a client we already work for. It starts a requirement draft; the position is made when it is handed to TA.">
+        <datalist id="quick-active-clients">
+          {clients.filter((c) => c.active).map((c) => (
+            <option key={c.id} value={c.name} />
+          ))}
+        </datalist>
+        <form action={newPosition} className="flex flex-col gap-4">
+          <input type="hidden" name="back" value={close} />
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Which client</span>
+            <input name="client" list="quick-active-clients" required className={field} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Position name</span>
+            <input name="title" required className={field} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Designation</span>
+            <input name="level" required placeholder="Manager, head, executive" className={field} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Package details</span>
+            <input name="salary" required className={field} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Incumbent or reference profile (optional)</span>
+            <textarea name="incumbentNote" rows={3} className={field} />
+          </label>
+          <button type="submit" className={save}>Start the requirement</button>
+        </form>
+      </Panel>
+    );
+  }
 
   const about = (
     <label className="flex flex-col gap-1.5">
