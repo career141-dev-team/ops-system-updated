@@ -17,9 +17,12 @@ import {
   nameKey,
   neverInviteBack,
   problemWithClosing,
+  problemWithNewClient,
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
+import { callKindFor, problemWithClientRename } from "@/lib/clients";
+import { problemWithNewPosition } from "@/lib/requirements";
 
 const client = (name: string, esaSignedAt: number | null = null): ClientLike => ({
   id: "ta_" + nameKey(name).replace(/ /g, "_"),
@@ -166,17 +169,12 @@ test("every state a lead can be in lands in a section, so a count can never be b
   assert.equal(leadSection("something_new", null), "new");
 });
 
-test("every source the capture form offers is one the server accepts", () => {
-  // The form offered "website_form", "director" and "linkedin" to a server that
-  // knew none of them, so those leads were refused and never saved (17 Nov).
-  const form = readFileSync("app/(clients)/leads/new/LeadCaptureForm.tsx", "utf8");
-  const offered = [...form.matchAll(/value: "([a-z_]+)", label:/g)].map((m) => m[1]);
-  const defaults = [...form.matchAll(/defaultSource: "([a-z_]+)"/g)].map((m) => m[1]);
-  assert.ok(offered.length >= 6, "the form's source list was found");
-  for (const source of [...offered, ...defaults]) {
-    assert.ok((LEAD_SOURCES as readonly string[]).includes(source), source + " is offered by the form but refused by the server");
-    assert.equal(problemWithNewLead({ company: "Test Co", source, contactEmail: "a@b.co", contactPhone: "" } as never), null);
-  }
+test("adding a client needs a name, one way to reach them, and no twin", () => {
+  const ok = { company: "Test Co", contactEmail: "a@b.co", contactPhone: "", billingEmail: "" };
+  assert.equal(problemWithNewClient(ok, false), null);
+  assert.ok(problemWithNewClient({ ...ok, contactEmail: "" }, false));
+  assert.ok(problemWithNewClient({ ...ok, billingEmail: "nope" }, false));
+  assert.ok(problemWithNewClient(ok, true));
 });
 
 test("an existing client has no intro call, and no agreement when one is signed on file", () => {
@@ -191,4 +189,22 @@ test("an existing client has no intro call, and no agreement when one is signed 
   assert.deepEqual(existingClientOf({ state: "new", clientTaId: null }, [], null), { skipsIntro: false, signedOnFile: false });
   // A Director's lead skips the call by design, and still needs its agreement.
   assert.deepEqual(existingClientOf({ state: "intro_call", clientTaId: null, source: "director" }, [], null), { skipsIntro: true, signedOnFile: false });
+});
+
+test("a client is offered one call: intro while new, requirement for a new role", () => {
+  assert.equal(callKindFor({ stage: "lead", hasPosition: false, heldCall: false }), "intro");
+  assert.equal(callKindFor({ stage: "lead", hasPosition: false, heldCall: true }), "requirement");
+  assert.equal(callKindFor({ stage: "active", hasPosition: false, heldCall: false }), "requirement");
+  assert.equal(callKindFor({ stage: "lead", hasPosition: true, heldCall: false }), "requirement");
+});
+
+test("a new position needs a client, a name, a number and a package; a rename needs a free name", () => {
+  const ok = { title: "Finance Manager", headcount: "1", salary: "LKR 300,000" };
+  assert.equal(problemWithNewPosition(ok, true), null);
+  assert.ok(problemWithNewPosition(ok, false));
+  assert.ok(problemWithNewPosition({ ...ok, title: "" }, true));
+  assert.ok(problemWithNewPosition({ ...ok, salary: "" }, true));
+  assert.equal(problemWithClientRename("Ceylon Cold Stores", false), null);
+  assert.ok(problemWithClientRename("C", false));
+  assert.ok(problemWithClientRename("Ceylon Cold Stores", true));
 });

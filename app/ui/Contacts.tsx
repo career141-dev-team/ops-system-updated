@@ -1,4 +1,4 @@
-import { removeContact, saveContact } from "@/app/actions";
+import { editContact, removeContact, saveContact } from "@/app/actions";
 import { figmaField, figmaLabel, pillSecondary } from "@/app/ui/figma";
 import type { ContactRow } from "@/lib/contacts";
 
@@ -36,6 +36,23 @@ export function Contacts({
               <span className="text-ink">
                 {c.name} <span className="text-ink-soft">· {c.email}{c.phone ? " · " + c.phone : ""}{c.role ? " · " + c.role : ""}</span>
               </span>
+              {mayManage && (
+                <details className="w-full">
+                  <summary className="cursor-pointer text-[13px] text-brand hover:underline">Edit</summary>
+                  <form action={editContact} className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-[1fr_1.3fr_1fr_110px_auto]">
+                    <input type="hidden" name="scope" value={scope} />
+                    <input type="hidden" name="id" value={id} />
+                    <input type="hidden" name="oldEmail" value={c.email} />
+                    <input name="name" required defaultValue={c.name} className={figmaField} />
+                    <input type="email" name="email" required defaultValue={c.email} className={figmaField} />
+                    <input name="phone" defaultValue={c.phone} className={figmaField} />
+                    <input name="role" defaultValue={c.role} className={figmaField} />
+                    <button type="submit" className={pillSecondary}>
+                      Save
+                    </button>
+                  </form>
+                </details>
+              )}
               {mayManage && (
                 <form action={removeContact}>
                   <input type="hidden" name="scope" value={scope} />

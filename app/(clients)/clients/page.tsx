@@ -91,6 +91,9 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                       {c.name}
                     </Link>
                     <span className="t-small shrink-0 text-ink-3">{c.owner}</span>
+                    <Link href={c.href + "?view=contacts"} aria-label={"Edit " + c.name} className="t-label relative z-10 shrink-0 text-brand hover:underline">
+                      Edit
+                    </Link>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <p className="t-small min-w-0 flex-1">{c.person ? [c.person.name, c.person.role ? c.person.role.toUpperCase() : ""].filter(Boolean).join(" · ") : "No contact written down"}</p>

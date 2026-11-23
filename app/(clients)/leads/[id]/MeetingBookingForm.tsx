@@ -15,36 +15,61 @@ const field = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-
 export function MeetingBookingForm({
   action,
   leadId,
-  contact,
-  taPeople,
-  members,
-  organiserId,
-  teamsOn,
   submitLabel,
   primary = false,
-  offerAlsoRequirement = false,
+  hidden = {},
+  ...fields
 }: {
   action: (formData: FormData) => Promise<void>;
   leadId: string;
+  submitLabel: string;
+  primary?: boolean;
+  /** Extra hidden fields, e.g. the client a call is booked from. */
+  hidden?: Record<string, string>;
+} & MeetingFieldsProps) {
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <input type="hidden" name="leadId" value={leadId} />
+      {Object.entries(hidden).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      <KeepFields id={"meeting:" + submitLabel} />
+      <MeetingFields {...fields} />
+      <button type="submit" className={(primary ? pillPrimary : pillSecondary) + " self-start"}>
+        {submitLabel}
+      </button>
+    </form>
+  );
+}
+
+type MeetingFieldsProps = {
   contact: { name: string; email: string };
   taPeople: { id: string; fullName: string }[];
   members: { id: string; name: string }[];
   organiserId: string;
   teamsOn: boolean;
-  submitLabel: string;
-  primary?: boolean;
   /** Intro call only: tick it when the same meeting settles the requirement too. */
   offerAlsoRequirement?: boolean;
-}) {
-  return (
-    <form action={action} className="flex flex-col gap-3">
-      <input type="hidden" name="leadId" value={leadId} />
-      <KeepFields id={"meeting:" + submitLabel} />
+  /** "Add a client" books the call only when a time is given. */
+  timeOptional?: boolean;
+};
 
+/** The fields of a booking, without the form around them, so "Add a client" can carry them too (23 Nov). */
+export function MeetingFields({
+  contact,
+  taPeople,
+  members,
+  organiserId,
+  teamsOn,
+  offerAlsoRequirement = false,
+  timeOptional = false,
+}: MeetingFieldsProps) {
+  return (
+    <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className={figmaLabel}>When (Colombo time)</span>
-          <input type="datetime-local" name="at" required className={field} />
+          <input type="datetime-local" name="at" required={!timeOptional} className={field} />
         </label>
         <label className="flex flex-col gap-1">
           <span className={figmaLabel}>How long</span>
@@ -85,6 +110,7 @@ export function MeetingBookingForm({
         </label>
       </div>
 
+      {!timeOptional && (
       <fieldset className="flex flex-col gap-2">
         <legend className={figmaLabel}>Who from the client gets the link (leave a row empty to skip it)</legend>
         {[0, 1, 2].map((i) => (
@@ -105,6 +131,7 @@ export function MeetingBookingForm({
           </div>
         ))}
       </fieldset>
+      )}
 
       {teamsOn ? (
         <label className="flex items-center gap-2 text-[13px] text-ink">
@@ -134,10 +161,6 @@ export function MeetingBookingForm({
           <span>This meeting is also the requirement meeting (we will take the requirement down in it)</span>
         </label>
       )}
-
-      <button type="submit" className={(primary ? pillPrimary : pillSecondary) + " self-start"}>
-        {submitLabel}
-      </button>
-    </form>
+    </>
   );
 }
