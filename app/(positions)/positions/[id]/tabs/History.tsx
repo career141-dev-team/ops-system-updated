@@ -3,7 +3,9 @@ import Link from "next/link";
 import { recordHistoryCorrection } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Card, EmptyState, panelInput, pillSecondary } from "@/app/ui/figma";
+import PipelineHistory from "@/app/ui/PipelineHistory";
 import { threadInWords } from "@/lib/mailbox";
+import { pipelineHistory } from "@/lib/pipelineHistory";
 import { subjectsOfPosition } from "@/lib/timeline";
 
 import type { TabProps } from "./ctx";
@@ -61,7 +63,9 @@ export default function History({ c, sp }: TabProps) {
 
   let lastDay = "";
   return (
-    <div className="flex flex-col gap-[22px] xl:flex-row xl:items-start">
+    <div className="flex flex-col gap-[22px]">
+      <PipelineHistory rows={pipelineHistory(db, { positionId: position.id })} showPosition={false} />
+      <div className="flex flex-col gap-[22px] xl:flex-row xl:items-start">
       <Card title="History" sub="Everything that happened on this role" className="min-w-0 flex-1">
         <nav className="flex flex-wrap gap-2" aria-label="Show">
           {KINDS.map((k) => (
@@ -165,6 +169,7 @@ export default function History({ c, sp }: TabProps) {
           </section>
         )}
       </aside>
+      </div>
     </div>
   );
 }

@@ -1,12 +1,11 @@
 /**
  * Internal hiring (v6 H1 and H2, 19 Nov): Career141's own vacancies and the people applying.
  *
- * There is NO backend for this yet: the desk holds no vacancies, applicants, calls, interviews,
- * results or decisions. So the screens draw from this typed view-model, and `hiringView` returns it
- * empty (the screens then show their honest empty state). `hiringSample.ts` fills it in invented-data
- * mode only, to check the layout against the frames. Nothing here saves anything.
+ * The desk holds vacancies and applicants now (`opsVacancies`, `opsApplicants`), and `hiringView` reads them. The
+ * invented `hiringSample` is used only on a laptop run with no real vacancy, to check the layout. Nothing here
+ * saves anything: the writes are the actions in app/actions.ts.
  *
- * When the backend exists, `hiringView` is the one place that reads it; everything below is pure.
+ * `hiringView` is the one place that reads the desk; everything below is pure.
  */
 import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { dayWord } from "@/lib/calendarBoard";

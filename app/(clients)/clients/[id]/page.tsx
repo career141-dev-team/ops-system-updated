@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import PipelineHistory from "@/app/ui/PipelineHistory";
+import { pipelineHistory } from "@/lib/pipelineHistory";
 import { approveTheHold, liftTheHold, moveClientOwner, moveClientStage, renameClient, saveClientDetails, summariseClient } from "@/app/actions";
 import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
@@ -441,6 +443,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
           {view === "history" && (
             <>
+              <PipelineHistory rows={pipelineHistory(db, { clientId: client.id })} showPosition title="Pipeline history across this client's positions" />
               <Card
                 title="Everything that happened"
                 sub={history.length ? undefined : "Nothing recorded yet"}

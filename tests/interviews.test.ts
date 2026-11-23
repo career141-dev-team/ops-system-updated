@@ -292,7 +292,7 @@ test("a candidate pulling out drafts the notice, stops the clocks, asks for a ba
   assert.match(answer.what, /phone/i, "under a day's notice is said plainly");
 
   const saved = repo.interviewIn(interview.id);
-  assert.equal(saved?.state, "cancelled");
+  assert.equal(saved?.state, "withdrew", "the candidate pulling out is not the client cancelling");
   assert.equal(saved?.reason, "Took another offer.");
   const notice = repo.all().messages.find((m) => m.templateKey === "interview.dropout_notice");
   assert.equal(notice?.state, "draft");

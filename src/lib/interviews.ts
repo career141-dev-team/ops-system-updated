@@ -36,7 +36,15 @@ export type InterviewState =
   | "reconfirmed"
   | "attended"
   | "no_show"
-  | "cancelled";
+  | "cancelled"
+  // The candidate pulled out (23 Nov). A client cancelling stays "cancelled"; the two are told apart because
+  // one is the client's doing and the other is ours to answer with a back-up.
+  | "withdrew";
+
+/** Off the calendar either way: the client cancelled it, or the candidate withdrew. */
+export function isOff(state: string): boolean {
+  return state === "cancelled" || state === "withdrew";
+}
 
 export const STATE_MEANINGS: Record<InterviewState, string> = {
   slots: "Agreeing a time",
@@ -46,18 +54,20 @@ export const STATE_MEANINGS: Record<InterviewState, string> = {
   attended: "Held",
   no_show: "Nobody came",
   cancelled: "Cancelled",
+  withdrew: "The candidate withdrew",
 };
 
 const NEXT: Record<InterviewState, InterviewState[]> = {
-  slots: ["agreed", "cancelled"],
-  agreed: ["booked", "slots", "cancelled"],
-  booked: ["reconfirmed", "attended", "no_show", "cancelled", "slots"],
-  reconfirmed: ["attended", "no_show", "cancelled", "slots"],
+  slots: ["agreed", "cancelled", "withdrew"],
+  agreed: ["booked", "slots", "cancelled", "withdrew"],
+  booked: ["reconfirmed", "attended", "no_show", "cancelled", "withdrew", "slots"],
+  reconfirmed: ["attended", "no_show", "cancelled", "withdrew", "slots"],
   // A held interview is history. The next round is its own interview, so the
   // round a candidate reached is never overwritten.
   attended: [],
   no_show: ["slots"],
   cancelled: ["slots"],
+  withdrew: ["slots"],
 };
 
 export function canMoveTo(from: InterviewState, to: InterviewState): boolean {
@@ -383,7 +393,7 @@ export function boardStatus(iv: {
 }): BoardStatus {
   const needsTime = iv.state === "slots" || iv.state === "agreed";
   const needsFeedback = iv.state === "attended" && !iv.decision;
-  const toRebook = iv.state === "cancelled" || iv.state === "no_show" || (iv.state === "slots" && iv.slotLoops >= 2);
+  const toRebook = isOff(iv.state) || iv.state === "no_show" || (iv.state === "slots" && iv.slotLoops >= 2);
   const queues = { needsTime, needsFeedback, toRebook };
   if (iv.state === "attended") {
     return iv.decision
@@ -393,6 +403,7 @@ export function boardStatus(iv: {
   if (needsTime) return { label: "Pick a time", tone: "violet", ...queues };
   if (iv.state === "no_show") return { label: "No-show", tone: "danger", ...queues };
   if (iv.state === "cancelled") return { label: "Cancelled", tone: "quiet", ...queues };
+  if (iv.state === "withdrew") return { label: "Withdrew", tone: "quiet", ...queues };
   return { label: iv.round > 1 ? "Round " + iv.round : "Booked", tone: "info", ...queues };
 }
 

@@ -552,3 +552,17 @@ The ops team replaced their Excel trackers with Ops and sent a list of small fix
 | **Add or replace an applicant's CV at any stage** | the `cv` panel in `app/hiring/[id]/HiringPanel.tsx` | the form used to live only in the call drawer |
 
 Proved by `tests/uifixes.test.ts`. Not walked in a browser, and not run against the Convex store.
+
+## Built: the ops team's first feedback round, stage 1B, the new views (23 Nov, on branch `rayan/UI-fixes`, not merged and not live)
+
+The four views the team kept as Excel trackers. Each is read from rows the desk already holds, so none can drift from the screens it summarises.
+
+| Thing | Where | What it does |
+|---|---|---|
+| **Interview summary** | `src/lib/interviewSummary.ts`, the Table toggle on `app/calendar/page.tsx` (`?view=table`) | every client and internal interview as a row: client, candidate with position and round, mode (On-site, Online, Phone), schedule, status (Scheduled, Pending, Attended, Withdrew, No-show, Cancelled), filtered by client, mode, status and dates |
+| **Withdrew** | `isOff` and `InterviewState` in `src/lib/interviews.ts`, `noticeCandidateOut` in `src/data/desk.ts` | a candidate pulling out is now its own state, kept apart from the client cancelling. It behaves like a cancellation everywhere an interview is read (the calendar, next step, candidates, Aura). Interviews already cancelled for that reason stay cancelled |
+| **Pipeline history** | `src/lib/pipelineHistory.ts`, `app/ui/PipelineHistory.tsx`, the top of a position's History tab and a client's History tab | one row per candidate per set: when it was sent, which set, and the furthest outcome (placed, interview round, shortlisted, rejected with the client's words, withdrew, on hold, pending client feedback, already theirs, not sent yet). Nothing is stored for it |
+| **Client and position table** | `src/lib/clientPositionTable.ts`, `app/(clients)/clients/positions`, a fourth tab on Clients | client, position, package (the requirement's, then the placement's), Ops handler, and an Edit on each row. The package is edited only while the requirement is unlocked; the Ops lead changes the handler with a reason (`setPositionOwner`, which tells the new person) |
+| **Internal hiring: Board and Table** | `src/lib/hiringTable.ts`, `?view=board` and `?view=table` on `app/hiring/page.tsx` | the whole funnel across vacancies: a board that shows the first eight of each column and links to the rest, and a table filtered by search, vacancy and stage, fifty to a page |
+
+Proved by `tests/interviewsummary.test.ts`, `tests/pipelinehistory.test.ts`, `tests/clientpositiontable.test.ts`, `tests/hiringtable.test.ts`, and the changed `tests/interviews.test.ts` and `tests/sampledesk.test.ts`. Walked in the browser on the invented data (dev sign-in, as the sample Ops lead). Not run against the Convex store.

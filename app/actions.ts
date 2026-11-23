@@ -225,6 +225,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, newPositionFields, noteToTask, problemWithNewPosition, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -3042,6 +3043,44 @@ export async function updateContact(formData: FormData): Promise<void> {
   else await patchClient(id, { contacts }, member.id, "client.contactEdited", what);
   revalidatePath(here);
   back(person.name.trim() + " saved.");
+}
+
+/**
+ * Change which Ops person handles a position (23 Nov, the client and position table). A position's handler
+ * could not be changed from anywhere before, so when somebody went on leave their roles stayed on them.
+ * The reassign right is the Ops lead's, like moving a client between people, and the reason is kept.
+ */
+export async function setPositionOwner(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "task.reassign")) back(refusal("task.reassign"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) back("That position is gone.");
+  const row = position as NonNullable<typeof position>;
+  const newId = String(formData.get("handlerId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithNewHandler(newId, row.ownerId, db.members, reason);
+  if (problem) back(problem);
+
+  await patchPosition(positionId, { ownerId: newId }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
+  await createTask({
+    kind: "check",
+    title: "You now handle " + row.title,
+    body: "It was moved to you: " + reason,
+    assigneeId: newId,
+    dueAt: Date.now(),
+    subjectType: "position",
+    subjectId: positionId,
+    link: "/positions/" + positionId,
+  });
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + ".", here));
 }
 
 /** Live, quiet or finished. Going quiet needs a reason, like closing does. */

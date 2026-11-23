@@ -98,6 +98,7 @@ import {
   NOTICE_HOURS,
   noticeStanding,
   reconfirmAt,
+  isOff,
 } from "@/lib/interviews";
 import {
   type ReportRowRecord,
@@ -2774,7 +2775,7 @@ export function interviewsNewestFirst(db: OpsDatabase): OpsInterview[] {
 export function liveInterviewFor(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
   return (
     db.interviews.find(
-      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && i.state !== "cancelled",
+      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && !isOff(i.state),
     ) ?? null
   );
 }
@@ -2791,7 +2792,7 @@ export function interviewForApplication(db: OpsDatabase, applicationTaId: string
   return (
     [...db.interviews]
       .reverse()
-      .find((i) => i.applicationTaId === applicationTaId && i.state !== "cancelled") ?? null
+      .find((i) => i.applicationTaId === applicationTaId && !isOff(i.state)) ?? null
   );
 }
 
@@ -2985,7 +2986,7 @@ export async function noticeCandidateOut(
   const db = await desk();
   const interview = interviewIn(db, interviewId);
   if (!interview) return { ok: false, what: "That interview is gone.", messageId: null };
-  if (interview.state === "cancelled" || interview.state === "attended") {
+  if (isOff(interview.state) || interview.state === "attended") {
     return { ok: false, what: "That interview is already finished.", messageId: null };
   }
 
@@ -3019,7 +3020,7 @@ export async function noticeCandidateOut(
 
   await patchInterview(
     interviewId,
-    { state: "cancelled", reason: reason },
+    { state: "withdrew", reason: reason },
     by,
     "interview.candidateOut",
     reason,

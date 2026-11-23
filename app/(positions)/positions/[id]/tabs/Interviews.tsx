@@ -193,7 +193,9 @@ function BoardCard({ iv, col, now, open }: { iv: TabProps["c"]["itsInterviews"][
           ? "Held, the client has not decided"
           : iv.decision
             ? (ROUND_DECISIONS[iv.decision] ?? iv.decision)
-            : iv.state === "cancelled"
+            : iv.state === "withdrew"
+              ? "The candidate withdrew"
+              : iv.state === "cancelled"
               ? "Cancelled"
               : iv.state === "no_show"
                 ? "Nobody came"

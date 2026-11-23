@@ -4,12 +4,13 @@ import { redirect } from "next/navigation";
 
 import { startInterview } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { Card, ChoiceGroup, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { Card, ChoiceGroup, DataTable, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn, switchedOn } from "@/data/desk";
 import { CALENDAR_FILTERS, clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel, type CalendarKind } from "@/lib/calendarBoard";
 import { listEvents, teamsFake } from "@/lib/graphCalendar";
-import { FORMAT_MEANINGS, boardStatus, weekDays, type InterviewFormat } from "@/lib/interviews";
+import { FORMAT_MEANINGS, boardStatus, isOff, weekDays, type InterviewFormat } from "@/lib/interviews";
+import { SUMMARY_MODES, SUMMARY_STATUSES, filterSummary, summaryRows } from "@/lib/interviewSummary";
 import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -48,7 +49,7 @@ interface CalendarEvent {
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ weekOffset?: string; msg?: string; show?: string; on?: string; panel?: string }>;
+  searchParams: Promise<{ weekOffset?: string; msg?: string; show?: string; on?: string; panel?: string; view?: string; client?: string; mode?: string; status?: string; from?: string; to?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -57,6 +58,7 @@ export default async function CalendarPage({
   const offset = Number.parseInt(raw, 10) || 0;
   const filter = filterFrom(show);
   const mayManage = can(me, "client.manage");
+  const table = sp.view === "table";
 
   const here = (o: { weekOffset?: number; show?: string; on?: string }) => {
     const q = new URLSearchParams();
@@ -83,7 +85,7 @@ export default async function CalendarPage({
       id: iv.id,
       kind: "client",
       ownerId: iv.ownerId,
-      when: iv.state === "cancelled" ? null : iv.at,
+      when: isOff(iv.state) ? null : iv.at,
       title: iv.candidateName,
       sub: `Round ${iv.round} · ${clientName}`,
       href: here({ on: iv.id }),
@@ -169,19 +171,30 @@ export default async function CalendarPage({
         sub="Your week and the team's"
         right={
           <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1 rounded-full bg-sunk p-1" role="group" aria-label="Layout">
+              {[{ k: "week", label: "Week", href: here({}) }, { k: "table", label: "Table", href: "/calendar?view=table" }].map((x) => (
+                <Link key={x.k} href={x.href} aria-current={(x.k === "table") === table ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + ((x.k === "table") === table ? "bg-ink text-ink-inverse" : "text-ink-2 hover:bg-shell")}>
+                  {x.label}
+                </Link>
+              ))}
+            </span>
             {mayManage && (
               <Link href={panelHref("/calendar", sp, "start-interview")} scroll={false} className={pillPrimary}>
                 <Icon name="plus" size={16} />
                 Start interview
               </Link>
             )}
-            <Link href={here({ weekOffset: offset - 1 })} aria-label="Earlier week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
-              <Icon name="chevron-left" size={18} />
-            </Link>
-            <span className="t-body-m">{weekLabel(week.days[0].startMs)}</span>
-            <Link href={here({ weekOffset: offset + 1 })} aria-label="Later week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
-              <Icon name="chevron-right" size={18} />
-            </Link>
+            {!table && (
+              <>
+                <Link href={here({ weekOffset: offset - 1 })} aria-label="Earlier week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
+                  <Icon name="chevron-left" size={18} />
+                </Link>
+                <span className="t-body-m">{weekLabel(week.days[0].startMs)}</span>
+                <Link href={here({ weekOffset: offset + 1 })} aria-label="Later week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
+                  <Icon name="chevron-right" size={18} />
+                </Link>
+              </>
+            )}
           </div>
         }
       />
@@ -191,7 +204,8 @@ export default async function CalendarPage({
         </p>
       )}
 
-      <nav className="flex flex-wrap items-center gap-2" aria-label="Show">
+      {table && <InterviewTable db={db} now={now} sp={sp} />}
+      <nav className={"flex flex-wrap items-center gap-2" + (table ? " hidden" : "")} aria-label="Show">
         {CALENDAR_FILTERS.map((f) => (
           <Link
             key={f.key}
@@ -204,7 +218,7 @@ export default async function CalendarPage({
         ))}
       </nav>
 
-      <div className="flex flex-col items-start gap-[22px] xl:flex-row">
+      <div className={"flex flex-col items-start gap-[22px] xl:flex-row" + (table ? " hidden" : "")}>
         <div className="w-full min-w-0 flex-1">
           <Card className="gap-[18px] !p-6">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -404,6 +418,81 @@ async function OutlookEvents({ email, fromMs, toMs, enabled }: { email: string; 
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+/** The interview summary (23 Nov): every client and internal interview as a row, filterable, in the team's words. */
+function InterviewTable({ db, now, sp }: { db: Awaited<ReturnType<typeof desk>>; now: number; sp: { client?: string; mode?: string; status?: string; from?: string; to?: string } }) {
+  const all = summaryRows(db, now);
+  const rows = filterSummary(all, { client: sp.client, mode: sp.mode, status: sp.status, from: sp.from, to: sp.to });
+  const field = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none";
+  return (
+    <Card className="gap-4 !p-6">
+      <form method="get" action="/calendar" className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="view" value="table" />
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Client</span>
+          <input name="client" defaultValue={sp.client ?? ""} placeholder="Any client" className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Mode</span>
+          <select name="mode" defaultValue={sp.mode ?? ""} className={field}>
+            <option value="">Any</option>
+            {SUMMARY_MODES.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Status</span>
+          <select name="status" defaultValue={sp.status ?? ""} className={field}>
+            <option value="">Any</option>
+            {SUMMARY_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">From</span>
+          <input type="date" name="from" defaultValue={sp.from ?? ""} className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">To</span>
+          <input type="date" name="to" defaultValue={sp.to ?? ""} className={field} />
+        </label>
+        <button type="submit" className={pillSecondary}>
+          Filter
+        </button>
+        <Link href="/calendar?view=table" className="t-small pb-2 text-ink-3 hover:underline">
+          Clear
+        </Link>
+      </form>
+      <p className="t-small text-ink-3">
+        {rows.length} of {all.length} {all.length === 1 ? "interview" : "interviews"}
+      </p>
+      <DataTable
+        columns={[{ label: "CLIENT" }, { label: "CANDIDATE" }, { label: "MODE" }, { label: "SCHEDULE" }, { label: "STATUS" }]}
+        rows={rows.map((r) => ({
+          key: r.id,
+          href: r.href,
+          cells: [
+            r.client,
+            <span key="c" className="flex flex-col">
+              <span className="t-body-m">{r.candidate}</span>
+              <span className="t-small text-ink-3">{r.detail}</span>
+            </span>,
+            r.mode ?? "Not set",
+            r.at ? dayWord(r.at) + ", " + clockOf(r.at) : "No time yet",
+            r.status,
+          ],
+        }))}
+        empty={<p className="t-body text-ink-3">No interviews match. Clear the filters, or start one with Start interview.</p>}
+      />
     </Card>
   );
 }
