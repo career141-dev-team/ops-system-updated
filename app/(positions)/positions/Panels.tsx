@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { buildWeeklyReportNow, logHrFollowUp, logTaCvChase, setPositionTeam } from "@/app/actions";
+import { buildWeeklyReportNow, createPosition, logHrFollowUp, logTaCvChase, setPositionTeam } from "@/app/actions";
 import Icon from "@/app/Icon";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -260,6 +260,70 @@ export function WeeklyReportPanel(p: {
             </Link>
           </div>
         </PanelSection>
+      </form>
+    </Panel>
+  );
+}
+
+/**
+ * New position (23 Nov, the owner): the position's own fields. Who to write to is not asked here: those
+ * people live on the client's Contacts and on the position's contact point.
+ */
+export function NewPositionPanel(p: {
+  closeHref: string;
+  clients: { id: string; name: string }[];
+  pickedId: string;
+  /** The held call it is written from, so the brief, the role and the package are already filled. */
+  call: { id: string; when: string; role: string; packageSaid: string; brief: string } | null;
+}) {
+  return (
+    <Panel kicker="New position" title="New position" sub="Pick the client, then name the position" closeHref={p.closeHref}>
+      <form action={createPosition} className="flex flex-col gap-5">
+        <input type="hidden" name="back" value={p.closeHref} />
+        {p.call && <input type="hidden" name="meetingId" value={p.call.id} />}
+        <PanelSection title="The client">
+          <PanelField label="Client" hint={p.call ? "Filled from the call held on " + p.call.when + "." : "A held call fills the brief and the package for you."}>
+            <select name="clientId" required defaultValue={p.pickedId} className={panelInput}>
+              <option value="" disabled>
+                Choose a client
+              </option>
+              {p.clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </PanelField>
+          <p className="t-small text-ink-3">Picked the wrong one? <Link href="/positions?panel=new-position" className="underline">Start again</Link> to choose another and see its calls.</p>
+        </PanelSection>
+        <PanelSection title="The position">
+          <PanelField label="Position name">
+            <input name="title" required defaultValue={p.call?.role ?? ""} placeholder="Finance Manager" className={panelInput} />
+          </PanelField>
+          <PanelField label="Designation" hint="Executive, manager, head: the level TA ranks on.">
+            <input name="designation" placeholder="Manager" className={panelInput} />
+          </PanelField>
+          <PanelField label="Package details">
+            <input name="package" required defaultValue={p.call?.packageSaid ?? ""} placeholder="LKR 350,000 + EPF/ETF, car allowance" className={panelInput} />
+          </PanelField>
+          <div className="grid grid-cols-2 gap-3">
+            <PanelField label="Where">
+              <input name="locations" placeholder="Colombo" className={panelInput} />
+            </PanelField>
+            <PanelField label="How many">
+              <input name="headcount" type="number" min="1" defaultValue="1" className={panelInput} />
+            </PanelField>
+          </div>
+          <PanelField label="The brief" hint="What they said the job is.">
+            <textarea name="brief" rows={4} defaultValue={p.call?.brief ?? ""} className={panelInput} />
+          </PanelField>
+          <PanelField label="Incumbent / reference profile (optional)" hint="Who did the job before, or who they have in mind.">
+            <textarea name="incumbentNote" rows={2} className={panelInput} />
+          </PanelField>
+        </PanelSection>
+        <button type="submit" className={pillPrimary + " self-start"}>
+          Create the position
+        </button>
       </form>
     </Panel>
   );

@@ -114,3 +114,19 @@ export function whereTheyStand(client: {
   const why = client.reason ? " · " + client.reason : "";
   return stage + tail + why;
 }
+
+/**
+ * Which call a client's page offers (23 Nov, the owner): the intro call is for a client we have not worked
+ * for yet, and the requirement call for one opening a new role. Never both, so the two do not overlap.
+ * A client is "new" until a call has been held with them or they have a position.
+ */
+export function callKindFor(c: { stage: string; hasPosition: boolean; heldCall: boolean }): "intro" | "requirement" {
+  return c.stage === "lead" && !c.hasPosition && !c.heldCall ? "intro" : "requirement";
+}
+
+/** Renaming a client (23 Nov): one company, one record, so a name another client already has is refused. */
+export function problemWithClientRename(name: string, clash: boolean): string | null {
+  if (name.trim().length < 2) return "Write the client's name.";
+  if (clash) return "Another client already has that name. One company has one record.";
+  return null;
+}

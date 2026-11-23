@@ -184,6 +184,7 @@ import { invoiceSheet, nextInvoiceVersion } from "@/lib/invoiceDoc";
 import { drawInvoicePdf, problemWithBank } from "@/lib/invoicePdf";
 import {
   briefText,
+  problemWithNewPosition,
   missingFields as requirementMissing,
   problemWithEarlyOpening,
   problemWithImpractical,
@@ -312,6 +313,7 @@ import {
   directClientRouting,
   existingClientOf,
   introSatisfied,
+  problemWithNewClient,
   problemWithNewLead,
   routeLead,
 } from "@/lib/leads";
@@ -352,7 +354,9 @@ import {
 import {
   type ClientStage,
   STAGE_MEANINGS,
+  callKindFor,
   problemWithBilling,
+  problemWithClientRename,
   problemWithInvoiceBilling,
   problemWithStageMove,
 } from "@/lib/clients";
@@ -367,7 +371,7 @@ import {
   warningAboutBooking,
 } from "@/lib/meetings";
 import { devSignInAllowed } from "@/lib/session";
-import type { Id, OpsDatabase, OpsFile, OpsInterview, OpsMember, OpsMessage } from "@/data/types";
+import type { Id, OpsClient, OpsDatabase, OpsFile, OpsInterview, OpsLead, OpsMember, OpsMessage } from "@/data/types";
 import { buildInvite, colomboWhen, type InviteInput } from "@/lib/ics";
 import { currentMember, realMember, signOut, VIEW_AS } from "@/lib/session";
 import { previewRoleFrom } from "@/lib/roles";
@@ -1553,6 +1557,99 @@ export async function createLead(formData: FormData): Promise<void> {
 }
 
 /**
+ * Every client has one working lead (23 Nov, the owner): the record the calls, the requirement and the
+ * agreement hang on, so a client added by hand uses the same steps as one that came in as an enquiry.
+ * It is the client's own `leadId`; an older client without one gets it made the first time it is needed.
+ */
+async function workingLeadFor(client: OpsClient, member: OpsMember, state: string): Promise<OpsLead> {
+  const db = await desk();
+  const there = client.leadId ? leadIn(db, client.leadId) : null;
+  if (there) return there;
+  const first = (client.contacts ?? [])[0];
+  const lead = await addLead({
+    company: client.name,
+    nameKey: client.nameKey,
+    contactName: first?.name ?? "",
+    contactEmail: first?.email ?? "",
+    contactPhone: first?.phone ?? "",
+    source: "other",
+    industry: "",
+    website: "",
+    notes: "",
+    industryFlagged: false,
+    industryBecause: null,
+    industryConfirmedBy: null,
+    state,
+    reason: null,
+    doNotInvite: false,
+    clientTaId: client.taClientId,
+    ownerId: client.ownerId,
+    createdBy: member.id,
+  });
+  await patchClient(client.id, { leadId: lead.id }, member.id, "client.updated", null);
+  return lead;
+}
+
+/**
+ * "Add a client" (23 Nov, the owner): the client record is made straight away, at "lead" (known, nothing
+ * agreed), with its working lead, and the intro call is booked in the same form when a time is given. The
+ * intro call is also where the requirement is taken. The agreement is sent from the client's own page.
+ */
+export async function createClient(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect(withMsg("/leads/new", msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const f = (k: string) => String(formData.get(k) ?? "").trim();
+  const company = f("company");
+  const contactEmail = f("contactEmail");
+  const contactPhone = f("contactPhone");
+  const billingEmail = f("billingEmail");
+  const key = nameKey(company);
+  const problem = problemWithNewClient(
+    { company, contactEmail, contactPhone, billingEmail },
+    (await desk()).clients.some((c) => c.nameKey === key),
+  );
+  if (problem) back(problem);
+
+  const industry = f("industry");
+  const flag = flagIndustry({ company, industry, website: f("website") });
+  if (flag.flagged) back("We do not work with banking and finance (\"" + flag.because + "\"). Ask the Director before adding them.");
+
+  // The call is checked before anything is saved, so a bad time never leaves a half-made client behind.
+  const wantsCall = f("at") !== "";
+  if (wantsCall) {
+    const bad = problemWithBooking({ at: Date.parse(f("at") + ":00+05:30"), taLeadId: f("taLeadId") }, Date.now());
+    if (bad) back(bad);
+  }
+
+  const client = await addClient({
+    leadId: null,
+    taClientId: null,
+    name: company,
+    nameKey: key,
+    stage: "lead",
+    billingName: f("billingName"),
+    billingEmail,
+    billingAddress: f("billingAddress"),
+    groupName: "",
+    contacts: [{ name: f("contactName") || company, email: contactEmail, phone: contactPhone, role: "hr" }],
+    notes: [industry, f("website")].filter(Boolean).join(" · "),
+    reason: null,
+    ownerId: member.id,
+  });
+  const lead = await workingLeadFor(client, member, "new");
+  revalidatePath("/clients");
+  const page = "/clients/" + client.id;
+  if (wantsCall) {
+    formData.set("alsoRequirement", "on");
+    await bookIntro(formData, member, lead.id, (msg) => redirect(withMsg(page, "Saved. " + company + " is now a client. " + msg)));
+  }
+  redirect(withMsg(page, "Saved. " + company + " is now a client. Book the intro call from here when it is arranged."));
+}
+
+/**
  * Is this company already ours? (15, Phase 2 step 3.)
  *
  * An exact match is linked; anything that merely looks similar is listed for a
@@ -1825,7 +1922,16 @@ export async function bookIntroCall(formData: FormData): Promise<void> {
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
+  await bookIntro(formData, member, leadId, (msg) => redirect(leadBack(here, "intro", msg, formData)));
+}
+
+/**
+ * The booking itself, shared by the lead page and by "Add a client" (23 Nov): a client added by hand books
+ * its intro call in the same form, through its working lead (`workingLeadFor`), so the reminders, the Teams
+ * meeting, the invite draft and the rest of the lead's steps all work unchanged. `back` answers and ends.
+ */
+async function bookIntro(formData: FormData, member: OpsMember, leadId: string, back: (msg: string) => never): Promise<void> {
+  const here = "/leads/" + leadId;
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -2959,6 +3065,15 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   const db = await desk();
   if (!clientIn(db, clientId)) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
 
+  // The name can be changed here (23 Nov); an empty field leaves it as it is.
+  const newName = String(formData.get("name") ?? "").trim();
+  const was = clientIn(db, clientId) as NonNullable<ReturnType<typeof clientIn>>;
+  const renamed = newName && newName !== was.name;
+  if (renamed) {
+    const bad = problemWithClientRename(newName, db.clients.some((c) => c.id !== clientId && c.nameKey === nameKey(newName)));
+    if (bad) back(bad);
+  }
+
   const details = {
     billingName: String(formData.get("billingName") ?? "").trim(),
     billingEmail: String(formData.get("billingEmail") ?? "").trim(),
@@ -2970,9 +3085,9 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
 
   await patchClient(
     clientId,
-    { ...details, notes: String(formData.get("notes") ?? "").trim() },
+    { ...details, ...(renamed ? { name: newName, nameKey: nameKey(newName) } : {}), notes: String(formData.get("notes") ?? "").trim() },
     member.id,
-    "client.detailsSaved",
+    renamed ? "client.renamed" : "client.detailsSaved",
     null,
   );
   revalidatePath(here);
@@ -3724,7 +3839,34 @@ export async function bookRequirementMeeting(formData: FormData): Promise<void> 
   if (!member) redirect("/sign-in");
   const leadId = String(formData.get("leadId") ?? "");
   const here = "/leads/" + leadId;
-  const back = (msg: string) => redirect(leadBack(here, "requirement", msg, formData));
+  await bookRequirement(formData, member, leadId, (msg) => redirect(leadBack(here, "requirement", msg, formData)));
+}
+
+/**
+ * The call booked from a client's own page (23 Nov): an intro call for a client we have not worked for yet,
+ * a requirement call for one opening a new role. Both go through the client's working lead, so everything
+ * the lead page does with a call (held, brief, invite, reminders) works on it.
+ */
+export async function bookClientCall(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const clientId = String(formData.get("clientId") ?? "");
+  const page = "/clients/" + clientId;
+  const back = (msg: string) => redirect(withMsg(page, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const client = clientIn(db, clientId);
+  if (!client) redirect("/clients?msg=" + encodeURIComponent("That client is gone."));
+  const row = client as NonNullable<typeof client>;
+  const kind = callKindFor({ stage: row.stage, hasPosition: db.positions.some((p) => p.clientId === row.id), heldCall: row.leadId ? meetingsForLead(db, row.leadId).some((m) => m.heldAt !== null) : false });
+  const lead = await workingLeadFor(row, member, kind === "intro" ? "new" : "requirement");
+  formData.set("leadId", lead.id);
+  if (kind === "intro") await bookIntro(formData, member, lead.id, back);
+  else await bookRequirement(formData, member, lead.id, back);
+}
+
+async function bookRequirement(formData: FormData, member: OpsMember, leadId: string, back: (msg: string) => never): Promise<void> {
+  const here = "/leads/" + leadId;
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const db = await desk();
@@ -4089,6 +4231,96 @@ export async function handOverToTa(formData: FormData): Promise<void> {
 }
 
 /**
+ * "New position" (23 Nov, the owner): a position for a client, made on the Positions page or from the
+ * client's page. It writes the requirement (from a held call when one is picked) and the position, and
+ * queues the opening for TA the same way the hand-over does. It does not wait for the agreement.
+ */
+export async function createPosition(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string) => redirect(withMsg(backTo(formData, "/positions"), msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const f = (k: string) => String(formData.get(k) ?? "").trim();
+  const db = await desk();
+  const client = clientIn(db, f("clientId"));
+  const fields: Record<string, string> = {
+    title: f("title"),
+    level: f("designation"),
+    salary: f("package"),
+    locations: f("locations"),
+    headcount: f("headcount") || "1",
+    jdNotes: f("brief"),
+    incumbentNote: f("incumbentNote"),
+  };
+  const problem = problemWithNewPosition(fields, Boolean(client));
+  if (problem) back(problem);
+  const row = client as NonNullable<typeof client>;
+
+  const lead = await workingLeadFor(row, member, "requirement");
+  const meetingId = f("meetingId") || null;
+  const version = (requirementForLead(db, lead.id)?.version ?? 0) + 1;
+  const requirement = await addRequirement({
+    leadId: lead.id,
+    clientId: row.id,
+    clientTaId: row.taClientId ?? "",
+    meetingId,
+    version,
+    fields,
+    practical: true,
+    reason: null,
+    inviteBackAt: null,
+    openedAt: Date.now(),
+    ownerId: row.ownerId,
+  });
+  const now = Date.now();
+  const position = await addPosition({
+    requirementId: requirement.id,
+    clientId: row.id,
+    clientTaId: row.taClientId ?? "",
+    openingTaId: null,
+    title: fields.title,
+    stage: "handed_over",
+    primaryTaId: null,
+    hundredPercentDay: null,
+    taStatus: null,
+    jdApprovedAt: null,
+    linkedInUrl: null,
+    linkedInPostedAt: null,
+    depthStage: null,
+    shortlistedTotal: null,
+    pendingCount: null,
+    depthCheckedAt: null,
+    handedOverAt: now,
+    closedAt: null,
+    ownerId: row.ownerId,
+  });
+  await queueTaWrite(
+    "/integrations/v1/openings",
+    {
+      clientId: row.taClientId ?? "",
+      title: fields.title,
+      brief: briefText(fields),
+      headcount: Number(fields.headcount) || 1,
+      level: fields.level,
+      locations: fields.locations,
+      package: fields.salary,
+      primaryRecruiterId: null,
+      hundredPercentDay: null,
+      requirementReceivedAt: requirement.createdAt,
+      opsPositionId: position.id,
+    },
+    { type: "position", id: position.id },
+  );
+  revalidatePath("/positions");
+  revalidatePath("/clients");
+  revalidatePath("/clients/" + row.id);
+  redirect(
+    "/positions/" + position.id + "?msg=" + encodeURIComponent("Saved. " + fields.title + " for " + row.name + " is queued for the TA System." + (agreementForLead(db, lead.id)?.state === "countersigned" || agreementForLead(db, lead.id)?.state === "signed" ? "" : " The agreement is not signed yet, so no CVs go to them until it is.")),
+  );
+}
+
+/**
  * Adds a candidate by hand to a position (17 Nov, supervisor review), for when
  * the TA link is down or the person is not in the TA System. They stay in Ops
  * only and are always shown as "added by hand, not in TA". Nothing is sent to
@@ -4263,6 +4495,42 @@ export async function saveContact(formData: FormData): Promise<void> {
   else await patchClient(id, { contacts }, member.id, "client.contactAdded", person.email);
   revalidatePath(here);
   back(person.name + " added.");
+}
+
+/**
+ * Change one of a client's (or a position's) contacts in place (23 Nov): somebody leaves and somebody else
+ * takes their place, or a number changes. The row is found by its old address.
+ */
+export async function editContact(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const scope = String(formData.get("scope") ?? "") === "position" ? "position" : "client";
+  const id = String(formData.get("id") ?? "");
+  const here = scope === "position" ? "/positions/" + id : "/clients/" + id + "?view=contacts";
+  const back = (msg: string) => redirect(here + (here.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const holder = scope === "position" ? positionIn(db, id) : clientIn(db, id);
+  if (!holder) redirect("/" + scope + "s?msg=" + encodeURIComponent("That " + scope + " is gone."));
+  const person = {
+    name: String(formData.get("name") ?? "").trim(),
+    email: String(formData.get("email") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    role: String(formData.get("role") ?? "").trim().toLowerCase() || "hr",
+  };
+  const problem = problemWithContact(person);
+  if (problem) back(problem);
+  const oldEmail = String(formData.get("oldEmail") ?? "").toLowerCase();
+  const have = (holder as { contacts?: typeof person[] }).contacts ?? [];
+  if (!have.some((c) => c.email.toLowerCase() === oldEmail)) back("That contact is not on the list any more.");
+  if (person.email.toLowerCase() !== oldEmail && have.some((c) => c.email.toLowerCase() === person.email.toLowerCase())) back("That address is already on the list.");
+
+  const contacts = have.map((c) => (c.email.toLowerCase() === oldEmail ? person : c));
+  if (scope === "position") await patchPosition(id, { contacts }, member.id, "position.contactEdited", person.email);
+  else await patchClient(id, { contacts }, member.id, "client.contactEdited", oldEmail + " -> " + person.email);
+  revalidatePath(here);
+  back(person.name + " saved.");
 }
 
 export async function removeContact(formData: FormData): Promise<void> {

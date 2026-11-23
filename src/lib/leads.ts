@@ -158,6 +158,24 @@ export function problemWithNewLead(lead: NewLead): string | null {
   return null;
 }
 
+/**
+ * "Add a client" (23 Nov, the owner): a client is added by hand, with no enquiry or discovery step in front.
+ * Same rules as a lead for the name and for one way to reach them; no source, since nobody enquired.
+ */
+export function problemWithNewClient(
+  c: { company: string; contactEmail: string; contactPhone: string; billingEmail: string },
+  sameNameExists: boolean,
+): string | null {
+  const reach = problemWithNewLead({ ...c, source: LEAD_SOURCES[0] } as never);
+  if (reach) return reach;
+  if (c.billingEmail.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.billingEmail.trim())) {
+    return "The billing email address does not look like one.";
+  }
+  // One company, one record, one owner.
+  if (sameNameExists) return "We already have a client with that name. Find them in Clients instead of adding them twice.";
+  return null;
+}
+
 export interface ClientLike {
   id: string;
   name: string;
