@@ -564,3 +564,18 @@ The four views the team kept as Excel trackers. Each is read from rows the desk 
 | **Internal hiring: Board and Table** | `src/lib/hiringTable.ts`, `?view=board` and `?view=table` on `app/hiring/page.tsx` | the whole funnel across vacancies: a board that shows the first eight of each column and links to the rest, and a table filtered by search, vacancy and stage, fifty to a page |
 
 Proved by `tests/interviewsummary.test.ts`, `tests/pipelinehistory.test.ts`, `tests/clientpositiontable.test.ts`, `tests/hiringtable.test.ts`, and the changed `tests/interviews.test.ts` and `tests/sampledesk.test.ts`. Walked in the browser on the invented data (dev sign-in, as the sample Ops lead). Not run against the Convex store.
+
+## Built: Scoops, CVs read into internal hiring (23 Nov, on branch `rayan/cv-ingestion`, not merged and not live)
+
+Stage 2 of the ops team's feedback. The decision is in [09](09-DECISIONS-AND-QUESTIONS.md) (23 Nov: Ops reads CVs for its own vacancies).
+
+| Piece | Where | What it does |
+|---|---|---|
+| **Reading a CV** | `src/lib/cvParse.ts`, `src/data/cvText.ts` (PDF by `unpdf`, Word by JSZip), task `cv.fields` in `src/lib/aiTasks.ts` | the email, number and NIC by pattern; the name and the position applied for by the model when it is on, kept only if they are in the text, else by a guess; what was not found is named. A scan with no text is named as one |
+| **Intake** | `ingestCv`, `ingestScoopFiles` in `src/data/desk.ts` | the file is kept (hashed, never overwritten), read, and made an applicant in the vacancy asked for, else the one its position matches, else "Scoop: to sort". Somebody already on file (same file, email, NIC or number) is a duplicate, listed and not added |
+| **Add a Scoop** | `addScoop` in `app/actions.ts`, "Add a Scoop" on `/hiring` | any number of CVs at once, up to 150 and 25 MB, read the same way as a Scoop by email |
+| **Scoop by email** | `runScoopPass` in `src/data/desk.ts`, `graphScoopSource` in `src/lib/graphMail.ts`, `selfClock.ts` | one named mailbox, the named senders only; PER_PASS (12) files a pass, carrying on where it stopped; the mailbox cursor moves past an email only when all of it is done. Off until mail reading is on and `scoop.mailbox` and `scoop.senders` are set; says why when it is not |
+| **The applicant's details** | `saveApplicantDetails`, the Details drawer | phone, email, NIC, position applied for, package and laptop (the last two are asked on the call), and a move to another vacancy, which is how a CV held under "to sort" is placed. NIC, applied for, package and laptop are columns in the Table |
+| **Scoops view and the day's summary** | `src/lib/scoop.ts`, `?view=scoops`, `runScoopSummary` | each batch with its counts and the files to look at; at 17:30 Colombo on a working day one task for the Ops lead with, per Scoop, how many CVs, who responded and who did not, who was turned away at screening and why, and the interviews booked |
+
+Proved by `tests/cvparse.test.ts`, `tests/scoop.test.ts` and `tests/scoopintake.test.ts` (real PDFs made on the fly and a fake mailbox). **Not run against a real mailbox** (it needs the Microsoft consent and the owner's go-ahead) **or the Convex store.** Not built: reading the CVs in an old binary .doc; the TA read ("is this person already in TA"), which was left out because it would need the stage map of [32](32-TA-SHORTLIST-FEED.md) first.

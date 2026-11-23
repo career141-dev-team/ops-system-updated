@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { createVacancy } from "@/app/actions";
+import { addScoop, createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, Card, DataTable, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { desk } from "@/data/desk";
+import { desk, scoopBatches } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
 import { countOf, hiringView, totals, vacancyLine, whereItStands, type Vacancy } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
 import { FUNNEL, STAGE_LABEL, applicantRows, boardColumns, filterApplicants, pageOf, type ApplicantRow } from "@/lib/hiringTable";
 import { closeHref, panelHref } from "@/lib/panel";
+import { summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -105,7 +106,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
   const todayKey = keyOf(now);
   // Vacancies (the cards), Board (everyone in the funnel) or Table (everyone, filtered and paged), 23 Nov.
-  const mode = sp.view === "board" || sp.view === "table" ? sp.view : "vacancies";
+  const mode = sp.view === "board" || sp.view === "table" || sp.view === "scoops" ? sp.view : "vacancies";
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
 
   return (
@@ -115,16 +116,22 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
         sub={`Career141's own vacancies · ${openCount} open`}
         right={
           mayManage ? (
-            <Link href={panelHref("/hiring", sp, "add-vacancy")} scroll={false} className={pillSecondary}>
-              <Icon name="plus" size={16} />
-              Add a vacancy
-            </Link>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Link href={panelHref("/hiring", sp, "add-scoop")} scroll={false} className={pillSecondary}>
+                <Icon name="plus" size={16} />
+                Add a Scoop
+              </Link>
+              <Link href={panelHref("/hiring", sp, "add-vacancy")} scroll={false} className={pillSecondary}>
+                <Icon name="plus" size={16} />
+                Add a vacancy
+              </Link>
+            </div>
           ) : null
         }
       />
       {view.vacancies.length > 0 && (
         <nav className="flex items-center gap-2" aria-label="Layout">
-          {[{ k: "vacancies", label: "Vacancies" }, { k: "board", label: "Board" }, { k: "table", label: "Table" }].map((x) => (
+          {[{ k: "vacancies", label: "Vacancies" }, { k: "board", label: "Board" }, { k: "table", label: "Table" }, { k: "scoops", label: "Scoops" }].map((x) => (
             <Link key={x.k} href={x.k === "vacancies" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
               {x.label}
             </Link>
@@ -157,6 +164,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
             <Figure label="Hired this month" value={t.hiredThisMonth} tone="text-brand" line={t.lastHire ? `${t.lastHire.title} · ${dayWord(t.lastHire.at).slice(4)}` : "nobody yet"} />
           </Card>
 
+          {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null }))} />}
           {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
           {mode === "vacancies" && (
@@ -215,6 +223,33 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           </div>
           )}
         </>
+      )}
+
+      {sp.panel === "add-scoop" && mayManage && (
+        <Panel kicker="Internal hiring" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)}>
+          <form action={addScoop} encType="multipart/form-data">
+            <input type="hidden" name="back" value="/hiring?view=scoops" />
+            <PanelSection title="The CVs">
+              <PanelField label="Files (PDF or Word, up to 25 MB in all)">
+                <input type="file" name="cvs" multiple required accept=".pdf,.doc,.docx" aria-label="CV files" className={panelInput} />
+              </PanelField>
+              <PanelField label="Which vacancy">
+                <select name="vacancyId" defaultValue="" className={panelInput}>
+                  <option value="">Match each CV by the position it applies for</option>
+                  {view.vacancies.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.title}
+                    </option>
+                  ))}
+                </select>
+              </PanelField>
+            </PanelSection>
+            <PanelSection title="What happens next">
+              <p className="t-body text-ink-2">Each CV is kept, read, and made an applicant to call, with the package and laptop left for you to fill in after the call. Somebody already on file is not added twice. A CV that is a scan is added with no details, and says so. Nothing is sent to anybody.</p>
+              <button type="submit" className={pillPrimary + " self-start"}>Read the CVs</button>
+            </PanelSection>
+          </form>
+        </Panel>
       )}
 
       {sp.panel === "add-vacancy" && mayManage && (
@@ -333,11 +368,11 @@ function HiringTable({ rows, vacancies, filters, page }: { rows: ApplicantRow[];
         {shown.pages > 1 ? " · page " + shown.page + " of " + shown.pages : ""}
       </p>
       <DataTable
-        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "STAGE" }, { label: "PHONE" }, { label: "CV" }, { label: "SOURCE" }]}
+        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "STAGE" }, { label: "PHONE" }, { label: "NIC" }, { label: "APPLIED FOR" }, { label: "PACKAGE" }, { label: "LAPTOP" }, { label: "CV" }, { label: "SOURCE" }]}
         rows={shown.items.map((r) => ({
           key: r.id,
           href: "/hiring/" + r.vacancyId,
-          cells: [r.name, r.vacancy, STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.hasCv ? "Yes" : "No", r.source],
+          cells: [r.name, r.vacancy, STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.nic || "—", r.targetPosition || "—", r.packageSaid || "—", r.laptop || "—", r.hasCv ? "Yes" : "No", r.source],
         }))}
         empty={<p className="t-body text-ink-3">Nobody matches. Clear the filters, or change the search.</p>}
       />
@@ -356,5 +391,63 @@ function HiringTable({ rows, vacancies, filters, page }: { rows: ApplicantRow[];
         </div>
       )}
     </Card>
+  );
+}
+
+/** The Scoops that came in, newest first, each with how it went and what became of the people it added. */
+function ScoopsList({ batches, people }: { batches: ScoopBatch[]; people: Parameters<typeof summaryOf>[1] }) {
+  if (batches.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon="inbox" title="No Scoop yet">
+          &ldquo;Add a Scoop&rdquo; reads many CVs at once. A Scoop sent to the Scoop mailbox comes in by itself once mail reading is switched on.
+        </EmptyState>
+      </Card>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      {batches.map((b) => {
+        const s = summaryOf(b, people);
+        return (
+          <Card key={b.id} className="gap-3 !p-6">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="t-h2">{b.source === "mail" ? b.subject || "A Scoop by email" : "CVs added by hand"}</h2>
+              <span className="t-small text-ink-3">
+                {dayWord(b.at)} · {b.source === "mail" ? "from " + (b.from || "email") : "uploaded"}
+                {b.complete ? "" : " · still being read"}
+              </span>
+            </div>
+            <ul className="flex flex-col gap-1">
+              {s.lines.map((l) => (
+                <li key={l} className="t-body text-ink-2">
+                  {l}
+                </li>
+              ))}
+            </ul>
+            {(b.duplicates.length > 0 || b.unreadable.length > 0) && (
+              <details>
+                <summary className="t-label cursor-pointer text-brand hover:underline">Files to look at ({b.duplicates.length + b.unreadable.length})</summary>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {b.duplicates.map((d) => (
+                    <li key={"d" + d.name} className="t-small text-ink-3">
+                      {d.name}: {d.of}
+                    </li>
+                  ))}
+                  {b.unreadable.map((u) => (
+                    <li key={"u" + u.name} className="t-small text-warn">
+                      {u.name}: {u.why}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <Link href={"/hiring?view=table"} className="t-label w-fit text-brand hover:underline">
+              See the people in the table
+            </Link>
+          </Card>
+        );
+      })}
+    </div>
   );
 }

@@ -46,6 +46,7 @@ import {
   removeTeamNote,
   addVacancy,
   patchApplicant,
+  ingestScoopFiles,
   patchVacancy,
   snoozeTask as snoozeTaskInDesk,
   buildWeeklyReport,
@@ -142,7 +143,7 @@ import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/ca
 import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
-import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicantDetails, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
   problemWithInviteBack,
@@ -226,6 +227,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { MAX_PER_BATCH } from "@/lib/scoop";
 import { problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
@@ -8626,6 +8628,73 @@ export async function addHiringApplicant(formData: FormData): Promise<void> {
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed(`${name} added.`, dest));
+}
+
+/**
+ * A Scoop added by hand (23 Nov, the ops team's feedback): any number of CVs at once, read into internal hiring the
+ * same way a Scoop by email is. The vacancy is picked, or left to be matched by the position each CV says it is for.
+ */
+export async function addScoop(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/hiring?view=scoops");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const picked = formData.getAll("cvs").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!picked.length) redirect(withMsg(dest, "Choose the CVs first. A PDF or Word file each."));
+  if (picked.length > MAX_PER_BATCH) redirect(withMsg(dest, "That is " + picked.length + " files. Add at most " + MAX_PER_BATCH + " at a time."));
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim() || null;
+  if (vacancyId && !(await desk()).vacancies.some((v) => v.id === vacancyId)) redirect(withMsg(dest, "That vacancy is gone."));
+
+  const files = await Promise.all(picked.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+  const batch = await ingestScoopFiles(files, member.id, vacancyId);
+  revalidatePath("/hiring");
+  const bits = [batch.applicantIds.length + " added", batch.duplicates.length ? batch.duplicates.length + " already on file" : "", batch.unreadable.length ? batch.unreadable.length + " could not be read" : ""].filter(Boolean);
+  redirect(dest + confirmed("Read " + files.length + (files.length === 1 ? " CV: " : " CVs: ") + bits.join(", ") + ".", dest));
+}
+
+/**
+ * The details of one applicant, typed or corrected after the call (23 Nov): the phone and email and NIC a CV did
+ * not give, the position applied for, the package they asked for, and whether they have a laptop. Every field is
+ * optional. The vacancy can be changed too, which is how a CV held under "to sort" finds its place.
+ */
+export async function saveApplicantDetails(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
+  const person = db.applicants.find((a) => a.id === applicantId);
+  if (!person) redirect(withMsg(dest, "That applicant is gone."));
+  const row = person as NonNullable<typeof person>;
+
+  const text = (k: string) => String(formData.get(k) ?? "").trim();
+  const d = { email: text("email"), nic: text("nic"), phone: text("phone"), laptop: text("laptop") };
+  const problem = problemWithApplicantDetails(d);
+  if (problem) redirect(withMsg(dest, problem));
+  const moveTo = text("moveTo");
+  if (moveTo && !db.vacancies.some((v) => v.id === moveTo)) redirect(withMsg(dest, "That vacancy is gone."));
+
+  await patchApplicant(
+    applicantId,
+    {
+      email: d.email || null,
+      nic: d.nic ? d.nic.toUpperCase() : null,
+      phone: d.phone || null,
+      laptop: d.laptop || null,
+      targetPosition: text("targetPosition") || null,
+      packageSaid: text("packageSaid") || null,
+      ...(moveTo && moveTo !== row.vacancyId ? { vacancyId: moveTo } : {}),
+    },
+    member.id,
+    "applicant.detailsSaved",
+    moveTo && moveTo !== row.vacancyId ? "Moved to another vacancy" : null,
+  );
+  revalidatePath("/hiring");
+  revalidatePath("/hiring/" + row.vacancyId);
+  if (moveTo && moveTo !== row.vacancyId) revalidatePath("/hiring/" + moveTo);
+  redirect((moveTo && moveTo !== row.vacancyId ? "/hiring/" + moveTo : dest) + confirmed("Saved.", dest));
 }
 
 /** Keeps an applicant's CV in the file store (as keepFile does) and points the applicant at it (22 Nov). */

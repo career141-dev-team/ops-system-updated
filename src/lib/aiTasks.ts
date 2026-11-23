@@ -80,6 +80,33 @@ export function dictateRequirementPrompt(said: string): PromptFor {
   };
 }
 
+/* ── A CV's name and position (23 Nov, the Scoop) ──────────────────── */
+
+export interface CvFieldsSaid {
+  name: string;
+  targetPosition: string;
+  notSaid: string[];
+}
+
+/**
+ * Only the two judgments. The email, the number and the NIC are found by pattern and never asked of a model; this
+ * is for which line is the name and which position they mean. What the model says is checked against the text
+ * (checkedAiFields in src/lib/cvParse.ts), so a name or a position that is not on the page is dropped.
+ */
+export function cvFieldsPrompt(cvText: string): PromptFor {
+  return {
+    system:
+      HOUSE +
+      " You are reading the text of one CV sent to a recruitment agency for one of its own vacancies." +
+      ' Shape: {"name":"","targetPosition":"","notSaid":[]}.' +
+      " name is the applicant's own full name exactly as written, never a referee's or an employer's." +
+      " targetPosition is the job they are applying for, only if the CV says so (a heading, a covering line, an objective); otherwise leave it empty." +
+      " Put the name of every field you could not fill into notSaid. Never guess.",
+    prompt: "This is the text of the CV:\n\n" + cvText,
+    maxTokens: 300,
+  };
+}
+
 export interface DictatedNote {
   text: string;
   notSaid: string[];
@@ -299,6 +326,7 @@ export function askPrompt(question: string, rows: string[]): PromptFor {
 /** Every task's own words for the screens. */
 export const TASK_BUTTONS: Record<AiTask, string> = {
   "dictate.fields": "Dictate",
+  "cv.fields": "Read the CV",
   "inbound.read": "Read what they sent",
   "draft.improve": "Improve this draft",
   "draft.reply": "Draft a reply",

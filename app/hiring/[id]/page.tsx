@@ -18,7 +18,7 @@ import { currentMember } from "@/lib/session";
 import HiringPanel, { type HiringPanelKind } from "./HiringPanel";
 import { HiringSendModal } from "./HiringSendModals";
 
-const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject", "cv"];
+const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject", "cv", "details"];
 
 /** H2 · Vacancy detail: the numbers, the board of applicants, and the panels (call, book, result, decide, not a fit). Every form saves through an action in app/actions.ts. */
 export default async function VacancyPage({
@@ -104,6 +104,9 @@ export default async function VacancyPage({
                 <span aria-hidden="true" className="text-[18px] leading-none">&#8942;</span>
               </summary>
               <div className="absolute right-0 z-20 mt-1 flex w-44 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
+                <Link href={panelHref(path, sp, "details", a.id)} scroll={false} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
+                  Details
+                </Link>
                 <Link href={panelHref(path, sp, "cv", a.id)} scroll={false} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
                   {a.cvFileId ? "Replace CV" : "Add CV"}
                 </Link>
@@ -253,7 +256,7 @@ export default async function VacancyPage({
         </aside>
       </div>
 
-      {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} cvHref={cvFile ? viewHref(cvFile) : null} />}
+      {openName && on && <HiringPanel kind={openName} v={v} a={on} now={now} closeHref={closeHref(path, sp)} cvHref={cvFile ? viewHref(cvFile) : null} vacancies={view.vacancies.map((x) => ({ id: x.id, title: x.title }))} />}
       {sp.panel === "add-applicant" && can(me, "client.manage") && (
         <Panel kicker="Internal hiring" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
           <form action={addHiringApplicant} encType="multipart/form-data">

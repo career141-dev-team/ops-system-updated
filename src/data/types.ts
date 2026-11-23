@@ -1092,6 +1092,16 @@ export interface OpsApplicant {
   /** Teams link and Outlook event for an online internal interview (21 Nov). */
   joinUrl?: string | null;
   graphEventId?: string | null;
+  /**
+   * What a Scoop CV gives (23 Nov): the NIC and the position applied for are read from the CV; the package and
+   * whether they have a laptop are what Ops asks on the call, so they start empty. All optional: older rows have none.
+   */
+  nic?: string | null;
+  targetPosition?: string | null;
+  packageSaid?: string | null;
+  laptop?: string | null;
+  /** The Scoop batch the CV came in, so its summary can find the people it added. */
+  scoopId?: string | null;
   createdAt: number;
   updatedAt: number;
 }

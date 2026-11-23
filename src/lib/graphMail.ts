@@ -409,3 +409,86 @@ export function fakeArrival(over: Partial<InboundMail> = {}): InboundMail {
     ...over,
   };
 }
+
+/* ── The Scoop mailbox (23 Nov, the ops team's feedback) ─────────────
+ *
+ * A Scoop is fifty or sixty CVs in one email from one of our own people, which the ordinary reader drops on
+ * purpose (our own mail is not a client replying). So this reads one named mailbox for mail from the people
+ * named as Scoop senders, and takes the files off it. It is a source behind a small interface, so the pass that
+ * uses it is tested with a fake mailbox and never needs a Microsoft key to be checked.
+ */
+
+export interface ScoopMessage {
+  id: string;
+  at: number;
+  from: string;
+  subject: string;
+}
+export interface ScoopAttachment {
+  id: string;
+  name: string;
+  size: number;
+}
+export interface ScoopSource {
+  /** Messages with files that arrived at or after `since`, oldest first, from the Scoop senders only. */
+  messages(since: number): Promise<{ ok: true; messages: ScoopMessage[] } | { ok: false; reason: string }>;
+  attachments(messageId: string): Promise<ScoopAttachment[]>;
+  bytes(messageId: string, attachmentId: string): Promise<Uint8Array | null>;
+}
+
+/** Why the Scoop mailbox cannot be read, or null when it can. Microsoft keys, the mail switch, a mailbox, senders. */
+export function scoopProblem(mailbox: string, senders: string[]): string | null {
+  if (!readerEnabled()) return "Mail reading is off (OPS_MAIL_READ), so no Scoop is read from email.";
+  if (!graphReady()) return "Microsoft is not set up here, so no Scoop is read from email.";
+  if (!mailbox.trim()) return "No Scoop mailbox is named yet (setting scoop.mailbox or OPS_SCOOP_MAILBOX).";
+  if (!senders.length) return "Nobody is named as a Scoop sender yet (setting scoop.senders or OPS_SCOOP_SENDERS).";
+  return null;
+}
+
+const GRAPH = "https://graph.microsoft.com/v1.0/users/";
+
+export function graphScoopSource(address: string, senders: string[], isSender: (from: string, senders: string[]) => boolean): ScoopSource {
+  let cached: string | null = null;
+  const access = async () => (cached ??= await token());
+  const get = async (url: string) => {
+    const t = await access();
+    if (!t) return null;
+    return fetch(url, { headers: { authorization: "Bearer " + t }, signal: AbortSignal.timeout(20_000) });
+  };
+  return {
+    async messages(since) {
+      try {
+        const filter = "receivedDateTime ge " + new Date(since).toISOString() + " and hasAttachments eq true";
+        const url = GRAPH + encodeURIComponent(address) + "/messages?$filter=" + encodeURIComponent(filter) + "&$orderby=" + encodeURIComponent("receivedDateTime asc") + "&$select=id,subject,receivedDateTime,from&$top=25";
+        const r = await get(url);
+        if (!r) return { ok: false, reason: "Microsoft did not give a token." };
+        if (!r.ok) return { ok: false, reason: address + " could not be read: " + r.status };
+        const json = (await r.json()) as { value?: GraphMessage[] };
+        const messages = (json.value ?? [])
+          .map((m) => ({ id: m.id, at: Date.parse(m.receivedDateTime ?? ""), from: (m.from?.emailAddress?.address ?? "").toLowerCase(), subject: m.subject ?? "" }))
+          .filter((m) => Number.isFinite(m.at) && isSender(m.from, senders));
+        return { ok: true, messages };
+      } catch (e) {
+        return { ok: false, reason: address + " could not be read: " + String((e as Error)?.message ?? e).slice(0, 120) };
+      }
+    },
+    async attachments(messageId) {
+      try {
+        const r = await get(GRAPH + encodeURIComponent(address) + "/messages/" + encodeURIComponent(messageId) + "/attachments?$select=id,name,size,isInline,contentType");
+        if (!r?.ok) return [];
+        const json = (await r.json()) as { value?: { id: string; name?: string; size?: number; isInline?: boolean }[] };
+        return (json.value ?? []).filter((a) => a.name && !a.isInline).map((a) => ({ id: a.id, name: String(a.name).slice(0, 200), size: a.size ?? 0 }));
+      } catch {
+        return [];
+      }
+    },
+    async bytes(messageId, attachmentId) {
+      try {
+        const r = await get(GRAPH + encodeURIComponent(address) + "/messages/" + encodeURIComponent(messageId) + "/attachments/" + encodeURIComponent(attachmentId) + "/$value");
+        return r?.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}

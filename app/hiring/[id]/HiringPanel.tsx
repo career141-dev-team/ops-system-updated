@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { addApplicantCv, bookHiringInterview, decideHiringApplicant, recordHiringCall, recordHiringResult } from "@/app/actions";
+import { addApplicantCv, bookHiringInterview, decideHiringApplicant, recordHiringCall, recordHiringResult, saveApplicantDetails } from "@/app/actions";
 import Icon from "@/app/Icon";
 import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
@@ -9,7 +9,7 @@ import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
 import { CALL_NOT_FIT, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
-export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv";
+export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv" | "details";
 
 const small = "t-label inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] text-ink hover:bg-sunk";
 
@@ -103,8 +103,67 @@ function Save({ happens }: { happens: string }) {
 const textarea = panelInput + " min-h-[72px]";
 
 /** The four panels of H2, wired to the internal hiring backend actions. */
-export default function HiringPanel({ kind, v, a, now, closeHref, cvHref }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string; cvHref?: string | null }) {
+export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacancies = [] }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string; cvHref?: string | null; vacancies?: { id: string; title: string }[] }) {
   const name = first(a.name);
+  // The details a CV gives and a call adds (23 Nov): NIC, the position applied for, the package they asked for,
+  // whether they have a laptop. Every field optional; the vacancy can change, which is how a CV held under "to sort" is placed.
+  if (kind === "details") {
+    return (
+      <Panel kicker="Details" title={`${a.name}'s details`} sub={`${v.title} > Internal hiring`} closeHref={closeHref}>
+        <Who a={a} cvHref={cvHref} />
+        <form action={saveApplicantDetails}>
+          <input type="hidden" name="vacancyId" value={v.id} />
+          <input type="hidden" name="applicantId" value={a.id} />
+          <input type="hidden" name="back" value={closeHref} />
+          <PanelSection title="From the CV">
+            <PanelField label="Phone">
+              <input name="phone" defaultValue={a.phone ?? ""} className={panelInput} />
+            </PanelField>
+            <PanelField label="Email">
+              <input name="email" defaultValue={a.email ?? ""} className={panelInput} />
+            </PanelField>
+            <PanelField label="NIC">
+              <input name="nic" defaultValue={a.nic ?? ""} className={panelInput} />
+            </PanelField>
+            <PanelField label="Position applied for">
+              <input name="targetPosition" defaultValue={a.targetPosition ?? ""} className={panelInput} />
+            </PanelField>
+          </PanelSection>
+          <PanelSection title="From the call">
+            <PanelField label="Package they ask for">
+              <input name="packageSaid" defaultValue={a.packageSaid ?? ""} className={panelInput} />
+            </PanelField>
+            <PanelField label="Laptop">
+              <select name="laptop" defaultValue={a.laptop ?? ""} className={panelInput}>
+                <option value="">Not asked yet</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </PanelField>
+          </PanelSection>
+          {vacancies.length > 1 && (
+            <PanelSection title="Vacancy">
+              <PanelField label="Move to">
+                <select name="moveTo" defaultValue={v.id} className={panelInput}>
+                  {vacancies.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.title}
+                    </option>
+                  ))}
+                </select>
+              </PanelField>
+            </PanelSection>
+          )}
+          <PanelSection title="What happens next">
+            <p className="t-body text-ink-2">Saved on the applicant. Nothing is sent to them.</p>
+            <button type="submit" className={pillPrimary + " self-start"}>
+              Save
+            </button>
+          </PanelSection>
+        </form>
+      </Panel>
+    );
+  }
   // The CV on its own, at any stage (23 Nov): the form used to live only in the call drawer, so a person
   // already past the call had no way to add the CV that was missed.
   if (kind === "cv") {

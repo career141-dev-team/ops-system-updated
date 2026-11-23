@@ -1,4 +1,4 @@
-import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks } from "@/data/desk";
+import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks, runScoopPass, runScoopSummary } from "@/data/desk";
 import { readerEnabled } from "@/lib/graphMail";
 import { SELF_CLOCK_EVERY_MS, onePass, selfClockWanted } from "@/lib/clockPass";
 
@@ -15,7 +15,15 @@ export async function clockPassOnce() {
   // The mailboxes too (8 Nov, docs/31 part 2): a chase stopped by a reply read
   // here is stopped before the next clock pass sees it.
   const mail = readerEnabled() ? await readTheMailboxes(CLOCK_ACTOR) : { read: 0, filed: 0, ok: true };
-  return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok };
+  // The Scoop mailbox and the end-of-day summary (23 Nov). A failure here costs the Scoop, never the clocks above.
+  let scoopAdded = 0;
+  try {
+    if (readerEnabled()) scoopAdded = (await runScoopPass(CLOCK_ACTOR)).added;
+    await runScoopSummary(CLOCK_ACTOR);
+  } catch (error) {
+    console.error("[clock] the Scoop pass failed:", error);
+  }
+  return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok, scoopAdded };
 }
 
 const STARTED = Symbol.for("career141.ops.selfClock");
