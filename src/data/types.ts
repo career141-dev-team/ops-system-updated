@@ -1086,6 +1086,8 @@ export interface OpsApplicant {
   salary: string | null;
   startDate: string | null;
   rejectReason: string | null;
+  /** The stage the person was in when rejected (23 Nov): before the interview is a screening reject, after it a final one. Optional: older rows have none. */
+  rejectedAtStage?: string | null;
   cvFileId: Id | null;
   /** Teams link and Outlook event for an online internal interview (21 Nov). */
   joinUrl?: string | null;

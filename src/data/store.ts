@@ -55,6 +55,7 @@ import type {
   OpsApplicant,
 } from "./types";
 import { seed } from "./seed";
+import { firstRunDesk, wantsSampleDesk } from "@/lib/firstRun";
 import { tick } from "@/lib/tick";
 import { escalationFor } from "@/lib/escalation";
 import { cancelledByReply } from "@/lib/timers";
@@ -84,6 +85,12 @@ function stamp(): number {
   }
 }
 
+/** Same rule as the Convex store (22 Nov): the invented desk only where a run asks for it. */
+function freshSeed(): OpsDatabase {
+  const s = seed();
+  return { ...s, ...firstRunDesk(s, wantsSampleDesk(process.env)) };
+}
+
 function load(): OpsDatabase {
   if (cache && stamp() === cacheStamp) return cache;
   try {
@@ -92,14 +99,14 @@ function load(): OpsDatabase {
     // screens would then crash on an undefined list. Each phase adds tables, so
     // anything missing takes the sample's version rather than breaking the
     // desk (2 Nov, found when templates arrived).
-    const fresh = seed();
+    const fresh = freshSeed();
     cache = { ...fresh, ...onDisk } as OpsDatabase;
     for (const key of Object.keys(fresh) as (keyof OpsDatabase)[]) {
       if (!Array.isArray(cache[key])) (cache as unknown as Record<string, unknown>)[key] = fresh[key];
     }
     cacheStamp = stamp();
   } catch {
-    cache = seed();
+    cache = freshSeed();
     save();
   }
   return cache as OpsDatabase;
@@ -125,7 +132,7 @@ function audit(entry: Omit<OpsAuditEntry, "id" | "at">): void {
 export const repo = {
   /** Throws away the file and starts again from the sample data. Tests use it. */
   reset(): void {
-    cache = seed();
+    cache = freshSeed();
     save();
   },
 

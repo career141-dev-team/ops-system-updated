@@ -934,7 +934,7 @@ export default async function LeadPage({
                           key={f.key}
                           className={
                             "flex flex-col gap-1 " +
-                            (f.key === "jdNotes" || f.key === "insights"
+                            (f.key === "jdNotes" || f.key === "insights" || f.key === "incumbentNote"
                               ? "sm:col-span-2"
                               : "")
                           }
@@ -943,7 +943,7 @@ export default async function LeadPage({
                             {f.label}
                             {f.required ? "" : " (optional)"}
                           </span>
-                          {f.key === "jdNotes" || f.key === "insights" ? (
+                          {f.key === "jdNotes" || f.key === "insights" || f.key === "incumbentNote" ? (
                             <textarea
                               name={"field." + f.key}
                               rows={2}
@@ -1459,7 +1459,7 @@ export default async function LeadPage({
                   </div>
                 ))}
 
-                {mayManage && !nextBooked && !meetings.some((m) => m.kind === "intro" && m.state === "held") && (
+                {mayManage && !known.skipsIntro && !nextBooked && !meetings.some((m) => m.kind === "intro" && m.state === "held") && (
                   <MeetingBookingForm
                     action={bookIntroCall}
                     leadId={lead.id}

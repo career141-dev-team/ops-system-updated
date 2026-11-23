@@ -10,6 +10,7 @@ import { REQUIREMENT_FIELDS, briefText, requirementLocked } from "@/lib/requirem
 import { TA_STRATEGIES, resolveStrategyOwner, taOwnerId } from "@/lib/strategies";
 
 import type { TabProps } from "./ctx";
+import HoldPanel from "./overview/HoldPanel";
 import MeetingNotHeldPanel from "./requirement/MeetingNotHeldPanel";
 import { dayMonth } from "./shared/fmt";
 
@@ -80,9 +81,22 @@ export default function Requirement({ c, sp }: TabProps) {
                 <Field label="Meeting" sub={contact ? `with ${contact.name}` : undefined}>
                   {meeting?.heldAt ? `Held ${dayMonth(meeting.heldAt)}` : meeting ? "Not held yet" : "No meeting recorded"}
                 </Field>
+                {f.incumbentNote && (
+                  <div className="col-span-2">
+                    <Field label="Incumbent or reference profile">{f.incumbentNote}</Field>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <Field label="Notes">{f.jdNotes || f.insights || "Not recorded"}</Field>
                 </div>
+                {mayManage && !meeting?.heldAt && (
+                  <div className="col-span-2">
+                    {/* The requirement call belongs to a client we already work for opening a role; it is booked on the lead (23 Nov). */}
+                    <Link href={"/leads/" + requirement.leadId + "?step=requirement"} className={small}>
+                      {meeting ? "Rebook the requirement call" : "Book the requirement call"}
+                    </Link>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="t-body rounded-[18px] bg-sunk px-6 py-5 text-ink-3">No requirement is recorded yet. Fill in the fields below.</p>
@@ -355,6 +369,7 @@ export default function Requirement({ c, sp }: TabProps) {
       </Card>
 
       {sp.panel === "meeting-not-held" && <MeetingNotHeldPanel c={c} sp={sp} />}
+      {sp.panel === "hold-close-reopen" && <HoldPanel c={c} sp={sp} />}
     </>
   );
 }

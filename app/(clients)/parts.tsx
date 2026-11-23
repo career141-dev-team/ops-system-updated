@@ -36,7 +36,7 @@ export const TILE_TONE: Record<string, string> = {
   neutral: "bg-sunk text-ink-2",
 };
 
-export type ClientsTab = "clients" | "enquiries" | "agreements";
+export type ClientsTab = "clients" | "enquiries" | "agreements" | "positions";
 
 export function ClientsHead({
   tab,
@@ -48,7 +48,7 @@ export function ClientsHead({
 }: {
   tab: ClientsTab;
   line: string;
-  counts: { clients: number; enquiries: number; agreements: number };
+  counts: { clients: number; enquiries: number; agreements: number; positions?: number };
   q: string;
   filter?: string;
   extra?: ReactNode;
@@ -57,8 +57,9 @@ export function ClientsHead({
     { key: "clients", label: "Clients", href: "/clients", n: counts.clients },
     { key: "enquiries", label: "Enquiries", href: "/leads", n: counts.enquiries },
     { key: "agreements", label: "Agreements", href: "/clients/agreements", n: counts.agreements },
+    { key: "positions", label: "Positions", href: "/clients/positions", n: counts.positions ?? 0 },
   ];
-  const action = tab === "clients" ? "/clients" : tab === "enquiries" ? "/leads" : "/clients/agreements";
+  const action = tab === "clients" ? "/clients" : tab === "enquiries" ? "/leads" : tab === "positions" ? "/clients/positions" : "/clients/agreements";
   return (
     <>
       <PageTitle

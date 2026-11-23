@@ -63,9 +63,12 @@ export function isRepeatTeamNote(
   return notes.some((n) => n.authorId === authorId && n.body.trim() === b && now - n.createdAt < 600_000);
 }
 
-/** Only the author may delete a team note (22 Nov). */
-export function canDeleteTeamNote(note: { authorId: string } | undefined, memberId: string): boolean {
-  return !!note && note.authorId === memberId;
+/**
+ * The author may delete a team note (22 Nov), and so may anyone who runs the desk (23 Nov: the ops team
+ * had no way to take down a note that was out of date or posted by somebody who had left).
+ */
+export function canDeleteTeamNote(note: { authorId: string } | undefined, memberId: string, mayModerate = false): boolean {
+  return !!note && (note.authorId === memberId || mayModerate);
 }
 
 export function problemWithTeamNote(body: string): string | null {

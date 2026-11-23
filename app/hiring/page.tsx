@@ -3,13 +3,14 @@ import { redirect } from "next/navigation";
 
 import { createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
-import { Card, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { Avatar, Card, DataTable, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { desk } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
 import { countOf, hiringView, totals, vacancyLine, whereItStands, type Vacancy } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
+import { FUNNEL, STAGE_LABEL, applicantRows, boardColumns, filterApplicants, pageOf, type ApplicantRow } from "@/lib/hiringTable";
 import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
@@ -103,6 +104,9 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   });
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
   const todayKey = keyOf(now);
+  // Vacancies (the cards), Board (everyone in the funnel) or Table (everyone, filtered and paged), 23 Nov.
+  const mode = sp.view === "board" || sp.view === "table" ? sp.view : "vacancies";
+  const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -118,6 +122,15 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           ) : null
         }
       />
+      {view.vacancies.length > 0 && (
+        <nav className="flex items-center gap-2" aria-label="Layout">
+          {[{ k: "vacancies", label: "Vacancies" }, { k: "board", label: "Board" }, { k: "table", label: "Table" }].map((x) => (
+            <Link key={x.k} href={x.k === "vacancies" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
+              {x.label}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {view.vacancies.length === 0 ? (
         <Card>
@@ -144,6 +157,9 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
             <Figure label="Hired this month" value={t.hiredThisMonth} tone="text-brand" line={t.lastHire ? `${t.lastHire.title} · ${dayWord(t.lastHire.at).slice(4)}` : "nobody yet"} />
           </Card>
 
+          {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
+          {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
+          {mode === "vacancies" && (
           <div className="flex flex-col items-start gap-[22px] xl:flex-row">
             <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
               {view.vacancies.map((v, i) => (
@@ -197,6 +213,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
               </section>
             </aside>
           </div>
+          )}
         </>
       )}
 
@@ -223,5 +240,121 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
         </Panel>
       )}
     </div>
+  );
+}
+
+/** Everyone in the funnel, a column a stage. Each column shows its first few and says how many more there are. */
+function HiringBoard({ rows }: { rows: ApplicantRow[] }) {
+  const cols = boardColumns(rows);
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+      {cols.map((col) => (
+        <div key={col.stage} className="flex flex-col gap-2.5 rounded-[18px] bg-sunk p-2.5">
+          <div className="flex items-center gap-2 px-1.5 pt-1">
+            <span className="t-micro text-ink-3">{col.label.toUpperCase()}</span>
+            <span className="t-label text-ink-3">{col.total}</span>
+          </div>
+          {col.shown.map((a) => (
+            <Link key={a.id} href={"/hiring/" + a.vacancyId} className="flex flex-col gap-1.5 rounded-[14px] border border-rule bg-surface p-3 hover:shadow-card">
+              <span className="flex items-center gap-2">
+                <Avatar name={a.name} size="32" />
+                <span className="t-body-m min-w-0 flex-1 truncate">{a.name}</span>
+              </span>
+              <span className="t-small truncate text-ink-3">{a.vacancy}</span>
+              {a.detail && <span className="t-small text-ink-3">{a.detail}</span>}
+            </Link>
+          ))}
+          {col.total > col.shown.length && (
+            <Link href={"/hiring?view=table&stage=" + col.stage} className="t-label px-1.5 text-brand hover:underline">
+              See all {col.total}
+            </Link>
+          )}
+          {col.total === 0 && <p className="t-small px-1.5 text-ink-3">Nobody here.</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The same people as a table: filtered by vacancy, stage and a search, fifty to a page. */
+function HiringTable({ rows, vacancies, filters, page }: { rows: ApplicantRow[]; vacancies: { id: string; title: string }[]; filters: { vacancyId: string; stage: string; q: string }; page: number }) {
+  const matched = filterApplicants(rows, filters);
+  const shown = pageOf(matched, page);
+  const field = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none";
+  const link = (n: number) => {
+    const q = new URLSearchParams({ view: "table" });
+    if (filters.vacancyId) q.set("vacancy", filters.vacancyId);
+    if (filters.stage) q.set("stage", filters.stage);
+    if (filters.q) q.set("q", filters.q);
+    if (n > 1) q.set("page", String(n));
+    return "/hiring?" + q.toString();
+  };
+  return (
+    <Card className="gap-4 !p-6">
+      <form method="get" action="/hiring" className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="view" value="table" />
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Search</span>
+          <input name="q" defaultValue={filters.q} placeholder="Name, number, source" className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Vacancy</span>
+          <select name="vacancy" defaultValue={filters.vacancyId} className={field}>
+            <option value="">All</option>
+            {vacancies.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="t-small text-ink-3">Stage</span>
+          <select name="stage" defaultValue={filters.stage} className={field}>
+            <option value="">All</option>
+            {FUNNEL.filter((f) => f.stage !== "new").map((f) => (
+              <option key={f.stage} value={f.stage}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className={pillSecondary}>
+          Filter
+        </button>
+        {(filters.q || filters.vacancyId || filters.stage) && (
+          <Link href="/hiring?view=table" className="t-small pb-2 text-ink-3 hover:underline">
+            Clear
+          </Link>
+        )}
+      </form>
+      <p className="t-small text-ink-3">
+        {matched.length} of {rows.length} {rows.length === 1 ? "person" : "people"}
+        {shown.pages > 1 ? " · page " + shown.page + " of " + shown.pages : ""}
+      </p>
+      <DataTable
+        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "STAGE" }, { label: "PHONE" }, { label: "CV" }, { label: "SOURCE" }]}
+        rows={shown.items.map((r) => ({
+          key: r.id,
+          href: "/hiring/" + r.vacancyId,
+          cells: [r.name, r.vacancy, STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.hasCv ? "Yes" : "No", r.source],
+        }))}
+        empty={<p className="t-body text-ink-3">Nobody matches. Clear the filters, or change the search.</p>}
+      />
+      {shown.pages > 1 && (
+        <div className="flex items-center gap-3">
+          {shown.page > 1 && (
+            <Link href={link(shown.page - 1)} className={pillSecondary}>
+              Earlier
+            </Link>
+          )}
+          {shown.page < shown.pages && (
+            <Link href={link(shown.page + 1)} className={pillSecondary}>
+              Next
+            </Link>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

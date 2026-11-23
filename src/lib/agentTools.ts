@@ -138,7 +138,7 @@ export function freeStarts(db: OpsDatabase, memberId: string, date: string, now:
     if (m.bookedBy === memberId || m.organiserId === memberId) busy.push([m.at, m.at + (m.lengthMin ?? 30) * MIN]);
   }
   for (const i of db.interviews) {
-    if (i.at === null || ["cancelled", "no_show"].includes(i.state)) continue;
+    if (i.at === null || ["cancelled", "withdrew", "no_show"].includes(i.state)) continue;
     if (i.ownerId === memberId) busy.push([i.at, i.at + 60 * MIN]);
   }
   const day = new Date(date + "T12:00:00" + COLOMBO).getUTCDay();

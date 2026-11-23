@@ -5,6 +5,7 @@
  */
 import type { OpsClient, OpsDatabase, OpsEsa, OpsLead, OpsMeeting } from "@/data/types";
 import { agoShort, sourceShort } from "@/lib/clientCards";
+import { clientForLead } from "@/lib/clients";
 import {
   type AgreementColumn,
   type EnquiryColumn,
@@ -295,7 +296,7 @@ export function agreementCards(db: OpsDatabase, now: number): AgreementCard[] {
     const column = agreementColumn(esa, now);
     if (!column) continue;
     const lead = db.leads.find((l) => l.id === esa.leadId) ?? null;
-    const client = db.clients.find((c) => c.leadId === esa.leadId) ?? null;
+    const client = clientForLead(db, esa.leadId);
     const company = esa.fields.companyName || lead?.company || client?.name || "Client";
     const person = client ? contactOf(client, lead) : null;
     const replied = client ? repliedSince(db, client, esa.sentAt) : false;
@@ -346,7 +347,7 @@ export function clientTotals(db: OpsDatabase, now: number) {
   const enquiries = enquiryCards(db, now);
   const agreements = agreementCards(db, now).filter((a) => a.column !== "done");
   const owners = [...new Set(clients.map((c) => db.members.find((m) => m.id === c.ownerId)?.name).filter((n): n is string => !!n).map(firstName))];
-  return { clients: clients.length, enquiries: enquiries.length, agreements: agreements.length, owners, enquiryCards: enquiries };
+  return { clients: clients.length, enquiries: enquiries.length, agreements: agreements.length, positions: db.positions.length, owners, enquiryCards: enquiries };
 }
 
 /** The line under "Clients": 22 active clients · 6 enquiries · 6 agreements open · owners ... */

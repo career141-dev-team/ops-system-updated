@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { approveTheHold, liftTheHold, openCloseByHand } from "@/app/actions";
+import { approveTheHold, holdByHand, liftTheHold, openCloseByHand } from "@/app/actions";
 import { ChoiceGroup, PanelField } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { templateFor } from "@/data/desk";
@@ -55,7 +55,7 @@ export default function HoldPanel({ c, sp }: TabProps) {
               key={h.key}
               scroll={false}
               replace
-              href={panelHref(path, { view: "overview", how: h.key }, "hold-close-reopen")}
+              href={panelHref(path, { view: sp.view ?? "overview", how: h.key }, "hold-close-reopen")}
               className={"inline-flex items-center gap-1.5 rounded-full border px-4 py-[9px] text-[14px] font-medium leading-[22px] " + (h.key === how ? "border-ink bg-ink text-ink-inverse" : "border-rule bg-surface text-ink hover:bg-sunk")}
             >
               {h.label}
@@ -92,7 +92,19 @@ export default function HoldPanel({ c, sp }: TabProps) {
               The role is already on hold since {dayMonth(hold.heldAt ?? hold.proposedAt)}: {hold.reason}. Use Reopen the search to lift it.
             </p>
           ) : (
-            <NotConnected what="putting a role on hold by hand. A hold is proposed by the clock when a set goes quiet, and approved here" />
+            <form action={holdByHand} className="flex flex-col gap-4">
+              <input type="hidden" name="positionId" value={position.id} />
+              <input type="hidden" name="back" value={path} />
+              <PanelField label="Put on hold">
+                <ChoiceGroup name="reason" label="Why it goes on hold" value="Client freeze" options={["Client freeze", "Budget", "Waiting on the client", "Other"]} required />
+              </PanelField>
+              <p className="t-small text-ink-3">Saving puts the opening on hold in TA and drafts the notice to {clientName}. The notice waits for a person to approve it before anything is sent.</p>
+              <div>
+                <button type="submit" className={saveBtn}>
+                  Put on hold
+                </button>
+              </div>
+            </form>
           ))}
 
         {how === "close" &&

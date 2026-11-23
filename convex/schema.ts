@@ -816,6 +816,7 @@ export default defineSchema({
     salary: v.union(v.string(), v.null()),
     startDate: v.union(v.string(), v.null()),
     rejectReason: v.union(v.string(), v.null()),
+    rejectedAtStage: v.optional(v.union(v.string(), v.null())),
     cvFileId: v.union(v.string(), v.null()),
     /** Teams link and Outlook event for an online internal interview (21 Nov). */
     joinUrl: v.optional(v.union(v.string(), v.null())),

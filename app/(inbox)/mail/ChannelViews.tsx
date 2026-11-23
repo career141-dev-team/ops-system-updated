@@ -91,7 +91,7 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
 const TONE = { good: "bg-bg-ok text-success", info: "bg-info-soft text-info", warn: "bg-warn-soft text-warn" } as const;
 
 /** I3 (133:384). Posted team notes merged with desk milestones; authors can delete their own note (22 Nov). */
-export function NewsPanel({ items, now, name, memberId }: { items: NewsItem[]; now: number; name: string; memberId: string }) {
+export function NewsPanel({ items, now, name, memberId, mayModerate = false }: { items: NewsItem[]; now: number; name: string; memberId: string; mayModerate?: boolean }) {
   const days = groupByDay(items);
   const dayLabel = (d: string) => {
     const today = new Date(now + 5.5 * 3_600_000).toISOString().slice(0, 10);
@@ -132,11 +132,11 @@ export function NewsPanel({ items, now, name, memberId }: { items: NewsItem[]; n
                     <p className="t-body-m">{n.text}</p>
                     {n.about && (n.href ? <Link href={n.href} className="t-small text-brand hover:underline">{n.about}</Link> : <span className="t-small text-brand">{n.about}</span>)}
                   </div>
-                  {n.authorId === memberId && (
+                  {(n.authorId === memberId || mayModerate) && n.authorId && (
                     <form action={deleteTeamNote}>
                       <input type="hidden" name="back" value="/mail?view=news" />
                       <input type="hidden" name="id" value={n.id} />
-                      <SubmitButton id={"del-" + n.id} aria-label={"Delete your note: " + n.text.slice(0, 40)} className={pillSecondary + " !py-1.5"}>Delete</SubmitButton>
+                      <SubmitButton id={"del-" + n.id} aria-label={"Delete note: " + n.text.slice(0, 40)} className={pillSecondary + " !py-1.5"}>Delete</SubmitButton>
                     </form>
                   )}
                 </div>

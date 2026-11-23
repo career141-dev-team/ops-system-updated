@@ -12,6 +12,7 @@
  *
  * Nothing here touches a database or sends anything.
  */
+import type { OpsClient, OpsDatabase } from "@/data/types";
 
 export type ClientStage = "lead" | "onboarding" | "active" | "dormant" | "closed";
 
@@ -129,4 +130,21 @@ export function problemWithClientRename(name: string, clash: boolean): string | 
   if (name.trim().length < 2) return "Write the client's name.";
   if (clash) return "Another client already has that name. One company has one record.";
   return null;
+}
+
+/**
+ * The client a lead belongs to. A returning company keeps its first lead's id on its record, so a second
+ * lead finds it by name or by the TA client, the same way the desk makes one (23 Nov: a position made from
+ * the second lead had no client and showed under no client at all).
+ */
+export function clientForLead(db: OpsDatabase, leadId: string): OpsClient | null {
+  const byLead = db.clients.find((c) => c.leadId === leadId);
+  if (byLead) return byLead;
+  const lead = db.leads.find((l) => l.id === leadId);
+  if (!lead) return null;
+  return (
+    db.clients.find((c) => c.nameKey === lead.nameKey) ??
+    (lead.clientTaId ? db.clients.find((c) => c.taClientId === lead.clientTaId) : undefined) ??
+    null
+  );
 }

@@ -186,7 +186,8 @@ const IV: { idx: number; state: string; round: number; offset?: number; decision
   { idx: 4, state: "attended", round: 3, offset: -2 },
   { idx: 5, state: "attended", round: 2, offset: -4, decision: "next" },
   { idx: 6, state: "no_show", round: 1, offset: -3, reason: "Did not turn up and did not answer the phone." },
-  { idx: 7, state: "cancelled", round: 1, offset: -1, reason: "The candidate withdrew: accepted another offer." },
+  { idx: 7, state: "cancelled", round: 1, offset: -1, reason: "The client moved the search and called the interview off." },
+  { idx: 9, state: "withdrew", round: 1, offset: -1, reason: "The candidate withdrew: accepted another offer." },
 ];
 const REFS: { idx: number; state: string }[] = [
   { idx: 4, state: "requested" },

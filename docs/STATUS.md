@@ -534,3 +534,33 @@ faked or refused on a laptop, with a plain sentence saying why.
 | **Health screen buttons** | `app/(settings)/health/page.tsx` | "Check Microsoft" says only whether the app got a Graph token, or the plain reason it did not; "Send a test email to me" sends one message to the signed-in person through `sendEmail`, so `OPS_SEND` and the outbound lock apply |
 
 Not live, in order: [22](22-GO-LIVE.md) has the switch-on runbook for when it is hosted.
+
+## Built: the ops team's first feedback round, stage 1A (23 Nov, on branch `rayan/UI-fixes`, not merged and not live)
+
+The ops team replaced their Excel trackers with Ops and sent a list of small fixes. This is the first stage, the ones that are screens only.
+
+| Thing | Where | What it does |
+|---|---|---|
+| **Clients and positions show up where they belong** | `clientForLead` in `src/lib/clients.ts`, `clientFromLead` in `src/data/desk.ts` (the Active filter showing a client with an open position is from the "Add a client" work) | a second lead for a returning company now finds its client (by lead, then name, then TA client), so its position is no longer orphaned; a client made as a lead moves to onboarding when the agreement goes out |
+| **Requirement call only for existing clients** | `app/(clients)/leads/[id]/page.tsx`, `tabs/Requirement.tsx` | the intro-call booking is never shown to a lead that skips the intro; the position's Requirement tab links to booking the requirement call (the client page's own intro or requirement call is `callKindFor`, from the "Add a client" work) |
+| **Reject from any stage, tagged** | `rejectKind`, `rejectedByKind` in `src/lib/hiring.ts`, the card menu on `app/hiring/[id]` | a three-dot menu on every applicant card; `rejectedAtStage` is kept (additive, optional) so the Rejected list says Screening reject or Final reject |
+| **Hold by hand** | `holdByHand` in `app/actions.ts`, `HoldPanel.tsx` | a hold was only ever proposed by the clock; now a person can start one, through the same approval, TA write and thirty-day review. The button is on the Requirement tab as well |
+| **Delete a team note** | `canDeleteTeamNote` in `src/lib/panelActions.ts` | an Ops lead or Admin can delete anybody's note on Inbox, Team news |
+| **No invented tasks** | `src/data/seed.ts`, `freshSeed` in `src/data/store.ts` | the JSON store follows the same "sample only where `OPS_SAMPLE_DESK=on`" rule as Convex, and the sample desk no longer ships two invented tasks |
+| **Add or replace an applicant's CV at any stage** | the `cv` panel in `app/hiring/[id]/HiringPanel.tsx` | the form used to live only in the call drawer |
+
+Proved by `tests/uifixes.test.ts`. Not walked in a browser, and not run against the Convex store. The New position form, the contact edit and the client rename are the ones merged from `hdbinath/add-client-intro-call-new-position` (PR 32), which built the same things first; this branch's own versions of them were dropped in the merge.
+
+## Built: the ops team's first feedback round, stage 1B, the new views (23 Nov, on branch `rayan/UI-fixes`, not merged and not live)
+
+The four views the team kept as Excel trackers. Each is read from rows the desk already holds, so none can drift from the screens it summarises.
+
+| Thing | Where | What it does |
+|---|---|---|
+| **Interview summary** | `src/lib/interviewSummary.ts`, the Table toggle on `app/calendar/page.tsx` (`?view=table`) | every client and internal interview as a row: client, candidate with position and round, mode (On-site, Online, Phone), schedule, status (Scheduled, Pending, Attended, Withdrew, No-show, Cancelled), filtered by client, mode, status and dates |
+| **Withdrew** | `isOff` and `InterviewState` in `src/lib/interviews.ts`, `noticeCandidateOut` in `src/data/desk.ts` | a candidate pulling out is now its own state, kept apart from the client cancelling. It behaves like a cancellation everywhere an interview is read (the calendar, next step, candidates, Aura). Interviews already cancelled for that reason stay cancelled |
+| **Pipeline history** | `src/lib/pipelineHistory.ts`, `app/ui/PipelineHistory.tsx`, the top of a position's History tab and a client's History tab | one row per candidate per set: when it was sent, which set, and the furthest outcome (placed, interview round, shortlisted, rejected with the client's words, withdrew, on hold, pending client feedback, already theirs, not sent yet). Nothing is stored for it |
+| **Client and position table** | `src/lib/clientPositionTable.ts`, `app/(clients)/clients/positions`, a fourth tab on Clients | client, position, package (the requirement's, then the placement's), Ops handler, and an Edit on each row. The package is edited only while the requirement is unlocked; the Ops lead changes the handler with a reason (`setPositionOwner`, which tells the new person) |
+| **Internal hiring: Board and Table** | `src/lib/hiringTable.ts`, `?view=board` and `?view=table` on `app/hiring/page.tsx` | the whole funnel across vacancies: a board that shows the first eight of each column and links to the rest, and a table filtered by search, vacancy and stage, fifty to a page |
+
+Proved by `tests/interviewsummary.test.ts`, `tests/pipelinehistory.test.ts`, `tests/clientpositiontable.test.ts`, `tests/hiringtable.test.ts`, and the changed `tests/interviews.test.ts` and `tests/sampledesk.test.ts`. Walked in the browser on the invented data (dev sign-in, as the sample Ops lead). Not run against the Convex store.

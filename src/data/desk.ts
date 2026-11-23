@@ -66,7 +66,7 @@ import type { DayItem } from "@/lib/whatFirst";
 import { chaseDraft, chaseStep, nextChaseAt } from "@/lib/esa";
 import { dueFromEsa, setName } from "@/lib/clientSets";
 import { nextTuesdayNineAm, weekOf } from "@/lib/adverts";
-import { problemWithInvoiceBilling } from "@/lib/clients";
+import { clientForLead, problemWithInvoiceBilling } from "@/lib/clients";
 import {
   CLOSE_TRIGGERS,
   GUARANTEE_DAYS,
@@ -98,6 +98,7 @@ import {
   NOTICE_HOURS,
   noticeStanding,
   reconfirmAt,
+  isOff,
 } from "@/lib/interviews";
 import {
   type ReportRowRecord,
@@ -2774,7 +2775,7 @@ export function interviewsNewestFirst(db: OpsDatabase): OpsInterview[] {
 export function liveInterviewFor(db: OpsDatabase, applicationTaId: string): OpsInterview | null {
   return (
     db.interviews.find(
-      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && i.state !== "cancelled",
+      (i) => i.applicationTaId === applicationTaId && i.state !== "attended" && !isOff(i.state),
     ) ?? null
   );
 }
@@ -2791,7 +2792,7 @@ export function interviewForApplication(db: OpsDatabase, applicationTaId: string
   return (
     [...db.interviews]
       .reverse()
-      .find((i) => i.applicationTaId === applicationTaId && i.state !== "cancelled") ?? null
+      .find((i) => i.applicationTaId === applicationTaId && !isOff(i.state)) ?? null
   );
 }
 
@@ -2985,7 +2986,7 @@ export async function noticeCandidateOut(
   const db = await desk();
   const interview = interviewIn(db, interviewId);
   if (!interview) return { ok: false, what: "That interview is gone.", messageId: null };
-  if (interview.state === "cancelled" || interview.state === "attended") {
+  if (isOff(interview.state) || interview.state === "attended") {
     return { ok: false, what: "That interview is already finished.", messageId: null };
   }
 
@@ -3019,7 +3020,7 @@ export async function noticeCandidateOut(
 
   await patchInterview(
     interviewId,
-    { state: "cancelled", reason: reason },
+    { state: "withdrew", reason: reason },
     by,
     "interview.candidateOut",
     reason,
@@ -3557,9 +3558,7 @@ export function clientIn(db: OpsDatabase, clientId: Id): OpsClient | null {
   return db.clients.find((c) => c.id === clientId) ?? null;
 }
 
-export function clientForLead(db: OpsDatabase, leadId: Id): OpsClient | null {
-  return db.clients.find((c) => c.leadId === leadId) ?? null;
-}
+export { clientForLead };
 
 export function clientsNewestFirst(db: OpsDatabase): OpsClient[] {
   return [...db.clients].sort((a, b) => b.createdAt - a.createdAt);
@@ -3590,11 +3589,12 @@ export async function clientFromLead(
     const patch: Partial<OpsClient> = {};
     if (already.taClientId === null && lead.clientTaId) patch.taClientId = lead.clientTaId;
     if (already.leadId === null) patch.leadId = lead.id;
-    if (already.stage !== stage && stage === "active") patch.stage = stage;
+    // lead -> onboarding -> active (23 Nov: a client made as a lead when the agreement went out stayed under Leads).
+    if (already.stage !== stage && (stage === "active" || (stage === "onboarding" && already.stage === "lead"))) patch.stage = stage;
     if (Object.keys(patch).length) {
       // The audit says what happened, not that something did: a client turning
       // active is the countersignature, and reads that way a year later.
-      await patchClient(already.id, patch, by, patch.stage ? "client.agreementDone" : "client.updated", null);
+      await patchClient(already.id, patch, by, patch.stage === "active" ? "client.agreementDone" : "client.updated", null);
     }
     return { ...already, ...patch };
   }

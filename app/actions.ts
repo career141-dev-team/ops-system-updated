@@ -133,6 +133,9 @@ import {
   textOf,
   startTimer,
   switchedOn,
+  clientForLead,
+  addHold,
+  liveHoldFor,
 } from "@/data/desk";
 import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chatOpen, chatsOf, deleteChatThread, renameChatThread } from "@/data/chats";
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
@@ -223,6 +226,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -3094,6 +3098,44 @@ export async function saveClientDetails(formData: FormData): Promise<void> {
   back("Saved.");
 }
 
+/**
+ * Change which Ops person handles a position (23 Nov, the client and position table). A position's handler
+ * could not be changed from anywhere before, so when somebody went on leave their roles stayed on them.
+ * The reassign right is the Ops lead's, like moving a client between people, and the reason is kept.
+ */
+export async function setPositionOwner(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "task.reassign")) back(refusal("task.reassign"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) back("That position is gone.");
+  const row = position as NonNullable<typeof position>;
+  const newId = String(formData.get("handlerId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithNewHandler(newId, row.ownerId, db.members, reason);
+  if (problem) back(problem);
+
+  await patchPosition(positionId, { ownerId: newId }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
+  await createTask({
+    kind: "check",
+    title: "You now handle " + row.title,
+    body: "It was moved to you: " + reason,
+    assigneeId: newId,
+    dueAt: Date.now(),
+    subjectType: "position",
+    subjectId: positionId,
+    link: "/positions/" + positionId,
+  });
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + ".", here));
+}
+
 /** Live, quiet or finished. Going quiet needs a reason, like closing does. */
 export async function moveClientStage(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -3696,6 +3738,49 @@ export async function recordClientDecision(formData: FormData): Promise<void> {
  * held once a person has approved it. The thirty-day review starts at the same
  * time, because the owner's rule is that a hold never closes by itself.
  */
+/**
+ * Put a position on hold by hand (23 Nov: the Hold button did nothing, because a hold was only ever
+ * proposed by the clock after a set went quiet). It records the hold the same way the clock's proposal
+ * would, then hands it to approveTheHold, so the notice, the TA write and the thirty-day review are
+ * exactly the same, and the notice still waits for a person to approve it.
+ */
+export async function holdByHand(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/positions/" + positionId);
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) redirect("/positions?msg=" + encodeURIComponent("That position is gone."));
+  const row = position as NonNullable<typeof position>;
+  if (!row.openingTaId) back("TA has not confirmed this opening yet, so there is nothing to pause. Try again once it has.");
+  if (liveHoldFor(db, row.openingTaId ?? "")) back("This position is already on hold.");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const problem = problemWithHold(reason);
+  if (problem) back(problem);
+
+  const hold = await addHold({
+    openingTaId: row.openingTaId as string,
+    setId: null,
+    clientId: row.clientId,
+    state: "proposed",
+    reason,
+    liftedReason: null,
+    noticeMessageId: null,
+    proposedAt: Date.now(),
+    heldAt: null,
+    liftedAt: null,
+    reviewAt: null,
+    ownerId: row.ownerId,
+  });
+  const next = new FormData();
+  next.set("holdId", hold.id);
+  next.set("reason", reason);
+  await approveTheHold(next);
+}
+
 export async function approveTheHold(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -3725,7 +3810,8 @@ export async function approveTheHold(formData: FormData): Promise<void> {
 
   const message = await draftMessage({
     channel: "email",
-    to: set?.sentTo ?? [],
+    // A hold made by hand has no set to read the recipients from: write to the client's standard contacts.
+    to: set?.sentTo?.length ? set.sentTo : (client?.contacts ?? []).filter((c) => c.role === "hr").map((c) => c.email),
     subject: fill(wording?.subject ?? "{{client}} > {{position}} - on hold"),
     body: fill(wording?.body ?? "Dear all,"),
     templateKey: "inactive.notice",
@@ -3984,7 +4070,7 @@ export async function saveRequirement(formData: FormData): Promise<void> {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value).trim();
   }
 
-  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const client = clientForLead(db, leadId);
   // A requirement meeting, or an intro call that was also one (17 Nov).
   const held =
     meetingsForLead(db, leadId).find(
@@ -4171,7 +4257,7 @@ export async function handOverToTa(formData: FormData): Promise<void> {
   });
   if (problem) back(problem);
 
-  const client = db.clients.find((c) => c.leadId === leadId) ?? null;
+  const client = clientForLead(db, leadId);
   const now = Date.now();
   const title = (req.fields.title ?? "").trim();
 
@@ -8496,7 +8582,7 @@ export async function deleteTeamNote(formData: FormData): Promise<void> {
   const noteId = String(formData.get("id") ?? "");
   const note = ((await desk()).teamNotes ?? []).find((n) => n.id === noteId);
   if (!note) redirect(dest + confirmed("That note is already deleted.", dest));
-  if (!canDeleteTeamNote(note, member.id)) redirect(withMsg(dest, "You can only delete your own notes."));
+  if (!canDeleteTeamNote(note, member.id, can(member, "task.reassign"))) redirect(withMsg(dest, "You can only delete your own notes."));
   await removeTeamNote(noteId, member.id);
   revalidatePath("/mail");
   redirect(dest + confirmed("Note deleted.", dest));
@@ -8591,7 +8677,7 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   if (problem) redirect(withMsg(dest, problem));
   const tries = app.tries + 1;
   if (result === CALL_NOT_FIT) {
-    await patchApplicant(applicantId, { stage: "rejected", tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
+    await patchApplicant(applicantId, { stage: "rejected", rejectedAtStage: app.stage, tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
     revalidatePath(`/hiring/${vacancyId}`);
     revalidatePath("/hiring");
     redirect(dest + confirmed("Marked rejected.", dest));
@@ -8691,6 +8777,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
       score,
       notes: notes || null,
       rejectReason: result === "fail" ? reason : null,
+      ...(result === "fail" ? { rejectedAtStage: "interview" } : {}),
       detail: result === "pass" ? "Passed interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
     },
     member.id,
@@ -8720,10 +8807,12 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   const db = await desk();
   const vac = db.vacancies.find((v) => v.id === vacancyId);
   const nextStage = decision === "hire" ? "hired" : decision === "reject" ? "rejected" : "decision";
+  const before = db.applicants.find((a) => a.id === applicantId);
   await patchApplicant(
     applicantId,
     {
       stage: nextStage,
+      ...(decision === "reject" ? { rejectedAtStage: before?.stage ?? null } : {}),
       startDate,
       salary,
       rejectReason: decision === "reject" ? reason : null,

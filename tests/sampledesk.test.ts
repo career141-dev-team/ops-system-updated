@@ -69,7 +69,7 @@ test("clients, positions, holds and sets", () => {
 });
 
 test("interviews, references, placements, guarantees, invoices", () => {
-  for (const s of ["slots", "agreed", "booked", "reconfirmed", "attended", "no_show", "cancelled"]) assert.ok(has([...desk.interviews, ...openings.interviews], s), "interview " + s);
+  for (const s of ["slots", "agreed", "booked", "reconfirmed", "attended", "no_show", "cancelled", "withdrew"]) assert.ok(has([...desk.interviews, ...openings.interviews], s), "interview " + s);
   for (const r of [1, 2, 3]) assert.ok(desk.interviews.some((i) => i.round === r), "round " + r);
   for (const s of ["requested", "reported", "relayed", "cleared", "dropped"]) assert.ok(has(desk.references, s), "reference " + s);
   for (const s of ["placed", "joined", "no_show", "cancelled"]) assert.ok(has(money.placements, s), "placement " + s);

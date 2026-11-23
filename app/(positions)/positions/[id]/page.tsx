@@ -153,9 +153,14 @@ export default async function PositionPage({
             </>
           )}
           {tabKey === "requirement" && (
-            <Link scroll={false} href={to("requirement", "meeting-not-held")} className={pillSecondary + " max-md:hidden"}>
-              Meeting not held
-            </Link>
+            <>
+              <Link scroll={false} href={to("requirement", "hold-close-reopen")} className={pillSecondary + " max-md:hidden"}>
+                Hold, close or reopen
+              </Link>
+              <Link scroll={false} href={to("requirement", "meeting-not-held")} className={pillSecondary + " max-md:hidden"}>
+                Meeting not held
+              </Link>
+            </>
           )}
           <details className="group relative">
             <summary
@@ -180,9 +185,14 @@ export default async function PositionPage({
                 </>
               )}
               {tabKey === "requirement" && (
-                <Link scroll={false} href={to("requirement", "meeting-not-held")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
-                  Meeting not held
-                </Link>
+                <>
+                  <Link scroll={false} href={to("requirement", "hold-close-reopen")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                    Hold, close or reopen
+                  </Link>
+                  <Link scroll={false} href={to("requirement", "meeting-not-held")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                    Meeting not held
+                  </Link>
+                </>
               )}
               {/* G2: the Flow list sends "More" to Something changed; the other pages stay one tap further. */}
               <Link scroll={false} href={panelHref(path, { view: tabKey }, "something-changed", (c.liveIv ?? c.itsInterviews[0])?.id)} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">

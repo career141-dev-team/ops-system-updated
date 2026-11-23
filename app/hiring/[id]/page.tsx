@@ -8,7 +8,7 @@ import Panel, { PanelSection } from "@/app/ui/Panel";
 import { desk, fileIn } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
-import { BOARD_COLUMNS, STAGE_ACTION, countOf, daysSince, first, hiringView, vacancyById, vacancyLine, type Applicant } from "@/lib/hiring";
+import { BOARD_COLUMNS, REJECT_KIND_LABEL, STAGE_ACTION, countOf, daysSince, first, hiringView, rejectedByKind, vacancyById, vacancyLine, type Applicant } from "@/lib/hiring";
 import { viewHref } from "@/lib/files";
 import { hiringSample } from "@/lib/hiringSample";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -18,7 +18,7 @@ import { currentMember } from "@/lib/session";
 import HiringPanel, { type HiringPanelKind } from "./HiringPanel";
 import { HiringSendModal } from "./HiringSendModals";
 
-const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject"];
+const PANELS: HiringPanelKind[] = ["call", "book-interview", "add-result", "decide", "reject", "cv"];
 
 /** H2 · Vacancy detail: the numbers, the board of applicants, and the panels (call, book, result, decide, not a fit). Every form saves through an action in app/actions.ts. */
 export default async function VacancyPage({
@@ -77,6 +77,7 @@ export default async function VacancyPage({
     return { name: names[d.getUTCDay()], num: d.getUTCDate(), key: d.toISOString().slice(0, 10) };
   });
 
+  const rejected = rejectedByKind(v.applicants);
   const figures: [string, number, string, string][] = [
     ["New CVs", n("new"), "to look at", "text-ink"],
     ["To call", toCall, toCall ? `${n("new") > 0 ? `includes ${n("new")} new ${n("new") === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${oldest} ${oldest === 1 ? "day" : "days"}` : "nobody waits", "text-warn"],
@@ -84,7 +85,7 @@ export default async function VacancyPage({
     ["Interview", n("interview"), `${interviewers.length} this week`, "text-info"],
     ["Decision", n("decision"), "waiting for you", n("decision") ? "text-warn" : "text-ink"],
     ["Hired", v.filled, `of ${v.places} places`, "text-brand"],
-    ["Rejected", n("rejected"), "with a reason", "text-ink"],
+    ["Rejected", n("rejected"), `${rejected.screening.length} screening · ${rejected.final.length} final`, "text-ink"],
   ];
 
   const card = (a: Applicant) => {
@@ -97,16 +98,26 @@ export default async function VacancyPage({
             <p className="t-body-m truncate">{a.name}</p>
             <p className="t-small text-ink-3">{a.source}</p>
           </div>
+          {can(me, "client.manage") && (
+            <details className="relative shrink-0">
+              <summary aria-label={"More for " + a.name} className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-ink-3 hover:bg-sunk [&::-webkit-details-marker]:hidden">
+                <span aria-hidden="true" className="text-[18px] leading-none">&#8942;</span>
+              </summary>
+              <div className="absolute right-0 z-20 mt-1 flex w-44 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
+                <Link href={panelHref(path, sp, "cv", a.id)} scroll={false} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
+                  {a.cvFileId ? "Replace CV" : "Add CV"}
+                </Link>
+                <Link href={panelHref(path, sp, "reject", a.id)} scroll={false} className="t-small rounded-[10px] px-3 py-2 text-danger hover:bg-sunk">
+                  Reject
+                </Link>
+              </div>
+            </details>
+          )}
         </div>
         <p className="t-small text-ink-3">{a.detail}</p>
         {act && (
           <Link href={panelHref(path, sp, act.panel, a.id)} scroll={false} className="t-label inline-flex w-fit rounded-full bg-ink px-3 py-[7px] text-ink-inverse">
             {act.label}
-          </Link>
-        )}
-        {a.stage === "fits" && can(me, "client.manage") && (
-          <Link href={panelHref(path, sp, "reject", a.id)} scroll={false} className="t-label inline-flex w-fit rounded-full border border-rule bg-surface px-3 py-[7px] text-ink hover:bg-sunk">
-            Not a fit
           </Link>
         )}
       </div>
@@ -172,6 +183,27 @@ export default async function VacancyPage({
               </div>
             )}
           </Card>
+          {v.applicants.some((a) => a.stage === "rejected") && (
+            <Card title="Rejected" sub="Who was turned away, and whether it was at screening or after an interview.">
+              {(["screening", "final"] as const).map((kind) =>
+                rejected[kind].length === 0 ? null : (
+                  <div key={kind} className="flex flex-col gap-2">
+                    <p className="t-micro text-ink-3">
+                      {REJECT_KIND_LABEL[kind].toUpperCase()} · {rejected[kind].length}
+                    </p>
+                    <ul className="flex flex-col divide-y divide-rule">
+                      {rejected[kind].map((a) => (
+                        <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                          <span className="t-body-m">{a.name}</span>
+                          <span className="t-small text-ink-3">{a.rejectReason || a.detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ),
+              )}
+            </Card>
+          )}
         </div>
 
         <aside className="flex w-full shrink-0 flex-col gap-5 xl:w-[360px]">

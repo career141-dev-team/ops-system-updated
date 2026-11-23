@@ -5,6 +5,7 @@
  * newsletter — so these rules are about remembering: the right link, the right
  * Tuesday, and never a role in the newsletter with nothing said about it.
  */
+import { bucketOf } from "@/lib/myWorkView";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -183,6 +184,8 @@ test("Tuesday compiles one issue a week, and sets the next Tuesday's clock", asy
   // Somebody has it to do, and next Tuesday is already set.
   const task = repo.all().tasks.find((t) => t.subjectId === issue.id);
   assert.match(task?.title ?? "", /Talent Pulse for /);
+  // 23 Nov: the ops team found a Talent Pulse task under Later. It is made due now, so it sits in Today.
+  assert.equal(bucketOf(task!, now), "today");
   const clock = repo.liveTimers().find((t) => t.kind === "talentpulse.compile");
   assert.equal(clock?.dueAt, nextTuesdayNineAm(now));
 

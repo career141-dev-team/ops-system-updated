@@ -642,10 +642,10 @@ export function interviewNextStep(
 ): Step {
   const round = "Round " + interview.round;
 
-  if (interview.state === "cancelled") {
+  if (interview.state === "cancelled" || interview.state === "withdrew") {
     return {
       at: "closed",
-      where: "Cancelled",
+      where: interview.state === "withdrew" ? "The candidate withdrew" : "Cancelled",
       waiting:
         "Nothing." +
         (interview.reason ? " " + interview.reason : "") +

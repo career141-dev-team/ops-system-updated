@@ -1105,7 +1105,7 @@ export function resolveIntent(got: AgentIntent, db: OpsDatabase, member: OpsMemb
         break;
       }
       case "interview": {
-        const live = db.interviews.filter((i) => !["cancelled", "no_show", "attended"].includes(i.state));
+        const live = db.interviews.filter((i) => !["cancelled", "withdrew", "no_show", "attended"].includes(i.state));
         const pool = live.length ? live : db.interviews;
         const pick = onlyOne(pool.filter((i) => raw && hasAllWords(i.candidateName + " " + (clientFor(i.clientId) ?? ""), raw)));
         if (!pick) return ask(field, field.asks + (pool.length ? " Interviews: " + pool.slice(0, 6).map((i) => i.candidateName + " (" + i.state + ")").join("; ") + "." : " None is open."));
