@@ -227,6 +227,7 @@ import {
 } from "@/lib/files";
 import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
+import { decodeRoles, permissionSentence } from "@/lib/integrationHealth";
 import { MAX_PER_BATCH } from "@/lib/scoop";
 import { problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
@@ -1035,7 +1036,9 @@ export async function healthCheckMicrosoft(): Promise<void> {
   if (!can(member, "settings.manage")) redirect(withMsg("/health", refusal("settings.manage")));
   let said: string;
   try {
-    said = (await graphToken()) ? "Microsoft gave us a token." : "Microsoft would not give us a token (credentials missing or refused).";
+    // The token lists the permissions an admin granted (its roles), so the answer can say which one is missing (23 Nov).
+    const token = await graphToken();
+    said = token ? permissionSentence(decodeRoles(token)) : "Microsoft would not give us a token (credentials missing or refused).";
   } catch {
     said = "Microsoft could not be reached.";
   }
@@ -8727,6 +8730,18 @@ export async function addApplicantCv(formData: FormData): Promise<void> {
   redirect(dest + confirmed("CV saved.", dest));
 }
 
+/**
+ * A rejected applicant's interview that has not happened yet leaves a Teams meeting behind (23 Nov): cancel it, so
+ * nobody joins an interview with a person we have turned down. Returns a sentence for what could not be done.
+ */
+async function dropApplicantEvent(db: Awaited<ReturnType<typeof desk>>, person: { id: string; graphEventId?: string | null; interviewAt: number | null } | undefined, member: { id: string; email: string }): Promise<string> {
+  if (!person?.graphEventId || !(person.interviewAt && person.interviewAt > Date.now())) return "";
+  const gone = await cancelTeamsEvent(member.email, person.graphEventId, switchedOn(db, "switch.teamsEnabled"));
+  if (gone && !gone.ok) return " The Outlook event could not be cancelled, so cancel it by hand: " + gone.reason;
+  await patchApplicant(person.id, { graphEventId: null, joinUrl: null }, member.id, "applicant.calendarCleared", null);
+  return "";
+}
+
 /** Internal hiring: log screening call result (H2 -> Call panel). */
 export async function recordHiringCall(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -8747,9 +8762,10 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   const tries = app.tries + 1;
   if (result === CALL_NOT_FIT) {
     await patchApplicant(applicantId, { stage: "rejected", rejectedAtStage: app.stage, tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
+    const dropped = await dropApplicantEvent(db, app, member);
     revalidatePath(`/hiring/${vacancyId}`);
     revalidatePath("/hiring");
-    redirect(dest + confirmed("Marked rejected.", dest));
+    redirect(dest + confirmed("Marked rejected." + dropped, dest));
   }
   const isFits = result === "Talked" || result === "Fits";
   const nextStage = isFits ? "fits" : "call";
@@ -8894,9 +8910,10 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   if (decision === "hire" && vac) {
     await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Applicant hired.");
   }
+  const dropped = decision === "reject" ? await dropApplicantEvent(db, before, member) : "";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
-  redirect(dest + confirmed(decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.", dest));
+  redirect(dest + confirmed((decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.") + dropped, dest));
 }
 
 /** Add an Ops person, Ops lead, or Admin to the team allow-list (20 Nov, Settings -> Templates and people). */

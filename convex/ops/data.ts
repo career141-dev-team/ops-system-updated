@@ -2112,6 +2112,7 @@ export const recordInbound = internalMutation({
       v.literal("thread"),
       v.literal("house"),
       v.literal("domain"),
+      v.literal("phone"),
       v.literal("manual"),
       v.literal("none"),
     ),

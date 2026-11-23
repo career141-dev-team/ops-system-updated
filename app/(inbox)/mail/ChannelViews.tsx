@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { deleteTeamNote, postTeamNote } from "@/app/actions";
+import { deleteTeamNote, markMailDone, postTeamNote } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { EmptyState, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { SubmitButton } from "@/app/ui/SubmitButton";
@@ -33,14 +33,14 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
   if (replies.length === 0 && ready.length === 0) {
     return (
       <EmptyState icon="chat" title="Nothing on WhatsApp right now">
-        No client replies are waiting to be recorded and no WhatsApp messages are waiting to be copied. The system cannot read WhatsApp: when a client writes in their group, record the reply from the role page.
+        No replies are waiting and no WhatsApp messages are waiting to be copied. Replies to the Ops number arrive here once WhatsApp is connected; a client's reply in their group is still recorded by hand, from the role page.
       </EmptyState>
     );
   }
   return (
     <div className="flex items-start gap-[22px]">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <Section tone="warn" label="Client replies to record" count={replies.length} />
+        <Section tone="warn" label="Replies on WhatsApp" count={replies.length} />
         {replies.length === 0 && <p className="t-small px-2 text-ink-3">No replies waiting.</p>}
         {replies.map((r) => (
           <div key={r.id} className={row}>
@@ -52,11 +52,18 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
               <p className="t-body break-words">&ldquo;{r.quote}&rdquo;</p>
               {r.about && <span className="t-label self-start rounded-full bg-info-soft px-3 py-1 text-info">{r.about}</span>}
             </div>
-            {r.recordHref ? (
-              <Link href={r.recordHref} className={pillPrimary + " !py-2"}>Record</Link>
-            ) : (
-              <span title="Not filed to a set yet: file it from its role page" className={pillSecondary + " !py-2 opacity-50"}>Record</span>
-            )}
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {r.recordHref ? (
+                <Link href={r.recordHref} className={pillPrimary + " !py-2"}>Open</Link>
+              ) : (
+                <span title="Not filed to anybody yet: the number is not one we know" className={pillSecondary + " !py-2 opacity-50"}>Open</span>
+              )}
+              <form action={markMailDone}>
+                <input type="hidden" name="inboundId" value={r.inboundId} />
+                <input type="hidden" name="back" value="/mail?view=whatsapp" />
+                <SubmitButton id={"wa-done-" + r.id} className={pillSecondary + " !py-1.5"}>Done</SubmitButton>
+              </form>
+            </div>
           </div>
         ))}
         <Section tone="info" label="Messages ready to copy" count={ready.length} />
@@ -80,9 +87,9 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
       <aside className="flex w-[300px] shrink-0 flex-col gap-4">
         <div className="flex flex-col gap-1.5 rounded-[22px] bg-ink px-5 py-5 text-ink-inverse">
           <p className="t-micro opacity-70">WAITING FOR YOU</p>
-          <p className="t-h2">{replies.length} {replies.length === 1 ? "reply" : "replies"} to record</p>
+          <p className="t-h2">{replies.length} {replies.length === 1 ? "reply" : "replies"} to read</p>
         </div>
-        <p className="rounded-[22px] bg-surface px-5 py-5 t-body shadow-card">The system cannot read WhatsApp. Record each client reply here.</p>
+        <p className="rounded-[22px] bg-surface px-5 py-5 t-body shadow-card">A message to the Ops number is filed to whose number it is. A client&apos;s group chat cannot be read: record that reply by hand.</p>
       </aside>
     </div>
   );

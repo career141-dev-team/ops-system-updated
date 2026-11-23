@@ -235,3 +235,32 @@ Honest unknowns, not details:
 The Ops WhatsApp number is still the first thing. Coexistence needs a number
 in the WhatsApp Business app to coexist **with**, and today there is none for
 Ops.
+
+
+## Inbound: what is built (23 Nov, on branch `rayan/integrations`)
+
+Receiving is built and shut. It cannot be switched on until the Ops number exists, and then it is three settings
+and one address.
+
+- **The door is `/api/whatsapp`.** `GET` answers Meta's one-time check, and only when `hub.verify_token` is
+  `OPS_WHATSAPP_VERIFY_TOKEN`. `POST` takes a message, and only when its `X-Hub-Signature-256` is the HMAC of the
+  exact bytes under `OPS_WHATSAPP_APP_SECRET`. With no secret set it answers 503 and accepts nothing; a bad
+  signature is 401 and nothing is read; a signed post is always 200, so Meta does not retry what we have chosen
+  not to keep (a delivery receipt, a reaction).
+- **A message is filed to whose number it is** (`matchPhone` in `src/lib/whatsapp.ts`): a client's contact, an
+  enquiry's contact, or an applicant to us, by the last nine digits. A number that is one person's is filed to them
+  (`matchedBy: "phone"`); a number that fits two different people, or none, is filed as nobody's with the reason on
+  it, and a person files it.
+- **A client who replies is not chased.** Filed to a client's contact, it stops that client's agreement chase and
+  CV-set feedback chases, as a reply by email does. An applicant who replies is marked (`repliedAt`) and counts as
+  "responded" in a Scoop's end-of-day summary.
+- **Recorded once** by Meta's own message id (`wamid...`), so a retried post adds nothing. A picture or a voice
+  note is recorded as a line saying it came, and never kept.
+- **It shows in the Inbox's WhatsApp view** (`/mail?view=whatsapp`) until somebody marks it done, with whose it is.
+- **Still not possible:** reading a client's *group* (Meta's Groups API only reaches groups the system created, see
+  above), and sending, which needs `OPS_SEND` on and the outbound lock's allow-list as for every message.
+
+To switch it on, in this order (each needs the owner's go-ahead): buy and verify the number; set
+`OPS_WHATSAPP_NUMBER_ID`, `OPS_WHATSAPP_TOKEN`, `OPS_WHATSAPP_APP_SECRET` and `OPS_WHATSAPP_VERIFY_TOKEN`; in Meta's
+dashboard point the webhook at `https://<ops>/api/whatsapp` with that verify token and subscribe to `messages`;
+send one test message and look for it under Health, WhatsApp.

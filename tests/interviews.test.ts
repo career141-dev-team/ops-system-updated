@@ -437,3 +437,27 @@ test("a reschedule is refused when it cannot be one", () => {
   assert.match(problemWithReschedule({ ...ok, to: MONDAY_TEN }, now) ?? "", /already has/i);
   assert.match(problemWithReschedule({ ...ok, reason: " no " }, now) ?? "", /why/i);
 });
+
+test("a candidate pulling out cancels the Teams meeting too, so no join link is left for nobody (23 Nov)", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-int3-"));
+  process.env.OPS_STORE = "json";
+  process.env.OPS_TA_FAKE = "on";
+  process.env.OPS_TEAMS_FAKE = "on"; // the stand-in calls nobody and says it worked
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+  const now = Date.now();
+  const interview = repo.addInterview({
+    applicationTaId: "ta_a9", openingTaId: "ta_j9", positionId: null, clientId: null, candidateName: "SAMPLE CANDIDATE NINE", scheduler: "us", state: "booked", round: 1, slots: [now + 2 * HOUR * 24], slotLoops: 1, at: now + 2 * HOUR * 24,
+    format: "online", interviewers: ["hr@example.test"], whereOrLink: "https://teams.example/fake/9", interviewTaId: null, inviteMessageId: null, attendedAt: null, decision: null, decisionReason: null, decidedAt: null, candidateFeedback: null, reason: null, ownerId: "m_owner",
+    calendarEventId: "evt-9", calendarOrganiser: "owner@example.test", calendarLengthMin: 45,
+  });
+  const answer = await desk.noticeCandidateOut(interview.id, "Took another offer.", "m_owner", now);
+  assert.equal(answer.ok, true);
+  const saved = repo.interviewIn(interview.id);
+  assert.equal(saved?.state, "withdrew");
+  assert.equal(saved?.calendarEventId, null, "the event is cancelled and its id cleared");
+});

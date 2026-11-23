@@ -10,6 +10,10 @@
  * `context.text`). Those words go through the same rules as typing, so any change still comes back as the
  * "Here is what I will do" card with its own confirm button. Nothing here runs an action.
  *
+ * A Table is our own addition to the basic catalog (23 Nov, ops team: "show the interviews as a table in the chat"):
+ * `{id, component: "Table", columns: [words], rows: [[words]]}`, literal strings, drawn compactly. v1.0 lets a
+ * client add components of its own; this one is ours.
+ *
  * shortcut: literal strings only - no `@path` data binding and no templates, since AURA sends no data model.
  * Add them if a surface ever needs to update in place.
  */
@@ -20,13 +24,18 @@ export type A2uiNode =
   | { id: string; component: "Card"; child: string }
   | { id: string; component: "Divider" }
   | { id: string; component: "Image"; url: string; description: string }
-  | { id: string; component: "Button"; child: string; say: string; primary: boolean };
+  | { id: string; component: "Button"; child: string; say: string; primary: boolean }
+  | { id: string; component: "Table"; columns: string[]; rows: string[][] };
 
 export type A2uiSurface = Record<string, A2uiNode>;
 
 const MAX_NODES = 60;
 const MAX_DEPTH = 8;
 const MAX_TEXT = 600;
+/** A chat is a narrow column: a table in it stays compact. */
+export const TABLE_MAX_COLUMNS = 6;
+export const TABLE_MAX_ROWS = 30;
+const MAX_CELL = 80;
 
 const str = (v: unknown, max = MAX_TEXT): string | null => (typeof v === "string" && v.trim() ? v.slice(0, max) : null);
 const ids = (v: unknown): string[] | null => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null);
@@ -64,6 +73,16 @@ function node(raw: unknown): A2uiNode | null {
       const event = (c.action as { event?: { name?: unknown; context?: { text?: unknown } } } | undefined)?.event;
       const say = event?.name === "say" ? str(event.context?.text, 300) : null;
       return child && say ? { id, component: "Button", child, say, primary: c.variant === "primary" } : null;
+    }
+    case "Table": {
+      const columns = Array.isArray(c.columns) ? c.columns.map((x) => str(x, MAX_CELL)).filter((x): x is string => x !== null).slice(0, TABLE_MAX_COLUMNS) : [];
+      if (!columns.length || !Array.isArray(c.rows)) return null;
+      // Every row is as wide as the columns: a short one is padded, a long one cut, and a cell is plain words.
+      const rows = c.rows
+        .filter((r): r is unknown[] => Array.isArray(r))
+        .slice(0, TABLE_MAX_ROWS)
+        .map((r) => columns.map((_, i) => (typeof r[i] === "string" || typeof r[i] === "number" ? String(r[i]).slice(0, MAX_CELL) : "")));
+      return rows.length ? { id, component: "Table", columns, rows } : null;
     }
     default:
       return null;

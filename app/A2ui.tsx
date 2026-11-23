@@ -36,6 +36,33 @@ export default function A2ui({ ui, say }: { ui: string; say: (text: string) => v
       case "Image":
         // eslint-disable-next-line @next/next/no-img-element
         return <img key={id} src={n.url} alt={n.description} className="max-h-40 rounded-xl object-cover" />;
+      case "Table":
+        return (
+          <div key={id} className="max-w-full overflow-x-auto rounded-xl border border-rule bg-surface">
+            <table className="w-full border-collapse text-left text-[12px]">
+              <thead>
+                <tr>
+                  {n.columns.map((c, i) => (
+                    <th key={i} scope="col" className="border-b border-rule bg-sunk px-2.5 py-1.5 font-medium text-ink-soft">
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {n.rows.map((r, i) => (
+                  <tr key={i} className="border-b border-rule last:border-b-0">
+                    {r.map((cell, j) => (
+                      <td key={j} className="px-2.5 py-1.5 align-top text-ink">
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
       case "Button":
         return (
           <button

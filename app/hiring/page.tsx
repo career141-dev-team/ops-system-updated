@@ -164,7 +164,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
             <Figure label="Hired this month" value={t.hiredThisMonth} tone="text-brand" line={t.lastHire ? `${t.lastHire.title} · ${dayWord(t.lastHire.at).slice(4)}` : "nobody yet"} />
           </Card>
 
-          {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null }))} />}
+          {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }))} />}
           {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
           {mode === "vacancies" && (
