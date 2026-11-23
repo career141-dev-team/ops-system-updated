@@ -1032,6 +1032,8 @@ export interface OpsChatRow {
   at: number;
   /** The chat it belongs to (9 Nov). Rows from before chats had names have none: "Earlier chat". */
   thread?: Id;
+  /** What AURA drew with the words (23 Nov): an A2UI surface, already checked by `parseSurface` (src/lib/a2ui.ts). */
+  ui?: string;
 }
 
 /** One named chat of a person's (9 Nov): the history list, renamed and deleted by its owner. */

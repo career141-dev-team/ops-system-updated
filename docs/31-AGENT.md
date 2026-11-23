@@ -31,6 +31,15 @@ state is pinned at the top of the thread.
 - **No overlay, modal or drawer.** The chat is a third column on the desk that
   pushes the page over, opened from the sidebar's header, and its own page
   on the phone. The sidebar stays at eight entries (docs/25).
+- **23 Nov, the owner: a clean chat.** A round AURA button sits bottom right on every page while the
+  column is shut (`app/AuraLauncher.tsx`). The column is a fixed 480px with no drag edge. The helper
+  sentence and the header note are gone, "Your desk" is a dropdown beside History, and the box is one
+  line that grows as you type. The rule they described is unchanged: nothing runs without a button.
+- **23 Nov: A2UI answers, display only.** When a list or a few records read better as cards, the
+  agent finishes with `show_ui`: an A2UI v1.0 component list (a2ui.org), checked by `parseSurface`
+  (`src/lib/a2ui.ts`) and drawn in the column's own look (`app/A2ui.tsx`). Only Text, Row, Column,
+  List, Card, Divider, our own Image and Button. A Button can only put words into the chat as if typed,
+  so any change still comes back as the confirm card. The surface is kept on the row as `ui`.
 - **DeepSeek v4 flash through OpenRouter**, the same key and the same daily
   cap; every call in the ledger as task `agent`.
 

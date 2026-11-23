@@ -42,6 +42,9 @@ meant to work, so the designs fit the flow. Nothing here is a design.
      Escape and the X close it, the address says which one is open, and with no script the same
      links open and close it. Forms in a panel post to the existing server actions with a hidden
      `back`. The small cards from the + and the bell in the top bar are the same kind of thing.
+  5. **AURA's round button in the bottom-right corner (23 Nov)**, on every page while the column is
+     shut: it opens the column on the desk and AURA's page on a phone. AURA's "Your desk" numbers are a
+     small dropdown in the column's header.
 - **One thing now (18 Nov).** A record page says the step the work is at, once, and the rest stays
   quiet: a second current step is a small "also happening" card, finished steps are one line each,
   and the exceptions sit under "Something different?". **No progress bar (owner, 18 Nov):** a

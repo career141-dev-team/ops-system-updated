@@ -21,8 +21,8 @@ import { clerkSignInConfigured, currentMember, realMember } from "@/lib/session"
 import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import Welcome from "@/app/Welcome";
-import { ChatClose, ChatResize } from "@/app/ChatFrame";
-import { CHAT_WIDTH, chatWidthFrom } from "@/lib/chatWidth";
+import { ChatClose } from "@/app/ChatFrame";
+import AuraLauncher from "@/app/AuraLauncher";
 import "./globals.css";
 
 // The face: Poppins, the approved Figma design's type (13 Nov; Inter before).
@@ -82,8 +82,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // the page is rendered with it already there rather than appearing after.
   const jar = await cookies();
   const chatOpen = jar.get("ops_chat_open")?.value === "1";
-  // How wide the AURA column is (17 Nov, the owner drags it). One number, kept in a cookie so every page draws the same.
-  const chatWidth = chatWidthFrom(jar.get(CHAT_WIDTH.cookie)?.value);
   // Light unless they chose dark: a cookie, so the page is drawn in it from the first byte (16 Nov).
   const dark = jar.get("ops_theme")?.value === "dark";
   const thread = member && db ? chatShown(db, member.id, jar.get(CHAT_COOKIE)?.value) : null;
@@ -140,21 +138,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {chatOpen && db && (
               // The same white as the top bar, rounded like the page, and level with it: its top is the page's top and
               // its foot is the page's foot, with the page's own 24px of air to the window's edge (17 Nov, the owner).
-              <aside className="sticky top-[118px] z-[1] mr-10 hidden h-[calc(100dvh-142px)] w-[var(--chat-w)] shrink-0 self-start lg:flex">
-                <ChatResize />
+              <aside className="sticky top-[118px] z-[1] mr-10 hidden h-[calc(100dvh-142px)] w-[480px] shrink-0 self-start lg:flex">
                 <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-sheet bg-surface shadow-card">
                   <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
                     <p className="text-[14px] font-semibold tracking-[-0.01em]">AURA</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[11px] text-ink-faint">nothing runs without your button</p>
-                      <ChatClose />
-                    </div>
+                    <ChatClose />
                   </div>
                   <Chat rows={chatLines(db, member.id, thread)} chats={chatsOf(db, member.id)} open={thread} who={member.name} pins={pinsOf(db, member.id, now)} next={nextSteps(db, member, now)} />
                 </div>
               </aside>
             )}
           </div>
+          {/* AURA's button in the corner, on every page while the column is shut (23 Nov, the owner). */}
+          {!chatOpen && <AuraLauncher />}
           {/* Never invisible while previewing (16 Nov): who you are looking as, and the way back. */}
           {previewing && real && (
             <form action={viewAs} className="fixed inset-x-0 bottom-4 z-40 flex justify-center">
@@ -177,7 +173,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // <html> before React loads, and React then reports a mismatch that is not
     // ours (10 Nov, seen on the lead's review link). One level only.
     <html lang="en" className={sans.variable} data-theme={dark ? "dark" : "light"} suppressHydrationWarning>
-      <body className="min-h-screen" style={{ "--chat-w": chatWidth + "px" } as React.CSSProperties} suppressHydrationWarning>
+      <body className="min-h-screen" suppressHydrationWarning>
         {clerkEnabled ? <ClerkProvider>{shell}</ClerkProvider> : shell}
       </body>
     </html>
