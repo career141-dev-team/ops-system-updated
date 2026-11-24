@@ -42,6 +42,15 @@ export default function BuildSet({ c, sp }: TabProps) {
         .replace(/\{\{contact\}\}/g, who?.name ?? "all")
         .replace(/\{\{opsPerson\}\}/g, c.me.name)
     : null;
+  // The same wording the group post is drafted from (set.group_post), so the text on screen is the text that is drafted.
+  const groupWording = templateFor(c.db, "set.group_post");
+  const groupText = groupWording
+    ? groupWording.body
+        .replace(/{{client}}/g, c.clientName)
+        .replace(/{{position}}/g, set.role)
+        .replace(/{{setNumber}}/g, String(set.setNumber))
+        .replace(/{{cvCount}}/g, String(set.candidates.length))
+    : null;
   return (
     <Panel kicker="Build the set" title={`Build SET ${set.setNumber} for ${c.clientName}`} sub={trail(c, set)} closeHref={close}>
       <WhyNow
@@ -114,6 +123,13 @@ export default function BuildSet({ c, sp }: TabProps) {
           </>
         ) : (
           <p className="t-small text-ink-3">No cover wording is saved yet; the default is used. Change it under Templates.</p>
+        )}
+        {groupText && (
+          <>
+            <span className="t-small pt-1 text-ink-3">Client group text</span>
+            <div className="t-body whitespace-pre-line rounded-[10px] border border-rule px-3.5 py-3 text-ink-2">{groupText}</div>
+            <CopyButton text={groupText} label="Copy the text" />
+          </>
         )}
         <p className="t-small text-ink-3">
           The email and the group post are drafted, not sent. You read them on the{" "}

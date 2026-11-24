@@ -120,12 +120,12 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   <div className="flex-1" />
                   {c.copy &&
                     (c.copy.kind === "checkin" ? (
-                      <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="t-label relative z-10 w-fit text-brand hover:underline">
-                        {c.copy.label} →
+                      <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 w-fit rounded-full bg-ink px-3.5 py-2 text-[12px] font-medium leading-4 text-ink-inverse">
+                        {c.copy.label}
                       </Link>
                     ) : (
                       <span className="relative z-10 w-fit">
-                        <CopyButton text={c.copy.text} label={c.copy.label} />
+                        <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-3.5 py-2 text-[12px] font-medium leading-4 text-ink-inverse" />
                       </span>
                     ))}
                 </article>
