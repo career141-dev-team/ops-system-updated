@@ -107,7 +107,7 @@ export default function TopBar({
           <Link href="/" aria-label="My work" className="shrink-0">
             <Image src="/career141-lockup.png" alt="career141 · 20 years" width={178} height={56} priority className="h-[38px] w-[120px] object-contain" />
           </Link>
-          <nav aria-label="Workspaces" className="ml-3 flex items-center gap-0.5">
+          <nav aria-label="Workspaces" className="ml-3 flex h-full items-stretch border-l border-rule">
             {workspaces.pages
               .filter((page) => !page.needs || may[page.needs])
               .map((page) => {
@@ -118,7 +118,7 @@ export default function TopBar({
                     href={page.href}
                     title={page.about}
                     aria-current={here ? "page" : undefined}
-                    className={"flex h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-[15px] font-light text-ink transition-colors hover:bg-sunk 2xl:px-[18px] " + (here ? "bg-sunk" : "")}
+                    className={"flex shrink-0 items-center whitespace-nowrap border-r border-rule px-3.5 text-[15px] 2xl:px-[18px] font-light transition-colors hover:bg-sunk " + (here ? "bg-sunk text-ink shadow-[inset_0_-3px_0_var(--color-brand)]" : "text-ink-soft")}
                   >
                     {page.what}
                   </Link>

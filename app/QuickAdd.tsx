@@ -49,7 +49,7 @@ export default function QuickAdd({ phone = false }: { phone?: boolean }) {
       triggerClass={
         phone
           ? "flex flex-1 cursor-pointer flex-col items-center gap-[3px] text-ink-3"
-          : "flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-ink text-ink-inverse transition-opacity hover:opacity-85 active:scale-[0.96]"
+          : "flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell active:scale-[0.96]"
       }
       trigger={
         phone ? (
