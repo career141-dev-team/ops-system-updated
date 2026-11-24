@@ -30,6 +30,7 @@ export default function Interviews({ c, sp }: TabProps) {
   const { itsInterviews, position, now } = c;
   const path = `/positions/${position.id}`;
   const open = (panel: string, on?: string) => panelHref(path, sp, panel, on);
+  const send = (kind: string, on: string) => sendHref(path, sp, kind, on);
   const columns: Record<BoardColumn, typeof itsInterviews> = { needs: [], booked: [], waiting: [], done: [] };
   for (const iv of itsInterviews) columns[columnOf(iv)].push(iv);
 
@@ -52,31 +53,6 @@ export default function Interviews({ c, sp }: TabProps) {
           <Card
             title="Interviews"
             sub="You agree a time with the client and the candidate, then book it here."
-            right={
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Link scroll={false} href={open("find-a-time")} className={solid}>
-                  Book an interview
-                </Link>
-                <Link scroll={false} href={sendHref(path, sp, "book-interview", c.liveIv?.id)} className={line}>
-                  Preview &amp; book
-                </Link>
-                <Link scroll={false} href={sendHref(path, sp, "reconfirm", c.liveIv?.id)} className={line}>
-                  Preview reconfirm
-                </Link>
-                <Link scroll={false} href={sendHref(path, sp, "candidate-feedback", c.liveIv?.id)} className={line}>
-                  Preview feedback
-                </Link>
-                <Link scroll={false} href={open("candidate-feedback")} className={line}>
-                  Candidate feedback
-                </Link>
-                <Link scroll={false} href={open("client-books-directly")} className={line}>
-                  Client books directly
-                </Link>
-                <Link scroll={false} href={open("reference-check")} className={line}>
-                  Reference check
-                </Link>
-              </div>
-            }
           >
             {itsInterviews.length === 0 ? (
               <EmptyState icon="calendar" title="Nobody has been interviewed yet">
@@ -96,7 +72,7 @@ export default function Interviews({ c, sp }: TabProps) {
                       </div>
                       {rows.length === 0 && <p className="t-small rounded-[14px] border border-rule p-3.5 text-ink-3">None now</p>}
                       {shown.map((iv) => (
-                        <BoardCard key={iv.id} iv={iv} col={col} now={now} open={open} />
+                        <BoardCard key={iv.id} iv={iv} col={col} now={now} open={open} send={send} />
                       ))}
                       {rows.length > shown.length && <p className="t-small px-1 text-ink-3">{rows.length - shown.length} more</p>}
                     </div>
@@ -173,7 +149,7 @@ export default function Interviews({ c, sp }: TabProps) {
   );
 }
 
-function BoardCard({ iv, col, now, open }: { iv: TabProps["c"]["itsInterviews"][number]; col: BoardColumn; now: number; open: (panel: string, on?: string) => string }) {
+function BoardCard({ iv, col, now, open, send }: { iv: TabProps["c"]["itsInterviews"][number]; col: BoardColumn; now: number; open: (panel: string, on?: string) => string; send: (kind: string, on: string) => string }) {
   const first = iv.candidateName.split(" ")[0];
   const fit = timesThatFit(iv);
   const sub =
@@ -217,10 +193,18 @@ function BoardCard({ iv, col, now, open }: { iv: TabProps["c"]["itsInterviews"][
             {iv.scheduler === "client" ? "Record their date" : "Find a time"}
           </Link>
         )}
+        {col === "needs" && fit.length > 0 && (
+          <Link scroll={false} href={send("book-interview", iv.id)} className={line}>
+            Preview &amp; book
+          </Link>
+        )}
         {col === "booked" && (
           <>
             <Link scroll={false} href={open("reconfirm", iv.id)} className={line}>
               Reconfirm
+            </Link>
+            <Link scroll={false} href={send("reconfirm", iv.id)} className={line}>
+              Preview
             </Link>
             {iv.at !== null && iv.at < now && (
               <Link scroll={false} href={open("add-result", iv.id)} className={solid}>
@@ -237,6 +221,11 @@ function BoardCard({ iv, col, now, open }: { iv: TabProps["c"]["itsInterviews"][
         {col === "done" && !iv.candidateFeedback && iv.state === "attended" && (
           <Link scroll={false} href={open("candidate-feedback", iv.id)} className={line}>
             {first}&apos;s feedback
+          </Link>
+        )}
+        {col === "done" && !iv.candidateFeedback && iv.state === "attended" && (
+          <Link scroll={false} href={send("candidate-feedback", iv.id)} className={line}>
+            Preview
           </Link>
         )}
       </div>
