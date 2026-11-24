@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import Icon from "@/app/Icon";
 import { approveAllRoutine, approveAndSend, runClocksNow, snoozeTaskAction, startTestClock } from "@/app/actions";
 import CallPanel from "@/app/(home)/CallPanel";
 import CopyButton from "@/app/(home)/CopyButton";
@@ -129,7 +130,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
   const kindWord = (m: (typeof w.drafts)[number]) => DRAFT_KINDS.find((k) => k.key === draftKind(m))?.what ?? "Message";
   const approve = (
     <>
-      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: "to approve", tone: k.count ? ("warn" as const) : ("ink" as const) }))} />
+      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: k.key === "emails" ? "to clients" : "to send", tone: k.count ? ("warn" as const) : ("ink" as const) }))} />
       <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
         <Card
           title="Waiting for you"
@@ -138,7 +139,8 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
             w.routine.length > 0 ? (
               <form action={approveAllRoutine}>
                 <input type="hidden" name="back" value={here} />
-                <button title="Sends every draft made from a template somebody approved once. Nothing hand-written." className={solid}>
+                <button title="Sends every draft made from a template somebody approved once. Nothing hand-written." className={solid + "flex items-center gap-1.5"}>
+                  <Icon name="check" size={14} />
                   Approve all routine ({w.routine.length})
                 </button>
               </form>
@@ -153,8 +155,8 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
             w.drafts.map((m) => {
               const l = draftLine(m);
               return (
-                <div key={m.id} className={"flex items-center gap-[18px] rounded-[18px] px-5 py-4 max-md:flex-wrap " + (m.id === picked?.id ? "bg-info-soft" : "bg-sunk")}>
-                  <p className="t-label flex w-[130px] shrink-0 items-center gap-2 text-warn">
+                <div key={m.id} className={"flex items-center gap-[18px] rounded-[18px] px-5 py-4 max-md:flex-wrap " + "bg-sunk"}>
+                  <p className="t-label flex w-[150px] shrink-0 items-center gap-2 text-warn">
                     <span aria-hidden="true" className="size-2 rounded-full bg-warn" />
                     {kindWord(m)}
                   </p>
@@ -183,8 +185,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           />
           {picked && (
             <RailCard title="Draft">
-              <h3 className="t-h2">{draftLine(picked).title}</h3>
-              <p className="t-small text-ink-3">{draftLine(picked).line}</p>
+              <h3 className="text-[19px] font-medium leading-[26px]">{draftLine(picked).title}</h3>
               <div className="flex flex-col gap-2.5">
                 {picked.body
                   .trim()
