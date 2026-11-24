@@ -60,16 +60,6 @@ export default function Sets({ c, sp }: TabProps) {
             title="Sets"
             sub={`Each set goes to the client, who has ${windowDays} days to answer.`}
           >
-            {mayManage && lastSent && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Link href={open("unreported-hire", lastSent.id)} scroll={false} className={chipBtn}>
-                  Unreported hire check
-                </Link>
-                <Link href={open("client-had-cv")} scroll={false} className={chipBtn}>
-                  Client already had this CV
-                </Link>
-              </div>
-            )}
             {itsSets.length === 0 ? (
               <EmptyState title="No CV set has gone yet" icon="file">
                 One appears here the moment the TA System says five CVs are ready, with its due date counted from the day the agreement was signed.

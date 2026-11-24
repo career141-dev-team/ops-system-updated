@@ -89,6 +89,12 @@ export function contextOf(db: OpsDatabase, t: { subjectType: string | null; subj
     const clientRow = clientNamed(position?.clientId ?? null);
     return { ...none, position, clientRow, client: clientRow?.name ?? null, role: position?.title ?? null };
   }
+  if (t.subjectType === "placement") {
+    const placement = db.placements.find((x) => x.id === id) ?? null;
+    const position = placement?.positionId ? (db.positions.find((p) => p.id === placement.positionId) ?? null) : null;
+    const clientRow = clientNamed(placement?.clientId ?? position?.clientId ?? null);
+    return { ...none, position, clientRow, client: clientRow?.name ?? null, role: position?.title ?? null };
+  }
   if (t.subjectType === "client") {
     const clientRow = clientNamed(id);
     return { ...none, clientRow, client: clientRow?.name ?? null };
@@ -124,7 +130,15 @@ export function buttonFor(t: OpsTask, ctx: Context, panel: (name: string, id: st
     if (/chase/i.test(t.title)) return { label: "Approve chase", href: base + "?view=sets&panel=chase-client&on=" + t.subjectId };
     return { label: "Open the set", href: base + "?view=sets" };
   }
-  if (t.subjectType === "esa" || (t.subjectType === "lead" && /agreement/i.test(t.title))) return { label: "Chase the agreement", href: "/positions?panel=choose-ta" };
+  // Flow list (W1): a joining's own states open on the role's Offer and joining tab.
+  if (t.subjectType === "placement" && t.subjectId && base) {
+    const on = "&on=" + t.subjectId;
+    if (/no-show/i.test(t.title)) return { label: "Did not join", href: base + "?view=offer&panel=did-not-join" + on };
+    if (/missing/i.test(t.title)) return { label: "Record the address", href: base + "?view=offer&panel=record-address" + on };
+  }
+  // A chase of an unsigned agreement opens the chase drawer on Agreements (C3); the old link had no `on`, so nothing opened.
+  if (t.subjectType === "esa" && t.subjectId) return { label: "Chase the agreement", href: "/clients/agreements?panel=chase-agreement&on=" + t.subjectId };
+  if (t.subjectType === "lead" && /agreement/i.test(t.title)) return { label: "Chase the agreement", href: t.link ?? "/clients/agreements" };
   return { label: t.kind === "approve" ? "Approve" : "Open", href: t.link ?? "/tasks/" + t.id };
 }
 

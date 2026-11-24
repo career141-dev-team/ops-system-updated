@@ -95,7 +95,7 @@ export default async function VacancyPage({
         <div className="flex items-center gap-2.5">
           <Avatar name={a.name} size="32" />
           <div className="min-w-0 flex-1">
-            <p className="t-body-m truncate">{a.name}</p>
+            <p className="t-body-m">{a.name}</p>
             <p className="t-small text-ink-3">{a.source}</p>
           </div>
           {can(me, "client.manage") && (

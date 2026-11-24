@@ -33,7 +33,23 @@ export const TILE_TONE: Record<string, string> = {
   brand: "bg-bg-brand text-brand",
   warn: "bg-warn-soft text-warn",
   info: "bg-info-soft text-info",
+  violet: "bg-violet-soft text-violet",
+  danger: "bg-danger-soft text-danger",
   neutral: "bg-sunk text-ink-2",
+};
+
+/** The client tiles take these in turn down the list (v6 C1: green, amber, blue, violet, red, grey). */
+export const TILE_CYCLE = ["brand", "warn", "info", "violet", "danger", "neutral"] as const;
+
+/** The status pill on a client card: the tone's soft colour behind its own text (v6 C1 "state pill"). */
+export const PILL_TONE: Record<string, string> = {
+  brand: "bg-bg-brand text-brand",
+  ok: "bg-bg-brand text-brand",
+  warn: "bg-warn-soft text-warn",
+  info: "bg-info-soft text-info",
+  danger: "bg-danger-soft text-danger",
+  neutral: "bg-sunk text-ink-3",
+  quiet: "bg-sunk text-ink-3",
 };
 
 export type ClientsTab = "clients" | "enquiries" | "agreements" | "positions";
@@ -194,7 +210,7 @@ export function waLink(phone: string | null | undefined): string | null {
 /** The icon buttons of a client card: ring, chat, mail. A missing way is simply not drawn. */
 export function ReachIcons({ phone, email }: { phone?: string; email?: string }) {
   const wa = waLink(phone);
-  const cls = "relative z-10 text-ink-3 hover:text-ink";
+  const cls = "relative z-10 flex size-[34px] items-center justify-center rounded-full bg-sunk text-ink-3 hover:text-ink";
   return (
     <>
       {phone && (

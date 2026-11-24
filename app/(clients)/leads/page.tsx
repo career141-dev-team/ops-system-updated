@@ -137,10 +137,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                         <div className="flex items-center gap-2.5">
                           <span className={"t-label flex size-8 shrink-0 items-center justify-center rounded-full " + TILE_TONE[c.tileTone]}>{c.tile}</span>
                           <div className="flex min-w-0 flex-1 flex-col">
-                            <Link href={c.href} className="t-body-m truncate hover:underline">
+                            <Link href={c.href} className="t-body-m hover:underline">
                               {c.company}
                             </Link>
-                            <span className="t-small truncate text-ink-3">{c.line}</span>
+                            <span className="t-small text-ink-3">{c.line}</span>
                           </div>
                           <Link href={c.href} aria-label={"Open " + c.company} className="flex size-7 shrink-0 items-center justify-center rounded-[14px] text-ink-3 hover:bg-sunk">
                             <Icon name="more" size={14} />

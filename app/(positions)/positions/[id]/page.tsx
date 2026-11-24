@@ -104,6 +104,29 @@ export default async function PositionPage({
     );
   })();
 
+  // The header's own buttons per tab, as the v6 frames draw them (R1, R2, R4). Sets and Offer have no "Book an interview".
+  const lastSent = c.sentSets[c.sentSets.length - 1];
+  const waitingToJoin = c.itsPlacements.find((p) => p.state === "placed");
+  const tabButtons: { label: string; href: string }[] =
+    tabKey === "interviews"
+      ? [
+          { label: "Candidate feedback", href: to("interviews", "candidate-feedback") },
+          { label: "Client books directly", href: to("interviews", "client-books-directly") },
+          { label: "Reference check", href: to("interviews", "reference-check") },
+        ]
+      : tabKey === "sets" && c.mayManage && lastSent
+        ? [
+            { label: "Unreported hire check", href: to("sets", "unreported-hire", lastSent.id) },
+            { label: "Client already had this CV", href: to("sets", "client-had-cv") },
+          ]
+        : tabKey === "offer" && c.mayManage && waitingToJoin
+          ? [
+              { label: "Offer declined", href: to("offer", "offer-declined", waitingToJoin.id) },
+              { label: "Did not join", href: to("offer", "did-not-join", waitingToJoin.id) },
+            ]
+          : [];
+  const showBook = tabKey !== "sets" && tabKey !== "offer";
+
   const cell = (label: string, value: number, line: string, href: string, warn = false) => (
     <Link key={label} href={href} className="group flex min-w-0 flex-1 items-center gap-2 py-1">
       <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -138,10 +161,17 @@ export default async function PositionPage({
           <p className="t-small text-ink-3 max-md:hidden">{sub}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link scroll={false} href={to("interviews", "find-a-time")} className={pillPrimary + " max-md:hidden"}>
-            <Icon name="plus" size={14} />
-            Book an interview
-          </Link>
+          {showBook && (
+            <Link scroll={false} href={to("interviews", "find-a-time")} className={pillPrimary + " max-md:hidden"}>
+              <Icon name="plus" size={14} />
+              Book an interview
+            </Link>
+          )}
+          {tabButtons.map((b) => (
+            <Link key={b.label} scroll={false} href={b.href} className={pillSecondary + " max-md:hidden"}>
+              {b.label}
+            </Link>
+          ))}
           {tabKey === "overview" && (
             <>
               <Link scroll={false} href={to("overview", "hold-close-reopen")} className={pillSecondary + " max-md:hidden"}>
@@ -171,9 +201,14 @@ export default async function PositionPage({
             </summary>
             <div className="absolute right-0 z-10 mt-2 flex w-[260px] flex-col rounded-[18px] border border-rule bg-surface p-2 shadow-card">
               {/* The header's own buttons, on a phone (PH3 has only the title row). */}
-              <Link scroll={false} href={to("interviews", "find-a-time")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+              <Link scroll={false} href={to("interviews", "find-a-time")} className={"t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk" + (showBook ? " md:hidden" : "")}>
                 Book an interview
               </Link>
+              {tabButtons.map((b) => (
+                <Link key={b.label} scroll={false} href={b.href} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
+                  {b.label}
+                </Link>
+              ))}
               {tabKey === "overview" && (
                 <>
                   <Link scroll={false} href={to("overview", "hold-close-reopen")} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk md:hidden">
