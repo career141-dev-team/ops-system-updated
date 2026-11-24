@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { aiSwitches, desk } from "@/data/desk";
 import Icon from "@/app/Icon";
 import { aboutWhom } from "@/lib/aboutWhom";
-import { EmptyState, PageTitle, figmaField, figmaLabel, pillPrimary } from "@/app/ui/figma";
+import { EmptyState, figmaField, figmaLabel, pillPrimary } from "@/app/ui/figma";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { teamNewsView, whatsappView } from "@/lib/inboxChannels";
 import { sampleNews } from "@/lib/inboxChannelsSample";
@@ -106,24 +106,38 @@ export default async function InboxPage({
 
   return (
     <div className="flex flex-col gap-[22px]">
-      <PageTitle
-        title="Inbox"
-        sub={sub}
-        active={view}
-        tabs={[
-          { key: "mail", label: "Mail", href: "/mail", count: inbox.length },
-          { key: "whatsapp", label: "WhatsApp", href: "/mail?view=whatsapp", count: waCount },
-          { key: "news", label: "Team news", href: "/mail?view=news" },
-        ]}
-        right={
-          view === "mail" && mayWrite ? (
-            <Link href={hrefMail({ compose: "1" })} className={pillPrimary}>
-              <Icon name="plus" size={16} />
-              New message
+      {/* The head of I1/I2/I3: the title on the left, the segmented Mail / WhatsApp / Team news on the right. */}
+      <div className="flex items-center gap-4 p-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <h1 className="t-display">Inbox</h1>
+          <p className="t-small text-ink-3">{sub}</p>
+        </div>
+        {view === "mail" && mayWrite && (
+          <Link href={hrefMail({ compose: "1" })} className={pillPrimary}>
+            <Icon name="plus" size={16} />
+            New message
+          </Link>
+        )}
+        <nav aria-label="Inbox" className="flex shrink-0 items-start gap-1 rounded-full bg-sunk p-1">
+          {(
+            [
+              { key: "mail", label: "Mail", href: "/mail", count: inbox.length },
+              { key: "whatsapp", label: "WhatsApp", href: "/mail?view=whatsapp", count: waCount },
+              { key: "news", label: "Team news", href: "/mail?view=news", count: undefined },
+            ] as const
+          ).map((t) => (
+            <Link
+              key={t.key}
+              href={t.href}
+              aria-current={view === t.key ? "page" : undefined}
+              className={"t-label flex items-center gap-1.5 rounded-full px-3.5 py-[7px] " + (view === t.key ? "bg-ink text-ink-inverse" : "text-ink-2")}
+            >
+              {t.label}
+              {t.count !== undefined && <span className={view === t.key ? "" : "text-ink-3"}>{t.count}</span>}
             </Link>
-          ) : undefined
-        }
-      />
+          ))}
+        </nav>
+      </div>
       {sp.msg && <p className="rounded-[16px] bg-sunk px-4 py-3 t-body">{sp.msg}</p>}
 
       {view === "whatsapp" && <WhatsAppPanel view={wa} now={now} />}

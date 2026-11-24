@@ -25,6 +25,8 @@ export interface WaReady {
   who: string;
   at: number;
   text: string;
+  /** The message's subject, shown beside the name ("Chase 2 for SET 2"); empty when it has none. */
+  label: string;
   state: "draft" | "approved";
 }
 export interface WhatsAppView {
@@ -57,7 +59,7 @@ export function whatsappView(db: OpsDatabase): WhatsAppView {
   const ready = db.messages
     .filter((m) => m.channel === "whatsapp" && (m.state === "draft" || m.state === "approved"))
     .sort((a, b) => b.createdAt - a.createdAt)
-    .map((m): WaReady => ({ id: m.id, who: m.to[0] ?? "Unknown", at: m.createdAt, text: m.body.trim(), state: m.state as "draft" | "approved" }));
+    .map((m): WaReady => ({ id: m.id, who: m.to[0] ?? "Unknown", at: m.createdAt, text: m.body.trim(), label: (m.subject ?? "").trim(), state: m.state as "draft" | "approved" }));
   return { replies, ready };
 }
 
