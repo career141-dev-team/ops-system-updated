@@ -78,11 +78,11 @@ export default function ProfileMenu({
         className={"flex shrink-0 cursor-pointer items-center text-left " + (phone ? "" : "gap-2.5 pl-1 pr-1.5")}
       >
         <span className={"t-label flex items-center justify-center rounded-full bg-ink text-ink-inverse " + (phone ? "size-9" : "size-10")}>{initials}</span>
-        <span className={"flex-col " + (phone ? "hidden" : "hidden lg:flex")}>
-          <span className="t-body-m text-ink">{who.name}</span>
-          <span className="t-small text-ink-3">{viewing ? "Viewing as " + viewing : who.role}</span>
+        <span className={"flex-col " + (phone ? "hidden" : "hidden 2xl:flex")}>
+          <span className="t-body-m max-w-[130px] truncate text-ink">{who.name}</span>
+          <span className="t-small max-w-[130px] truncate text-ink-3">{viewing ? "Viewing as " + viewing : who.role}</span>
         </span>
-        {!phone && <Icon name="chevron-down" size={16} className="ml-1 hidden text-ink-3 lg:block" />}
+        {!phone && <Icon name="chevron-down" size={16} className="ml-1 hidden text-ink-3 2xl:block" />}
       </button>
 
       {open &&
