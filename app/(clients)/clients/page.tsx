@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import Icon from "@/app/Icon";
 import { pillSecondary } from "@/app/ui/figma";
 import { EmptyState } from "@/app/ui/figma";
 import { desk, member as memberIn } from "@/data/desk";
@@ -92,10 +93,20 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                     <Link href={c.href} className="min-w-0 flex-1 truncate text-[19px] font-medium leading-[26px] after:absolute after:inset-0 after:rounded-[24px]">
                       {c.name}
                     </Link>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-[14px] bg-bg-brand text-[13px] font-medium tracking-[0.06em] text-brand">{c.owner.slice(0, 2).toUpperCase()}</span>
-                      <span className="text-[15px] leading-[22px] text-ink-3">{c.owner}</span>
-                    </span>
+                    {/* The owner chip gave way to a menu (owner, 24 Nov). Above the card's link, so it opens instead of following it. */}
+                    <details className="relative z-10 shrink-0 open:z-30">
+                      <summary aria-label={"More about " + c.name} className="flex size-9 cursor-pointer list-none items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-ink [&::-webkit-details-marker]:hidden">
+                        <Icon name="more" size={18} />
+                      </summary>
+                      <div className="absolute right-0 top-10 z-20 flex w-36 flex-col gap-0.5 rounded-[18px] bg-surface p-2 shadow-float">
+                        <Link href={c.href} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
+                          View
+                        </Link>
+                        <Link href={c.href + "?view=contacts"} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
+                          Edit
+                        </Link>
+                      </div>
+                    </details>
                   </div>
                   <div className="flex items-center gap-3">
                     <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[18px] bg-sunk text-[13px] font-medium tracking-[0.06em] text-ink-2">{initialsFor(c.person?.name)}</span>
