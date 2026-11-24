@@ -240,9 +240,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     </EmptyState>
                   ) : (
                     <div className="flex flex-col">
-                      {(contacts.length ? contacts : person ? [person] : []).map((c) => (
+                      {(contacts.length ? contacts : person ? [person] : []).map((c, i) => (
                         <div key={c.email || c.name} className="flex items-center gap-3 border-t border-rule py-3 first:border-t-0 first:pt-0">
-                          <Avatar name={c.name} size="40" />
+                          {/* v6 C4: the first contact is blue, the second green, the rest grey. */}
+                          <Avatar name={c.name} size="40" tone={(["info", "brand", "neutral"] as const)[Math.min(i, 2)]} />
                           <div className="flex min-w-0 flex-1 flex-col">
                             <span className="t-body-m">{c.name}</span>
                             <span className="t-small text-ink-3">{c.role === "hr" ? "HR · gets the CV sets" : c.role || "Contact"}</span>

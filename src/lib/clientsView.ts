@@ -250,7 +250,7 @@ export function enquiryCards(db: OpsDatabase, now: number): EnquiryCard[] {
         ? { text: "Banking or finance? " + (lead.industryBecause ? "It says “" + lead.industryBecause + "”" : "Check it"), tone: "warn" }
         : { text: "May be the same as " + hit!.name + ", client since " + new Date(hit!.since).getUTCFullYear(), tone: "warn" };
     } else if (column === "intro") {
-      tileTone = "info";
+      tileTone = booked ? "info" : "neutral";
       state = booked ? { text: "Call booked " + dayWords(booked.at) + ", " + clockWords(booked.at), tone: "info" } : { text: "Call not booked", tone: "warn" };
     } else {
       tileTone = "brand";

@@ -117,7 +117,7 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
                       return (
                         <article key={c.id} className="flex flex-col gap-2 rounded-[16px] bg-surface p-3.5">
                           <div className="flex items-center gap-2.5">
-                            <span className={"t-label flex size-8 shrink-0 items-center justify-center rounded-full " + TILE_TONE[col.key === "done" ? "neutral" : col.key === "signed" ? "info" : col.key === "send" || col.key === "chasing" ? "warn" : "warn"]}>{c.tile}</span>
+                            <span className={"t-label flex size-8 shrink-0 items-center justify-center rounded-full " + TILE_TONE[col.key === "done" ? "neutral" : col.key === "signed" ? "info" : col.key === "chasing" && /^Next chase/.test(c.state.text) ? "neutral" : "warn"]}>{c.tile}</span>
                             <div className="flex min-w-0 flex-1 flex-col">
                               <Link href={col.key === "chasing" ? panelHref("/clients/agreements", sp, "chase-agreement", c.id) : toLead} scroll={col.key !== "chasing" ? undefined : false} className="t-body-m hover:underline">
                                 {c.company}

@@ -21,7 +21,8 @@ import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { CheckInSendModal } from "../ClientSendModals";
 import CopyButton from "../CopyButton";
-import { ClientsHead, Msg, RailCard, ReachIcons, StandsCard, TILE_TONE, TONE_DOT, TONE_TEXT } from "../parts";
+import { ClientsHead, Msg, PILL_TONE, RailCard, ReachIcons, StandsCard, TILE_CYCLE, TILE_TONE } from "../parts";
+import { initialsFor } from "@/app/ui/figma";
 import CheckInPanel from "./CheckInPanel";
 
 type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string };
@@ -83,51 +84,46 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {cards.length === 0 ? "A client appears here when an enquiry becomes a company we work for." : "Try another filter, or clear the search."}
             </EmptyState>
           ) : (
-            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
               {visible.map((c) => (
-                <article key={c.id} className="relative flex min-h-[239px] flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:shadow-float">
+                <article key={c.id} className="relative flex flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:shadow-float">
                   <div className="flex items-center gap-3">
-                    <span className={"t-micro flex size-10 shrink-0 items-center justify-center rounded-[12px] " + TILE_TONE[c.tileTone]}>{c.tile}</span>
-                    <Link href={c.href} className="t-body-m min-w-0 flex-1 after:absolute after:inset-0 after:rounded-[24px]">
+                    <span className={"flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-medium leading-[26px] " + TILE_TONE[TILE_CYCLE[cards.findIndex((x) => x.id === c.id) % TILE_CYCLE.length]]}>{c.tile}</span>
+                    <Link href={c.href} className="min-w-0 flex-1 truncate text-[19px] font-medium leading-[26px] after:absolute after:inset-0 after:rounded-[24px]">
                       {c.name}
                     </Link>
-                    {/* The owner and Edit sit behind one menu (23 Nov), so the card name has the room. */}
-                    <details className="relative z-10 shrink-0">
-                      <summary aria-label={"More for " + c.name} className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-ink-3 hover:bg-sunk [&::-webkit-details-marker]:hidden">
-                        <span aria-hidden="true" className="text-[18px] leading-none">&#8942;</span>
-                      </summary>
-                      <div className="absolute left-full top-0 ml-1 flex w-36 flex-col rounded-[14px] border border-rule bg-surface p-1 shadow-float">
-                        <Link href={c.href} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
-                          View
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-[14px] bg-bg-brand text-[13px] font-medium tracking-[0.06em] text-brand">{c.owner.slice(0, 2).toUpperCase()}</span>
+                      <span className="text-[15px] leading-[22px] text-ink-3">{c.owner}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[18px] bg-sunk text-[13px] font-medium tracking-[0.06em] text-ink-2">{initialsFor(c.person?.name)}</span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[17px] font-medium leading-[26px]">{c.person ? c.person.name : "No contact written down"}</span>
+                      {c.person?.role && <span className="text-[15px] leading-[22px] text-ink-3">{c.person.role.length <= 3 ? c.person.role.toUpperCase() : c.person.role}</span>}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <ReachIcons phone={c.person?.phone} email={c.person?.email} />
+                    </span>
+                  </div>
+                  <div className="h-px bg-rule" />
+                  <div className="flex min-h-[34px] items-center justify-between gap-3">
+                    <span className={"whitespace-nowrap rounded-full px-3.5 py-1.5 text-[15px] font-medium leading-5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
+                    {c.copy ? (
+                      c.copy.kind === "checkin" ? (
+                        <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 shrink-0 rounded-full bg-ink px-4 py-1.5 text-[15px] font-medium leading-5 text-ink-inverse">
+                          {c.copy.label}
                         </Link>
-                        {can(me, "client.manage") && (
-                          <Link href={"/clients/" + c.id + "?view=contacts"} className="t-small rounded-[10px] px-3 py-2 hover:bg-sunk">
-                            Edit
-                          </Link>
-                        )}
-                      </div>
-                    </details>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <p className="t-small min-w-0 flex-1">{c.person ? [c.person.name, c.person.role ? c.person.role.toUpperCase() : ""].filter(Boolean).join(" · ") : "No contact written down"}</p>
-                    <ReachIcons phone={c.person?.phone} email={c.person?.email} />
-                  </div>
-                  <p className={"t-small flex items-center gap-2 " + TONE_TEXT[c.status.tone]}>
-                    <span aria-hidden="true" className={"size-[7px] shrink-0 rounded-[4px] " + TONE_DOT[c.status.tone]} />
-                    {c.status.text}
-                  </p>
-                  <p className="t-small text-ink-3">{c.line}</p>
-                  <div className="flex-1" />
-                  {c.copy &&
-                    (c.copy.kind === "checkin" ? (
-                      <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 w-fit rounded-full bg-ink px-3.5 py-2 text-[12px] font-medium leading-4 text-ink-inverse">
-                        {c.copy.label}
-                      </Link>
+                      ) : (
+                        <span className="relative z-10 shrink-0">
+                          <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-4 py-1.5 text-[15px] font-medium leading-5 text-ink-inverse" />
+                        </span>
+                      )
                     ) : (
-                      <span className="relative z-10 w-fit">
-                        <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-3.5 py-2 text-[12px] font-medium leading-4 text-ink-inverse" />
-                      </span>
-                    ))}
+                      <span className="text-right text-[15px] leading-[22px] text-ink-3">{c.line}</span>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -149,7 +145,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               latest.map((e) => (
                 <div key={e.id} className="flex items-start gap-3">
                   <span className="flex pt-1.5">
-                    <span aria-hidden="true" className="size-1.5 rounded-[3px] bg-brand" />
+                    <span aria-hidden="true" className={"size-1.5 rounded-[3px] " + (/chase|draft|negotiat|changes|hold/i.test(e.action) ? "bg-warn" : "bg-info")} />
                   </span>
                   <span className="t-small w-[70px] shrink-0 text-ink-3">{agoShort(e.at, now)}</span>
                   <span className="t-small min-w-0 flex-1">{entryInWords(e)}</span>
