@@ -19,8 +19,8 @@ import { currentMember } from "@/lib/session";
 const KIND_STYLE: Record<CalendarKind, { box: string; clock: string; dot: string; legend: string }> = {
   client: { box: "bg-info-soft", clock: "text-info", dot: "bg-info", legend: "Client interview" },
   internal: { box: "bg-violet-soft", clock: "text-violet", dot: "bg-violet", legend: "Internal interview" },
-  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Meeting" },
   joining: { box: "bg-brand-soft", clock: "text-brand", dot: "bg-brand", legend: "Joining day" },
+  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Meeting" },
 };
 
 interface CalendarEvent {
@@ -87,7 +87,7 @@ export default async function CalendarPage({
       ownerId: iv.ownerId,
       when: isOff(iv.state) ? null : iv.at,
       title: iv.candidateName,
-      sub: `Round ${iv.round} · ${clientName}`,
+      sub: `Round ${iv.round} · client interview`,
       href: here({ on: iv.id }),
       iv,
       status: boardStatus(iv),
@@ -110,8 +110,8 @@ export default async function CalendarPage({
         kind: "meeting",
         ownerId: lead?.ownerId ?? client?.ownerId ?? null,
         when: m.at,
-        title: label,
-        sub: who,
+        title: who,
+        sub: label,
         href: lead ? `/leads/${lead.id}?step=${m.kind === "requirement" ? "requirement" : "intro"}` : client ? `/clients/${client.id}` : "/leads",
       };
     });
@@ -127,8 +127,8 @@ export default async function CalendarPage({
         kind: "joining",
         ownerId: pl.ownerId,
         when: pl.joinDate,
-        title: `${pl.candidateName} joins`,
-        sub: [client?.name, pos?.title].filter(Boolean).join(" · ") || "Joining day",
+        title: "Joining day",
+        sub: [pl.candidateName, client?.name].filter(Boolean).join(" · "),
         href: pos ? `/positions/${pos.id}?view=offer` : `/placements/${pl.id}`,
       };
     });
@@ -232,7 +232,7 @@ export default async function CalendarPage({
                   <div key={day.name} className="flex min-h-[120px] flex-col gap-2 xl:min-h-[560px] xl:border-l xl:border-rule xl:pl-3 xl:first:border-l-0 xl:first:pl-0">
                     <div className={"flex flex-col gap-0.5 rounded-[14px] px-2.5 py-2 " + (day.isToday ? "bg-brand-soft text-brand" : "")}>
                       <p className={"t-micro " + (day.isToday ? "" : "text-ink-3")}>{day.name}</p>
-                      <p className={"text-[20px] font-medium leading-7 " + (day.isToday ? "" : "text-ink")}>{day.dayNum}</p>
+                      <p className={"t-h2 " + (day.isToday ? "" : "text-ink")}>{day.dayNum}</p>
                     </div>
                     <div className="h-px bg-rule" />
                     {there.map((c) => {
@@ -243,10 +243,10 @@ export default async function CalendarPage({
                           key={c.id}
                           href={here({ on: c.id })}
                           scroll={false}
-                          className={`flex flex-col gap-0.5 rounded-[14px] px-3 py-2.5 ${st.box} ${isSel ? "outline outline-2 -outline-offset-2 outline-info" : ""}`}
+                          className={`flex flex-col gap-0.5 rounded-[14px] px-3 py-2.5 ${st.box} ${isSel ? "border-2 border-info" : "border-2 border-transparent"}`}
                         >
                           <span className={"t-small " + st.clock}>
-                            {c.kind === "joining" ? "Joining" : clockOf(c.when!)}
+                            {c.kind === "joining" && clockOf(c.when!) === "00:00" ? "All day" : clockOf(c.when!)}
                           </span>
                           <span className="t-body-m">{c.title}</span>
                           <span className="t-small text-ink-3">{c.sub}</span>
@@ -279,7 +279,7 @@ export default async function CalendarPage({
           {selectedIv && selectedIv.iv && (
             <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Selected</p>
-              <Link href={`/interviews/${selectedIv.iv.id}`} className="text-[20px] font-medium leading-7 hover:underline">
+              <Link href={`/interviews/${selectedIv.iv.id}`} className="t-h2 hover:underline">
                 {selectedIv.iv.candidateName}
               </Link>
               <p className="t-body-m">
@@ -312,7 +312,7 @@ export default async function CalendarPage({
           {selectedOther && (
             <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Selected</p>
-              <p className="text-[20px] font-medium leading-7">{selectedOther.title}</p>
+              <p className="t-h2">{selectedOther.title}</p>
               <p className="t-body-m">
                 {dayWord(selectedOther.when!)}
                 {selectedOther.kind === "joining" ? "" : ", " + clockOf(selectedOther.when!)}
