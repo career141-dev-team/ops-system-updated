@@ -8,6 +8,7 @@ import { AttentionRow, RailCard, Slot, StandsCard, StatStrip, TONE_DOT } from "@
 import { Card, EmptyState, PageTitle } from "@/app/ui/figma";
 import PhoneToday from "@/app/ui/phone/PhoneToday";
 import { dayItems, desk, runClocks } from "@/data/desk";
+import type { OpsTask } from "@/data/types";
 import { testToolsShown } from "@/lib/clockPass";
 import { draftKind, DRAFT_KINDS } from "@/lib/messages";
 import { firstName, greetingFor } from "@/lib/myWork";
@@ -369,7 +370,14 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
   );
 
   // The drawer, only if its task still exists and is open.
-  const onTask = db.tasks.find((t) => t.id === sp.on && t.state === "open");
+  // Positions links "Call Anjali" with the role's id, not a task's: there may be no call task yet, so the
+  // drawer is made for the role and writes the call down with no task to finish (recordCall allows that).
+  const asRole = sp.panel === "call-client" && db.positions.some((p) => p.id === sp.on);
+  const onTask: OpsTask | undefined =
+    db.tasks.find((t) => t.id === sp.on && t.state === "open") ??
+    (asRole
+      ? { id: "", kind: "call", title: "Call the client", body: "", assigneeId: member.id, dueAt: now, state: "open", subjectType: "position", subjectId: sp.on!, link: null, outcome: null, doneBy: null, doneAt: null, createdAt: now }
+      : undefined);
   const open = (sp.panel === "call-client" || sp.panel === "write-result") && onTask ? sp.panel : null;
 
   return (

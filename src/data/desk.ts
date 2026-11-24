@@ -163,6 +163,14 @@ import {
  */
 
 export async function desk(): Promise<OpsDatabase> {
+  const db = await readDesk();
+  // A placement saved before `dojHistory` existed has none, and the Offer and joining tab (R4) crashed on
+  // `.length` with a 500 (24 Nov, found in the v6 screen check). Every reader gets a list.
+  for (const p of db.placements) p.dojHistory ??= [];
+  return db;
+}
+
+async function readDesk(): Promise<OpsDatabase> {
   if (!usingConvex()) return repo.all();
 
   const snapshot = await convexQuery<OpsDatabase>("ops/data:snapshot");
