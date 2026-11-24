@@ -85,12 +85,12 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {cards.length === 0 ? "A client appears here when an enquiry becomes a company we work for." : "Try another filter, or clear the search."}
             </EmptyState>
           ) : (
-            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-2xl:grid-cols-3">
+            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-xl:grid-cols-3">
               {visible.map((c) => (
-                <article key={c.id} className="relative flex flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:shadow-float">
+                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:shadow-float">
                   <div className="flex items-center gap-3">
                     <span className={"flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-medium leading-[26px] " + TILE_TONE[TILE_CYCLE[cards.findIndex((x) => x.id === c.id) % TILE_CYCLE.length]]}>{c.tile}</span>
-                    <Link href={c.href} className="min-w-0 flex-1 truncate text-[19px] font-medium leading-[26px] after:absolute after:inset-0 after:rounded-[24px]">
+                    <Link href={c.href} className="min-w-0 flex-1 truncate text-[17px] font-medium leading-[26px] @min-[400px]:text-[19px] after:absolute after:inset-0 after:rounded-[24px]">
                       {c.name}
                     </Link>
                     {/* The owner chip gave way to a menu (owner, 24 Nov). Above the card's link, so it opens instead of following it. */}
@@ -111,28 +111,28 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   <div className="flex items-center gap-3">
                     <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[18px] bg-sunk text-[13px] font-medium tracking-[0.06em] text-ink-2">{initialsFor(c.person?.name)}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[17px] font-medium leading-[26px]">{c.person ? c.person.name : "No contact written down"}</span>
-                      {c.person?.role && <span className="text-[15px] leading-[22px] text-ink-3">{c.person.role.length <= 3 ? c.person.role.toUpperCase() : c.person.role}</span>}
+                      <span className="truncate text-[15px] font-medium leading-[24px] @min-[400px]:text-[17px] @min-[400px]:leading-[26px]">{c.person ? c.person.name : "No contact written down"}</span>
+                      {c.person?.role && <span className="text-[13px] leading-[20px] text-ink-3 @min-[400px]:text-[15px] @min-[400px]:leading-[22px]">{c.person.role.length <= 3 ? c.person.role.toUpperCase() : c.person.role}</span>}
                     </span>
-                    <span className="flex shrink-0 items-center gap-2">
+                    <span className="flex shrink-0 items-center gap-1.5 @min-[400px]:gap-2">
                       <ReachIcons phone={c.person?.phone} email={c.person?.email} />
                     </span>
                   </div>
                   <div className="h-px bg-rule" />
-                  <div className="flex min-h-[34px] items-center justify-between gap-3">
-                    <span className={"whitespace-nowrap rounded-full px-3.5 py-1.5 text-[15px] font-medium leading-5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
+                  <div className="flex min-h-[34px] flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[13px] @min-[400px]:text-[15px]">
+                    <span className={"whitespace-nowrap rounded-full px-3 py-1.5 font-medium leading-5 @min-[400px]:px-3.5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
                     {c.copy ? (
                       c.copy.kind === "checkin" ? (
-                        <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 shrink-0 rounded-full bg-ink px-4 py-1.5 text-[15px] font-medium leading-5 text-ink-inverse">
+                        <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 ml-auto shrink-0 rounded-full bg-ink px-3.5 py-1.5 font-medium leading-5 text-ink-inverse @min-[400px]:px-4">
                           {c.copy.label}
                         </Link>
                       ) : (
-                        <span className="relative z-10 shrink-0">
-                          <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-4 py-1.5 text-[15px] font-medium leading-5 text-ink-inverse" />
+                        <span className="relative z-10 ml-auto shrink-0">
+                          <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-3.5 py-1.5 font-medium @min-[400px]:px-4 leading-5 text-ink-inverse" />
                         </span>
                       )
                     ) : (
-                      <span className="text-right text-[15px] leading-[22px] text-ink-3">{c.line}</span>
+                      <span className="ml-auto text-right leading-[22px] text-ink-3">{c.line}</span>
                     )}
                   </div>
                 </article>
