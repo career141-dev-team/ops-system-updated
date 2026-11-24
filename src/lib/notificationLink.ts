@@ -38,6 +38,7 @@ export function hrefForSubject(db: LinkDb, subjectType: string, id: string): str
     case "report": return "/positions?panel=weekly-report";
     case "talentPulse": return "/talent-pulse";
     case "message": return `/messages/${id}`;
+    case "inbound": return "/mail";
     default: return "/";
   }
 }
