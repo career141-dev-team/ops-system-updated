@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { startInterview } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Card, ChoiceGroup, DataTable, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn, switchedOn } from "@/data/desk";
+import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn } from "@/data/desk";
 import { CALENDAR_FILTERS, clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel, type CalendarKind } from "@/lib/calendarBoard";
-import { listEvents, teamsFake } from "@/lib/graphCalendar";
 import { FORMAT_MEANINGS, boardStatus, isOff, weekDays, type InterviewFormat } from "@/lib/interviews";
 import { SUMMARY_MODES, SUMMARY_STATUSES, filterSummary, summaryRows } from "@/lib/interviewSummary";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -43,8 +41,7 @@ interface CalendarEvent {
  * K1 · Calendar. The week of client interviews, intro/requirement meetings, and joining days,
  * Monday to Saturday, with the selected item on the right, unbooked interviews below it, and a
  * 680px `?panel=start-interview` drawer to start a new interview right from the calendar.
- * Internal interviews are the booked applicants of the internal hiring vacancies. Below the week,
- * the signed-in person's own Outlook events are listed read-only, and never hold the page up.
+ * Internal interviews are the booked applicants of the internal hiring vacancies.
  */
 export default async function CalendarPage({
   searchParams,
@@ -340,10 +337,6 @@ export default async function CalendarPage({
         </aside>
       </div>
 
-      <Suspense fallback={null}>
-        <OutlookEvents email={me.email} fromMs={week.days[0].startMs} toMs={days[5].endMs} enabled={teamsFake() || switchedOn(db, "switch.teamsEnabled")} />
-      </Suspense>
-
       {panel === "start-interview" && mayManage && (
         <Panel
           kicker="Calendar"
@@ -405,34 +398,6 @@ export default async function CalendarPage({
         </Panel>
       )}
     </div>
-  );
-}
-
-/** The signed-in person's own Outlook events for the week, read-only (21 Nov). Never throws; a slow Microsoft shows nothing. */
-async function OutlookEvents({ email, fromMs, toMs, enabled }: { email: string; fromMs: number; toMs: number; enabled: boolean }) {
-  if (!enabled) return null;
-  const { events, problem } = await listEvents(email, new Date(fromMs).toISOString(), new Date(toMs).toISOString());
-  if (events.length === 0 && !problem) return null;
-  return (
-    <Card className="gap-3 !p-6">
-      <p className="t-micro text-ink-3">Your Outlook this week</p>
-      {problem && <p className="t-small text-ink-3">{problem}</p>}
-      <ul className="flex flex-col gap-2">
-        {events.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <span className="t-small text-ink-2">
-              {dayWord(e.start)}, {clockOf(e.start)} to {clockOf(e.end)}
-            </span>
-            <span className="t-body-m">{e.title}</span>
-            {e.joinUrl && (
-              <a href={e.joinUrl} target="_blank" rel="noreferrer" className="t-small text-info hover:underline">
-                Join in Teams
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 
