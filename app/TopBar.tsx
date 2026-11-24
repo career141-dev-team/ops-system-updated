@@ -18,7 +18,7 @@ import { barShown } from "@/lib/topBar";
  *
  * A white pill 72px high: the logo, the eight workspaces, "Search or ask AURA" (it submits to
  * /find, and / jumps to it), the round black + for Add (G3), the bell (G4) and the profile.
- * Accounts and Settings show only to people who may open them.
+ * All eight tabs always show (owner, 24 Nov); the pages themselves still refuse a person who may not open them.
  *
  * It hides once the page is scrolled and comes back for the pointer at the top edge (the owner,
  * 13 Nov); `src/lib/topBar.ts` decides, and its test says who must never lose it. It sits in its
@@ -108,9 +108,7 @@ export default function TopBar({
             <Image src="/career141-lockup.png" alt="career141 · 20 years" width={178} height={56} priority className="h-[38px] w-[120px] object-contain" />
           </Link>
           <nav aria-label="Workspaces" className="ml-3 flex h-full items-stretch border-l border-rule">
-            {workspaces.pages
-              .filter((page) => !page.needs || may[page.needs])
-              .map((page) => {
+            {workspaces.pages.map((page) => {
                 const here = isHere(path, page.href);
                 return (
                   <Link
