@@ -122,7 +122,7 @@ export default async function ClientOwnersPage({
 
       {/* Section 2: YOUR TEAM (Figma 1:3833) */}
 <Card title="Your team">
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 pg-lg:grid-cols-4">
           {ownerStats.map((owner) => (
             <div
               key={owner.id}

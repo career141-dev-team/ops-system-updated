@@ -66,8 +66,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
     <div className="flex flex-col gap-[22px]">
       <ClientsHead tab="clients" line={clientsLine(totals)} counts={totals} q={q} filter={f} />
       <Msg msg={msg} />
-      <div className="flex items-start gap-[22px] max-xl:flex-col">
-        <div className="flex min-w-0 flex-1 flex-col gap-[22px] max-xl:w-full">
+      <div className="flex items-start gap-[22px] max-pg-xl:flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-[22px] max-pg-xl:w-full">
           <div className="flex flex-wrap items-center gap-2">
             {CLIENT_FILTERS.map((x) => (
               <Link
@@ -85,7 +85,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {cards.length === 0 ? "A client appears here when an enquiry becomes a company we work for." : "Try another filter, or clear the search."}
             </EmptyState>
           ) : (
-            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+            <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-2xl:grid-cols-3">
               {visible.map((c) => (
                 <article key={c.id} className="relative flex flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:shadow-float">
                   <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             </div>
           )}
         </div>
-        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-xl:w-full">
+        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
           <StandsCard head={stands.head} body={stands.body} copies={stands.copies} />
           <RailCard title="Latest">
             {latest.length === 0 ? (

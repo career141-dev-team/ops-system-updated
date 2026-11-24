@@ -161,7 +161,7 @@ export default async function VacancyPage({
         ))}
       </Card>
 
-      <div className="flex flex-col items-start gap-[22px] xl:flex-row">
+      <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
         <div className="w-full min-w-0 flex-1">
           <Card title="Applicants" sub="Each person moves right as the team calls, books and decides.">
             {v.applicants.length === 0 ? (
@@ -169,7 +169,7 @@ export default async function VacancyPage({
                 {v.status === "on_hold" ? "This vacancy is on hold, so nothing moves." : "Nobody has applied yet."}
               </EmptyState>
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pg-xl:grid-cols-4">
                 {BOARD_COLUMNS.map((col) => {
                   const here = v.applicants.filter((a) => (col.stage === "call" ? a.stage === "call" || a.stage === "new" : a.stage === col.stage));
                   return (
@@ -209,7 +209,7 @@ export default async function VacancyPage({
           )}
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-5 xl:w-[360px]">
+        <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
           <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
             <p className="t-micro flex items-center gap-2 text-ink-3">
               <Icon name="sparkle" size={16} />

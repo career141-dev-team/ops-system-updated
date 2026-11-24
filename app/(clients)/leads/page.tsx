@@ -104,8 +104,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         ]}
       />
       <Msg msg={msg} />
-      <div className="flex items-start gap-[22px] max-xl:flex-col">
-        <section className="flex min-w-0 flex-1 flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card max-xl:w-full">
+      <div className="flex items-start gap-[22px] max-pg-xl:flex-col">
+        <section className="flex min-w-0 flex-1 flex-col gap-[18px] rounded-[28px] bg-surface px-7 py-[26px] shadow-card max-pg-xl:w-full">
           <div className="flex flex-col gap-0.5">
             <h2 className="t-h2">Enquiries</h2>
             <p className="t-small text-ink-3">Each enquiry moves right as you check it, hold the call and send the agreement.</p>
@@ -115,7 +115,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               An enquiry appears here when the website form, a call or the Add button brings one in.
             </EmptyState>
           ) : (
-            <div data-stagger className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-4">
+            <div data-stagger className="grid grid-cols-1 gap-3.5 md:grid-cols-2 pg-xl:grid-cols-4">
               {COLUMNS.map((col) => (
                 <div key={col.key} className="flex min-w-0 flex-col gap-2.5 rounded-[20px] bg-sunk px-3 py-3.5">
                   <div className="flex items-center gap-2 px-1 pb-0.5">
@@ -163,7 +163,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           )}
           <p className="t-small text-ink-3">{closed.length ? "Closed this month: " + closed.map((l) => l.company).join(", ") + "." : "Nothing has closed this month."}</p>
         </section>
-        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-xl:w-full">
+        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
           <StandsCard head={stands.head} body={stands.body} links={links} />
           <RailCard title="This week">
             <div className="flex gap-1.5">

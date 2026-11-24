@@ -206,14 +206,14 @@ export default async function CalendarPage({
         ))}
       </nav>
 
-      <div className={"flex flex-col items-start gap-[22px] xl:flex-row" + (table ? " hidden" : "")}>
+      <div className={"flex flex-col items-start gap-[22px] pg-xl:flex-row" + (table ? " hidden" : "")}>
         <div className="w-full min-w-0 flex-1">
           <Card className="gap-[18px] !p-6">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 pg-xl:grid-cols-6">
               {days.map((day) => {
                 const there = booked.filter((c) => c.when! >= day.startMs && c.when! < day.endMs);
                 return (
-                  <div key={day.name} className="flex min-h-[120px] flex-col gap-2 xl:min-h-[560px] xl:border-l xl:border-rule xl:pl-3 xl:first:border-l-0 xl:first:pl-0">
+                  <div key={day.name} className="flex min-h-[120px] flex-col gap-2 pg-xl:min-h-[560px] pg-xl:border-l pg-xl:border-rule pg-xl:pl-3 pg-xl:first:border-l-0 pg-xl:first:pl-0">
                     <div className={"flex flex-col gap-0.5 rounded-[14px] px-2.5 py-2 " + (day.isToday ? "bg-brand-soft text-brand" : "")}>
                       <p className={"t-micro " + (day.isToday ? "" : "text-ink-3")}>{day.name}</p>
                       <p className={"t-h2 " + (day.isToday ? "" : "text-ink")}>{day.dayNum}</p>
@@ -259,7 +259,7 @@ export default async function CalendarPage({
           </Card>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-5 xl:w-[360px]">
+        <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
           {selectedIv && selectedIv.iv && (
             <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Selected</p>

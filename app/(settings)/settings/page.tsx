@@ -160,7 +160,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       {view === "rules" ? (
         <>
-          <div className="grid items-start gap-[22px] xl:grid-cols-[1fr_340px]">
+          <div className="grid items-start gap-[22px] pg-xl:grid-cols-[minmax(0,1fr)_340px]">
             {/* 6 grouped rule cards (S1) */}
             <div className="grid gap-5 md:grid-cols-2">
               {groups.map((g) => {
@@ -278,7 +278,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </div>
 
             {switches.length > 0 && (
-              <div className="grid gap-3 border-t border-rule pt-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 border-t border-rule pt-5 md:grid-cols-2 pg-lg:grid-cols-3">
                 {switches.map((s) => {
                   const words = settingWords(s.key, s.value);
                   const on = Boolean(s.value);
@@ -317,7 +317,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="border-t border-rule pt-5">
               <p className="t-micro mb-3 text-ink-3">Bank details on invoices</p>
               {mayChange ? (
-                <form action={saveBankDetails} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <form action={saveBankDetails} className="grid grid-cols-1 gap-3 sm:grid-cols-2 pg-lg:grid-cols-3">
                   {(
                     [
                       ["bank", "Bank", "bank.name"],
@@ -346,7 +346,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </>
       ) : (
         /* S2 · Templates and people */
-        <div className="grid items-start gap-[22px] xl:grid-cols-[1fr_400px]">
+        <div className="grid items-start gap-[22px] pg-xl:grid-cols-[minmax(0,1fr)_400px]">
           <div className="grid gap-5 md:grid-cols-2">
             {templates.map((t) => {
               const isOpen = selectedTemplate?.key === t.key;

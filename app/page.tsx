@@ -76,7 +76,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Waiting on others", value: w.waitsCount, caption: "not due today" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Do first" sub="Late first, then what needs you today. Each has one button.">
           {w.doFirst.length === 0 ? (
             <EmptyState icon="check" title="Nothing is waiting on you.">
@@ -131,7 +131,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
   const approve = (
     <>
       <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: k.caption, tone: k.key === "chases" && k.count ? ("warn" as const) : ("ink" as const) }))} />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
           title="Waiting for you"
           sub="Check each draft. Each has one button."
@@ -233,7 +233,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Done today", value: done, caption: done ? "since " + clockOf(w.doneCalls[0].at) : "none yet", tone: done ? "ok" : "ink" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="To call" sub="Late first, then by time. Each has one button.">
           {w.calls.length === 0 ? (
             <EmptyState icon="phone" title="Nobody is waiting on a call.">
@@ -296,9 +296,9 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Later", value: w.board.later.length, caption: w.nextLater ? "next one " + w.nextLater : "nothing later" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Board" sub="Late first. Each card says where it came from.">
-          <div data-stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div data-stagger className="grid gap-4 md:grid-cols-2 pg-xl:grid-cols-4">
             {cols.map((col) => (
               <div key={col.key} className="flex flex-col gap-3 rounded-[18px] bg-sunk p-3">
                 <p className="t-body-m flex items-center gap-2 px-1">

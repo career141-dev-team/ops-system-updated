@@ -304,7 +304,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
         </div>
       </Card>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-6 pg-xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex flex-col gap-6">
           <Card className="!py-4">
             <div className="flex flex-wrap items-center gap-3">

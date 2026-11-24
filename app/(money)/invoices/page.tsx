@@ -128,7 +128,7 @@ export default async function InvoicesPage({
         ))}
       </section>
 
-      <div className="grid grid-cols-1 items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 items-start gap-[22px] pg-xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Invoices" sub="Grouped by where each one stands. Each card has one button.">
           {(joinedNoInvoice.length > 0 || unreported.length > 0) &&
             <div className="flex flex-col gap-2">
@@ -166,7 +166,7 @@ export default async function InvoicesPage({
               })}
             </div>}
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pg-xl:grid-cols-4">
             {COLUMNS.map((col) => {
               const rows = byColumn.get(col.key) ?? [];
               const expanded = (sp.more ?? "").split(",").includes(col.key);

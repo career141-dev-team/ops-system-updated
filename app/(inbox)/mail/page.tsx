@@ -143,8 +143,8 @@ export default async function InboxPage({
       {view === "whatsapp" && <WhatsAppPanel view={wa} now={now} />}
       {view === "news" && <NewsPanel items={news} now={now} name={firstName(member.name)} memberId={member.id} mayModerate={can(member, "task.reassign")} />}
       {view === "mail" && (
-        <div className="flex items-start gap-[22px] max-lg:flex-col">
-          <div className="flex w-[620px] max-w-[45%] shrink-0 flex-col gap-3 max-lg:w-full max-lg:max-w-none">
+        <div className="flex items-start gap-[22px] max-pg-lg:flex-col">
+          <div className="flex w-[620px] max-w-[45%] shrink-0 flex-col gap-3 max-pg-lg:w-full max-pg-lg:max-w-none">
             <div className="flex flex-wrap items-center gap-3 px-2 t-small text-ink-3">
               {([["mine", "Your mailbox"], ["shared", "Shared boxes"], ["all", "Everything"]] as const).map(([k, w]) => (
                 <Link key={k} href={hrefMail({ box: k })} aria-current={box === k ? "page" : undefined} className={box === k ? "t-label text-ink" : "hover:text-ink"}>{w}</Link>

@@ -55,8 +55,8 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
     );
   }
   return (
-    <div className="flex items-start gap-[22px] max-lg:flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-3 max-lg:w-full">
+    <div className="flex items-start gap-[22px] max-pg-lg:flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 max-pg-lg:w-full">
         <Section tone="warn" label="Client replies to record" count={replies.length} />
         {replies.length === 0 && <p className="t-small px-2 text-ink-3">No replies waiting.</p>}
         {replies.map((r, i) => (
@@ -109,7 +109,7 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
           </div>
         ))}
       </div>
-      <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-lg:w-full">
+      <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-lg:w-full">
         <div className="flex flex-col gap-2.5 rounded-[28px] bg-ink p-6 text-ink-inverse">
           <p className="t-micro flex items-center gap-2 text-ink-3">
             <Icon name="chat" size={16} />
@@ -191,7 +191,7 @@ export function NewsPanel({ items, now, name, memberId, mayModerate = false }: {
           ))
         )}
       </div>
-      <aside className="flex w-[360px] shrink-0 flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card max-lg:w-full">
+      <aside className="flex w-[360px] shrink-0 flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card max-pg-lg:w-full">
         <p className="t-micro text-ink-3">FOLLOW</p>
         {[
           ["My clients", "Their events show here", true],

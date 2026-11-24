@@ -79,7 +79,7 @@ export default function Guarantee({ c, sp }: TabProps) {
           />
         </ActionPanel>
       )}
-      <div className="flex flex-col items-start gap-[22px] lg:flex-row">
+      <div className="flex flex-col items-start gap-[22px] pg-lg:flex-row">
         <Card title="Guarantee" sub={`Each person placed stays under guarantee for ${rows[0]?.total ?? 90} days.`} className="w-full min-w-0 flex-1">
           {rows.length === 0 ? (
             <EmptyState title="No guarantee yet">One starts when somebody placed on this role joins.</EmptyState>
@@ -122,7 +122,7 @@ export default function Guarantee({ c, sp }: TabProps) {
           )}
         </Card>
 
-        <div className="flex w-full shrink-0 flex-col gap-5 lg:w-[360px]">
+        <div className="flex w-full shrink-0 flex-col gap-5 pg-lg:w-[360px]">
           <div className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
             <p className="t-micro text-ink-3">Where it stands</p>
             <p className="t-h2 text-ink-inverse">{headline}</p>

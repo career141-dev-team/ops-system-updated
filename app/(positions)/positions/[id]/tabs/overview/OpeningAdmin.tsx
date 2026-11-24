@@ -31,7 +31,7 @@ export default function OpeningAdmin({ c }: { c: RoleCtx }) {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 pg-lg:grid-cols-2">
           <div className="flex flex-col gap-3">
             <span className="t-micro text-ink-3">PEOPLE ON THIS OPENING</span>
             <ul className="flex flex-col divide-y divide-rule">
