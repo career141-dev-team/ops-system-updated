@@ -184,9 +184,11 @@ export default function FindOrDo() {
         onClick={() => setOpen(true)}
         aria-label="Search the desk or ask AURA"
         title="Search or ask AURA (/)"
-        className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell"
+        className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-sunk text-ink transition-colors hover:bg-shell 2xl:w-[300px] 2xl:justify-between 2xl:pl-5 2xl:pr-[10px]"
       >
-        <Icon name="search" size={18} />
+        <Icon name="search" size={18} className="2xl:hidden" />
+        <span className="hidden text-[15px] font-light text-ink-3 2xl:inline">Search or ask AURA</span>
+        <kbd className="hidden size-[23px] items-center justify-center rounded-[5.5px] border border-rule bg-surface font-sans text-[12px] text-ink-3 2xl:flex">/</kbd>
       </button>
 
       {open && (
