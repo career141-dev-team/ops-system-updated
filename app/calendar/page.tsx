@@ -175,19 +175,6 @@ export default async function CalendarPage({
         sub="Your week and the team's"
         right={
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1 rounded-full bg-sunk p-1" role="group" aria-label="Layout">
-              {[{ k: "week", label: "Week", href: here({}) }, { k: "table", label: "Table", href: "/calendar?view=table" }].map((x) => (
-                <Link key={x.k} href={x.href} aria-current={(x.k === "table") === table ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + ((x.k === "table") === table ? "bg-ink text-ink-inverse" : "text-ink-2 hover:bg-shell")}>
-                  {x.label}
-                </Link>
-              ))}
-            </span>
-            {mayManage && (
-              <Link href={panelHref("/calendar", sp, "start-interview")} scroll={false} className={pillPrimary}>
-                <Icon name="plus" size={16} />
-                Start interview
-              </Link>
-            )}
             {!table && (
               <>
                 <Link href={here({ weekOffset: offset - 1 })} aria-label="Earlier week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
