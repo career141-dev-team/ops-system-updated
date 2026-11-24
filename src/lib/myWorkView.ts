@@ -326,7 +326,7 @@ export function standsLine(late: number, needs: number): string {
 }
 
 /** Draft kinds as the To approve tiles count them. */
-export function draftCounts(drafts: OpsMessage[]): { key: string; what: string; count: number }[] {
+export function draftCounts(drafts: OpsMessage[]): { key: string; what: string; caption: string; count: number }[] {
   return DRAFT_KINDS.map((k) => ({ ...k, count: drafts.filter((m) => draftKind(m) === k.key).length }));
 }
 
