@@ -173,7 +173,9 @@ test("a routine notice is one from a template somebody approved once, and nothin
 
 test("a draft's kind comes from what it is about", () => {
   assert.equal(draftKind({ subjectType: "esa" }), "agreements");
-  assert.equal(draftKind({ subjectType: "clientSet" }), "sets");
+  assert.equal(draftKind({ subjectType: "clientSet", templateKey: "esa.chase2" }), "chases");
   assert.equal(draftKind({ subjectType: "invoice" }), "invoices");
-  assert.equal(draftKind({ subjectType: null }), "emails");
+  assert.equal(draftKind({ subjectType: "interview", templateKey: "interview.reminder" }), "candidates");
+  assert.equal(draftKind({ subjectType: "interview", templateKey: "interview.client_feedback" }), "chases");
+  assert.equal(draftKind({ subjectType: null }), "chases");
 });

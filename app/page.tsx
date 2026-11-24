@@ -127,10 +127,10 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
   // ── To approve ──
   const picked = w.drafts.find((m) => m.id === sp.d) ?? w.drafts[0];
   const counts = draftCounts(w.drafts);
-  const kindWord = (m: (typeof w.drafts)[number]) => DRAFT_KINDS.find((k) => k.key === draftKind(m))?.what ?? "Message";
+  const kindWord = (m: (typeof w.drafts)[number]) => DRAFT_KINDS.find((k) => k.key === draftKind(m))?.tag ?? "Message";
   const approve = (
     <>
-      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: k.key === "emails" ? "to clients" : "to send", tone: k.count ? ("warn" as const) : ("ink" as const) }))} />
+      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: k.caption, tone: k.key === "chases" && k.count ? ("warn" as const) : ("ink" as const) }))} />
       <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
         <Card
           title="Waiting for you"
