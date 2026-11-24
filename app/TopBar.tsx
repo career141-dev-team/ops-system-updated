@@ -102,14 +102,12 @@ export default function TopBar({
         }
       >
         {/* Drawn at 1920px. Below 1536px (a laptop) the search narrows and the name goes, so the
-            workspaces fit beside it; under 1280px the workspaces scroll sideways. */}
-        <header data-welcome="bar" className="flex h-[72px] items-center gap-0.5 rounded-[36px] bg-surface pl-7 pr-3.5 shadow-card">
+            workspaces fit beside it. The tabs never scroll (owner, 24 Nov). */}
+        <header data-welcome="bar" className="flex h-[72px] items-center gap-3 overflow-hidden rounded-[36px] bg-surface pl-7 pr-5 shadow-card">
           <Link href="/" aria-label="My work" className="shrink-0">
             <Image src="/career141-lockup.png" alt="career141 · 20 years" width={178} height={56} priority className="h-[38px] w-[120px] object-contain" />
           </Link>
-          <span className="w-7 shrink-0" aria-hidden="true" />
-
-          <nav aria-label="Workspaces" className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+          <nav aria-label="Workspaces" className="ml-3 flex h-full items-stretch border-l border-rule">
             {workspaces.pages
               .filter((page) => !page.needs || may[page.needs])
               .map((page) => {
@@ -120,7 +118,7 @@ export default function TopBar({
                     href={page.href}
                     title={page.about}
                     aria-current={here ? "page" : undefined}
-                    className={"t-body shrink-0 whitespace-nowrap rounded-full px-3.5 py-[9px] text-ink transition-colors hover:bg-sunk " + (here ? "bg-sunk font-medium" : "")}
+                    className={"flex shrink-0 items-center whitespace-nowrap border-r border-rule px-[18px] text-[15px] font-light transition-colors hover:bg-sunk " + (here ? "bg-sunk text-ink shadow-[inset_0_-3px_0_var(--color-brand)]" : "text-ink-soft")}
                   >
                     {page.what}
                   </Link>
