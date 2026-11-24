@@ -55,7 +55,7 @@ export default function Requirement({ c, sp }: TabProps) {
   const adLive = ad && ["live", "closed"].includes(ad.state);
   const standsHead = !requirement ? "No requirement is recorded yet." : position.jdApprovedAt ? "The requirement is current." : "The JD is waiting for approval.";
   const standsBody = [
-    requirement ? `Version ${requirement.version} since ${dayMonth(requirement.updatedAt)}.` : null,
+    requirement ? `Version ${(requirement.version ?? 1)} since ${dayMonth(requirement.updatedAt)}.` : null,
     ad?.closesAt && adLive ? `The TopJobs advert ends on ${dayMonth(ad.closesAt)}.` : null,
     thisWeek ? (inPulse ? "Talent Pulse has this role in this week's issue." : "Talent Pulse is compiled every Tuesday.") : null,
   ]
@@ -68,8 +68,8 @@ export default function Requirement({ c, sp }: TabProps) {
         <div className="flex flex-col gap-[22px]">
           <Card
             title="Requirement"
-            sub={requirement ? `Version ${requirement.version} · changed ${dayMonth(requirement.updatedAt)}` : "Nothing recorded yet"}
-            right={requirement ? <span className="inline-flex shrink-0 rounded-full bg-info-soft px-2.5 py-1 text-[12px] font-medium leading-4 text-info">Version {requirement.version}</span> : undefined}
+            sub={requirement ? `Version ${(requirement.version ?? 1)} · changed ${dayMonth(requirement.updatedAt)}` : "Nothing recorded yet"}
+            right={requirement ? <span className="inline-flex shrink-0 rounded-full bg-info-soft px-2.5 py-1 text-[12px] font-medium leading-4 text-info">Version {(requirement.version ?? 1)}</span> : undefined}
           >
             {requirement ? (
               <div className="grid grid-cols-2 gap-x-6 gap-y-5">
@@ -133,7 +133,7 @@ export default function Requirement({ c, sp }: TabProps) {
           >
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <Field label="Approved">{position.jdApprovedAt ? dayMonth(position.jdApprovedAt) : "Not yet"}</Field>
-              <Field label="Version">{requirement ? String(requirement.version) : "—"}</Field>
+              <Field label="Version">{requirement ? String(requirement.version ?? 1) : "—"}</Field>
             </div>
             <details id="jd" open={sp.open === "jd"} className="scroll-mt-6">
               <summary className={small + " w-fit list-none gap-1.5 [&::-webkit-details-marker]:hidden"}>

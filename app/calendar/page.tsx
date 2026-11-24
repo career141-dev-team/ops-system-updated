@@ -154,10 +154,14 @@ export default async function CalendarPage({
   const booked = cards.filter((c) => c.when !== null).sort((a, b) => (a.when as number) - (b.when as number));
   const notBooked = cards.filter((c) => c.iv && c.status?.needsTime && c.when === null);
 
-  const selectedIv =
-    booked.find((c) => c.iv && c.id === on) ??
+  // Any item can be picked (v6 K1): a click selects it and the card on the right says what it is. Nothing is
+  // chosen for you but the first client interview of the week, as before.
+  const selected =
+    booked.find((c) => c.id === on) ??
     booked.find((c) => c.iv && c.when! >= week.days[0].startMs && c.when! < days[5].endMs) ??
     null;
+  const selectedIv = selected?.iv ? selected : null;
+  const selectedOther = selected && !selected.iv ? selected : null;
 
   const roleLink = (c: CalendarEvent, p: string) => (c.positionId && c.iv ? `/positions/${c.positionId}?view=interviews&panel=${p}&on=${c.iv.id}` : null);
   const roundWord = (c: CalendarEvent) => (c.iv && c.iv.round > 1 ? "Round " + c.iv.round : "First round");
@@ -233,12 +237,12 @@ export default async function CalendarPage({
                     <div className="h-px bg-rule" />
                     {there.map((c) => {
                       const st = KIND_STYLE[c.kind];
-                      const isSel = selectedIv?.id === c.id;
+                      const isSel = selected?.id === c.id;
                       return (
                         <Link
                           key={c.id}
-                          href={c.href}
-                          scroll={c.kind !== "client"}
+                          href={here({ on: c.id })}
+                          scroll={false}
                           className={`flex flex-col gap-0.5 rounded-[14px] px-3 py-2.5 ${st.box} ${isSel ? "outline outline-2 -outline-offset-2 outline-info" : ""}`}
                         >
                           <span className={"t-small " + st.clock}>
@@ -305,6 +309,24 @@ export default async function CalendarPage({
               </div>
             </section>
           )}
+          {selectedOther && (
+            <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
+              <p className="t-micro text-ink-3">Selected</p>
+              <p className="text-[20px] font-medium leading-7">{selectedOther.title}</p>
+              <p className="t-body-m">
+                {dayWord(selectedOther.when!)}
+                {selectedOther.kind === "joining" ? "" : ", " + clockOf(selectedOther.when!)}
+              </p>
+              <p className="t-small text-ink-3">
+                {selectedOther.sub}. {KIND_STYLE[selectedOther.kind].legend}.
+              </p>
+              <div className="flex gap-2.5 pt-1">
+                <Link href={selectedOther.href} className={pillPrimary}>
+                  Open
+                </Link>
+              </div>
+            </section>
+          )}
           {notBooked.map((c) => (
             <section key={c.id} className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Not booked yet</p>
@@ -322,7 +344,12 @@ export default async function CalendarPage({
               )}
             </section>
           ))}
-          {!selectedIv && notBooked.length === 0 && <p className="t-small text-ink-3">Nothing selected. Pick an interview in the week.</p>}
+          {!selected && notBooked.length === 0 && (
+            <section className="flex flex-col gap-2 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
+              <p className="t-micro text-ink-3">Selected</p>
+              <p className="t-small text-ink-3">Nothing selected. Pick an item in the week.</p>
+            </section>
+          )}
         </aside>
       </div>
 

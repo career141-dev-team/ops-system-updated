@@ -156,7 +156,7 @@ export function roleRows(input: ListInput): RoleRow[] {
     const toJoin = pl.filter((x) => !(x.state === "joined" || x.joinedAt));
 
     const counts: Record<StepKey, number | null> = {
-      ta: p.pendingCount,
+      ta: p.pendingCount ?? null,
       client: sent.reduce((n, s) => n + s.candidates.filter((c) => !c.decision).length, 0),
       interv: live.length,
       offer: toJoin.filter((x) => !x.joinDate).length,

@@ -117,12 +117,12 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
                       return (
                         <article key={c.id} className="flex flex-col gap-2 rounded-[16px] bg-surface p-3.5">
                           <div className="flex items-center gap-2.5">
-                            <span className={"t-label flex size-8 shrink-0 items-center justify-center rounded-full " + TILE_TONE[col.key === "done" ? "neutral" : col.key === "signed" ? "info" : col.key === "send" || col.key === "chasing" ? "warn" : "warn"]}>{c.tile}</span>
+                            <span className={"t-label flex size-8 shrink-0 items-center justify-center rounded-full " + TILE_TONE[col.key === "done" ? "neutral" : col.key === "signed" ? "info" : col.key === "chasing" && /^Next chase/.test(c.state.text) ? "neutral" : "warn"]}>{c.tile}</span>
                             <div className="flex min-w-0 flex-1 flex-col">
-                              <Link href={col.key === "chasing" ? panelHref("/clients/agreements", sp, "chase-agreement", c.id) : toLead} scroll={col.key !== "chasing" ? undefined : false} className="t-body-m truncate hover:underline">
+                              <Link href={col.key === "chasing" ? panelHref("/clients/agreements", sp, "chase-agreement", c.id) : toLead} scroll={col.key !== "chasing" ? undefined : false} className="t-body-m hover:underline">
                                 {c.company}
                               </Link>
-                              <span className="t-small truncate text-ink-3">{c.line}</span>
+                              <span className="t-small text-ink-3">{c.line}</span>
                             </div>
                             <Link href={"/leads/" + c.leadId} aria-label={"Open " + c.company} className="flex size-7 shrink-0 items-center justify-center rounded-[14px] text-ink-3 hover:bg-sunk">
                               <Icon name="more" size={14} />

@@ -44,6 +44,23 @@ test("a plain task falls back to its own page", () => {
   assert.equal(buttonFor(task({}), ctx, panel).href, "/tasks/t1");
 });
 
+test("W1 buttons open the v6 drawer the flow list names", () => {
+  const none = { client: null, role: null, position: null, interview: null, set: null, clientRow: null };
+  const inRole = { ...none, position: { id: "pos_1" } } as unknown as typeof none;
+  assert.equal(
+    buttonFor(task({ subjectType: "esa", subjectId: "esa_1", title: "Chase 3" }), none, panel).href,
+    "/clients/agreements?panel=chase-agreement&on=esa_1",
+  );
+  assert.equal(
+    buttonFor(task({ subjectType: "placement", subjectId: "pl_1", title: "Missing from the placement: address" }), inRole, panel).href,
+    "/positions/pos_1?view=offer&panel=record-address&on=pl_1",
+  );
+  assert.equal(
+    buttonFor(task({ subjectType: "placement", subjectId: "pl_2", title: "A no-show: Sahan" }), inRole, panel).href,
+    "/positions/pos_1?view=offer&panel=did-not-join&on=pl_2",
+  );
+});
+
 test("words", () => {
   assert.equal(standsLine(2, 4), "2 late, then 4 need you.");
   assert.equal(standsLine(0, 0), "Nothing is waiting on you.");

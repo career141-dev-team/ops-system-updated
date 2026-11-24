@@ -384,6 +384,15 @@ The screens were redrawn to the v6 design in a first wave; later waves fill the 
 - **Settings v6 & Global Find or do** (`app/(settings)/settings/page.tsx`, `app/FindOrDo.tsx`,
   `app/api/find/route.ts`, 19 Nov): two-tab Rules / Templates and people card grid with right-rail
   live template editor, leave cover (`saveCover`), and `/` instant command palette (`G1`).
+- **v6 screen check (24 Nov, `hdbinath/v6-ui-gaps`)**: every v6 frame was compared with the running screens and each
+  drawer and send URL was opened. Fixed: the Offer and joining tab (R4) crashed when a placement had no `dojHistory`
+  (defaulted once in `desk()`); Positions' "Call <name>" opened nothing (My work's call drawer now also takes a role
+  id); My work buttons open the drawer the flow list names (`buttonFor`); the role header carries each tab's own
+  buttons (R1, R2, R4) and the Preview links sit on the interview cards; the client page leads with Agreement and
+  Contacts; board card names wrap; Notifications is "what changed on my clients" in plain sentences
+  (`src/lib/clientNews.ts`); client cards use a dark pill for the chase or check-in; Build SET shows the group text.
+  Left as they are, on purpose: payments to match (needs the bank feed), the Board | Calendar toggle on R1, and the
+  owner chip on client cards (moved behind the menu on 23 Nov).
 
 ## Real data, from a month of mail (9 Nov)
 
