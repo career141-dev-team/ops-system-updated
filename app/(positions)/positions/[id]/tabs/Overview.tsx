@@ -177,7 +177,7 @@ export default function Overview({ c, sp }: TabProps) {
                 ))}
               </div>
             )}
-          </Card></div>
+          </Card>
 
           <div className="max-md:hidden"><Card title="Where each person is now">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -207,7 +207,7 @@ export default function Overview({ c, sp }: TabProps) {
                 </div>
               ))}
             </div>
-          </Card>
+          </Card></div>
         </div>
 
         <aside className="flex w-full shrink-0 flex-col gap-[18px] max-md:hidden xl:w-[380px]">
