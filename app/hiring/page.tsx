@@ -226,7 +226,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-scoop" && mayManage && (
-        <Panel kicker="Internal hiring" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)}>
+        <Panel kicker="Internal hiring" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={addScoop} encType="multipart/form-data">
             <input type="hidden" name="back" value="/hiring?view=scoops" />
             <PanelSection title="The CVs">
@@ -253,7 +253,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-vacancy" && mayManage && (
-        <Panel kicker="Internal hiring" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)}>
+        <Panel kicker="Internal hiring" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={createVacancy}>
             <input type="hidden" name="back" value="/hiring" />
             <PanelSection title="Vacancy details">
