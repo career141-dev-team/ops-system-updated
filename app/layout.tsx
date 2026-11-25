@@ -131,7 +131,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <main data-welcome="page" className="min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
               {/* On the desk the page sits in a white sheet on the dotted board, with its name in a notch
                   hanging from the sheet's top edge (25 Nov). A phone keeps the bare page. */}
-              <div className="md:rounded-[28px] md:bg-surface md:shadow-card">
+              <div className="md:rounded-[28px] md:bg-surface md:[box-shadow:var(--shadow-card-plain)]">
                 <PageNotch />
                 <div className="@container/page md:px-6 md:pb-6 md:pt-2">
                   <Suspense fallback={children}>

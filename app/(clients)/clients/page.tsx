@@ -91,7 +91,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           ) : (
             <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-xl:grid-cols-3">
               {visible.map((c) => (
-                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:shadow-float">
+                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:[box-shadow:0_0_0_1px_var(--color-card-line),var(--shadow-float)]">
                   <div className="flex items-center gap-3">
                     <span className={"flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-medium leading-[26px] " + TILE_TONE[TILE_CYCLE[cards.findIndex((x) => x.id === c.id) % TILE_CYCLE.length]]}>{c.tile}</span>
                     <Link href={c.href} className="min-w-0 flex-1 truncate text-[17px] font-medium leading-[26px] @min-[400px]:text-[19px] after:absolute after:inset-0 after:rounded-[24px]">
