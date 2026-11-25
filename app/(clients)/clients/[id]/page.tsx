@@ -528,29 +528,32 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           )}
         </div>
 
-        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
-          <StandsCard
-            head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
-            body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
-            links={[
-              { label: "Copy a check-in", href: sendHref(path, sp, "check-in", client.id) },
-              { label: "Add a call note", href: panelHref(path, sp, "add-call") },
-            ]}
-          />
-          <RailCard title="Client details">
-            {[
-              ["Billing name", client.billingName],
-              ["Billing address", client.billingAddress],
-              ["Invoice email", client.billingEmail],
-              ["WhatsApp group", client.groupName],
-            ].map(([k, v]) => (
-              <div key={k} className="flex flex-col gap-0.5">
-                <span className={label}>{k.toUpperCase()}</span>
-                <span className="t-body-m">{v || "Not written down"}</span>
-              </div>
-            ))}
-          </RailCard>
-        </aside>
+        {/* The Agreement view gives the whole width to the document (25 Nov, the owner): no rail beside it. */}
+        {view !== "agreement" && (
+          <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
+            <StandsCard
+              head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
+              body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
+              links={[
+                { label: "Copy a check-in", href: sendHref(path, sp, "check-in", client.id) },
+                { label: "Add a call note", href: panelHref(path, sp, "add-call") },
+              ]}
+            />
+            <RailCard title="Client details">
+              {[
+                ["Billing name", client.billingName],
+                ["Billing address", client.billingAddress],
+                ["Invoice email", client.billingEmail],
+                ["WhatsApp group", client.groupName],
+              ].map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <span className={label}>{k.toUpperCase()}</span>
+                  <span className="t-body-m">{v || "Not written down"}</span>
+                </div>
+              ))}
+            </RailCard>
+          </aside>
+        )}
       </div>
       {sp.send === "agreement" && esa && lead && esa.state === "draft" && <SendAgreementModal db={db} leadId={lead.id} me={me} closeHref={closeSendHref(path, sp)} />}
       {sp.send === "agreement" && esa && (esa.state === "sent" || esa.state === "chasing") && (() => {
