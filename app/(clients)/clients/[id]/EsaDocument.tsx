@@ -5,7 +5,7 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
   // The owner's Word file, as it looks: Times New Roman, justified, blue numbered headings, the logo top left,
   // the CAREER141 watermark and the copyright line at the foot. Always white paper with dark ink, in dark mode too.
   return (
-    <div className="relative overflow-hidden bg-white p-6 text-[13px] leading-[20px] text-[#1f1f1f] [font-family:'Times_New_Roman',Times,serif]">
+    <div className="relative overflow-hidden bg-white p-6 text-[12px] leading-[18px] text-[#1f1f1f] [font-family:'Times_New_Roman',Times,serif]">
       <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[50deg] select-none whitespace-nowrap text-[110px] font-bold leading-none text-[#e9ecef]">CAREER141</span>
       <div className="relative flex flex-col gap-3 text-justify">
         <div className="flex items-start justify-between gap-3">
@@ -21,18 +21,21 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
         {doc.parties.map((p, i) => (
           <p key={i} className={p === "AND" ? "text-center" : ""}>{p}</p>
         ))}
-        <p className="text-[15px]">AGREE AS FOLLOWS</p>
+        <p className="text-[14px]">AGREE AS FOLLOWS</p>
+        {/* The Word file runs the clauses in two columns (page 2 onward): the same here. */}
+        <div className="gap-x-7 [column-count:2]">
         {doc.sections.map((s, n) => (
-          <section key={s.title} className="flex flex-col gap-2">
-            <h4 className="mt-2 text-[15px] font-bold uppercase text-[#528dd2]">{n + 1}) {s.title}</h4>
+          <section key={s.title} className="mb-3 flex flex-col gap-2">
+            <h4 className="mt-1 break-after-avoid text-[14px] font-bold uppercase text-[#528dd2]">{n + 1}) {s.title}</h4>
             {s.lead && <p>{s.lead}</p>}
             {s.items.map((t, i) => (
-              <p key={i} className="pl-5 -indent-5">
+              <p key={i} className="pl-5 -indent-5 [break-inside:auto]">
                 {s.lead ? String.fromCharCode(97 + i) + ")" : `${n + 1}.${i + 1}`} {t}
               </p>
             ))}
           </section>
         ))}
+        </div>
         <p className="mt-2">As a token of acceptance of the above terms and conditions, both parties have set their hands by signing this document on the date and place written below;</p>
         <div className="mt-5 grid grid-cols-2 gap-10 text-left">
           <div className="flex flex-col">
