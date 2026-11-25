@@ -92,12 +92,12 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
               One appears here when an intro call is held and its agreement is drafted.
             </EmptyState>
           ) : (
-            <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 pg-xl:grid-cols-5">
+            <div className="flex snap-x gap-3.5 overflow-x-auto pb-2">
               {COLUMNS.map((col) => {
                 const list = inColumn(col.key);
                 const shown = col.key === "done" ? list.slice(0, 2) : list;
                 return (
-                  <div key={col.key} className="flex min-w-0 flex-col gap-2.5 self-start rounded-[20px] bg-sunk px-3 py-3.5 pg-xl:w-full">
+                  <div key={col.key} className="flex w-[calc((100%-28px)/2.5)] min-w-[220px] shrink-0 snap-start flex-col gap-2.5 self-start rounded-[20px] bg-sunk px-3 py-3.5">
                     <div className="flex items-center gap-2 px-1 pb-0.5">
                       <span aria-hidden="true" className={"size-2 rounded-[4px] " + col.dot} />
                       <h3 className="t-body-m flex-1">{col.label}</h3>

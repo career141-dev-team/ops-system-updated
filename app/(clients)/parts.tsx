@@ -73,7 +73,6 @@ export function ClientsHead({
     { key: "clients", label: "Clients", href: "/clients", n: counts.clients },
     { key: "enquiries", label: "Enquiries", href: "/leads", n: counts.enquiries },
     { key: "agreements", label: "Agreements", href: "/clients/agreements", n: counts.agreements },
-    { key: "positions", label: "Positions", href: "/clients/positions", n: counts.positions ?? 0 },
   ];
   const action = tab === "clients" ? "/clients" : tab === "enquiries" ? "/leads" : tab === "positions" ? "/clients/positions" : "/clients/agreements";
   return (
