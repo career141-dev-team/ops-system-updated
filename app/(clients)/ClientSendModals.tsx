@@ -2,7 +2,11 @@ import { approveAndSend, draftNextChase, sendAgreement, writeNewMessage } from "
 import PreviewAndSend, { SendLeftSection } from "@/app/ui/PreviewAndSend";
 import { agreementForLead, textOf } from "@/data/desk";
 import type { OpsDatabase, OpsMember } from "@/data/types";
-import { checkInText, type AgreementCard, type ClientCard } from "@/lib/clientsView";
+import Icon from "@/app/Icon";
+import { chaseRows, termRows } from "@/lib/agreementView";
+import { clockWords, dayWords, type AgreementCard, type ClientCard } from "@/lib/clientsView";
+import { lastTalkLine, recentJoiner } from "@/lib/checkIn";
+import CheckInModal from "./CheckInModal";
 import { agreementVersions, coverDraft, missingFields } from "@/lib/esa";
 
 /**
@@ -15,78 +19,33 @@ export function CheckInSendModal({
   card,
   me,
   closeHref,
+  db,
+  now = Date.now(),
 }: {
   card: ClientCard;
   me: OpsMember;
   closeHref: string;
+  db: OpsDatabase;
+  now?: number;
 }) {
   const email = card.person?.email ?? "";
   const phone = card.person?.phone ?? "";
-  const body = checkInText(card.person, card.owner || me.name);
-  const subject = `Quick check-in — ${card.name}`;
-
+  const person = card.person;
   return (
-    <PreviewAndSend
+    <CheckInModal
       title={`Check in with ${card.name}`}
-      sub={card.person ? `${card.person.name}${card.person.role ? ", " + card.person.role : ""}` : "Client HR"}
+      sub={person ? `${person.name}${person.role ? ", " + (person.role.length <= 3 ? person.role.toUpperCase() : person.role) : ""}` : "Client HR"}
+      extra={lastTalkLine(card.quietDays, now)}
       closeHref={closeHref}
       action={email ? writeNewMessage : undefined}
-      hidden={{
-        to: email,
-        about: `client|${card.id}`,
-        back: closeHref,
-        sendNow: "1",
-      }}
-      sendLabel="Send check-in"
+      hidden={{ to: email, about: `client|${card.id}`, back: closeHref, sendNow: "1" }}
       disabledReason={email ? null : "Add a client contact email before sending by email (you can still copy the WhatsApp message)."}
-      note="Goes through the outbound gate. In test mode it redirects to the test address."
-      left={
-        <>
-          <SendLeftSection title="Include in the message">
-            <div className="flex flex-col gap-2">
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">{card.status.text}</p>
-                <p className="t-small text-ink-3">{card.line || "Active client"}</p>
-              </div>
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">Anything we can do better</p>
-                <p className="t-small text-ink-3">Short check-in to keep the client warm</p>
-              </div>
-            </div>
-          </SendLeftSection>
-          {card.person && (
-            <SendLeftSection title="To">
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">{card.person.name}</p>
-                <p className="t-small text-ink-3">{email || phone || "No address on file"}</p>
-              </div>
-            </SendLeftSection>
-          )}
-        </>
-      }
-      tabs={[
-        {
-          key: "email",
-          label: `Email to ${card.person?.name ?? card.name}`,
-          kind: "email",
-          email: {
-            from: `${me.name}, Career141 <${me.email}>`,
-            to: email || "No email on file",
-            subject,
-            body,
-          },
-        },
-        {
-          key: "whatsapp",
-          label: "WhatsApp",
-          kind: "whatsapp",
-          whatsapp: {
-            recipient: card.person?.name ?? card.name,
-            phone,
-            body,
-          },
-        },
-      ]}
+      contact={person ? { name: person.name, role: person.role ?? "", company: card.name, email, phone } : null}
+      sender={{ name: card.owner || me.name, email: me.email }}
+      clientName={card.name}
+      settling={recentJoiner(db, card.id, now)}
+      roles={card.openRoles.map((r) => r.title)}
+      time={clockWords(now)}
     />
   );
 }
@@ -121,7 +80,7 @@ export function SendAgreementModal({
     agreementVersions(esaFiles)[0]?.file ??
     (esa?.draftFileId ? db.files.find((f) => f.id === esa.draftFileId) : null) ??
     null;
-  const to = lead.contactEmail ?? "";
+  const to = fields.signatoryEmail || lead.contactEmail || "";
   const disabledReason = !esa
     ? "Save the agreement details first in the Send the agreement panel."
     : missing.length > 0
@@ -134,6 +93,7 @@ export function SendAgreementModal({
     <PreviewAndSend
       title="Send the agreement"
       sub={`${lead.company} · Agreement v${esa?.version ?? 1}`}
+      extra="Not sent yet. We cannot start the search until it is signed."
       closeHref={closeHref}
       action={esa ? sendAgreement : undefined}
       hidden={{
@@ -147,16 +107,11 @@ export function SendAgreementModal({
       left={
         <>
           <SendLeftSection title="The terms">
-            <div className="flex flex-col gap-2 rounded-[16px] border border-rule bg-surface p-4">
-              {[
-                ["Fee", fields.fee ?? "Not set"],
-                ["Guarantee", fields.guaranteeDays ? `${fields.guaranteeDays} days` : "90 days"],
-                ["Payment", fields.paymentDays ? `${fields.paymentDays} days` : "30 days"],
-                ["Signatory", fields.signatoryName ?? lead.contactName],
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2 text-[14px]">
-                  <span className="text-ink-3">{k}</span>
-                  <span className="font-medium text-ink">{v || "—"}</span>
+            <div className="flex flex-col rounded-[16px] bg-surface">
+              {termRows(fields).map((r) => (
+                <div key={r.label} className="flex items-center gap-4 border-t border-rule px-4 py-3 first:border-t-0">
+                  <span className="t-body w-24 shrink-0 text-ink-3">{r.label}</span>
+                  <span className="t-body-m text-[17px] text-ink">{r.value}</span>
                 </div>
               ))}
             </div>
@@ -173,7 +128,7 @@ export function SendAgreementModal({
       tabs={[
         {
           key: "email",
-          label: `Email to ${lead.contactName || lead.company}`,
+          label: `Email to ${(fields.signatoryName || lead.contactName || lead.company).trim().split(/\s+/)[0]}`,
           kind: "email",
           email: {
             from: `${me.name}, Career141 <${me.email}>`,
@@ -209,11 +164,13 @@ export function ChaseAgreementSendModal({
   card,
   me,
   closeHref,
+  now = Date.now(),
 }: {
   db: OpsDatabase;
   card: AgreementCard;
   me: OpsMember;
   closeHref: string;
+  now?: number;
 }) {
   const esa = db.agreements.find((a) => a.id === card.id);
   if (!esa) return null;
@@ -221,20 +178,27 @@ export function ChaseAgreementSendModal({
     (m) => m.subjectType === "agreement" && m.subjectId === esa.id && m.state === "draft",
   );
   const lead = db.leads.find((l) => l.id === esa.leadId);
-  const to = draft?.to?.[0] ?? lead?.contactEmail ?? "";
-  const phone = lead?.contactPhone ?? "";
+  const to = draft?.to?.[0] ?? esa.fields.signatoryEmail ?? lead?.contactEmail ?? "";
+  const phone = esa.fields.signatoryPhone || lead?.contactPhone || "";
   const step = card.copy?.step ?? esa.chaseStep + 1;
   const body =
     draft?.body ??
     card.copy?.text ??
-    `Hi ${lead?.contactName || "there"},\n\nFollowing up on the Executive Search Agreement we sent for ${card.company}. Please let us know if you have any questions or if you are ready to sign so we can start the search.\n\nKind regards,\n${me.name}`;
+    `Hi ${esa.fields.signatoryName?.trim().split(/\s+/)[0] || lead?.contactName || "there"},\n\nFollowing up on the Executive Search Agreement we sent for ${card.company}. Please let us know if you have any questions or if you are ready to sign so we can start the search.\n\nKind regards,\n${me.name}`;
   const subject = draft?.subject ?? `Following up: Executive Search Agreement — ${card.company}`;
   const brand = textOf(db, "brand.name", "Career141");
+  const contact = esa.fields.signatoryName || lead?.contactName || card.company;
+  const contactFirst = contact.trim().split(/\s+/)[0];
+  const waBody = esa.sentAt
+    ? `Hi ${contactFirst}, this is ${me.name.trim().split(/\s+/)[0]} from ${brand}. A gentle reminder about the agreement we sent on ${dayWords(esa.sentAt)}. It is not signed yet, and we can only start the search once it is.\n\nCould you sign and send it back? Thank you!`
+    : body;
+  const rows = chaseRows(esa, now);
 
   return (
     <PreviewAndSend
       title={`Chase ${step} · agreement`}
-      sub={`${card.company} · Agreement v${esa.version}`}
+      sub={[card.company, esa.fields.signatoryTitle].filter(Boolean).join(" · ")}
+      extra={esa.sentAt ? `Agreement sent ${dayWords(esa.sentAt)}, not signed. No TA until it is.` : undefined}
       closeHref={closeHref}
       action={draft ? approveAndSend : draftNextChase}
       hidden={
@@ -248,34 +212,36 @@ export function ChaseAgreementSendModal({
       left={
         <SendLeftSection title="Chase history">
           <div className="flex flex-col gap-2">
-            <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-              <p className="t-body-m text-ink">Chases sent so far: {esa.chaseStep}</p>
-              <p className="t-small text-ink-3">Chase {step} of 6 is next · {brand}</p>
-            </div>
+            {rows.length === 0 && (
+              <div className="rounded-[14px] bg-surface px-4 py-3">
+                <p className="t-body-m text-ink">Chase {step} of 6 is next</p>
+                <p className="t-small text-ink-3">{brand}</p>
+              </div>
+            )}
+            {rows.map((r) => (
+              <div key={r.title} className={"flex items-start gap-3 rounded-[14px] px-4 py-3.5 " + (r.kind === "sent" ? "bg-brand-soft" : "bg-warn-soft")}>
+                <Icon name={r.kind === "sent" ? "check" : "clock"} size={20} className={"mt-0.5 shrink-0 " + (r.kind === "sent" ? "text-brand" : "text-warn")} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="t-body-m text-[17px] text-ink">{r.title}</span>
+                  <span className="t-small text-ink-2">{r.sub}</span>
+                </span>
+              </div>
+            ))}
           </div>
         </SendLeftSection>
       }
       tabs={[
         {
-          key: "email",
-          label: `Email to ${lead?.contactName || card.company}`,
-          kind: "email",
-          email: {
-            from: `${me.name}, Career141 <${me.email}>`,
-            to: to || "No email on file",
-            subject,
-            body,
-          },
+          key: "whatsapp",
+          label: `WhatsApp to ${contactFirst}`,
+          kind: "whatsapp",
+          whatsapp: { recipient: contact, phone, body: waBody, time: clockWords(now) },
         },
         {
-          key: "whatsapp",
-          label: "WhatsApp",
-          kind: "whatsapp",
-          whatsapp: {
-            recipient: lead?.contactName || card.company,
-            phone,
-            body,
-          },
+          key: "email",
+          label: `Email to ${contactFirst}`,
+          kind: "email",
+          email: { from: `${me.name}, Career141 <${me.email}>`, to: to || "No email on file", subject, body },
         },
       ]}
     />

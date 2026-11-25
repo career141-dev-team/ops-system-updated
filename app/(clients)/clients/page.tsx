@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
 import { pillSecondary } from "@/app/ui/figma";
 import { EmptyState } from "@/app/ui/figma";
-import { desk, member as memberIn } from "@/data/desk";
+import { desk, member as memberIn, switchedOn } from "@/data/desk";
+import { teamsFake } from "@/lib/graphCalendar";
+import { people as taPeople } from "@/lib/ta";
 import { agoShort } from "@/lib/clientCards";
 import {
   CLIENT_FILTERS,
@@ -18,13 +20,14 @@ import {
 import { entryInWords, gather } from "@/lib/timeline";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
-import { can } from "@/lib/roles";
+import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { CheckInSendModal } from "../ClientSendModals";
 import CopyButton from "../CopyButton";
 import { ClientsHead, Msg, PILL_TONE, RailCard, ReachIcons, StandsCard, TILE_CYCLE, TILE_TONE } from "../parts";
 import { initialsFor } from "@/app/ui/figma";
 import CheckInPanel from "./CheckInPanel";
+import NewClientPanel from "./NewClientPanel";
 
 type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string };
 
@@ -40,6 +43,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const db = await desk();
   const now = Date.now();
 
+  const taSide = panel === "new-client" ? await taPeople() : { ok: false as const, reason: "", data: [] as { id: string; fullName: string; isActive: boolean }[] };
   const cards = clientCards(db, now);
   const shown = filterCards(cards, f, q, me.id);
   const visible = all ? shown : shown.slice(0, 9);
@@ -87,7 +91,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           ) : (
             <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-xl:grid-cols-3">
               {visible.map((c) => (
-                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:shadow-float">
+                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:[box-shadow:0_0_0_1px_var(--color-card-line),var(--shadow-float)]">
                   <div className="flex items-center gap-3">
                     <span className={"flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-medium leading-[26px] " + TILE_TONE[TILE_CYCLE[cards.findIndex((x) => x.id === c.id) % TILE_CYCLE.length]]}>{c.tile}</span>
                     <Link href={c.href} className="min-w-0 flex-1 truncate text-[17px] font-medium leading-[26px] @min-[400px]:text-[19px] after:absolute after:inset-0 after:rounded-[24px]">
@@ -148,7 +152,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           )}
         </div>
         <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
-          <StandsCard head={stands.head} body={stands.body} copies={stands.copies} />
+          <StandsCard head={stands.head} body={stands.body} people={stands.people.map((p) => ({ ...p, href: "/work", label: "Open work" }))} more={stands.more} />
           <RailCard title="Latest">
             {latest.length === 0 ? (
               <p className="t-small text-ink-3">Nothing has happened with a client yet.</p>
@@ -166,6 +170,15 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           </RailCard>
         </aside>
       </div>
+      {panel === "new-client" && (
+        <NewClientPanel
+          closeHref={closeHref("/clients", sp)}
+          msg={msg}
+          mayAdd={can(me, "client.manage")}
+          refusal={refusal("client.manage")}
+          call={{ taPeople: taSide.ok ? taSide.data.filter((p) => p.isActive) : [], members: db.members, organiserId: me.id, teamsOn: teamsFake() || switchedOn(db, "switch.teamsEnabled") }}
+        />
+      )}
       {checkInCard && (
         <CheckInPanel
           card={checkInCard}
@@ -175,7 +188,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         />
       )}
       {sendCheckInCard && (
-        <CheckInSendModal card={sendCheckInCard} me={me} closeHref={closeSendHref("/clients", sp)} />
+        <CheckInSendModal card={sendCheckInCard} me={me} closeHref={closeSendHref("/clients", sp)} db={db} now={now} />
       )}
     </div>
   );

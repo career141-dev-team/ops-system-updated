@@ -11,22 +11,26 @@ import { teamsFake } from "@/lib/graphCalendar";
 import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
+import AgreementView from "./AgreementView";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
 import { lastTalkWords } from "@/lib/clientsBoard";
-import { checkInText, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
+import { agreementCards, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
-import { panelHref } from "@/lib/panel";
+import PopupBox from "@/app/ui/PopupBox";
+import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref, sendHref } from "@/lib/sendModal";
+import { CheckInSendModal, ChaseAgreementSendModal, SendAgreementModal } from "../../ClientSendModals";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
 import { Msg, RailCard, ReachIcons, StandsCard } from "../../parts";
 
-type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string };
+type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string; send?: string };
 type View = "overview" | "agreement" | "contacts" | "history";
 
 /** Old links (?tab=, ?view=openings and so on) land on the nearest of the four views. */
@@ -84,7 +88,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const stageChip = activeHold || client.stage === "on_hold" ? { label: "On hold", tone: "warn" as const } : client.stage === "active" ? { label: "Active", tone: "brand" as const } : { label: STAGE_MEANINGS[client.stage as ClientStage]?.split(" — ")[0] ?? client.stage, tone: "neutral" as const };
   const fee = esa ? [esa.fields.feeMonths && esa.fields.feeMonths + (esa.fields.feeMonths === "1" ? " month" : " months") + " of salary", esa.fields.feeBasis ? "(" + esa.fields.feeBasis + ")" : ""].filter(Boolean).join(" ") : "";
   const dayOf = (t: number | null) => (t ? dayWords(t).replace(/^\w+ /, "") + " " + new Date(t + 5.5 * 3_600_000).getUTCFullYear() : "—");
-  const checkIn = checkInText(person, ownerName);
 
   const threads = view === "history" ? buildThreads(db.inbound, db.messages).filter((t) => t.clientId === client.id) : [];
   const search = q.trim().toLowerCase();
@@ -98,7 +101,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   // The one call this client's page offers: intro for a new client, requirement for a new role (23 Nov).
   const calls = client.leadId ? meetingsForLead(db, client.leadId) : [];
   const callKind = callKindFor({ stage: client.stage, hasPosition: db.positions.some((p) => p.clientId === client.id), heldCall: calls.some((m) => m.heldAt !== null) });
-  const taSide = view === "overview" && mayManage ? await taPeople() : null;
+  const taSide = (view === "overview" || sp.panel === "requirement-call") && mayManage ? await taPeople() : null;
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   const whenIn = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
@@ -172,6 +175,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </Link>
             <Link href="/clients/owners" className="t-small rounded-lg px-3 py-1.5 text-brand hover:bg-sunk">
               Who owns what
+            </Link>
+            <Link href={panelHref(path, sp, "requirement-call")} scroll={false} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
+              {callKind === "intro" ? "Intro call" : "Requirement call"}
             </Link>
             {lead && (
               <Link href={"/leads/" + lead.id} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
@@ -304,93 +310,56 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   </ul>
                 )}
               </Card>
-              <Card
-                title={callKind === "intro" ? "Intro call" : "Requirement call"}
-                sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
-                right={
-                  <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
-                    <Icon name="plus" size={14} />
-                    New position
-                  </Link>
-                }
-              >
-                {calls.length > 0 && (
-                  <div className="flex flex-col">
-                    {calls.map((m) => (
-                      <div key={m.id} className="flex flex-wrap items-center gap-3 border-t border-rule py-2.5 first:border-t-0 first:pt-0">
-                        <span className="t-body-m">{m.kind === "intro" ? "Intro call" : "Requirement call"}</span>
-                        <span className="t-small text-ink-3">{whenIn(m.at)} · {m.state.replace(/_/g, " ")}</span>
-                        <Link href={"/leads/" + client.leadId + "?step=" + (m.kind === "intro" ? "intro" : "requirement")} className="t-body-m ml-auto text-brand hover:underline">
-                          {m.heldAt ? "Open" : "Mark held or rebook"}
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {mayManage && (
-                  <details open={calls.length === 0}>
-                    <summary className="t-body-m cursor-pointer text-brand hover:underline">{callKind === "intro" ? "Book the intro call" : "Book the requirement call"}</summary>
-                    <div className="pt-3">
-                      <MeetingBookingForm
-                        action={bookClientCall}
-                        leadId=""
-                        hidden={{ clientId: client.id }}
-                        contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
-                        taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
-                        members={db.members}
-                        organiserId={client.ownerId}
-                        teamsOn={teamsOn}
-                        submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
-                        primary
-                        offerAlsoRequirement={callKind === "intro"}
-                      />
-                    </div>
-                  </details>
-                )}
-              </Card>
             </>
           )}
 
-          {view === "agreement" && (
-            <>
-              <Card title="Terms" sub={esa ? "Version " + esa.version : undefined}>
-                {esa ? (
-                  <dl className="flex flex-col">
-                    {ESA_FIELDS.map((f) => (
-                      <div key={f.key} className="t-body flex items-center justify-between gap-6 border-t border-rule py-2.5 first:border-t-0">
-                        <dt className="text-ink-2">{f.label}</dt>
-                        <dd className="t-body-m text-right">{esa.fields[f.key] || "—"}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : (
-                  <EmptyState icon="file" title="No agreement file here">
-                    Standard Career 141 terms, signed before Ops or through the TA System.
-                  </EmptyState>
-                )}
-              </Card>
-              {esa && (() => {
-                const esaFiles = db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId);
+          {view === "agreement" &&
+            (esa ? (
+              (() => {
+                const esaFiles = db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.draftFileId || f.id === esa.signedFileId || f.id === esa.countersignedFileId);
                 const newest = agreementVersions(esaFiles)[0] ?? null;
                 const activeDoc =
                   (esa.countersignedFileId ? db.files.find((f) => f.id === esa.countersignedFileId) : null) ??
                   (esa.signedFileId ? db.files.find((f) => f.id === esa.signedFileId) : null) ??
                   newest?.file ??
                   null;
+                const held = client.leadId ? meetingsForLead(db, client.leadId).filter((m) => m.heldAt !== null).sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0] : undefined;
+                const heldDay = held?.heldAt ? new Date(held.heldAt + 5.5 * 3_600_000).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }) : null;
+                const director = db.members.find((m) => m.role === "director_ops")?.name ?? "The Director";
+                const sendLabel = esa.state === "draft" ? "Send the agreement" : esa.state === "sent" || esa.state === "chasing" ? "Chase the agreement" : null;
                 return (
-                  <Card title="Agreement document" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} />}>
-                    {activeDoc && <DraftDocument file={activeDoc} version={newest?.version ?? esa.version} />}
-                    <AgreementVersions esa={esa} files={esaFiles} />
-                    {lead && (
-                      <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
-                        Open the full agreement view
-                      </Link>
-                    )}
-                  </Card>
+                  <AgreementView
+                    company={client.name}
+                    esa={esa}
+                    contact={person ? { name: person.name, title: person.role ?? "" } : null}
+                    ownerName={ownerName}
+                    ownerPhone={(owner as { phone?: string } | null)?.phone ?? ""}
+                    directorName={director}
+                    callDate={heldDay}
+                    callLine={heldDay ? "Enquiry, call held " + dayWords(held!.heldAt!) : null}
+                    fileName={activeDoc?.name ?? client.name.replace(/[^A-Za-z0-9]+/g, "_") + "_Agreement_v" + esa.version + ".pdf"}
+                    editHref={lead && mayManage ? "/leads/" + lead.id + "?step=agreement" : null}
+                    send={mayManage && sendLabel ? { href: sendHref(path, sp, "agreement", client.id), label: sendLabel } : null}
+                  >
+                    <Card title="Versions" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "neutral"} />}>
+                      {activeDoc && <DraftDocument file={activeDoc} version={newest?.version ?? esa.version} />}
+                      <AgreementVersions esa={esa} files={esaFiles} />
+                      {lead && (
+                        <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
+                          Open the full agreement view
+                        </Link>
+                      )}
+                    </Card>
+                  </AgreementView>
                 );
-              })()}
-            </>
-          )}
+              })()
+            ) : (
+              <Card title="Agreement">
+                <EmptyState icon="file" title="No agreement file here">
+                  Standard Career 141 terms, signed before Ops or through the TA System.
+                </EmptyState>
+              </Card>
+            ))}
 
           {view === "contacts" && (
             <>
@@ -559,28 +528,86 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           )}
         </div>
 
-        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
-          <StandsCard
-            head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
-            body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
-            copies={[{ label: "Copy a check-in", text: checkIn }]}
-            links={[{ label: "Add a call note", href: panelHref(path, sp, "add-call") }]}
-          />
-          <RailCard title="Client details">
-            {[
-              ["Billing name", client.billingName],
-              ["Billing address", client.billingAddress],
-              ["Invoice email", client.billingEmail],
-              ["WhatsApp group", client.groupName],
-            ].map(([k, v]) => (
-              <div key={k} className="flex flex-col gap-0.5">
-                <span className={label}>{k.toUpperCase()}</span>
-                <span className="t-body-m">{v || "Not written down"}</span>
-              </div>
-            ))}
-          </RailCard>
-        </aside>
+        {/* The Agreement view gives the whole width to the document (25 Nov, the owner): no rail beside it. */}
+        {view !== "agreement" && (
+          <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
+            <StandsCard
+              head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
+              body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
+              links={[
+                { label: "Copy a check-in", href: sendHref(path, sp, "check-in", client.id) },
+                { label: "Add a call note", href: panelHref(path, sp, "add-call") },
+              ]}
+            />
+            <RailCard title="Client details">
+              {[
+                ["Billing name", client.billingName],
+                ["Billing address", client.billingAddress],
+                ["Invoice email", client.billingEmail],
+                ["WhatsApp group", client.groupName],
+              ].map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <span className={label}>{k.toUpperCase()}</span>
+                  <span className="t-body-m">{v || "Not written down"}</span>
+                </div>
+              ))}
+            </RailCard>
+          </aside>
+        )}
       </div>
+      {sp.send === "agreement" && esa && lead && esa.state === "draft" && <SendAgreementModal db={db} leadId={lead.id} me={me} closeHref={closeSendHref(path, sp)} />}
+      {sp.send === "agreement" && esa && (esa.state === "sent" || esa.state === "chasing") && (() => {
+        const chase = agreementCards(db, now).find((c) => c.id === esa.id);
+        return chase ? <ChaseAgreementSendModal db={db} card={chase} me={me} closeHref={closeSendHref(path, sp)} now={now} /> : null;
+      })()}
+      {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
+      {sp.panel === "requirement-call" && (
+        <PopupBox
+          title={callKind === "intro" ? "Intro call" : "Requirement call"}
+          sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
+          closeHref={closeHref(path, sp)}
+          right={
+            <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
+              <Icon name="plus" size={14} />
+              New position
+            </Link>
+          }
+        >
+          {calls.length > 0 && (
+            <div className="flex flex-col">
+              {calls.map((m) => (
+                <div key={m.id} className="flex flex-wrap items-center gap-3 border-t border-rule py-2.5 first:border-t-0 first:pt-0">
+                  <span className="t-body-m">{m.kind === "intro" ? "Intro call" : "Requirement call"}</span>
+                  <span className="t-small text-ink-3">{whenIn(m.at)} · {m.state.replace(/_/g, " ")}</span>
+                  <Link href={"/leads/" + client.leadId + "?step=" + (m.kind === "intro" ? "intro" : "requirement")} className="t-body-m ml-auto text-brand hover:underline">
+                    {m.heldAt ? "Open" : "Mark held or rebook"}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+          {mayManage && (
+            <details open>
+              <summary className="t-body-m cursor-pointer text-brand hover:underline">{callKind === "intro" ? "Book the intro call" : "Book the requirement call"}</summary>
+              <div className="pt-3">
+                <MeetingBookingForm
+                  action={bookClientCall}
+                  leadId=""
+                  hidden={{ clientId: client.id }}
+                  contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
+                  taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
+                  members={db.members}
+                  organiserId={client.ownerId}
+                  teamsOn={teamsOn}
+                  submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
+                  primary
+                  offerAlsoRequirement={callKind === "intro"}
+                />
+              </div>
+            </details>
+          )}
+        </PopupBox>
+      )}
     </div>
   );
 }

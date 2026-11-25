@@ -1607,7 +1607,8 @@ async function workingLeadFor(client: OpsClient, member: OpsMember, state: strin
 export async function createClient(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
-  const back = (msg: string) => redirect(withMsg("/leads/new", msg));
+  // Errors go back to where the form was: the pop-up on Clients, or the old page.
+  const back = (msg: string) => redirect(withMsg(safeBack(formData.get("back"), "/leads/new"), msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
 
   const f = (k: string) => String(formData.get(k) ?? "").trim();

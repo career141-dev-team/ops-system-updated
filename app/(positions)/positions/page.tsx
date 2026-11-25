@@ -349,7 +349,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                     {g.rows.map((r) => (
                       <article key={r.id} className="flex flex-col gap-4 rounded-[24px] bg-surface p-[22px] shadow-card">
                         <div className="flex items-baseline justify-between gap-3">
-                          <Link href={`/positions/${r.id}?view=overview`} className="t-body-m hover:underline">
+                          <Link href={`/positions/${r.id}?view=overview`} className="text-[17px] font-medium leading-[26px] hover:underline">
                             {r.title}
                           </Link>
                           <span className="t-small shrink-0 text-ink-3">placed {r.placed}</span>
