@@ -237,7 +237,7 @@ export function WeeklyReportPanel(p: {
   latest: { id: string; weekOf: string; state: string } | null;
 }) {
   return (
-    <Panel kicker="Weekly report" title="Weekly report" sub="All roles > Weekly list of active roles" closeHref={p.closeHref}>
+    <Panel kicker="Weekly report" title="Weekly report" sub="All roles > Weekly list of active roles" closeHref={p.closeHref} boxed>
       <Why lines={[p.built, p.counts]} />
       <PanelSection title="Who and how">
         <p className="t-body text-ink-2">
@@ -277,7 +277,7 @@ export function NewPositionPanel(p: {
   call: { id: string; when: string; role: string; packageSaid: string; brief: string } | null;
 }) {
   return (
-    <Panel kicker="New position" title="New position" sub="Pick the client, then name the position" closeHref={p.closeHref}>
+    <Panel kicker="New position" title="New position" sub="Pick the client, then name the position" closeHref={p.closeHref} boxed>
       <form action={createPosition} className="flex flex-col gap-5">
         <input type="hidden" name="back" value={p.closeHref} />
         {p.call && <input type="hidden" name="meetingId" value={p.call.id} />}

@@ -20,6 +20,7 @@ export default function Panel({
   sub,
   kicker,
   closeHref,
+  boxed = false,
   children,
 }: {
   title: string;
@@ -28,10 +29,12 @@ export default function Panel({
   /** The small capital caption over the title. */
   kicker?: string;
   closeHref: string;
+  /** Each section in its own bordered box and the page behind blurred (Positions panels, 25 Nov). */
+  boxed?: boolean;
   children: ReactNode;
 }) {
   return (
-    <dialog open aria-labelledby="panel-title" className="panel">
+    <dialog open aria-labelledby="panel-title" className={"panel" + (boxed ? " panel-boxed" : "")}>
       <PanelOpen closeHref={closeHref} />
       <div className="flex flex-col gap-0.5">
         {kicker && <p className="t-micro text-ink-faint">{kicker}</p>}
