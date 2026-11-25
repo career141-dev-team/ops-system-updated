@@ -22,6 +22,7 @@ import { ROLE_LABEL, can, previewList } from "@/lib/roles";
 import { viewAs } from "@/app/actions";
 import Welcome from "@/app/Welcome";
 import { ChatClose } from "@/app/ChatFrame";
+import PageNotch from "@/app/PageNotch";
 import AuraLauncher from "@/app/AuraLauncher";
 import "./globals.css";
 
@@ -128,6 +129,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. On the desk the
               page starts 22px under the bar, with the frames' 40px at the sides. */}
             <main data-welcome="page" className="@container/page min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
+              <PageNotch />
               <Suspense fallback={children}>
                 <MotionStage>{children}</MotionStage>
               </Suspense>

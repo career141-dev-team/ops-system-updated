@@ -36,6 +36,7 @@
 
   /* Surfaces: the page, the cards on it, and the quiet fill inside a card. */
   --color-paper: #f6f7f9; /* color/canvas */
+  --color-dot: #d5d9df; /* the dots on it */
   --color-surface: #ffffff; /* color/surface */
   --color-sunk: #f3f4f6; /* color/surface-2 */
 
@@ -133,6 +134,7 @@
 html[data-theme="dark"] {
   color-scheme: dark;
   --color-paper: #0e1114;
+  --color-dot: #262c33;
   --color-surface: #171b20;
   --color-sunk: #1f242a;
   --color-shell: #1c2127;
@@ -177,9 +179,17 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* The page behind the cards is dotted, like a FigJam board (25 Nov, the owner). */
 html,
 body {
-  background: var(--color-paper);
+  background-color: var(--color-paper);
+  background-image: radial-gradient(circle, var(--color-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+html,
+body {
+  background-color: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
   /* Tabular figures, so counts line up in a column. */
