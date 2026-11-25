@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decodeRoles, permissionLines, permissionSentence, scoopLines, whatsappLines } from "@/lib/integrationHealth";
+import { cvQueueLines, decodeRoles, permissionLines, permissionSentence, scoopLines, whatsappLines } from "@/lib/integrationHealth";
 
 const token = (claims: unknown) => "x." + Buffer.from(JSON.stringify(claims)).toString("base64url") + ".y";
 
@@ -52,4 +52,17 @@ test("Scoop: the mailbox, the senders, and whether reading is on", () => {
   assert.equal(ready[0], "Scoop mailbox: scoop@career141.com");
   assert.equal(ready[2], "Reading it: on");
   assert.equal(ready[3], "1 Scoop so far, the mailbox read up to 2026-11-25 10:00 Colombo");
+});
+
+test("the CV queue says how many wait, how many were given up on, and the last reason (25 Nov)", () => {
+  assert.deepEqual(cvQueueLines([]), ["CV group queue: 0 waiting, 0 given up on"]);
+  assert.deepEqual(
+    cvQueueLines([
+      { state: "waiting" },
+      { state: "done" },
+      { state: "failed", why: "old reason", triedAt: 1 },
+      { state: "failed", why: "WhatsApp would not give the file: 404.", triedAt: 9 },
+    ]),
+    ["CV group queue: 1 waiting, 2 given up on", "Last failure: WhatsApp would not give the file: 404."],
+  );
 });

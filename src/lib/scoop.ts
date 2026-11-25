@@ -11,7 +11,9 @@
 import { DAY, COLOMBO_OFFSET_MS, HOUR, colomboDate, isWorkingDay } from "@/lib/calendar";
 
 const MINUTE = 60_000;
-import { rejectKind } from "@/lib/hiring";
+import { problemWithCv, rejectKind } from "@/lib/hiring";
+import { sha256 } from "@/lib/files";
+import type { WaMessage } from "@/lib/whatsapp";
 
 export const SCOOP_KEY = "scoop.batch.";
 /** The end-of-day summary time, Colombo (the working day ends at 17:30). */
@@ -26,7 +28,7 @@ export interface ScoopBatch {
   id: string;
   /** When it arrived (the email's time) or was added by hand. */
   at: number;
-  source: "mail" | "upload";
+  source: "mail" | "upload" | "whatsapp";
   mailbox: string;
   from: string;
   subject: string;
@@ -150,3 +152,61 @@ export function summaryOf(batch: ScoopBatch, applicants: ApplicantLike[]): Scoop
   ];
   return { processed: mine.length, duplicates: batch.duplicates.length, unreadable: batch.unreadable.length, responded, noAnswer, notCalled, screeningRejects, interviews, lines };
 }
+
+/* ── CVs posted in the WhatsApp group (25 Nov) ───────────────────────────────────────── */
+
+// shortcut: scoop.wa. rows are never removed; prune done/failed rows older than 30 days if the settings table grows.
+export const WA_QUEUE = "scoop.wa.";
+/** WhatsApp keeps an uploaded file for 7 days; after that it cannot be fetched. */
+export const WA_KEEPS_MS = 7 * DAY;
+/** A failed file is not tried again for 4 hours, so a short Meta outage or an expired token does not hammer Meta all afternoon. */
+export const WA_RETRY_GAP_MS = 4 * HOUR;
+export const WA_BATCH_TITLE = "CVs sent on WhatsApp";
+
+export interface WaCvRow {
+  messageId: string;
+  mediaId: string;
+  filename: string;
+  from: string;
+  name: string;
+  groupId: string;
+  at: number;
+  tries: number;
+  /** When it last failed, 0 if never (rows from before this field have none). */
+  triedAt: number;
+  state: "waiting" | "done" | "failed";
+  why: string;
+}
+
+/** The settings row for a message: hashed, so Meta's long id never has to fit a key. */
+export const waQueueKey = (messageId: string): string => WA_QUEUE + sha256(new TextEncoder().encode(messageId)).slice(0, 32);
+
+/** Every document in the one configured group is queued; the reader then says why a non-CV cannot be read. Everything else in a group is chatter. */
+export function isGroupCv(m: Pick<WaMessage, "groupId" | "document">, configuredGroup: string): boolean {
+  return !!configuredGroup && m.groupId === configuredGroup && !!m.document;
+}
+
+/**
+ * A CV sent 1:1 to the Ops number (25 Nov, so CVs come in before the group is allowed). Only from somebody who is not a
+ * client's or an enquiry's contact - their file is an agreement or a JD, not a CV - and only a PDF or Word file by name,
+ * so a stranger's photo stays an Inbox line and does not become an unreadable Scoop entry.
+ */
+export function isDirectCv(m: Pick<WaMessage, "groupId" | "document">, senderKind: "client" | "lead" | "applicant" | "none"): boolean {
+  return !m.groupId && !!m.document && (senderKind === "none" || senderKind === "applicant") && problemWithCv({ name: m.document.filename, size: 1 }) === null;
+}
+
+export function waRowOf(m: WaMessage, now: number): WaCvRow {
+  return { messageId: m.id, mediaId: m.document?.mediaId ?? "", filename: m.document?.filename ?? "", from: m.from ? "+" + m.from : m.fromUserId, name: m.name, groupId: m.groupId ?? "", at: m.at || now, tries: 0, triedAt: 0, state: "waiting", why: "" };
+}
+
+export function parseWaRow(value: unknown): WaCvRow | null {
+  try {
+    const r = JSON.parse(String(value)) as WaCvRow;
+    return r && typeof r.messageId === "string" && typeof r.mediaId === "string" ? { ...r, triedAt: Number(r.triedAt) || 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One batch per group per Colombo day. */
+export const waBatchId = (at: number): string => "whatsapp-" + colomboDate(at);

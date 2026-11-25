@@ -127,6 +127,10 @@ import {
   numberOf,
   recordReply as recordReplyWrite,
   runClocks,
+  cvGroupState,
+  askForCvGroup,
+  setCvGroupByHand,
+  setCvGroupLink,
   setSetting,
   saveTemplate,
   settleMessage,
@@ -165,7 +169,7 @@ import {
 import { settingChange } from "@/lib/settingsRules";
 import { askWithTools, problemWithRunning } from "@/lib/ai";
 import { agentSystemPrompt, AGENT_TOOLS, runAgentTool, withTaNames } from "@/lib/agentTools";
-import { graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
+import { answerGroupJoinRequest, createWhatsAppGroup, getGroupInviteLink, graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
@@ -9061,4 +9065,53 @@ export async function updateOpsMember(formData: FormData): Promise<void> {
   revalidatePath("/account");
   revalidatePath("/settings");
   redirect(dest + confirmed(`${target.name}'s access updated.`, dest));
+}
+
+/* ── The CV WhatsApp group on Settings (25 Nov) ─────────────────────────────────────── */
+
+const CV_GROUP_NAME = "Career 141 CVs";
+
+/** Every group button: signed in, allowed to manage settings, and back to the card with a sentence. */
+async function groupDoor() {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const back = (msg: string): never => redirect(withMsg("/settings", msg));
+  if (!can(member, "settings.manage")) back(refusal("settings.manage"));
+  return { member, back };
+}
+
+/** Asks WhatsApp to make the group. The id and the link arrive by webhook, and the desk adopts them (takeGroupEvents). */
+export async function createCvGroup(): Promise<void> {
+  const { member, back } = await groupDoor();
+  const made = await askForCvGroup(CV_GROUP_NAME, member.id, () => createWhatsAppGroup(CV_GROUP_NAME));
+  if (!made.ok) back(made.reason);
+  revalidatePath("/settings");
+  back("Asked WhatsApp to make the group. The link appears here when WhatsApp confirms.");
+}
+
+export async function chooseCvGroup(formData: FormData): Promise<void> {
+  const { member, back } = await groupDoor();
+  const id = String(formData.get("groupId") ?? "").trim();
+  if (!id) back("Type the group's id.");
+  await setCvGroupByHand(id, member.id);
+  revalidatePath("/settings");
+  back("The CV group is set. Press Refresh link to fetch its invite link.");
+}
+
+/** GET only: the POST that resets the link would kill the one people already have. */
+export async function refreshCvGroupLink(): Promise<void> {
+  const { back } = await groupDoor();
+  // The configured group, never one named by the form (25 Nov).
+  const r = await getGroupInviteLink(cvGroupState(await desk()).groupId);
+  if (r.ok) await setCvGroupLink(r.link);
+  revalidatePath("/settings");
+  back(r.ok ? "The invite link is up to date." : r.reason);
+}
+
+export async function answerCvJoinRequest(formData: FormData): Promise<void> {
+  const { back } = await groupDoor();
+  const approve = formData.get("answer") === "approve";
+  const r = await answerGroupJoinRequest(cvGroupState(await desk()).groupId, String(formData.get("requestId") ?? ""), approve);
+  revalidatePath("/settings");
+  back(r.ok ? (approve ? "Let in." : "Turned away.") : r.reason);
 }

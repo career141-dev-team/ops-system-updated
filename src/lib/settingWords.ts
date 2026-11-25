@@ -50,8 +50,9 @@ const WORDS: Record<string, Words> = {
 
 /** Machine state kept beside the settings. Not a thing a person sets, so not shown. */
 export // bank.* are the owner's bank details for the invoice: kept by their own form on this screen, not listed as rules.
-// scoop.batch.*, scoop.reached and scoop.summarisedOn are the Scoop reader's own record of where it got to (23 Nov).
-const INTERNAL = ["ta.", "clock.", "bank.", "scoop.batch.", "scoop.reached", "scoop.summarisedOn"];
+// whatsapp.cvGroup* (the CV group: id, link, pending ask, last problem) have their own card on Settings, not a row in the rules (25 Nov).
+// scoop.batch.*, scoop.wa.* (the WhatsApp CV queue, with phone numbers), scoop.reached and scoop.summarisedOn are the Scoop reader's own record of where it got to (23 Nov).
+const INTERNAL = ["ta.", "clock.", "bank.", "scoop.batch.", "scoop.wa.", "whatsapp.cvGroup", "scoop.reached", "scoop.summarisedOn"];
 
 export const isInternal = (key: string): boolean => INTERNAL.some((p) => key.startsWith(p));
 

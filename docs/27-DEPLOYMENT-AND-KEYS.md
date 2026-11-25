@@ -84,6 +84,7 @@ reads the box the reply actually landed in.
 | The Ops WhatsApp number, bought and verified | Meta | no WhatsApp, and no conversation view to build |
 | `OPS_WHATSAPP_NUMBER_ID` | the app | the same |
 | `OPS_WHATSAPP_TOKEN` | the app | the same |
+| `OPS_WHATSAPP_CV_GROUP` (optional, 25 Nov) | the app, or Settings > WhatsApp CV group | CVs posted in the WhatsApp group are not read. The id of one group the Ops number made; the Meta webhook must also subscribe to `group_lifecycle_update`, and the number must be on the Cloud API, not Coexistence |
 | Message templates submitted and approved | Meta | a first message to somebody who has not written to us in 24 hours cannot go |
 
 The TA System's eight WhatsApp accounts are separate and stay separate. This

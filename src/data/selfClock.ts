@@ -1,4 +1,4 @@
-import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks, runScoopPass, runScoopSummary } from "@/data/desk";
+import { CLOCK_ACTOR, noteClockPass, pushOutbox, readTaEvents, readTheMailboxes, runClocks, runScoopPass, runScoopSummary, runWhatsAppScoopPass } from "@/data/desk";
 import { readerEnabled } from "@/lib/graphMail";
 import { SELF_CLOCK_EVERY_MS, onePass, selfClockWanted } from "@/lib/clockPass";
 
@@ -17,13 +17,20 @@ export async function clockPassOnce() {
   const mail = readerEnabled() ? await readTheMailboxes(CLOCK_ACTOR) : { read: 0, filed: 0, ok: true };
   // The Scoop mailbox and the end-of-day summary (23 Nov). A failure here costs the Scoop, never the clocks above.
   let scoopAdded = 0;
+  let waScoopAdded = 0;
+  try {
+    // CVs from the WhatsApp group (25 Nov): its own gate, the WhatsApp token, not the Microsoft mail one.
+    waScoopAdded = (await runWhatsAppScoopPass(CLOCK_ACTOR)).added;
+  } catch (error) {
+    console.error("[clock] the WhatsApp Scoop pass failed:", error);
+  }
   try {
     if (readerEnabled()) scoopAdded = (await runScoopPass(CLOCK_ACTOR)).added;
     await runScoopSummary(CLOCK_ACTOR);
   } catch (error) {
     console.error("[clock] the Scoop pass failed:", error);
   }
-  return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok, scoopAdded };
+  return { ...clocks, writesSent: out.sent, writesWaiting: out.waiting, eventsRead: events.read, mailRead: mail.read, mailFiled: mail.filed, mailOk: mail.ok, scoopAdded, waScoopAdded };
 }
 
 const STARTED = Symbol.for("career141.ops.selfClock");

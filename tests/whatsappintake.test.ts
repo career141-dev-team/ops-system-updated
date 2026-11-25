@@ -10,7 +10,7 @@ import { whatsappView } from "@/lib/inboxChannels";
 import { newBatch, summaryOf } from "@/lib/scoop";
 
 const NOW = Date.UTC(2026, 10, 25, 4, 30);
-const msg = (id: string, from: string, text: string, name = ""): WaMessage => ({ id, from, name, at: NOW, text, kind: "text" });
+const msg = (id: string, from: string, text: string, name = ""): WaMessage => ({ id, from, name, at: NOW, text, kind: "text", groupId: null, fromUserId: "", document: null });
 
 test("a message is filed to whose number it is, and the chasing of a client who answers stops", async () => {
   const fs = await import("node:fs");
@@ -34,7 +34,7 @@ test("a message is filed to whose number it is, and the chasing of a client who 
     "clock",
     NOW,
   );
-  assert.deepEqual(first, { recorded: 3, already: 0, filed: 2, waiting: 1, chasesStopped: 1 });
+  assert.deepEqual(first, { recorded: 3, already: 0, filed: 2, waiting: 1, chasesStopped: 1, queued: 0 });
 
   const db = await desk.desk();
   const rows = db.inbound.filter((i) => i.channel === "whatsapp");
@@ -47,7 +47,7 @@ test("a message is filed to whose number it is, and the chasing of a client who 
   assert.ok(db.applicants.find((a) => a.id === applicant.id)!.repliedAt, "the applicant is marked as having replied");
 
   // A retried webhook adds nothing.
-  assert.deepEqual(await desk.takeWhatsApp([msg("wamid.1", "94771234567", "We signed it. Sending today.")], "clock", NOW), { recorded: 0, already: 1, filed: 0, waiting: 0, chasesStopped: 0 });
+  assert.deepEqual(await desk.takeWhatsApp([msg("wamid.1", "94771234567", "We signed it. Sending today.")], "clock", NOW), { recorded: 0, already: 1, filed: 0, waiting: 0, chasesStopped: 0, queued: 0 });
 
   // The inbox shows all three, each saying whose it is, until somebody marks it done.
   const view = whatsappView(db);
@@ -66,8 +66,16 @@ test("a message is filed to whose number it is, and the chasing of a client who 
 
 test("a picture or a voice note is recorded as a note that it came, never kept", async () => {
   const desk = await import("@/data/desk");
-  const r = await desk.takeWhatsApp([{ id: "wamid.img", from: "94700000001", name: "", at: NOW, text: "", kind: "image" }], "clock", NOW);
+  const r = await desk.takeWhatsApp([{ id: "wamid.img", from: "94700000001", name: "", at: NOW, text: "", kind: "image", groupId: null, fromUserId: "", document: null }], "clock", NOW);
   assert.equal(r.recorded, 1);
   const row = (await desk.desk()).inbound.find((i) => i.providerId === "wamid.img")!;
   assert.match(row.body, /image: open it in WhatsApp/);
+});
+
+test("a captioned document from one person keeps its caption and says a file came", async () => {
+  const desk = await import("@/data/desk");
+  const document = { mediaId: "m1", filename: "cv.pdf", mime: "application/pdf" };
+  await desk.takeWhatsApp([{ id: "wamid.cap", from: "94700000002", name: "", at: NOW, text: "my CV", kind: "document", groupId: null, fromUserId: "", document }], "clock", NOW);
+  const row = (await desk.desk()).inbound.find((i) => i.providerId === "wamid.cap")!;
+  assert.equal(row.body, "my CV\n[document: open it in WhatsApp]");
 });

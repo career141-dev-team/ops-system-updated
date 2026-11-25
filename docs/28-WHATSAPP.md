@@ -262,5 +262,53 @@ and one address.
 
 To switch it on, in this order (each needs the owner's go-ahead): buy and verify the number; set
 `OPS_WHATSAPP_NUMBER_ID`, `OPS_WHATSAPP_TOKEN`, `OPS_WHATSAPP_APP_SECRET` and `OPS_WHATSAPP_VERIFY_TOKEN`; in Meta's
-dashboard point the webhook at `https://<ops>/api/whatsapp` with that verify token and subscribe to `messages`;
-send one test message and look for it under Health, WhatsApp.
+dashboard point the webhook at `https://<ops>/api/whatsapp` with that verify token and subscribe to `messages`
+(and, for the CV group below, `group_lifecycle_update`; `group_participants_update` is optional);
+send one test message and look for it under Health, WhatsApp. For the CV group, then make the group in Settings,
+"WhatsApp CV group", or type an existing system group's id there (setting `whatsapp.cvGroup`, or env
+`OPS_WHATSAPP_CV_GROUP`).
+
+## 25 Nov: CVs posted in one WhatsApp group are read into the Scoop intake (branch `hdbinath/whatsapp-group-cvs`)
+
+Not live, not run against Meta. This is the one place the system now reads a group, and it is a group the Ops number
+**made itself** through Meta's Groups API (the only kind it can reach, section 3).
+
+- **What it does.** A CV posted as a document in that one group is read by the same CV intake the Scoop emails use
+  (internal hiring, `ingestCv`): one Scoop batch per Colombo day, source "whatsapp". The applicant is filed the same
+  way and a person confirms the fields as before.
+- **The webhook.** `readWebhook` now keeps `groupId`, `fromUserId` and `document`. A group message never goes to the
+  Inbox, never matches a phone, never stops a chase. A document from the configured group (`whatsapp.cvGroup`, else
+  `OPS_WHATSAPP_CV_GROUP`) is queued as a settings row `scoop.wa.<hash>`; a Meta retry never resets a row. A 1:1
+  message that is not text now shows its caption and "[kind: open it in WhatsApp]".
+- **The clock.** `runWhatsAppScoopPass` runs on the five-minute pass, in its own try/catch and not behind the mail
+  gate. It downloads with `fetchWhatsAppMedia` (two Meta calls; the token goes only to Meta's hosts, including
+  `lookaside.fbsbx.com`; 10 MB cap), a few files a pass (`PER_PASS`). No token: the row waits. Any other failure:
+  retried no sooner than 4 hours later, 5 tries, then listed as unreadable. A file older than 7 days is listed
+  unreadable, because Meta keeps an inbound media id for 7 days. One bad file counts a try and never blocks the
+  queue.
+- **Settings, "WhatsApp CV group" card.**
+  - *Create group* needs `OPS_SEND` on, the number id and the token. Name "Career 141 CVs", `join_approval_mode`
+    `approval_required`.
+  - The group id and invite link arrive by the `group_lifecycle_update` webhook and are adopted only while we asked
+    for a group and none is set. Or type a group id by hand.
+  - *Refresh link* only reads the link (GET). It never uses the POST that resets it, which would kill the one
+    already shared.
+  - Join requests are listed with Approve / Reject (also `OPS_SEND` gated). The group holds 8 people, our number
+    included.
+- **Health** shows a CV queue line: waiting, given up, and the last reason.
+- **Needs:** an Official Business Account and a number on the Cloud API, not the WhatsApp Business app, so **not
+  Coexistence on the same number** (section 8). The CV group therefore needs its own number, or a decision to give
+  up Coexistence.
+
+**Known limits, said plainly**
+
+- **The document message inside a group is unproven.** Meta publishes no sample of it. The shape is inferred from
+  the 1:1 document message plus `group_id`. Test with a real post before relying on it.
+- A CV posted after 17:30 misses that day's summary, as with the email Scoop.
+- CVs are filed as **applicants to Career 141**. If they are in fact candidates for clients they belong in the TA
+  System, through its API (open question, [09](09-DECISIONS-AND-QUESTIONS.md), 25 Nov).
+- **A CV sent 1:1 is read too (25 Nov, later).** A PDF or Word file sent straight to the Ops number by somebody who is
+  not a client's or an enquiry's contact is shown in the Inbox **and** queued like a group CV, into the same daily
+  batch, now called "CVs sent on WhatsApp". A client's file (an agreement, a JD) and a stranger's photo stay Inbox
+  lines only. This works without the Official Business Account, so CVs can come in before the group is allowed.
+- Groups already made on somebody's phone still cannot be joined.
