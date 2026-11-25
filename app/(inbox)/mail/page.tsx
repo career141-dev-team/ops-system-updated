@@ -170,7 +170,7 @@ export default async function InboxPage({
           ) : chosen ? (
             <ReadingPane key={chosen.key} db={db} thread={chosen} company={companyOf(chosen)} now={now} here={here} mayWrite={mayWrite} aiOn={aiOn} aiOff={aiOffReason(anyKeySet(), aiSwitches(db).on)} />
           ) : (
-            <section className="flex flex-1 rounded-[28px] bg-surface px-9 py-8 shadow-card">
+            <section className="flex min-w-0 flex-1 rounded-[28px] border border-rule-strong bg-surface px-9 py-8">
               <p className="t-body text-ink-3">A conversation opens here when somebody writes to us.</p>
             </section>
           )}
@@ -187,7 +187,7 @@ function Compose({ db, back, cancel }: { db: Awaited<ReturnType<typeof desk>>; b
     ...db.positions.map((p) => ({ value: "position|" + p.id, label: "Position · " + p.title })),
   ].slice(0, 200);
   return (
-    <form action={writeNewMessage} className="flex flex-1 flex-col gap-3.5 rounded-[28px] bg-surface px-9 py-8 shadow-card">
+    <form action={writeNewMessage} className="flex min-w-0 flex-1 flex-col gap-3.5 rounded-[28px] border border-rule-strong bg-surface px-9 py-8">
       <input type="hidden" name="back" value={back} />
       <div>
         <h2 className="t-h2">New message</h2>
