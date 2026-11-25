@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
 import { pillSecondary } from "@/app/ui/figma";
 import { EmptyState } from "@/app/ui/figma";
-import { desk, member as memberIn } from "@/data/desk";
+import { desk, member as memberIn, switchedOn } from "@/data/desk";
+import { teamsFake } from "@/lib/graphCalendar";
+import { people as taPeople } from "@/lib/ta";
 import { agoShort } from "@/lib/clientCards";
 import {
   CLIENT_FILTERS,
@@ -18,13 +20,14 @@ import {
 import { entryInWords, gather } from "@/lib/timeline";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
-import { can } from "@/lib/roles";
+import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { CheckInSendModal } from "../ClientSendModals";
 import CopyButton from "../CopyButton";
 import { ClientsHead, Msg, PILL_TONE, RailCard, ReachIcons, StandsCard, TILE_CYCLE, TILE_TONE } from "../parts";
 import { initialsFor } from "@/app/ui/figma";
 import CheckInPanel from "./CheckInPanel";
+import NewClientPanel from "./NewClientPanel";
 
 type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string };
 
@@ -40,6 +43,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const db = await desk();
   const now = Date.now();
 
+  const taSide = panel === "new-client" ? await taPeople() : { ok: false as const, reason: "", data: [] as { id: string; fullName: string; isActive: boolean }[] };
   const cards = clientCards(db, now);
   const shown = filterCards(cards, f, q, me.id);
   const visible = all ? shown : shown.slice(0, 9);
@@ -166,6 +170,15 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           </RailCard>
         </aside>
       </div>
+      {panel === "new-client" && (
+        <NewClientPanel
+          closeHref={closeHref("/clients", sp)}
+          msg={msg}
+          mayAdd={can(me, "client.manage")}
+          refusal={refusal("client.manage")}
+          call={{ taPeople: taSide.ok ? taSide.data.filter((p) => p.isActive) : [], members: db.members, organiserId: me.id, teamsOn: teamsFake() || switchedOn(db, "switch.teamsEnabled") }}
+        />
+      )}
       {checkInCard && (
         <CheckInPanel
           card={checkInCard}

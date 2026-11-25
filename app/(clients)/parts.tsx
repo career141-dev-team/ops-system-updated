@@ -83,7 +83,7 @@ export function ClientsHead({
         right={
           <div className="flex items-center gap-3">
             {extra}
-            <Link href="/leads/new" className={pillPrimary}>
+            <Link href="/clients?panel=new-client" scroll={false} className={pillPrimary}>
               <Icon name="plus" size={16} />
               Add a client
             </Link>
