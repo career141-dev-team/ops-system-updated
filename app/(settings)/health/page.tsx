@@ -6,7 +6,8 @@ import { can } from "@/lib/roles";
 import { healthLines, senderMailbox, outboundLocked, outreachInWords, outreachLiveInEnv } from "@/lib/senders";
 import { CLOCK_PASS_KEY, clockSchedulerReady, parsePass, passInWords } from "@/lib/clockPass";
 import { desk, liveTimers, scoopBatches, scoopConfig, switchedOn } from "@/data/desk";
-import { scoopLines, whatsappLines } from "@/lib/integrationHealth";
+import { cvQueueLines, scoopLines, whatsappLines } from "@/lib/integrationHealth";
+import { WA_QUEUE, parseWaRow } from "@/lib/scoop";
 import { usingConvex } from "@/data/convexClient";
 import { currentMember, devSignInAllowed } from "@/lib/session";
 import { people, readsEnabled, writesEnabled } from "@/lib/ta";
@@ -92,6 +93,9 @@ export default async function HealthPage() {
             { count: db.inbound.filter((i) => i.channel === "whatsapp" && (i.direction ?? "in") === "in").length, lastAt: db.inbound.filter((i) => i.channel === "whatsapp").reduce<number | null>((m, i) => (m === null || i.receivedAt > m ? i.receivedAt : m), null) },
             Date.now(),
           ).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          {cvQueueLines(db.settings.filter((s) => s.key.startsWith(WA_QUEUE)).flatMap((s) => parseWaRow(s.value) ?? [])).map((line) => (
             <p key={line}>{line}</p>
           ))}
         </div>

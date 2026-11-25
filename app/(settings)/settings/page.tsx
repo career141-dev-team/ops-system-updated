@@ -9,6 +9,7 @@ import { ASSIGNABLE_ROLES, ROLE_LABEL, can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
 import { isInternal, settingRank, settingWords } from "@/lib/settingWords";
+import CvGroupCard from "./CvGroupCard";
 
 export const dynamic = "force-dynamic";
 
@@ -342,6 +343,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <p className="t-small text-ink-3">Only the ops lead can change bank details.</p>
               )}
             </div>
+            <CvGroupCard db={db} mayChange={mayChange} />
           </section>
         </>
       ) : (

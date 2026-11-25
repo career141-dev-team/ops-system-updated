@@ -13,9 +13,10 @@ import { duplicateOf, matchVacancy, readCv, type CvFields } from "@/lib/cvParse"
 import { cvFieldsPrompt, type CvFieldsSaid } from "@/lib/aiTasks";
 import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
 import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
-import { MAX_PER_BATCH, PER_PASS, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
+import { fetchWhatsAppMedia } from "@/lib/senders";
+import { MAX_PER_BATCH, PER_PASS, WA_BATCH_TITLE, WA_KEEPS_MS, WA_QUEUE, WA_RETRY_GAP_MS, isDirectCv, isGroupCv, parseWaRow, waBatchId, waQueueKey, waRowOf, type WaCvRow, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
-import { matchPhone, type WaMessage } from "@/lib/whatsapp";
+import { matchPhone, type GroupEvent, type WaMessage } from "@/lib/whatsapp";
 import { cancelTeamsEvent } from "@/lib/graphCalendar";
 import type {
   Id,
@@ -4318,7 +4319,7 @@ export async function runScoopSummary(by: Id, now = Date.now()): Promise<{ made:
 
   const people = db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }));
   const body = batches
-    .map((b) => (b.source === "mail" ? (b.subject || "A Scoop") + " (from " + (b.from || "email") + ")" : "CVs added by hand") + "\n" + summaryOf(b, people).lines.join("\n"))
+    .map((b) => (b.source === "whatsapp" ? "CVs sent on WhatsApp" : b.source === "mail" ? (b.subject || "A Scoop") + " (from " + (b.from || "email") + ")" : "CVs added by hand") + "\n" + summaryOf(b, people).lines.join("\n"))
     .join("\n\n");
   const owner = db.members.find((m) => m.active && m.role === "ops_lead")?.id ?? by;
   await createTask({
@@ -4346,7 +4347,8 @@ export async function runScoopSummary(by: Id, now = Date.now()): Promise<{ made:
  * an enquiry's contact, or an applicant to us (who is marked as having replied, so a Scoop's summary counts them
  * as responded). Anything else is filed as nobody's, with the reason on it, and waits for a person. Nothing is sent.
  */
-export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now()): Promise<{ recorded: number; already: number; filed: number; waiting: number; chasesStopped: number }> {
+export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now()): Promise<{ recorded: number; already: number; filed: number; waiting: number; chasesStopped: number; queued: number }> {
+  let queued = 0;
   let recorded = 0;
   let already = 0;
   let filed = 0;
@@ -4354,6 +4356,15 @@ export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now
   let chasesStopped = 0;
   for (const m of messages) {
     const db = await desk();
+    if (m.groupId) {
+      // A group message is never a person writing to us: no phone match, no Inbox, no chase stopped (25 Nov).
+      const key = waQueueKey(m.id);
+      if (isGroupCv(m, textOf(db, "whatsapp.cvGroup", (process.env.OPS_WHATSAPP_CV_GROUP ?? "").trim())) && !db.settings.some((x) => x.key === key)) {
+        await noteSetting(key, JSON.stringify(waRowOf(m, now)));
+        queued += 1;
+      }
+      continue;
+    }
     const match = matchPhone(m.from, {
       clients: db.clients.filter((c) => c.stage !== "closed").map((c) => ({ id: c.id, name: c.name, leadId: c.leadId, contacts: c.contacts })),
       leads: db.leads.map((l) => ({ id: l.id, company: l.company, contactName: l.contactName, contactPhone: l.contactPhone })),
@@ -4369,7 +4380,7 @@ export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now
       receivedAt: m.at || now,
       subject: "WhatsApp from " + (match.name || m.name || "+" + m.from),
       // A picture or a voice note is not kept; the person is told it came, and what kind.
-      body: m.text || "[" + m.kind + ": open it in WhatsApp]",
+      body: m.kind === "text" ? m.text : (m.text ? m.text + "\n" : "") + "[" + m.kind + ": open it in WhatsApp]",
       providerId: m.id,
       inReplyTo: null,
       matchedBy: match.kind === "none" ? ("none" as const) : ("phone" as const),
@@ -4384,6 +4395,11 @@ export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now
       continue;
     }
     recorded += 1;
+    // A CV sent 1:1 is read like a Scoop as well as shown in the Inbox (25 Nov). The Inbox row above dedupes a retry.
+    if (isDirectCv(m, match.kind) && !db.settings.some((x) => x.key === waQueueKey(m.id))) {
+      await noteSetting(waQueueKey(m.id), JSON.stringify(waRowOf(m, now)));
+      queued += 1;
+    }
     if (match.kind === "none") {
       waiting += 1;
       continue;
@@ -4399,5 +4415,146 @@ export async function takeWhatsApp(messages: WaMessage[], by: Id, now = Date.now
       for (const set of db.clientSets.filter((s) => s.clientId === match.id)) chasesStopped += await recordReply("clientSet", set.id, by);
     }
   }
-  return { recorded, already, filed, waiting, chasesStopped };
+  return { recorded, already, filed, waiting, chasesStopped, queued };
+}
+
+/**
+ * The CV WhatsApp group (25 Nov). Meta's reply to "make a group" does not carry the group's id: it comes later by
+ * webhook. So pressing Create only leaves a note (`whatsapp.cvGroupAsked`), and a group_create event is adopted
+ * only while that note is there, no group is set up (by hand or by OPS_WHATSAPP_CV_GROUP) and the name matches.
+ * Anybody else's group made on this number, or a replayed event, is ignored.
+ */
+export async function markCvGroupAsked(subject: string, by: Id, now = Date.now()): Promise<void> {
+  // Written quietly: the ask goes on record only once Meta has taken it (askForCvGroup).
+  await noteSetting("whatsapp.cvGroupAsked", JSON.stringify({ subject, at: now }));
+  await noteSetting("whatsapp.cvGroupProblem", "");
+}
+
+export function cvGroupState(db: OpsDatabase): { groupId: string; link: string; problem: string; asked: { subject: string; at: number } | null } {
+  let asked: { subject: string; at: number } | null = null;
+  try {
+    const a = JSON.parse(textOf(db, "whatsapp.cvGroupAsked", "")) as { subject?: string; at?: number };
+    if (a && typeof a.subject === "string") asked = { subject: a.subject, at: Number(a.at) || 0 };
+  } catch {
+    /* no ask, or an unreadable one: treated as none */
+  }
+  return { groupId: textOf(db, "whatsapp.cvGroup", (process.env.OPS_WHATSAPP_CV_GROUP ?? "").trim()), link: textOf(db, "whatsapp.cvGroupLink", ""), problem: textOf(db, "whatsapp.cvGroupProblem", ""), asked };
+}
+
+export async function takeGroupEvents(events: GroupEvent[], by: Id): Promise<{ adopted: boolean }> {
+  for (const e of events) {
+    const { groupId, asked } = cvGroupState(await desk());
+    if (!asked || groupId) break;
+    if (e.error) {
+      if (e.subject && e.subject !== asked.subject) continue;
+      await noteSetting("whatsapp.cvGroupAsked", "");
+      await noteSetting("whatsapp.cvGroupProblem", e.error);
+      continue;
+    }
+    if (!e.groupId || e.subject !== asked.subject) continue;
+    await setSetting("whatsapp.cvGroup", e.groupId, by, "WhatsApp made the CV group");
+    await noteSetting("whatsapp.cvGroupLink", e.inviteLink);
+    await noteSetting("whatsapp.cvGroupAsked", "");
+    await noteSetting("whatsapp.cvGroupProblem", "");
+    return { adopted: true };
+  }
+  return { adopted: false };
+}
+
+/**
+ * Pressing Create (25 Nov). The ask is written BEFORE Meta is called: the group_create webhook can land before the
+ * call returns, and an event with no ask is dropped, which would make "Ask again" a second group. `call` is the
+ * Meta call, passed in so the order is testable.
+ */
+export async function askForCvGroup(subject: string, by: Id, call: () => Promise<{ ok: true } | { ok: false; reason: string }>): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (cvGroupState(await desk()).groupId) return { ok: false, reason: "A CV group is already set up." };
+  await markCvGroupAsked(subject, by);
+  const r = await call();
+  if (!r.ok) {
+    await noteSetting("whatsapp.cvGroupAsked", "");
+    await noteSetting("whatsapp.cvGroupProblem", r.reason);
+  } else {
+    // Unless the webhook already adopted the group while the call was out; that logged itself.
+    const still = cvGroupState(await desk()).asked;
+    if (still) await setSetting("whatsapp.cvGroupAsked", JSON.stringify(still), by, "Asked WhatsApp to make the CV group");
+  }
+  return r;
+}
+
+/** A group made elsewhere through the API: its id is typed in. The link is fetched afterwards with Refresh. */
+export async function setCvGroupByHand(groupId: string, by: Id): Promise<void> {
+  await setSetting("whatsapp.cvGroup", groupId, by, "CV group set by hand");
+  await noteSetting("whatsapp.cvGroupLink", "");
+  await noteSetting("whatsapp.cvGroupAsked", "");
+  await noteSetting("whatsapp.cvGroupProblem", "");
+}
+
+export const setCvGroupLink = (link: string): Promise<void> => noteSetting("whatsapp.cvGroupLink", link);
+export const setCvGroupProblem = (problem: string): Promise<void> => noteSetting("whatsapp.cvGroupProblem", problem);
+
+/**
+ * CVs posted in the WhatsApp group or sent 1:1 to the Ops number (25 Nov): take the next few queued files from WhatsApp and read them like a Scoop
+ * by email, into one batch per Colombo day. Only this pass writes those batches (the clock is single-threaded).
+ * A file that cannot be fetched is tried again every 4 hours until WhatsApp's 7 days are up.
+ */
+export async function runWhatsAppScoopPass(by: Id, now = Date.now(), fetcher?: typeof fetch): Promise<{ handled: number; added: number }> {
+  const db = await desk();
+  const rows = db.settings
+    .filter((s) => s.key.startsWith(WA_QUEUE))
+    .map((s) => ({ key: s.key, row: parseWaRow(s.value) }))
+    .filter((x): x is { key: string; row: WaCvRow } => x.row !== null);
+  const waiting = rows.filter((x) => x.row.state === "waiting").sort((a, b) => a.row.at - b.row.at);
+  const batches = new Map<string, ScoopBatch>();
+  const settled = new Set<string>();
+  let handled = 0;
+  let added = 0;
+  // A file that failed lately rests (WA_RETRY_GAP_MS) and does not take a place in this pass.
+  const ready = waiting.filter((x) => now - x.row.triedAt >= WA_RETRY_GAP_MS);
+  for (const { key, row } of ready.slice(0, PER_PASS)) {
+    const id = waBatchId(row.at);
+    const batch = batches.get(id) ?? scoopBatches(await desk()).find((b) => b.id === id) ?? newBatch({ id, at: row.at, source: "whatsapp", from: "WhatsApp", subject: WA_BATCH_TITLE, found: 0 });
+    batches.set(id, batch);
+    if (batch.done.includes(row.messageId)) {
+      await noteSetting(key, JSON.stringify({ ...row, state: "done" }));
+      settled.add(key);
+      continue;
+    }
+    let result: CvResult | null = null;
+    let failure: string | null = null;
+    try {
+      if (now - row.at > WA_KEEPS_MS) {
+        result = { name: row.filename, status: "unreadable", why: "WhatsApp keeps a file for 7 days, and this one is gone." };
+        await noteSetting(key, JSON.stringify({ ...row, state: "failed", why: result.why }));
+      } else {
+        const got = await fetchWhatsAppMedia(row.mediaId, process.env, fetcher);
+        if (!got.ok && got.notSetUp) break; // nothing to try with: change nothing, use no try
+        if (!got.ok) {
+          failure = got.reason;
+        } else {
+          result = await ingestCv({ name: row.filename, bytes: got.bytes }, { by, scoopId: batch.id, now: row.at });
+          await noteSetting(key, JSON.stringify({ ...row, state: "done" }));
+          if (result.status === "added") added += 1;
+        }
+      }
+    } catch (e) {
+      // One bad file must not block the queue behind it: it costs a try, like a failed fetch.
+      failure = "The file could not be read: " + (e instanceof Error ? e.message : String(e));
+      result = null;
+    }
+    if (failure !== null) {
+      const tries = row.tries + 1;
+      // Never given up on by count (25 Nov): only WhatsApp's 7 days end it. Tries and the reason stay for Health.
+      await noteSetting(key, JSON.stringify({ ...row, tries, triedAt: now, why: failure }));
+      continue;
+    }
+    if (!result) continue;
+    settled.add(key);
+    handled += 1;
+    batch.found += 1;
+    tallyResult(batch, result);
+    batch.done.push(row.messageId);
+    batch.complete = !waiting.some((x) => !settled.has(x.key) && waBatchId(x.row.at) === id);
+    await saveBatch(batch);
+  }
+  return { handled, added };
 }

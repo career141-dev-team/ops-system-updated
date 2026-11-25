@@ -337,6 +337,133 @@ export async function sendWhatsApp(message: WhatsAppToSend): Promise<SendOutcome
   }
 }
 
+/* ── The CV WhatsApp group, made and managed through Meta's Groups API (25 Nov) ───────────────────────── */
+
+type Env = Record<string, string | undefined>;
+export interface GroupJoinRequest { id: string; waId: string; userId: string; username: string; at: number }
+export type GroupCall<T = unknown> = ({ ok: true } & T) | { ok: false; reason: string };
+
+/**
+ * One call to the Groups API, never throwing. `changes` marks a call that alters things at Meta: it needs OPS_SEND
+ * and the number id as well as the token. Never call POST /<group>/invite_link: it resets the link and kills the old one.
+ */
+async function groupCall(method: "GET" | "POST" | "DELETE", path: string, body: unknown, changes: boolean, env: Env, fetcher: typeof fetch): Promise<GroupCall<{ answer: Record<string, unknown> }>> {
+  const token = (env.OPS_WHATSAPP_TOKEN ?? "").trim();
+  if (changes && (env.OPS_SEND ?? "").trim().toLowerCase() !== "on") return { ok: false, reason: "Sending is switched off (OPS_SEND)." };
+  if (!token || (changes && !(env.OPS_WHATSAPP_NUMBER_ID ?? "").trim())) return { ok: false, reason: "The Ops WhatsApp number is not set up yet." };
+  try {
+    const response = await fetcher("https://graph.facebook.com/v21.0/" + path, {
+      method,
+      headers: { authorization: "Bearer " + token, ...(body ? { "content-type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(SEND_TIME_LIMIT_MS),
+    });
+    const answer = (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string } };
+    if (!response.ok) return { ok: false, reason: "WhatsApp refused it: " + (answer.error?.message ?? response.status) + "." };
+    return { ok: true, answer };
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.name === "TimeoutError" ? "WhatsApp did not answer in time, so we do not know whether it worked." : "WhatsApp could not be reached." };
+  }
+}
+
+/** Asks WhatsApp to make the group. The id and the invite link come later, by webhook (group_lifecycle_update). */
+export async function createWhatsAppGroup(subject: string, env: Env = process.env, fetcher: typeof fetch = fetch): Promise<GroupCall> {
+  const s = subject.trim();
+  if (!s || s.length > 128) return { ok: false, reason: "The group needs a name of 1 to 128 characters." };
+  const r = await groupCall("POST", encodeURIComponent((env.OPS_WHATSAPP_NUMBER_ID ?? "").trim()) + "/groups", { messaging_product: "whatsapp", subject: s, join_approval_mode: "approval_required" }, true, env, fetcher);
+  return r.ok ? { ok: true } : r;
+}
+
+export async function getGroupInviteLink(groupId: string, env: Env = process.env, fetcher: typeof fetch = fetch): Promise<GroupCall<{ link: string }>> {
+  const r = await groupCall("GET", encodeURIComponent(groupId) + "/invite_link", null, false, env, fetcher);
+  if (!r.ok) return r;
+  const link = String(r.answer.invite_link ?? "");
+  return link ? { ok: true, link } : { ok: false, reason: "WhatsApp gave no invite link." };
+}
+
+export async function listGroupJoinRequests(groupId: string, env: Env = process.env, fetcher: typeof fetch = fetch): Promise<GroupCall<{ requests: GroupJoinRequest[] }>> {
+  const r = await groupCall("GET", encodeURIComponent(groupId) + "/join_requests", null, false, env, fetcher);
+  if (!r.ok) return r;
+  const data = Array.isArray(r.answer.data) ? (r.answer.data as Record<string, unknown>[]) : [];
+  const requests = data
+    .filter((d) => d.join_request_id)
+    .map((d) => ({ id: String(d.join_request_id), waId: String(d.wa_id ?? ""), userId: String(d.user_id ?? ""), username: String(d.username ?? ""), at: Number(d.creation_timestamp) * 1000 || 0 }));
+  return { ok: true, requests };
+}
+
+/** Lets somebody in, or turns them away. Meta answers 200 even when one request failed, so the failed list is read. */
+export async function answerGroupJoinRequest(groupId: string, joinRequestId: string, approve: boolean, env: Env = process.env, fetcher: typeof fetch = fetch): Promise<GroupCall> {
+  const r = await groupCall(approve ? "POST" : "DELETE", encodeURIComponent(groupId) + "/join_requests", { messaging_product: "whatsapp", join_requests: [joinRequestId] }, true, env, fetcher);
+  if (!r.ok) return r;
+  const failed = Array.isArray(r.answer.failed_join_requests) ? (r.answer.failed_join_requests as { errors?: { message?: string }[] }[]) : [];
+  return failed.length ? { ok: false, reason: "WhatsApp could not do it: " + (failed[0].errors?.[0]?.message ?? "no reason given") + "." } : { ok: true };
+}
+
+export type MediaFetch =
+  | { ok: true; bytes: Uint8Array; mime: string }
+  | { ok: false; reason: string; notSetUp: boolean };
+
+const MEDIA_MAX_BYTES = 10 * 1024 * 1024;
+// lookaside.fbsbx.com is where Meta's media URLs usually point.
+const MEDIA_HOST_OK = /(^|\.)(whatsapp\.net|fbcdn\.net|fbsbx\.com|facebook\.com)$/;
+
+/**
+ * Downloads a file someone sent to the Ops WhatsApp number (25 Nov). It sends
+ * nothing to anybody, so it needs neither the OPS_SEND switch nor the phone
+ * allow-list. Meta's flow is two calls: the media id gives a short-lived
+ * address, and the address gives the bytes; both need the token.
+ */
+export async function fetchWhatsAppMedia(
+  mediaId: string,
+  env: Record<string, string | undefined> = process.env,
+  fetcher: typeof fetch = fetch,
+): Promise<MediaFetch> {
+  const token = (env.OPS_WHATSAPP_TOKEN ?? "").trim();
+  if (!token) {
+    return { ok: false, notSetUp: true, reason: "The Ops WhatsApp number is not set up yet (OPS_WHATSAPP_TOKEN)." };
+  }
+  const fail = (reason: string): MediaFetch => ({ ok: false, notSetUp: false, reason });
+  if (!mediaId.trim()) return fail("There is no file to fetch.");
+  const tooBig = fail("The file is over 10 MB, which is more than we take.");
+
+  try {
+    const headers = { authorization: "Bearer " + token };
+    const meta = await fetcher("https://graph.facebook.com/v21.0/" + encodeURIComponent(mediaId), {
+      headers,
+      signal: AbortSignal.timeout(SEND_TIME_LIMIT_MS),
+    });
+    const info = (await meta.json().catch(() => ({}))) as {
+      url?: string;
+      mime_type?: string;
+      file_size?: number;
+      error?: { message?: string };
+    };
+    if (!meta.ok || !info.url) {
+      return fail("WhatsApp would not give the file: " + (info.error?.message ?? meta.status) + ".");
+    }
+    if (Number(info.file_size) > MEDIA_MAX_BYTES) return tooBig;
+
+    // The token goes only to Meta's own hosts, never to whatever address came back.
+    let host = "";
+    try {
+      const u = new URL(info.url);
+      if (u.protocol === "https:") host = u.hostname.toLowerCase();
+    } catch {
+      /* host stays empty and is refused below */
+    }
+    if (!MEDIA_HOST_OK.test(host)) return fail("WhatsApp gave a download address we do not trust.");
+
+    const file = await fetcher(info.url, { headers, signal: AbortSignal.timeout(SEND_TIME_LIMIT_MS) });
+    if (!file.ok) return fail("WhatsApp would not give the file: " + file.status + ".");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length > MEDIA_MAX_BYTES) return tooBig;
+    return { ok: true, bytes, mime: info.mime_type || file.headers.get("content-type") || "" };
+  } catch (e) {
+    const timedOut = (e as Error)?.name === "TimeoutError";
+    return fail(timedOut ? "WhatsApp did not answer in time." : "The file could not be fetched from WhatsApp.");
+  }
+}
+
 /**
  * A group post is not sent by anybody: Meta's API cannot write to a group
  * (Part F2). The text is drafted, a person posts it from their phone and ticks

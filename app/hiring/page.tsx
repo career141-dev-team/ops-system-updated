@@ -413,9 +413,9 @@ function ScoopsList({ batches, people }: { batches: ScoopBatch[]; people: Parame
         return (
           <Card key={b.id} className="gap-3 !p-6">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className="t-h2">{b.source === "mail" ? b.subject || "A Scoop by email" : "CVs added by hand"}</h2>
+              <h2 className="t-h2">{b.source === "whatsapp" ? "CVs sent on WhatsApp" : b.source === "mail" ? b.subject || "A Scoop by email" : "CVs added by hand"}</h2>
               <span className="t-small text-ink-3">
-                {dayWord(b.at)} · {b.source === "mail" ? "from " + (b.from || "email") : "uploaded"}
+                {dayWord(b.at)} · {b.source === "whatsapp" ? "from WhatsApp" : b.source === "mail" ? "from " + (b.from || "email") : "uploaded"}
                 {b.complete ? "" : " · still being read"}
               </span>
             </div>

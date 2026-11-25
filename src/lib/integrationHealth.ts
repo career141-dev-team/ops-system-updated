@@ -65,3 +65,14 @@ export function scoopLines(config: { mailbox: string; senders: string[] }, mailR
     batches + (batches === 1 ? " Scoop" : " Scoops") + " so far" + (reachedAt ? ", the mailbox read up to " + new Date(reachedAt + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ") + " Colombo" : ""),
   ];
 }
+
+/** The CV queue, in words (25 Nov): how many files wait, how many were given up on, and why the last one failed. Rows come from parseWaRow. */
+export function cvQueueLines(rows: { state: string; why?: string; triedAt?: number }[]): string[] {
+  const waiting = rows.filter((r) => r.state === "waiting").length;
+  const failed = rows.filter((r) => r.state === "failed");
+  const last = failed.filter((r) => r.why).sort((a, b) => (b.triedAt ?? 0) - (a.triedAt ?? 0))[0];
+  return [
+    "CV group queue: " + waiting + " waiting, " + failed.length + " given up on",
+    ...(last ? ["Last failure: " + last.why] : []),
+  ];
+}

@@ -40,6 +40,12 @@ export interface WaMessage {
   text: string;
   /** What it was when it was not text: an image, a voice note. Nothing of it is kept. */
   kind: string;
+  /** The group it was posted in (Meta's Groups API), or null for a 1:1 message. */
+  groupId: string | null;
+  /** Meta's id for the sender (BSUID). In a group `from` can be missing when the sender has a username and no number. */
+  fromUserId: string;
+  /** A file that came with it: kept only as Meta's media id, to be downloaded later. */
+  document: { mediaId: string; filename: string; mime: string } | null;
 }
 
 /** What the webhook carried: the messages, and how many other things (delivery receipts, reactions) were left out. */
@@ -52,12 +58,15 @@ export function readWebhook(payload: unknown): { messages: WaMessage[]; ignored:
     const changes = (entry as { changes?: unknown[] }).changes;
     if (!Array.isArray(changes)) continue;
     for (const change of changes) {
-      const value = (change as { value?: { messages?: unknown[]; statuses?: unknown[]; contacts?: { wa_id?: string; profile?: { name?: string } }[] } }).value;
+      const value = (change as { value?: { messages?: unknown[]; statuses?: unknown[]; contacts?: { wa_id?: string; user_id?: string; profile?: { name?: string } }[] } }).value;
       ignored += Array.isArray(value?.statuses) ? value.statuses.length : 0;
       for (const raw of Array.isArray(value?.messages) ? value.messages : []) {
-        const m = raw as { id?: string; from?: string; timestamp?: string; type?: string; text?: { body?: string } };
+        const m = raw as { id?: string; from?: string; from_user_id?: string; group_id?: string; timestamp?: string; type?: string; text?: { body?: string }; document?: { id?: string; filename?: string; mime_type?: string; caption?: string } };
         const from = String(m.from ?? "").replace(/\D/g, "");
-        if (!m.id || !from) {
+        const fromUserId = String(m.from_user_id ?? "");
+        const groupId = m.group_id ? String(m.group_id) : null;
+        // (25 Nov) In a group the sender may have a username and no number: keep it by its BSUID, so a CV posted there is not lost.
+        if (!m.id || (!from && !(groupId && fromUserId))) {
           ignored += 1;
           continue;
         }
@@ -66,15 +75,40 @@ export function readWebhook(payload: unknown): { messages: WaMessage[]; ignored:
         messages.push({
           id: m.id,
           from,
-          name: (value?.contacts ?? []).find((c) => String(c.wa_id ?? "").replace(/\D/g, "") === from)?.profile?.name ?? "",
+          name: (value?.contacts ?? []).find((c) => (from && String(c.wa_id ?? "").replace(/\D/g, "") === from) || (fromUserId && c.user_id === fromUserId))?.profile?.name ?? "",
           at: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0,
-          text: kind === "text" ? String(m.text?.body ?? "").slice(0, 4000) : "",
+          text: String((kind === "text" ? m.text?.body : kind === "document" ? m.document?.caption : "") ?? "").slice(0, 4000),
           kind,
+          groupId,
+          fromUserId,
+          document: kind === "document" && m.document?.id ? { mediaId: m.document.id, filename: m.document.filename || "document", mime: m.document.mime_type || "" } : null,
         });
       }
     }
   }
   return { messages, ignored };
+}
+
+export interface GroupEvent { groupId: string; subject: string; inviteLink: string; error: string | null }
+
+/** The "group made" answers in a webhook (group_lifecycle_update, type group_create). Meta's reply to the create call itself does not carry the id (25 Nov). */
+export function readGroupEvents(payload: unknown): GroupEvent[] {
+  const out: GroupEvent[] = [];
+  const entries = (payload as { entry?: unknown[] } | null)?.entry;
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const changes = (entry as { changes?: unknown[] }).changes;
+    for (const change of Array.isArray(changes) ? changes : []) {
+      const c = change as { field?: string; value?: { groups?: unknown[] } };
+      if (c.field !== "group_lifecycle_update") continue;
+      for (const raw of Array.isArray(c.value?.groups) ? c.value.groups : []) {
+        const g = raw as { type?: string; group_id?: string; subject?: string; invite_link?: string; errors?: { message?: string; title?: string; error_data?: { details?: string } }[] };
+        if (g.type !== "group_create") continue;
+        const e = g.errors?.[0];
+        out.push({ groupId: String(g.group_id ?? ""), subject: String(g.subject ?? ""), inviteLink: String(g.invite_link ?? ""), error: g.errors?.length ? e?.error_data?.details || e?.message || e?.title || "WhatsApp would not make the group." : null });
+      }
+    }
+  }
+  return out;
 }
 
 export interface PhoneBook {

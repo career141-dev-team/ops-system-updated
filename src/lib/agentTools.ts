@@ -282,7 +282,7 @@ export async function runAgentTool(ctx: ToolContext, name: string, input: Record
           .slice(0, 8)
           .map((b) => {
             const s = summaryOf(b, people);
-            return { scoop: b.source === "mail" ? b.subject || "Scoop by email" : "Added by hand", date: colomboDate(b.at), cvs: s.processed, responded: s.responded, no_answer: s.noAnswer, not_called: s.notCalled, interviews: s.interviews };
+            return { scoop: b.source === "whatsapp" ? "CVs sent on WhatsApp" : b.source === "mail" ? b.subject || "Scoop by email" : "Added by hand", date: colomboDate(b.at), cvs: s.processed, responded: s.responded, no_answer: s.noAnswer, not_called: s.notCalled, interviews: s.interviews };
           }),
       );
     }

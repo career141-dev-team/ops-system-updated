@@ -1,5 +1,5 @@
-import { CLOCK_ACTOR, takeWhatsApp } from "@/data/desk";
-import { challengeFor, readWebhook, signatureOk } from "@/lib/whatsapp";
+import { CLOCK_ACTOR, takeGroupEvents, takeWhatsApp } from "@/data/desk";
+import { challengeFor, readGroupEvents, readWebhook, signatureOk } from "@/lib/whatsapp";
 
 /**
  * The door Meta's WhatsApp Cloud API knocks on (23 Nov, the ops team's feedback): what a client or a candidate
@@ -36,6 +36,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: true, recorded: 0 }, { status: 200 });
   }
   const { messages, ignored } = readWebhook(payload);
-  const taken = messages.length ? await takeWhatsApp(messages, CLOCK_ACTOR) : { recorded: 0, already: 0, filed: 0, waiting: 0, chasesStopped: 0 };
-  return Response.json({ ok: true, ignored, ...taken }, { status: 200 });
+  const taken = messages.length ? await takeWhatsApp(messages, CLOCK_ACTOR) : { recorded: 0, already: 0, filed: 0, waiting: 0, chasesStopped: 0, queued: 0 };
+  // A group made on our number reports its id and link here, not in the reply to the create call (25 Nov).
+  const group = await takeGroupEvents(readGroupEvents(payload), CLOCK_ACTOR);
+  return Response.json({ ok: true, ignored, ...taken, groupAdopted: group.adopted }, { status: 200 });
 }
