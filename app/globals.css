@@ -575,6 +575,15 @@ dialog.send-modal::backdrop {
     border-radius: 0;
   }
 }
+/* A smaller centred box with the page blurred behind it (PopupBox, 25 Nov). */
+dialog.send-modal.popup-box {
+  width: min(760px, calc(100vw - 48px));
+}
+dialog.send-modal.popup-box::backdrop {
+  background: rgb(22 25 29 / 0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
 body:has(dialog.send-modal[open]) {
   overflow: hidden;
 }

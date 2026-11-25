@@ -20,7 +20,8 @@ import { lastTalkWords } from "@/lib/clientsBoard";
 import { checkInText, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
-import { panelHref } from "@/lib/panel";
+import PopupBox from "@/app/ui/PopupBox";
+import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
@@ -98,7 +99,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   // The one call this client's page offers: intro for a new client, requirement for a new role (23 Nov).
   const calls = client.leadId ? meetingsForLead(db, client.leadId) : [];
   const callKind = callKindFor({ stage: client.stage, hasPosition: db.positions.some((p) => p.clientId === client.id), heldCall: calls.some((m) => m.heldAt !== null) });
-  const taSide = view === "overview" && mayManage ? await taPeople() : null;
+  const taSide = (view === "overview" || sp.panel === "requirement-call") && mayManage ? await taPeople() : null;
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   const whenIn = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
@@ -172,6 +173,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </Link>
             <Link href="/clients/owners" className="t-small rounded-lg px-3 py-1.5 text-brand hover:bg-sunk">
               Who owns what
+            </Link>
+            <Link href={panelHref(path, sp, "requirement-call")} scroll={false} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
+              {callKind === "intro" ? "Intro call" : "Requirement call"}
             </Link>
             {lead && (
               <Link href={"/leads/" + lead.id} className="t-small rounded-lg px-3 py-1.5 hover:bg-sunk">
@@ -302,50 +306,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                       );
                     })}
                   </ul>
-                )}
-              </Card>
-              <Card
-                title={callKind === "intro" ? "Intro call" : "Requirement call"}
-                sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
-                right={
-                  <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
-                    <Icon name="plus" size={14} />
-                    New position
-                  </Link>
-                }
-              >
-                {calls.length > 0 && (
-                  <div className="flex flex-col">
-                    {calls.map((m) => (
-                      <div key={m.id} className="flex flex-wrap items-center gap-3 border-t border-rule py-2.5 first:border-t-0 first:pt-0">
-                        <span className="t-body-m">{m.kind === "intro" ? "Intro call" : "Requirement call"}</span>
-                        <span className="t-small text-ink-3">{whenIn(m.at)} · {m.state.replace(/_/g, " ")}</span>
-                        <Link href={"/leads/" + client.leadId + "?step=" + (m.kind === "intro" ? "intro" : "requirement")} className="t-body-m ml-auto text-brand hover:underline">
-                          {m.heldAt ? "Open" : "Mark held or rebook"}
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {mayManage && (
-                  <details open={calls.length === 0}>
-                    <summary className="t-body-m cursor-pointer text-brand hover:underline">{callKind === "intro" ? "Book the intro call" : "Book the requirement call"}</summary>
-                    <div className="pt-3">
-                      <MeetingBookingForm
-                        action={bookClientCall}
-                        leadId=""
-                        hidden={{ clientId: client.id }}
-                        contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
-                        taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
-                        members={db.members}
-                        organiserId={client.ownerId}
-                        teamsOn={teamsOn}
-                        submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
-                        primary
-                        offerAlsoRequirement={callKind === "intro"}
-                      />
-                    </div>
-                  </details>
                 )}
               </Card>
             </>
@@ -581,6 +541,53 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </RailCard>
         </aside>
       </div>
+      {sp.panel === "requirement-call" && (
+        <PopupBox
+          title={callKind === "intro" ? "Intro call" : "Requirement call"}
+          sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
+          closeHref={closeHref(path, sp)}
+          right={
+            <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
+              <Icon name="plus" size={14} />
+              New position
+            </Link>
+          }
+        >
+          {calls.length > 0 && (
+            <div className="flex flex-col">
+              {calls.map((m) => (
+                <div key={m.id} className="flex flex-wrap items-center gap-3 border-t border-rule py-2.5 first:border-t-0 first:pt-0">
+                  <span className="t-body-m">{m.kind === "intro" ? "Intro call" : "Requirement call"}</span>
+                  <span className="t-small text-ink-3">{whenIn(m.at)} · {m.state.replace(/_/g, " ")}</span>
+                  <Link href={"/leads/" + client.leadId + "?step=" + (m.kind === "intro" ? "intro" : "requirement")} className="t-body-m ml-auto text-brand hover:underline">
+                    {m.heldAt ? "Open" : "Mark held or rebook"}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+          {mayManage && (
+            <details open>
+              <summary className="t-body-m cursor-pointer text-brand hover:underline">{callKind === "intro" ? "Book the intro call" : "Book the requirement call"}</summary>
+              <div className="pt-3">
+                <MeetingBookingForm
+                  action={bookClientCall}
+                  leadId=""
+                  hidden={{ clientId: client.id }}
+                  contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
+                  taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
+                  members={db.members}
+                  organiserId={client.ownerId}
+                  teamsOn={teamsOn}
+                  submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
+                  primary
+                  offerAlsoRequirement={callKind === "intro"}
+                />
+              </div>
+            </details>
+          )}
+        </PopupBox>
+      )}
     </div>
   );
 }
