@@ -9,7 +9,7 @@ import { bubbleWhen, initialsOf, shortWhen } from "@/lib/myWork";
 import { clockOf } from "@/lib/myWorkView";
 import CopyButton from "./CopyButton";
 
-const row = "flex items-center gap-4 rounded-[22px] bg-surface px-[22px] py-[18px] shadow-card";
+const row = "flex items-center gap-4 rounded-[22px] inbox-item bg-surface px-[22px] py-[18px]";
 
 function Section({ tone, label, count }: { tone: "warn" | "info" | "ink"; label: string; count: number }) {
   const c = tone === "warn" ? ["bg-warn", "text-warn"] : tone === "info" ? ["bg-info", "text-info"] : ["bg-ink", "text-ink"];
@@ -120,7 +120,7 @@ export function WhatsAppPanel({ view, now }: { view: WhatsAppView; now: number }
             {replies.length === 0 ? "No client has written in a group." : "These clients have written in their groups or to the Ops number."}
           </p>
         </div>
-        <p className="rounded-[28px] bg-surface px-6 py-[22px] t-body text-ink-2 shadow-card">The system cannot read WhatsApp. Record each client reply here.</p>
+        <p className="rounded-[28px] inbox-item bg-surface px-6 py-[22px] t-body text-ink-2">The system cannot read WhatsApp. Record each client reply here.</p>
       </aside>
     </div>
   );
@@ -141,7 +141,7 @@ export function NewsPanel({ items, now, name, memberId, mayModerate = false }: {
   return (
     <div className="flex items-start gap-[22px]">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <form action={postTeamNote} className="flex items-center gap-4 rounded-[22px] bg-surface px-[22px] py-[18px] shadow-card">
+        <form action={postTeamNote} className="flex items-center gap-4 rounded-[22px] inbox-item bg-surface px-[22px] py-[18px]">
           <input type="hidden" name="back" value="/mail?view=news" />
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-soft t-body-m text-brand">{initialsOf(name)}</span>
           <input name="body" required minLength={2} maxLength={500} aria-label="Write a note to the team" placeholder="Write a note to the team" className="min-w-0 flex-1 h-11 rounded-full bg-sunk px-[18px] t-body outline-none placeholder:text-ink-3 focus:ring-2 focus:ring-ink/20" />
@@ -160,7 +160,7 @@ export function NewsPanel({ items, now, name, memberId, mayModerate = false }: {
                 <span className="t-small text-ink-3">{g.items.length}</span>
               </div>
               {g.items.map((n) => (
-                <div key={n.id} className="flex items-start gap-4 rounded-[22px] bg-surface px-[22px] py-[18px] shadow-card">
+                <div key={n.id} className="flex items-start gap-4 rounded-[22px] inbox-item bg-surface px-[22px] py-[18px]">
                   <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk t-body-m text-ink-2">{initialsOf(n.by)}</span>
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <p className="flex items-center gap-2.5">
@@ -191,7 +191,7 @@ export function NewsPanel({ items, now, name, memberId, mayModerate = false }: {
           ))
         )}
       </div>
-      <aside className="flex w-[360px] shrink-0 flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card max-pg-lg:w-full">
+      <aside className="flex w-[360px] shrink-0 flex-col gap-3 rounded-[28px] inbox-item bg-surface px-6 py-[22px] max-pg-lg:w-full">
         <p className="t-micro text-ink-3">FOLLOW</p>
         {[
           ["My clients", "Their events show here", true],

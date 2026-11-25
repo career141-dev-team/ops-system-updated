@@ -61,7 +61,7 @@ export default function ReadingPane({
   const line = <div className="h-px w-full bg-rule" />;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col gap-6 rounded-[28px] border border-rule-strong bg-surface px-9 py-8">
+    <section className="flex min-w-0 flex-1 flex-col gap-6 rounded-[28px] inbox-item bg-surface px-9 py-8">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3.5">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sunk t-body-m text-ink-2">{initialsOf(who)}</span>
