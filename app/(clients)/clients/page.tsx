@@ -148,7 +148,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           )}
         </div>
         <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
-          <StandsCard head={stands.head} body={stands.body} copies={stands.copies} />
+          <StandsCard head={stands.head} body={stands.body} people={stands.people.map((p) => ({ ...p, href: "/work", label: "Open work" }))} more={stands.more} />
           <RailCard title="Latest">
             {latest.length === 0 ? (
               <p className="t-small text-ink-3">Nothing has happened with a client yet.</p>

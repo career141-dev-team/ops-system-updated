@@ -150,11 +150,16 @@ export function StandsCard({
   body,
   copies = [],
   links = [],
+  people = [],
+  more = 0,
 }: {
   head: string;
   body: string;
   copies?: { label: string; text: string }[];
   links?: { label: string; href: string }[];
+  /** One small row for each client who needs you, with a button to the work (25 Nov). */
+  people?: { id: string; name: string; why: string; href: string; label: string }[];
+  more?: number;
 }) {
   const buttons = "t-label inline-flex cursor-pointer items-center rounded-full px-3.5 py-2";
   return (
@@ -167,6 +172,22 @@ export function StandsCard({
         {head}
       </p>
       {body && <p className="t-small text-ink-3">{body}</p>}
+      {people.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {people.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 rounded-[16px] bg-white/10 py-2 pl-3.5 pr-2">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="t-body-m truncate text-ink-inverse">{p.name}</span>
+                <span className="t-small truncate text-ink-3">{p.why}</span>
+              </span>
+              <Link href={p.href} className="t-label shrink-0 rounded-full bg-surface px-3 py-1.5 text-ink">
+                {p.label}
+              </Link>
+            </li>
+          ))}
+          {more > 0 && <li className="t-small px-1 text-ink-3">and {more} more</li>}
+        </ul>
+      )}
       {(copies.length > 0 || links.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {copies.map((c, i) => (

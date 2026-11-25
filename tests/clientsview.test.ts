@@ -76,6 +76,20 @@ test("the words around the boards", () => {
   assert.equal(week.find((d) => d.day === 21)?.calls, 0);
 });
 
+test("the dark card names each client who needs you, five at most, with why", () => {
+  const card = (id: string, needsYou: boolean, extra: object = {}) => ({ id, name: "Client " + id, needsYou, quietDays: null, status: { text: "Chase 3 due today", tone: "warn" }, esa: null, ...extra }) as never;
+  const none = standsClients([card("a", false)]);
+  assert.equal(none.head, "Nothing needs you today.");
+  assert.deepEqual(none.people, []);
+  const some = standsClients([card("a", true), card("b", true, { status: { text: "Changes wanted", tone: "warn" } }), card("c", false), ...["d", "e", "f", "g"].map((i) => card(i, true))]);
+  assert.equal(some.head, "6 clients need you today.");
+  assert.equal(some.people.length, 5);
+  assert.equal(some.more, 1);
+  assert.equal(some.people[0].why, "Chase 3 due today");
+  assert.equal(some.people[1].why, "Changes wanted");
+  assert.equal(standsClients([card("a", true)]).head, "1 client needs you today.");
+});
+
 test("the talks with a client, newest first, from calls, mail and what we sent", () => {
   const db = make({
     clients: [client({ leadId: null })],

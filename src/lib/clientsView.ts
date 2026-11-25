@@ -374,21 +374,17 @@ export function weekStrip(meetings: { at: number; state: string }[], now: number
   });
 }
 
-/** The words of the dark "Where it stands" card for the client list. */
-export function standsClients(cards: ClientCard[]): { head: string; body: string; copies: (Copyable & { kind: string })[] } {
+/**
+ * The dark "Where it stands" card for the client list (25 Nov): the count in words, then one row for each client
+ * who needs the Ops person today (the most urgent five), each with why. No drafts to copy here any more.
+ */
+export function standsClients(cards: ClientCard[]): { head: string; body: string; people: { id: string; name: string; why: string }[]; more: number } {
   const need = cards.filter((c) => c.needsYou);
   const quiet = cards.filter((c) => c.quietDays !== null && c.quietDays > QUIET_AFTER);
   const head = need.length ? need.length + (need.length === 1 ? " client needs" : " clients need") + " you today." : "Nothing needs you today.";
-  const body = [
-    ...need.slice(0, 2).map((c) => c.name + (c.esa?.state === "negotiating" ? " wants changes to the agreement." : " is on " + c.status.text.charAt(0).toLowerCase() + c.status.text.slice(1) + ".")),
-    quiet.length ? quiet.length + (quiet.length === 1 ? " client has" : " clients have") + " been quiet for more than " + QUIET_AFTER + " days." : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const copies = [need.find((c) => c.copy?.kind === "chase"), quiet.find((c) => c.copy?.kind === "checkin")]
-    .filter((c): c is ClientCard => !!c && !!c.copy)
-    .map((c) => ({ label: c.copy!.label, text: c.copy!.text, kind: c.copy!.kind }));
-  return { head, body, copies };
+  const body = quiet.length ? quiet.length + (quiet.length === 1 ? " client has" : " clients have") + " been quiet for more than " + QUIET_AFTER + " days." : "";
+  const people = need.slice(0, 5).map((c) => ({ id: c.id, name: c.name, why: c.status.text }));
+  return { head, body, people, more: Math.max(0, need.length - people.length) };
 }
 
 /** "Day 2: first reminder by email" for each step of the owner's chase plan (days are counted from sending). */
