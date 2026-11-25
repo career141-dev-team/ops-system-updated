@@ -78,6 +78,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ needs.gate.outputs.sha }}
             NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.PREVIEW_SERVER_ACTIONS_KEY }}
+            NEXT_PUBLIC_ASSETS_URL=${{ vars.NEXT_PUBLIC_ASSETS_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

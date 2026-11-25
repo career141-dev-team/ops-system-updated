@@ -27,6 +27,10 @@ ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
 ENV NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+# The public R2 bucket the logo and AURA mark are served from (src/lib/brandAssets.ts).
+# Empty serves the copies in public/.
+ARG NEXT_PUBLIC_ASSETS_URL=
+ENV NEXT_PUBLIC_ASSETS_URL=$NEXT_PUBLIC_ASSETS_URL
 # Which commit this image is, so anyone can tell what the preview is showing.
 ARG APP_VERSION=dev
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
@@ -45,8 +49,9 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-# No public/ folder yet: there is nothing to serve from one. Add the COPY line
-# back when there is.
+# The top bar's career141 logo and the AURA mark live here (25 Nov: missing on
+# the hosted site because this line was left out).
+COPY --from=build /app/public ./public
 USER node
 EXPOSE 3300
 # Next writes its own server.js into the standalone output.

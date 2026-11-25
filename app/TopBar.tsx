@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { brandAsset } from "@/lib/brandAssets";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -105,7 +106,7 @@ export default function TopBar({
             workspaces fit beside it. The tabs never scroll (owner, 24 Nov). */}
         <header data-welcome="bar" className="flex h-[72px] items-center gap-3 rounded-[36px] bg-surface pl-7 pr-5 shadow-card">
           <Link href="/" aria-label="My work" className="shrink-0">
-            <Image src="/career141-lockup.png" alt="career141 · 20 years" width={178} height={56} priority className="h-[38px] w-[120px] object-contain" />
+            <Image unoptimized src={brandAsset("career141-lockup.png")} alt="career141 · 20 years" width={178} height={56} priority className="h-[38px] w-[120px] object-contain" />
           </Link>
           <nav aria-label="Workspaces" className="ml-3 flex h-full items-stretch border-l border-rule">
             {workspaces.pages.map((page) => {

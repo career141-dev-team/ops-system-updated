@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { brandAsset } from "@/lib/brandAssets";
 import { usePathname } from "next/navigation";
 
 import Bell from "@/app/Bell";
@@ -51,7 +52,7 @@ export default function PhoneNav({
       {/* The top row. */}
       <header className="flex items-center gap-2.5 px-4 pb-1 pt-5 md:hidden">
         <Link href="/" aria-label="My work" className="shrink-0">
-          <Image src="/career141-lockup.png" alt="career141 · 20 years" width={178} height={56} className="h-[30px] w-[100px] object-contain" />
+          <Image unoptimized src={brandAsset("career141-lockup.png")} alt="career141 · 20 years" width={178} height={56} className="h-[30px] w-[100px] object-contain" />
         </Link>
         <div className="flex-1" />
         <Bell initial={bell} />
