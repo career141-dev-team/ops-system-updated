@@ -96,7 +96,7 @@ export default function AgreementView(p: {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-4 rounded-[24px] bg-sunk p-5">
-          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <section className={card + " flex flex-col"}>
               <div className="flex flex-col gap-3 border-b border-rule px-6 py-5">
                 <p className="t-h3 text-ink [overflow-wrap:anywhere]">Career141 · Employment Services Agreement for {company}</p>
