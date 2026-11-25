@@ -1,0 +1,142 @@
+name: Deploy production
+
+# Ops production: https://ops.career141.com on the VPS (/opt/ops-system).
+#
+# Shares only the physical machine with the TA System: its own Compose project
+# (ops-system), its own Postgres container, its own Convex instance (ops-prod),
+# and its own ports on 127.0.0.1 (3330/3331/3332/6893).
+#
+# Safety locks:
+#   1. Repository variable PRODUCTION_ENABLED must be "true".
+#   2. CI (tests + typecheck) must pass on the commit being deployed.
+#   3. GitHub Environment "ops-production" requires owner approval.
+#   4. Convex deploy refuses any admin key that does not start with "ops-prod|".
+#
+# Manual workflow_dispatch only — never deploys automatically on push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      components:
+        description: What to deploy
+        type: choice
+        options: [all, app, backend]
+        default: all
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ops-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Checks before deploying
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Production deploys are switched on
+        if: ${{ vars.PRODUCTION_ENABLED != 'true' }}
+        run: |
+          echo "::error::Production deploys are switched off (set repository variable PRODUCTION_ENABLED=true)."
+          exit 1
+      - uses: actions/checkout@v4
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: Tests and types
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: ops-production
+    needs: [gate, ci]
+    runs-on: ubuntu-latest
+    environment: ops-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        if: ${{ inputs.components != 'backend' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ needs.gate.outputs.sha }}
+          build-args: |
+            APP_VERSION=${{ needs.gate.outputs.sha }}
+            NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.PRODUCTION_SERVER_ACTIONS_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: SSH access
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          USER_NAME: ${{ secrets.VPS_USERNAME }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -t ed25519 "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          cat >> ~/.ssh/config <<EOF
+          Host deploy-target
+            HostName $HOST
+            User $USER_NAME
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Verify /opt/ops-system is ready on the VPS
+        run: |
+          DIR='${{ vars.PRODUCTION_DIR || '/opt/ops-system' }}'
+          ssh deploy-target "test -d '$DIR' && test -f '$DIR/.env.production'" \
+            || { echo "::error::$DIR or $DIR/.env.production is missing on the VPS."; exit 1; }
+
+      - name: Copy compose file and deploy script to VPS
+        run: |
+          DIR='${{ vars.PRODUCTION_DIR || '/opt/ops-system' }}'
+          ssh deploy-target "mkdir -p '$DIR/.deploy'"
+          scp deploy/production/docker-compose.yml "deploy-target:$DIR/docker-compose.yml"
+          scp deploy/production/remote-up.sh "deploy-target:$DIR/.deploy/remote-up.sh"
+
+      - name: Deploy Convex functions over SSH tunnel
+        if: ${{ inputs.components != 'app' }}
+        env:
+          CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.PRODUCTION_CONVEX_ADMIN_KEY }}
+        run: |
+          case "$CONVEX_SELF_HOSTED_ADMIN_KEY" in
+            ops-prod\|*) : ;;
+            *)
+              echo "::error::PRODUCTION_CONVEX_ADMIN_KEY must start with 'ops-prod|'. Refusing to deploy."
+              exit 1
+              ;;
+          esac
+          ssh -f -N -L 3330:127.0.0.1:3330 deploy-target
+          npm ci
+          CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3330 npx convex deploy -y
+
+      - name: Log VPS into GHCR and bring app up
+        if: ${{ inputs.components != 'backend' }}
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DIR='${{ vars.PRODUCTION_DIR || '/opt/ops-system' }}'
+          printf '%s' "$GHCR_TOKEN" | ssh deploy-target "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          ssh deploy-target "OPS_PROD_DIR='$DIR' bash '$DIR/.deploy/remote-up.sh' 'ghcr.io/${{ github.repository }}:${{ needs.gate.outputs.sha }}'"
