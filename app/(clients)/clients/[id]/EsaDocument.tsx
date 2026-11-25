@@ -1,48 +1,57 @@
 import type { EsaDoc } from "@/lib/esaDocument";
 
 /** The agreement page itself: the owner's draft, filled with this client's details (src/lib/esaDocument.ts). */
-export default function EsaDocument({ doc, at }: { doc: EsaDoc; at: string }) {
+export default function EsaDocument({ doc }: { doc: EsaDoc }) {
+  // The owner's Word file, as it looks: Times New Roman, justified, blue numbered headings, the logo top left,
+  // the CAREER141 watermark and the copyright line at the foot. Always white paper with dark ink, in dark mode too.
   return (
-    <div className="flex flex-col gap-4 text-[14px] leading-[22px] text-ink">
-      <div className="flex items-center justify-between gap-3 border-b border-rule pb-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/career141-lockup.png" alt="career141 · 20 years" className="h-10 w-[126px] object-contain" />
-        <span className="t-micro text-ink-3">CONFIDENTIAL</span>
-      </div>
-      <div className="flex flex-col text-ink-2">
-        {doc.to.map((l) => (
-          <span key={l} className="[overflow-wrap:anywhere]">{l}</span>
-        ))}
-        <span className="mt-1 text-ink-3">{at}</span>
-      </div>
-      {doc.parties.map((p, i) => (
-        <p key={i} className={p === "AND" ? "font-medium" : ""}>{p}</p>
-      ))}
-      <p className="font-medium">AGREE AS FOLLOWS</p>
-      {doc.sections.map((s, n) => (
-        <section key={s.title} className="flex flex-col gap-2">
-          <h4 className="mt-1 text-[15px] font-medium">{n + 1}. {s.title}</h4>
-          {s.lead && <p>{s.lead}</p>}
-          {s.items.map((t, i) => (
-            <p key={i} className="flex gap-3">
-              <span className="w-9 shrink-0 text-ink-3">{s.lead ? String.fromCharCode(97 + i) + ")" : `${n + 1}.${i + 1}`}</span>
-              <span className="min-w-0 flex-1">{t}</span>
-            </p>
+    <div className="relative overflow-hidden bg-white p-6 text-[13px] leading-[20px] text-[#1f1f1f] [font-family:'Times_New_Roman',Times,serif]">
+      <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[50deg] select-none whitespace-nowrap text-[110px] font-bold leading-none text-[#e9ecef]">CAREER141</span>
+      <div className="relative flex flex-col gap-3 text-justify">
+        <div className="flex items-start justify-between gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/esa-logo.png" alt="Career Consultants" className="h-[92px] w-[89px] object-contain" />
+          <span className="text-[11px] tracking-[0.08em] text-[#8a8f98]">CONFIDENTIAL</span>
+        </div>
+        <div className="flex flex-col text-left">
+          {doc.to.map((l) => (
+            <span key={l} className="[overflow-wrap:anywhere]">{l}</span>
           ))}
-        </section>
-      ))}
-      <p className="mt-2">As a token of acceptance of the above terms and conditions, both parties have set their hands by signing this document on the date and place written below;</p>
-      <div className="mt-4 grid grid-cols-2 gap-8">
-        <div className="flex flex-col gap-1 border-t border-ink pt-2">
-          <span className="font-medium">On behalf of CAREER CONSULTANTS (PVT) LIMITED</span>
-          <span className="t-micro text-ink-3">{doc.signing.career}, Managing Director · Date:</span>
         </div>
-        <div className="flex flex-col gap-1 border-t border-ink pt-2">
-          <span className="font-medium [overflow-wrap:anywhere]">On behalf of {doc.parties[2].split(" having")[0]}</span>
-          <span className="t-micro text-ink-3">{[doc.signing.client, doc.signing.clientTitle].filter(Boolean).join(", ")} · Date:</span>
+        {doc.parties.map((p, i) => (
+          <p key={i} className={p === "AND" ? "text-center" : ""}>{p}</p>
+        ))}
+        <p className="text-[15px]">AGREE AS FOLLOWS</p>
+        {doc.sections.map((s, n) => (
+          <section key={s.title} className="flex flex-col gap-2">
+            <h4 className="mt-2 text-[15px] font-bold uppercase text-[#528dd2]">{n + 1}) {s.title}</h4>
+            {s.lead && <p>{s.lead}</p>}
+            {s.items.map((t, i) => (
+              <p key={i} className="pl-5 -indent-5">
+                {s.lead ? String.fromCharCode(97 + i) + ")" : `${n + 1}.${i + 1}`} {t}
+              </p>
+            ))}
+          </section>
+        ))}
+        <p className="mt-2">As a token of acceptance of the above terms and conditions, both parties have set their hands by signing this document on the date and place written below;</p>
+        <div className="mt-5 grid grid-cols-2 gap-10 text-left">
+          <div className="flex flex-col">
+            <span className="mb-1">………………………………………</span>
+            <span className="font-bold">On behalf of CAREER CONSULTANTS (PVT) LIMITED</span>
+            <span>{doc.signing.career}</span>
+            <span>MANAGING DIRECTOR</span>
+            <span>DATE:</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="mb-1">………………………………………</span>
+            <span className="font-bold [overflow-wrap:anywhere]">On behalf of {doc.parties[2].split(" having")[0]}</span>
+            <span>NAME: {doc.signing.client}</span>
+            <span>DESIGNATION: {doc.signing.clientTitle}</span>
+            <span>DATE:</span>
+          </div>
         </div>
+        <p className="mt-3 border-t border-[#d9dce1] pt-2 text-center text-[11px] text-[#6b7078]">Career Consultants (Private) Limited. 2020 Version 2.0. All rights reserved</p>
       </div>
-      <p className="t-micro text-ink-3">Career Consultants (Private) Limited. 2020 Version 2.0. All rights reserved.</p>
     </div>
   );
 }

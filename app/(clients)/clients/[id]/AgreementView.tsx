@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Icon from "@/app/Icon";
 import { StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { coverNote, termRows } from "@/lib/agreementView";
-import { esaDocument, longOrdinalDate } from "@/lib/esaDocument";
+import { esaDocument } from "@/lib/esaDocument";
 import EsaDocument from "./EsaDocument";
 import { STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
 import type { OpsEsa } from "@/data/types";
@@ -47,8 +47,8 @@ export default function AgreementView(p: {
   const card = "rounded-[18px] border border-rule-strong bg-surface shadow-[0_2px_8px_rgb(15_23_31/0.07)]";
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid items-start gap-5 pg-lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="flex flex-col gap-6 rounded-[24px] bg-sunk p-6">
+      <div className="grid items-start gap-5 pg-lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="flex flex-col gap-6 rounded-[24px] bg-sunk p-5">
           <div className="flex flex-col gap-1.5">
             <p className="t-micro text-ink-3">AGREEMENT</p>
             <h2 className="text-[24px] font-medium leading-[32px] text-ink [overflow-wrap:anywhere]">{p.company}</h2>
@@ -62,9 +62,9 @@ export default function AgreementView(p: {
             <p className="t-micro text-ink-3">THE TERMS</p>
             <div className="flex flex-col rounded-[16px] bg-surface">
               {termRows(f).map((r) => (
-                <div key={r.label} className="flex items-center gap-4 border-t border-rule px-4 py-3 first:border-t-0">
-                  <span className="t-body w-24 shrink-0 text-ink-3">{r.label}</span>
-                  <span className="t-body-m text-[17px] text-ink">{r.value}</span>
+                <div key={r.label} className="flex items-center gap-3 border-t border-rule px-3.5 py-3 first:border-t-0">
+                  <span className="t-body w-[76px] shrink-0 text-ink-3">{r.label}</span>
+                  <span className="t-body-m whitespace-nowrap text-[16px] text-ink">{r.value}</span>
                 </div>
               ))}
             </div>
@@ -96,7 +96,7 @@ export default function AgreementView(p: {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-4 rounded-[24px] bg-sunk p-5">
-          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
             <section className={card + " flex flex-col"}>
               <div className="flex flex-col gap-3 border-b border-rule px-6 py-5">
                 <p className="t-h3 text-ink [overflow-wrap:anywhere]">Career141 · Employment Services Agreement for {company}</p>
@@ -124,8 +124,8 @@ export default function AgreementView(p: {
 
             <div className="flex min-w-0 flex-col gap-2.5">
               <p className="t-micro text-ink-3 [overflow-wrap:anywhere]">ATTACHED: {p.fileName.toUpperCase()}</p>
-              <article className={card + " max-h-[640px] overflow-y-auto px-8 py-8"}>
-                <EsaDocument doc={doc} at={longOrdinalDate(p.esa.updatedAt)} />
+              <article className={card + " max-h-[720px] overflow-y-auto"}>
+                <EsaDocument doc={doc} />
               </article>
             </div>
           </div>

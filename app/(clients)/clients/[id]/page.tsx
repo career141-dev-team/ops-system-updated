@@ -11,7 +11,7 @@ import { teamsFake } from "@/lib/graphCalendar";
 import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
-import { esaDocument, longOrdinalDate } from "@/lib/esaDocument";
+import { esaDocument } from "@/lib/esaDocument";
 import EsaDocument from "./EsaDocument";
 import AgreementView from "./AgreementView";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -566,7 +566,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
       {sp.panel === "esa-view" && esa && (
         <PopupBox title="Executive Search Agreement" sub={`${client.name} · Version ${esa.version}`} closeHref={closeHref(path, sp)} wide>
-          <EsaDocument doc={esaDocument(esa.fields, { company: client.name, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" })} at={longOrdinalDate(esa.updatedAt)} />
+          <EsaDocument doc={esaDocument(esa.fields, { company: client.name, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" })} />
         </PopupBox>
       )}
       {sp.panel === "requirement-call" && (
