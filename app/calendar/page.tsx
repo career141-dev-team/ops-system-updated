@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { startInterview } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Card, ChoiceGroup, DataTable, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn, switchedOn } from "@/data/desk";
+import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn } from "@/data/desk";
 import { CALENDAR_FILTERS, clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel, type CalendarKind } from "@/lib/calendarBoard";
-import { listEvents, teamsFake } from "@/lib/graphCalendar";
 import { FORMAT_MEANINGS, boardStatus, isOff, weekDays, type InterviewFormat } from "@/lib/interviews";
 import { SUMMARY_MODES, SUMMARY_STATUSES, filterSummary, summaryRows } from "@/lib/interviewSummary";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -19,8 +17,8 @@ import { currentMember } from "@/lib/session";
 const KIND_STYLE: Record<CalendarKind, { box: string; clock: string; dot: string; legend: string }> = {
   client: { box: "bg-info-soft", clock: "text-info", dot: "bg-info", legend: "Client interview" },
   internal: { box: "bg-violet-soft", clock: "text-violet", dot: "bg-violet", legend: "Internal interview" },
-  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Meeting" },
   joining: { box: "bg-brand-soft", clock: "text-brand", dot: "bg-brand", legend: "Joining day" },
+  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Meeting" },
 };
 
 interface CalendarEvent {
@@ -43,8 +41,7 @@ interface CalendarEvent {
  * K1 · Calendar. The week of client interviews, intro/requirement meetings, and joining days,
  * Monday to Saturday, with the selected item on the right, unbooked interviews below it, and a
  * 680px `?panel=start-interview` drawer to start a new interview right from the calendar.
- * Internal interviews are the booked applicants of the internal hiring vacancies. Below the week,
- * the signed-in person's own Outlook events are listed read-only, and never hold the page up.
+ * Internal interviews are the booked applicants of the internal hiring vacancies.
  */
 export default async function CalendarPage({
   searchParams,
@@ -87,7 +84,7 @@ export default async function CalendarPage({
       ownerId: iv.ownerId,
       when: isOff(iv.state) ? null : iv.at,
       title: iv.candidateName,
-      sub: `Round ${iv.round} · ${clientName}`,
+      sub: `Round ${iv.round} · client interview`,
       href: here({ on: iv.id }),
       iv,
       status: boardStatus(iv),
@@ -110,8 +107,8 @@ export default async function CalendarPage({
         kind: "meeting",
         ownerId: lead?.ownerId ?? client?.ownerId ?? null,
         when: m.at,
-        title: label,
-        sub: who,
+        title: who,
+        sub: label,
         href: lead ? `/leads/${lead.id}?step=${m.kind === "requirement" ? "requirement" : "intro"}` : client ? `/clients/${client.id}` : "/leads",
       };
     });
@@ -127,8 +124,8 @@ export default async function CalendarPage({
         kind: "joining",
         ownerId: pl.ownerId,
         when: pl.joinDate,
-        title: `${pl.candidateName} joins`,
-        sub: [client?.name, pos?.title].filter(Boolean).join(" · ") || "Joining day",
+        title: "Joining day",
+        sub: [pl.candidateName, client?.name].filter(Boolean).join(" · "),
         href: pos ? `/positions/${pos.id}?view=offer` : `/placements/${pl.id}`,
       };
     });
@@ -175,19 +172,6 @@ export default async function CalendarPage({
         sub="Your week and the team's"
         right={
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1 rounded-full bg-sunk p-1" role="group" aria-label="Layout">
-              {[{ k: "week", label: "Week", href: here({}) }, { k: "table", label: "Table", href: "/calendar?view=table" }].map((x) => (
-                <Link key={x.k} href={x.href} aria-current={(x.k === "table") === table ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + ((x.k === "table") === table ? "bg-ink text-ink-inverse" : "text-ink-2 hover:bg-shell")}>
-                  {x.label}
-                </Link>
-              ))}
-            </span>
-            {mayManage && (
-              <Link href={panelHref("/calendar", sp, "start-interview")} scroll={false} className={pillPrimary}>
-                <Icon name="plus" size={16} />
-                Start interview
-              </Link>
-            )}
             {!table && (
               <>
                 <Link href={here({ weekOffset: offset - 1 })} aria-label="Earlier week" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
@@ -222,17 +206,17 @@ export default async function CalendarPage({
         ))}
       </nav>
 
-      <div className={"flex flex-col items-start gap-[22px] xl:flex-row" + (table ? " hidden" : "")}>
+      <div className={"flex flex-col items-start gap-[22px] pg-xl:flex-row" + (table ? " hidden" : "")}>
         <div className="w-full min-w-0 flex-1">
           <Card className="gap-[18px] !p-6">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 pg-xl:grid-cols-6">
               {days.map((day) => {
                 const there = booked.filter((c) => c.when! >= day.startMs && c.when! < day.endMs);
                 return (
-                  <div key={day.name} className="flex min-h-[120px] flex-col gap-2 xl:min-h-[560px] xl:border-l xl:border-rule xl:pl-3 xl:first:border-l-0 xl:first:pl-0">
+                  <div key={day.name} className="flex min-h-[120px] flex-col gap-2 pg-xl:min-h-[560px] pg-xl:border-l pg-xl:border-rule pg-xl:pl-3 pg-xl:first:border-l-0 pg-xl:first:pl-0">
                     <div className={"flex flex-col gap-0.5 rounded-[14px] px-2.5 py-2 " + (day.isToday ? "bg-brand-soft text-brand" : "")}>
                       <p className={"t-micro " + (day.isToday ? "" : "text-ink-3")}>{day.name}</p>
-                      <p className={"text-[20px] font-medium leading-7 " + (day.isToday ? "" : "text-ink")}>{day.dayNum}</p>
+                      <p className={"t-h2 " + (day.isToday ? "" : "text-ink")}>{day.dayNum}</p>
                     </div>
                     <div className="h-px bg-rule" />
                     {there.map((c) => {
@@ -243,10 +227,10 @@ export default async function CalendarPage({
                           key={c.id}
                           href={here({ on: c.id })}
                           scroll={false}
-                          className={`flex flex-col gap-0.5 rounded-[14px] px-3 py-2.5 ${st.box} ${isSel ? "outline outline-2 -outline-offset-2 outline-info" : ""}`}
+                          className={`flex flex-col gap-0.5 rounded-[14px] px-3 py-2.5 ${st.box} ${isSel ? "border-2 border-info" : "border-2 border-transparent"}`}
                         >
                           <span className={"t-small " + st.clock}>
-                            {c.kind === "joining" ? "Joining" : clockOf(c.when!)}
+                            {c.kind === "joining" && clockOf(c.when!) === "00:00" ? "All day" : clockOf(c.when!)}
                           </span>
                           <span className="t-body-m">{c.title}</span>
                           <span className="t-small text-ink-3">{c.sub}</span>
@@ -275,11 +259,11 @@ export default async function CalendarPage({
           </Card>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-5 xl:w-[360px]">
+        <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
           {selectedIv && selectedIv.iv && (
             <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Selected</p>
-              <Link href={`/interviews/${selectedIv.iv.id}`} className="text-[20px] font-medium leading-7 hover:underline">
+              <Link href={`/interviews/${selectedIv.iv.id}`} className="t-h2 hover:underline">
                 {selectedIv.iv.candidateName}
               </Link>
               <p className="t-body-m">
@@ -312,7 +296,7 @@ export default async function CalendarPage({
           {selectedOther && (
             <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
               <p className="t-micro text-ink-3">Selected</p>
-              <p className="text-[20px] font-medium leading-7">{selectedOther.title}</p>
+              <p className="t-h2">{selectedOther.title}</p>
               <p className="t-body-m">
                 {dayWord(selectedOther.when!)}
                 {selectedOther.kind === "joining" ? "" : ", " + clockOf(selectedOther.when!)}
@@ -352,10 +336,6 @@ export default async function CalendarPage({
           )}
         </aside>
       </div>
-
-      <Suspense fallback={null}>
-        <OutlookEvents email={me.email} fromMs={week.days[0].startMs} toMs={days[5].endMs} enabled={teamsFake() || switchedOn(db, "switch.teamsEnabled")} />
-      </Suspense>
 
       {panel === "start-interview" && mayManage && (
         <Panel
@@ -418,34 +398,6 @@ export default async function CalendarPage({
         </Panel>
       )}
     </div>
-  );
-}
-
-/** The signed-in person's own Outlook events for the week, read-only (21 Nov). Never throws; a slow Microsoft shows nothing. */
-async function OutlookEvents({ email, fromMs, toMs, enabled }: { email: string; fromMs: number; toMs: number; enabled: boolean }) {
-  if (!enabled) return null;
-  const { events, problem } = await listEvents(email, new Date(fromMs).toISOString(), new Date(toMs).toISOString());
-  if (events.length === 0 && !problem) return null;
-  return (
-    <Card className="gap-3 !p-6">
-      <p className="t-micro text-ink-3">Your Outlook this week</p>
-      {problem && <p className="t-small text-ink-3">{problem}</p>}
-      <ul className="flex flex-col gap-2">
-        {events.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <span className="t-small text-ink-2">
-              {dayWord(e.start)}, {clockOf(e.start)} to {clockOf(e.end)}
-            </span>
-            <span className="t-body-m">{e.title}</span>
-            {e.joinUrl && (
-              <a href={e.joinUrl} target="_blank" rel="noreferrer" className="t-small text-info hover:underline">
-                Join in Teams
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 

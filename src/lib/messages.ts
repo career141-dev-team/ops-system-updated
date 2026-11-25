@@ -188,19 +188,29 @@ export function messageTitle(message: { subject: string; body: string }): string
   return first.trim() || "No subject";
 }
 
-/** The filter pills on To approve: what a draft is about, from what it is attached to. */
-export type DraftKind = "emails" | "agreements" | "sets" | "invoices";
-export const DRAFT_KINDS: { key: DraftKind; what: string }[] = [
-  { key: "emails", what: "Client emails" },
-  { key: "agreements", what: "Agreements" },
-  { key: "sets", what: "CV sets" },
-  { key: "invoices", what: "Invoices" },
+/**
+ * The four tiles on To approve (Figma 138:2, 24 Nov): what a draft is, from what it is attached to.
+ * A chase is any reminder to a client (its template key says "chase"); a message to a candidate is
+ * about an interview, a placement or a reference. Anything else written to a client counts with chases.
+ */
+export type DraftKind = "chases" | "candidates" | "agreements" | "invoices";
+export const DRAFT_KINDS: { key: DraftKind; what: string; tag: string; caption: string }[] = [
+  { key: "chases", what: "Chases", tag: "Chase", caption: "to clients" },
+  { key: "candidates", what: "Messages to candidates", tag: "Message", caption: "WhatsApp and email" },
+  { key: "agreements", what: "Agreements", tag: "Agreement", caption: "to send" },
+  { key: "invoices", what: "Invoices", tag: "Invoice", caption: "to send" },
 ];
-export function draftKind(message: { subjectType: string | null }): DraftKind {
+export function draftKind(message: { subjectType: string | null; templateKey?: string | null }): DraftKind {
+  if (message.templateKey?.includes("chase")) return "chases";
   if (message.subjectType === "esa") return "agreements";
-  if (message.subjectType === "clientSet") return "sets";
   if (message.subjectType === "invoice") return "invoices";
-  return "emails";
+  if (
+    (message.subjectType === "interview" || message.subjectType === "placement" || message.subjectType === "reference") &&
+    message.templateKey !== "interview.client_feedback"
+  ) {
+    return "candidates";
+  }
+  return "chases";
 }
 
 /**

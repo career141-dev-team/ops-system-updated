@@ -64,7 +64,7 @@ export default function Requirement({ c, sp }: TabProps) {
 
   return (
     <>
-      <div className="grid gap-[22px] xl:grid-cols-[1fr_1fr_380px] xl:items-start">
+      <div className="grid gap-[22px] pg-xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_380px] pg-xl:items-start">
         <div className="flex flex-col gap-[22px]">
           <Card
             title="Requirement"

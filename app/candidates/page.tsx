@@ -55,7 +55,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
         {shown.length === 0 ? (
           <EmptyState title={everyone.length === 0 ? "Nobody is in a CV set or an interview yet" : "Nobody matches that"} icon="user" />
         ) : (
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 pg-lg:grid-cols-3">
             {shown.map((p) => {
               const [role, line] = tileLines(p);
               return (

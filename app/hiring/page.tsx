@@ -43,8 +43,8 @@ function VacancyCard({ v, first }: { v: Vacancy; first: boolean }) {
     ["Decision", n("decision"), n("decision") ? "text-warn" : "text-ink"],
   ];
   return (
-    <Card className="gap-4 lg:!flex-row lg:items-center lg:gap-7">
-      <div className="flex w-full flex-col gap-1.5 lg:w-[380px] lg:shrink-0">
+    <Card className="gap-4 pg-lg:!flex-row pg-lg:items-center pg-lg:gap-7">
+      <div className="flex w-full flex-col gap-1.5 pg-lg:w-[380px] pg-lg:shrink-0">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="t-h2">{v.title}</h2>
           {v.status === "on_hold" ? (
@@ -168,13 +168,13 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
           {mode === "vacancies" && (
-          <div className="flex flex-col items-start gap-[22px] xl:flex-row">
+          <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
             <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
               {view.vacancies.map((v, i) => (
                 <VacancyCard key={v.id} v={v} first={i === 0} />
               ))}
             </div>
-            <aside className="flex w-full shrink-0 flex-col gap-5 xl:w-[360px]">
+            <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
               <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
                 <p className="t-micro flex items-center gap-2 text-ink-3">
                   <Icon name="sparkle" size={16} />
@@ -282,7 +282,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
 function HiringBoard({ rows }: { rows: ApplicantRow[] }) {
   const cols = boardColumns(rows);
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 pg-2xl:grid-cols-6">
       {cols.map((col) => (
         <div key={col.stage} className="flex flex-col gap-2.5 rounded-[18px] bg-sunk p-2.5">
           <div className="flex items-center gap-2 px-1.5 pt-1">

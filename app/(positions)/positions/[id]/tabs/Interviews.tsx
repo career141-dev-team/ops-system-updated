@@ -48,8 +48,8 @@ export default function Interviews({ c, sp }: TabProps) {
 
   return (
     <>
-      <div className="flex items-start gap-[22px] max-lg:flex-col">
-        <div className="flex min-w-0 flex-1 flex-col gap-[22px] max-lg:w-full">
+      <div className="flex items-start gap-[22px] max-pg-lg:flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-[22px] max-pg-lg:w-full">
           <Card
             title="Interviews"
             sub="You agree a time with the client and the candidate, then book it here."
@@ -88,7 +88,7 @@ export default function Interviews({ c, sp }: TabProps) {
           </Card>
         </div>
 
-        <div className="flex w-[360px] shrink-0 flex-col gap-5 max-lg:w-full">
+        <div className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-lg:w-full">
           <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6 text-ink-inverse">
             <p className="t-micro text-ink-3">WHERE IT STANDS</p>
             <p className="t-h2">{needing ? `${needing} ${needing === 1 ? "interview needs" : "interviews need"} a time.` : c.step.where + "."}</p>

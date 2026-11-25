@@ -7,6 +7,7 @@ import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 
 import { setTheme, signOutAction, toggleChat, viewAs } from "@/app/actions";
+import Icon from "@/app/Icon";
 import { NAV, isHere } from "@/lib/nav";
 
 /**
@@ -76,11 +77,12 @@ export default function ProfileMenu({
         title={who.name + " · " + who.role}
         className={"flex shrink-0 cursor-pointer items-center text-left " + (phone ? "" : "gap-2.5 pl-1 pr-1.5")}
       >
-        <span className={"t-label flex items-center justify-center rounded-full bg-bg-brand text-brand " + (phone ? "size-9" : "size-10")}>{initials}</span>
+        <span className={"t-label flex items-center justify-center rounded-full bg-ink text-ink-inverse " + (phone ? "size-9" : "size-10")}>{initials}</span>
         <span className={"flex-col " + (phone ? "hidden" : "hidden 2xl:flex")}>
-          <span className="t-body-m text-ink">{who.name}</span>
-          <span className="t-small text-ink-3">{viewing ? "Viewing as " + viewing : who.role}</span>
+          <span className="t-body-m max-w-[130px] truncate text-ink">{who.name}</span>
+          <span className="t-small max-w-[130px] truncate text-ink-3">{viewing ? "Viewing as " + viewing : who.role}</span>
         </span>
+        {!phone && <Icon name="chevron-down" size={16} className="ml-1 hidden text-ink-3 2xl:block" />}
       </button>
 
       {open &&

@@ -70,7 +70,7 @@ export default async function HoldsPage({
           Nothing is held right now. A hold is proposed by a clock when a client goes quiet, and only holds once somebody approves the notice they get.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 pg-lg:grid-cols-4">
           {holds.map((hold) => {
             const owner = memberIn(db, hold.ownerId)?.name ?? "Unassigned";
             const client = hold.clientId ? clientIn(db, hold.clientId) : null;

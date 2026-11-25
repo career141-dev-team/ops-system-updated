@@ -80,7 +80,7 @@ export default function Offer({ c, sp }: TabProps) {
   return (
     <>
       {PANELS.includes(sp.panel ?? "") && <OfferPanels c={c} sp={sp} path={path} />}
-      <div className="flex flex-col items-start gap-[22px] lg:flex-row">
+      <div className="flex flex-col items-start gap-[22px] pg-lg:flex-row">
         <Card title="Offer and joining" sub="From the offer to the first day. Details must be complete before the joining day." className="w-full min-w-0 flex-1">
           {itsPlacements.length === 0 ? (
             <EmptyState title="Nobody has been placed on this role yet">A placement appears here when the TA System places somebody.</EmptyState>
@@ -165,7 +165,7 @@ export default function Offer({ c, sp }: TabProps) {
           )}
         </Card>
 
-        <div className="flex w-full shrink-0 flex-col gap-5 lg:w-[360px]">
+        <div className="flex w-full shrink-0 flex-col gap-5 pg-lg:w-[360px]">
           <div className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
             <p className="t-micro text-ink-3">Where it stands</p>
             <p className="t-h2 text-ink-inverse">{headline}</p>

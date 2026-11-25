@@ -192,8 +192,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       />
       <Msg msg={msg} />
 
-      <div className="flex items-start gap-[22px] max-xl:flex-col">
-        <div className="flex min-w-0 flex-1 flex-col gap-[18px] max-xl:w-full">
+      <div className="flex items-start gap-[22px] max-pg-xl:flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-[18px] max-pg-xl:w-full">
           {view === "overview" && (
             <>
               {activeHold && (
@@ -202,7 +202,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   {holdForm}
                 </Card>
               )}
-              <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[1.05fr_1fr]">
+              <div className="grid grid-cols-1 gap-[18px] pg-lg:grid-cols-[1.05fr_1fr]">
                 <Card title="Agreement" sub={esa ? (esa.state === "countersigned" || esa.state === "signed" ? "Signed and active" : (ESA_STATES[esa.state as EsaState] ?? esa.state)) : "No agreement on file here"} right={esa ? <StatusChip label={esa.state === "countersigned" ? "Signed" : (ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state)} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} /> : undefined}>
                   {esa ? (
                     <>
@@ -433,7 +433,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </Card>
               {(mayManage || mayMoveOwner) && (
                 <Card title="Stage and owner" sub={(STAGE_MEANINGS[client.stage as ClientStage] ?? client.stage) + " · " + ownerName + " owns them"}>
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-6 pg-lg:grid-cols-2">
                     {mayManage && stages.length > 0 && (
                       <form action={moveClientStage} className="flex flex-col gap-3">
                         <input type="hidden" name="clientId" value={client.id} />
@@ -559,7 +559,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           )}
         </div>
 
-        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-xl:w-full">
+        <aside className="flex w-[360px] shrink-0 flex-col gap-5 max-pg-xl:w-full">
           <StandsCard
             head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
             body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}

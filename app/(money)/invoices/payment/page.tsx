@@ -108,7 +108,7 @@ export default async function PaymentsAndRefundsPage({
       />
       {sp.msg && !openGuarantee && <p role="status" className="t-body rounded-[18px] bg-brand-tint px-4 py-3">{sp.msg}</p>}
 
-      <div className="grid grid-cols-1 items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 items-start gap-[22px] pg-xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Payments and refunds" sub="Match each payment. Record each answer.">
           {heading("Payments to match", 0)}
           <EmptyState icon="wallet" title="No payments to match">

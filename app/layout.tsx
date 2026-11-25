@@ -127,7 +127,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="flex flex-col md:flex-row md:items-start">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. On the desk the
               page starts 22px under the bar, with the frames' 40px at the sides. */}
-            <main data-welcome="page" className="min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
+            <main data-welcome="page" className="@container/page min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
               <Suspense fallback={children}>
                 <MotionStage>{children}</MotionStage>
               </Suspense>

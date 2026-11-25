@@ -153,7 +153,7 @@ export default function Overview({ c, sp }: TabProps) {
 
   return (
     <>
-      <div className="flex flex-col gap-[22px] xl:flex-row xl:items-start">
+      <div className="flex flex-col gap-[22px] pg-xl:flex-row pg-xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-[22px]">
           <Card title="Needs you" sub={needs.length ? `${needs.length} ${needs.length === 1 ? "thing waits" : "things wait"} on you today.` : "Nothing waits on you today."}>
             {needs.length === 0 ? (
@@ -180,7 +180,7 @@ export default function Overview({ c, sp }: TabProps) {
           </Card>
 
           <div className="max-md:hidden"><Card title="Where each person is now">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pg-xl:grid-cols-5">
               {columns.map((col) => (
                 <div key={col.label} className="flex flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-3">
                   <Link href={col.href} className="flex items-center gap-2 px-1 py-0.5">
@@ -210,7 +210,7 @@ export default function Overview({ c, sp }: TabProps) {
           </Card></div>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-[18px] max-md:hidden xl:w-[380px]">
+        <aside className="flex w-full shrink-0 flex-col gap-[18px] max-md:hidden pg-xl:w-[380px]">
           <section className="flex flex-col gap-3 rounded-[28px] bg-ink px-6 py-[22px] text-ink-inverse shadow-card">
             <p className="t-micro flex items-center gap-2 text-ink-faint">
               <Icon name="sparkle" size={13} />

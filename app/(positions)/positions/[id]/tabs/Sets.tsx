@@ -54,7 +54,7 @@ export default function Sets({ c, sp }: TabProps) {
 
   return (
     <>
-      <div className="flex flex-col gap-[22px] lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-[22px] pg-lg:flex-row pg-lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-[22px]">
           <Card
             title="Sets"
@@ -206,7 +206,7 @@ export default function Sets({ c, sp }: TabProps) {
           </Card>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-[360px]">
+        <aside className="flex w-full shrink-0 flex-col gap-5 pg-lg:w-[360px]">
           <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
             <div className="flex items-center gap-2 text-ink-3">
               <Icon name="sparkle" size={16} />

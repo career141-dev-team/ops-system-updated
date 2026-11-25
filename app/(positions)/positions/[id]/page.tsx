@@ -271,8 +271,8 @@ export default async function PositionPage({
         {cell("Offer", n.offer.n, n.offer.line, to("offer"))}
         {cell("Joining", n.joining.n, n.joining.line, to("offer"))}
         {cell("Guarantee", n.guarantee.n, n.guarantee.line, to("guarantee"))}
-        <div className="mx-3 hidden h-[70px] w-px bg-rule lg:block" />
-        <div className="flex min-w-[200px] flex-col gap-2 py-1 lg:w-[200px]">
+        <div className="mx-3 hidden h-[70px] w-px bg-rule pg-lg:block" />
+        <div className="flex min-w-[200px] flex-col gap-2 py-1 pg-lg:w-[200px]">
           <span className="t-micro text-ink-3">PLACED</span>
           <span className="t-h2 text-brand">{n.placed.of ? `${n.placed.done} of ${n.placed.of} placed` : `${n.placed.done} placed`}</span>
           {n.placed.of ? (

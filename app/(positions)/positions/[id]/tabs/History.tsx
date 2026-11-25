@@ -65,7 +65,7 @@ export default function History({ c, sp }: TabProps) {
   return (
     <div className="flex flex-col gap-[22px]">
       <PipelineHistory rows={pipelineHistory(db, { positionId: position.id })} showPosition={false} />
-      <div className="flex flex-col gap-[22px] xl:flex-row xl:items-start">
+      <div className="flex flex-col gap-[22px] pg-xl:flex-row pg-xl:items-start">
       <Card title="History" sub="Everything that happened on this role" className="min-w-0 flex-1">
         <nav className="flex flex-wrap gap-2" aria-label="Show">
           {KINDS.map((k) => (
@@ -131,7 +131,7 @@ export default function History({ c, sp }: TabProps) {
         )}
       </Card>
 
-      <aside className="flex w-full shrink-0 flex-col gap-[18px] xl:w-[300px]">
+      <aside className="flex w-full shrink-0 flex-col gap-[18px] pg-xl:w-[300px]">
         <section className="flex flex-col gap-3 rounded-[28px] bg-surface px-6 py-[22px] shadow-card">
           <p className="t-micro text-ink-3">FILES</p>
           {files.length === 0 ? (

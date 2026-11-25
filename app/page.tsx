@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import Icon from "@/app/Icon";
 import { approveAllRoutine, approveAndSend, runClocksNow, snoozeTaskAction, startTestClock } from "@/app/actions";
 import CallPanel from "@/app/(home)/CallPanel";
 import CopyButton from "@/app/(home)/CopyButton";
@@ -75,7 +76,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Waiting on others", value: w.waitsCount, caption: "not due today" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Do first" sub="Late first, then what needs you today. Each has one button.">
           {w.doFirst.length === 0 ? (
             <EmptyState icon="check" title="Nothing is waiting on you.">
@@ -126,11 +127,11 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
   // ── To approve ──
   const picked = w.drafts.find((m) => m.id === sp.d) ?? w.drafts[0];
   const counts = draftCounts(w.drafts);
-  const kindWord = (m: (typeof w.drafts)[number]) => DRAFT_KINDS.find((k) => k.key === draftKind(m))?.what ?? "Message";
+  const kindWord = (m: (typeof w.drafts)[number]) => DRAFT_KINDS.find((k) => k.key === draftKind(m))?.tag ?? "Message";
   const approve = (
     <>
-      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: "to approve", tone: k.count ? ("warn" as const) : ("ink" as const) }))} />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <StatStrip stats={counts.map((k) => ({ label: k.what, value: k.count, caption: k.caption, tone: k.key === "chases" && k.count ? ("warn" as const) : ("ink" as const) }))} />
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
           title="Waiting for you"
           sub="Check each draft. Each has one button."
@@ -138,7 +139,8 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
             w.routine.length > 0 ? (
               <form action={approveAllRoutine}>
                 <input type="hidden" name="back" value={here} />
-                <button title="Sends every draft made from a template somebody approved once. Nothing hand-written." className={solid}>
+                <button title="Sends every draft made from a template somebody approved once. Nothing hand-written." className={solid + "flex items-center gap-1.5"}>
+                  <Icon name="check" size={14} />
                   Approve all routine ({w.routine.length})
                 </button>
               </form>
@@ -153,8 +155,8 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
             w.drafts.map((m) => {
               const l = draftLine(m);
               return (
-                <div key={m.id} className={"flex items-center gap-[18px] rounded-[18px] px-5 py-4 max-md:flex-wrap " + (m.id === picked?.id ? "bg-info-soft" : "bg-sunk")}>
-                  <p className="t-label flex w-[130px] shrink-0 items-center gap-2 text-warn">
+                <div key={m.id} className={"flex items-center gap-[18px] rounded-[18px] px-5 py-4 max-md:flex-wrap " + "bg-sunk"}>
+                  <p className="t-label flex w-[150px] shrink-0 items-center gap-2 text-warn">
                     <span aria-hidden="true" className="size-2 rounded-full bg-warn" />
                     {kindWord(m)}
                   </p>
@@ -183,8 +185,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           />
           {picked && (
             <RailCard title="Draft">
-              <h3 className="t-h2">{draftLine(picked).title}</h3>
-              <p className="t-small text-ink-3">{draftLine(picked).line}</p>
+              <h3 className="text-[19px] font-medium leading-[26px]">{draftLine(picked).title}</h3>
               <div className="flex flex-col gap-2.5">
                 {picked.body
                   .trim()
@@ -232,7 +233,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Done today", value: done, caption: done ? "since " + clockOf(w.doneCalls[0].at) : "none yet", tone: done ? "ok" : "ink" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="To call" sub="Late first, then by time. Each has one button.">
           {w.calls.length === 0 ? (
             <EmptyState icon="phone" title="Nobody is waiting on a call.">
@@ -295,9 +296,9 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
           { label: "Later", value: w.board.later.length, caption: w.nextLater ? "next one " + w.nextLater : "nothing later" },
         ]}
       />
-      <div className="grid items-start gap-[22px] lg:grid-cols-[1fr_360px]">
+      <div className="grid items-start gap-[22px] pg-lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card title="Board" sub="Late first. Each card says where it came from.">
-          <div data-stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div data-stagger className="grid gap-4 md:grid-cols-2 pg-xl:grid-cols-4">
             {cols.map((col) => (
               <div key={col.key} className="flex flex-col gap-3 rounded-[18px] bg-sunk p-3">
                 <p className="t-body-m flex items-center gap-2 px-1">

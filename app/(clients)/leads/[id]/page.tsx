@@ -651,7 +651,7 @@ export default async function LeadPage({
           )}
 
           {/* Two-column TERMS + VERSIONS cards (Figma 1:699) */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 pg-lg:grid-cols-2">
             {/* Left card: TERMS (Figma 1:700) */}
             <div
               id="terms-card"
@@ -835,7 +835,7 @@ export default async function LeadPage({
       {activeView === "requirement" && (
         <>
           {/* Two-column WHAT WE HEARD + WHAT HAPPENS NEXT (Figma 1:2112) */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 pg-lg:grid-cols-2">
             {/* Left card: WHAT WE HEARD (Figma 1:2113) */}
             <div className="flex flex-col gap-3 rounded-[24px] bg-sunk px-6 py-5">
               <span className={figmaLabel}>WHAT WE HEARD</span>
