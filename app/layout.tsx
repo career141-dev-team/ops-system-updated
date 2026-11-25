@@ -128,11 +128,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="flex flex-col md:flex-row md:items-start">
             {/* Padding at the foot on a phone, so the bottom bar never covers the last row. On the desk the
               page starts 22px under the bar, with the frames' 40px at the sides. */}
-            <main data-welcome="page" className="@container/page min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
-              <PageNotch />
-              <Suspense fallback={children}>
-                <MotionStage>{children}</MotionStage>
-              </Suspense>
+            <main data-welcome="page" className="min-w-0 flex-1 px-4 pb-28 pt-3 md:px-10 md:pb-10 md:pt-[22px]">
+              {/* On the desk the page sits in a white sheet on the dotted board, with its name in a notch
+                  hanging from the sheet's top edge (25 Nov). A phone keeps the bare page. */}
+              <div className="md:rounded-[28px] md:bg-surface md:shadow-card">
+                <PageNotch />
+                <div className="@container/page md:px-6 md:pb-6 md:pt-2">
+                  <Suspense fallback={children}>
+                    <MotionStage>{children}</MotionStage>
+                  </Suspense>
+                </div>
+              </div>
             </main>
             {/* The third column: the chat, when it is open. It pushes the page
                 over; it never floats over it (the owner's rule). On a phone it is

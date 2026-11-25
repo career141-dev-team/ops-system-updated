@@ -6,14 +6,14 @@
 /*
  * The page's own breakpoints (24 Nov): with AURA open the page is 520px narrower than the window, so
  * a layout picked by the window's width (three cards, a 360px rail) no longer fit beside it. These
- * ask the page column instead. Each is the window breakpoint less the page's 80px of side padding,
- * so with AURA shut nothing moves. The top bar keeps the window's lg/xl/2xl.
+ * ask the page column instead. Each is the window breakpoint less 128px: the page's 80px margins and the
+ * white sheet's 48px of padding (25 Nov), so with AURA shut nothing moves. The top bar keeps the window's lg/xl/2xl.
  */
-@custom-variant pg-lg (@container page (width >= 944px));
-@custom-variant pg-xl (@container page (width >= 1200px));
-@custom-variant pg-2xl (@container page (width >= 1456px));
-@custom-variant max-pg-lg (@container page (width < 944px));
-@custom-variant max-pg-xl (@container page (width < 1200px));
+@custom-variant pg-lg (@container page (width >= 896px));
+@custom-variant pg-xl (@container page (width >= 1152px));
+@custom-variant pg-2xl (@container page (width >= 1408px));
+@custom-variant max-pg-lg (@container page (width < 896px));
+@custom-variant max-pg-xl (@container page (width < 1152px));
 
 /*
  * The look, in one place (24 and 25; the owner's reference screens, 5 Nov).
