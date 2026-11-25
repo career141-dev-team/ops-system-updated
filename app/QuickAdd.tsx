@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { quickAdd } from "@/app/actions";
 import Icon, { type IconName } from "@/app/Icon";
 import { panelInput } from "@/app/ui/figma";
-import Panel from "@/app/ui/Panel";
+import Panel, { PanelSection } from "@/app/ui/Panel";
 import Popover from "@/app/ui/Popover";
 import { LEAD_SOURCES, SOURCE_MEANINGS } from "@/lib/leads";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -112,74 +112,86 @@ export function AddPanel({ clients }: { clients: { id: string; name: string }[] 
         : "A company that has asked about us. The two checks wait on its page.";
 
   return (
-    <Panel kicker="Add" closeHref={close} title={title} sub={sub}>
+    <Panel kicker="Add" closeHref={close} title={title} sub={sub} boxed>
       <datalist id="quick-clients">
         {clients.map((c) => (
           <option key={c.id} value={c.name} />
         ))}
       </datalist>
-      <form action={quickAdd} className="flex flex-col gap-4">
+      <form action={quickAdd} className="flex flex-col">
         <input type="hidden" name="back" value={close} />
         {which === "add-note" && (
           <>
             <input type="hidden" name="kind" value="note" />
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>The note (the first line is the title)</span>
-              <textarea name="text" required rows={5} className={field} />
-            </label>
-            {about}
-            <button type="submit" className={save}>Keep it</button>
+            <PanelSection title="The note">
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>The note (the first line is the title)</span>
+                <textarea name="text" required rows={5} className={field} />
+              </label>
+            </PanelSection>
+            <PanelSection title="What it is about">
+              {about}
+              <button type="submit" className={save}>Keep it</button>
+            </PanelSection>
           </>
         )}
         {which === "add-call" && (
           <>
             <input type="hidden" name="kind" value="call" />
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Their number</span>
-              <input name="to" required placeholder="077 123 4567" className={field} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Who you spoke to</span>
-              <input name="spokeTo" required className={field} />
-            </label>
-            {about}
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>What was said</span>
-              <textarea name="outcome" required rows={4} className={field} />
-            </label>
-            <button type="submit" className={save}>Write it down</button>
+            <PanelSection title="Who">
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Their number</span>
+                <input name="to" required placeholder="077 123 4567" className={field} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Who you spoke to</span>
+                <input name="spokeTo" required className={field} />
+              </label>
+              {about}
+            </PanelSection>
+            <PanelSection title="What was said">
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>What was said</span>
+                <textarea name="outcome" required rows={4} className={field} />
+              </label>
+              <button type="submit" className={save}>Write it down</button>
+            </PanelSection>
           </>
         )}
         {which === "add-enquiry" && (
           <>
             <input type="hidden" name="kind" value="enquiry" />
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>The company</span>
-              <input name="company" required className={field} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Who rang</span>
-              <input name="contactName" className={field} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Their number</span>
-              <input name="contactPhone" className={field} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Or their email</span>
-              <input name="contactEmail" className={field} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className={label}>Where it came from</span>
-              <select name="source" defaultValue="call" className={field}>
-                {LEAD_SOURCES.map((s) => (
-                  <option key={s} value={s}>
-                    {SOURCE_MEANINGS[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" className={save}>Save the enquiry</button>
+            <PanelSection title="The company">
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>The company</span>
+                <input name="company" required className={field} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Who rang</span>
+                <input name="contactName" className={field} />
+              </label>
+            </PanelSection>
+            <PanelSection title="How to reach them">
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Their number</span>
+                <input name="contactPhone" className={field} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Or their email</span>
+                <input name="contactEmail" className={field} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Where it came from</span>
+                <select name="source" defaultValue="call" className={field}>
+                  {LEAD_SOURCES.map((s) => (
+                    <option key={s} value={s}>
+                      {SOURCE_MEANINGS[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={save}>Save the enquiry</button>
+            </PanelSection>
           </>
         )}
       </form>
