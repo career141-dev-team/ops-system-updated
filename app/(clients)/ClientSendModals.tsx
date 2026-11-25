@@ -2,7 +2,9 @@ import { approveAndSend, draftNextChase, sendAgreement, writeNewMessage } from "
 import PreviewAndSend, { SendLeftSection } from "@/app/ui/PreviewAndSend";
 import { agreementForLead, textOf } from "@/data/desk";
 import type { OpsDatabase, OpsMember } from "@/data/types";
-import { checkInText, type AgreementCard, type ClientCard } from "@/lib/clientsView";
+import { clockWords, type AgreementCard, type ClientCard } from "@/lib/clientsView";
+import { lastTalkLine, recentJoiner } from "@/lib/checkIn";
+import CheckInModal from "./CheckInModal";
 import { agreementVersions, coverDraft, missingFields } from "@/lib/esa";
 
 /**
@@ -15,78 +17,33 @@ export function CheckInSendModal({
   card,
   me,
   closeHref,
+  db,
+  now = Date.now(),
 }: {
   card: ClientCard;
   me: OpsMember;
   closeHref: string;
+  db: OpsDatabase;
+  now?: number;
 }) {
   const email = card.person?.email ?? "";
   const phone = card.person?.phone ?? "";
-  const body = checkInText(card.person, card.owner || me.name);
-  const subject = `Quick check-in — ${card.name}`;
-
+  const person = card.person;
   return (
-    <PreviewAndSend
+    <CheckInModal
       title={`Check in with ${card.name}`}
-      sub={card.person ? `${card.person.name}${card.person.role ? ", " + card.person.role : ""}` : "Client HR"}
+      sub={person ? `${person.name}${person.role ? ", " + (person.role.length <= 3 ? person.role.toUpperCase() : person.role) : ""}` : "Client HR"}
+      extra={lastTalkLine(card.quietDays, now)}
       closeHref={closeHref}
       action={email ? writeNewMessage : undefined}
-      hidden={{
-        to: email,
-        about: `client|${card.id}`,
-        back: closeHref,
-        sendNow: "1",
-      }}
-      sendLabel="Send check-in"
+      hidden={{ to: email, about: `client|${card.id}`, back: closeHref, sendNow: "1" }}
       disabledReason={email ? null : "Add a client contact email before sending by email (you can still copy the WhatsApp message)."}
-      note="Goes through the outbound gate. In test mode it redirects to the test address."
-      left={
-        <>
-          <SendLeftSection title="Include in the message">
-            <div className="flex flex-col gap-2">
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">{card.status.text}</p>
-                <p className="t-small text-ink-3">{card.line || "Active client"}</p>
-              </div>
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">Anything we can do better</p>
-                <p className="t-small text-ink-3">Short check-in to keep the client warm</p>
-              </div>
-            </div>
-          </SendLeftSection>
-          {card.person && (
-            <SendLeftSection title="To">
-              <div className="rounded-[14px] border border-rule bg-surface px-4 py-3">
-                <p className="t-body-m text-ink">{card.person.name}</p>
-                <p className="t-small text-ink-3">{email || phone || "No address on file"}</p>
-              </div>
-            </SendLeftSection>
-          )}
-        </>
-      }
-      tabs={[
-        {
-          key: "email",
-          label: `Email to ${card.person?.name ?? card.name}`,
-          kind: "email",
-          email: {
-            from: `${me.name}, Career141 <${me.email}>`,
-            to: email || "No email on file",
-            subject,
-            body,
-          },
-        },
-        {
-          key: "whatsapp",
-          label: "WhatsApp",
-          kind: "whatsapp",
-          whatsapp: {
-            recipient: card.person?.name ?? card.name,
-            phone,
-            body,
-          },
-        },
-      ]}
+      contact={person ? { name: person.name, role: person.role ?? "", company: card.name, email, phone } : null}
+      sender={{ name: card.owner || me.name, email: me.email }}
+      clientName={card.name}
+      settling={recentJoiner(db, card.id, now)}
+      roles={card.openRoles.map((r) => r.title)}
+      time={clockWords(now)}
     />
   );
 }

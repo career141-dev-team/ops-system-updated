@@ -17,17 +17,19 @@ import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
 import { lastTalkWords } from "@/lib/clientsBoard";
-import { checkInText, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
+import { clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import PopupBox from "@/app/ui/PopupBox";
 import { closeHref, panelHref } from "@/lib/panel";
+import { closeSendHref, sendHref } from "@/lib/sendModal";
+import { CheckInSendModal } from "../../ClientSendModals";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
 import { Msg, RailCard, ReachIcons, StandsCard } from "../../parts";
 
-type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string };
+type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string; send?: string };
 type View = "overview" | "agreement" | "contacts" | "history";
 
 /** Old links (?tab=, ?view=openings and so on) land on the nearest of the four views. */
@@ -85,7 +87,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const stageChip = activeHold || client.stage === "on_hold" ? { label: "On hold", tone: "warn" as const } : client.stage === "active" ? { label: "Active", tone: "brand" as const } : { label: STAGE_MEANINGS[client.stage as ClientStage]?.split(" — ")[0] ?? client.stage, tone: "neutral" as const };
   const fee = esa ? [esa.fields.feeMonths && esa.fields.feeMonths + (esa.fields.feeMonths === "1" ? " month" : " months") + " of salary", esa.fields.feeBasis ? "(" + esa.fields.feeBasis + ")" : ""].filter(Boolean).join(" ") : "";
   const dayOf = (t: number | null) => (t ? dayWords(t).replace(/^\w+ /, "") + " " + new Date(t + 5.5 * 3_600_000).getUTCFullYear() : "—");
-  const checkIn = checkInText(person, ownerName);
 
   const threads = view === "history" ? buildThreads(db.inbound, db.messages).filter((t) => t.clientId === client.id) : [];
   const search = q.trim().toLowerCase();
@@ -523,8 +524,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <StandsCard
             head={card.needsYou ? card.status.text + "." : activeHold ? "On hold." : "Good."}
             body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
-            copies={[{ label: "Copy a check-in", text: checkIn }]}
-            links={[{ label: "Add a call note", href: panelHref(path, sp, "add-call") }]}
+            links={[
+              { label: "Copy a check-in", href: sendHref(path, sp, "check-in", client.id) },
+              { label: "Add a call note", href: panelHref(path, sp, "add-call") },
+            ]}
           />
           <RailCard title="Client details">
             {[
@@ -541,6 +544,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </RailCard>
         </aside>
       </div>
+      {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
       {sp.panel === "requirement-call" && (
         <PopupBox
           title={callKind === "intro" ? "Intro call" : "Requirement call"}

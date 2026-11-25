@@ -585,6 +585,9 @@ dialog.send-modal {
 }
 dialog.send-modal::backdrop {
   background: rgb(22 25 29 / 0.34);
+  /* The page behind is blurred (25 Nov, the owner). */
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 @media (max-width: 767px) {
   dialog.send-modal {

@@ -74,6 +74,7 @@ const TAB_ICON: Record<SendTabKind, IconName> = {
 export default function PreviewAndSend({
   title,
   sub,
+  extra,
   closeHref,
   left,
   tabs,
@@ -85,6 +86,8 @@ export default function PreviewAndSend({
 }: {
   title: string;
   sub?: string;
+  /** A smaller grey line under `sub`, such as when the last talk was. */
+  extra?: string;
   closeHref: string;
   left: ReactNode;
   tabs: SendTab[];
@@ -143,7 +146,8 @@ export default function PreviewAndSend({
     }
   };
 
-  const isWaOnly = active?.kind === "whatsapp" && !action;
+  // A WhatsApp tab never posts the form (that would send an email): the message is copied and sent by the person.
+  const isWaOnly = active?.kind === "whatsapp";
 
   return (
     <dialog open aria-labelledby="send-modal-title" className="send-modal">
@@ -157,6 +161,7 @@ export default function PreviewAndSend({
               {title}
             </h2>
             {sub && <p className="t-body text-ink-2">{sub}</p>}
+            {extra && <p className="t-small text-ink-3">{extra}</p>}
           </div>
           <div className="flex flex-col gap-5">{left}</div>
         </aside>
@@ -233,8 +238,6 @@ export default function PreviewAndSend({
                   editing={editing}
                   body={body}
                   onBody={setBody}
-                  copied={copied}
-                  onCopy={() => copyWhatsApp(editing ? body : active.whatsapp!.body)}
                 />
               )}
 
@@ -290,7 +293,7 @@ export default function PreviewAndSend({
                 <button
                   type="button"
                   onClick={() => copyWhatsApp(editing ? body : active.whatsapp?.body ?? "")}
-                  className="t-body-m inline-flex cursor-pointer items-center gap-2 rounded-full border border-rule bg-surface px-5 py-2.5 text-ink hover:bg-sunk"
+                  className="t-body-m inline-flex cursor-pointer items-center gap-2 rounded-full bg-ink px-6 py-2.5 text-ink-inverse transition-transform active:scale-[0.98]"
                 >
                   <Icon name={copied ? "check" : "copy"} size={16} />
                   <span>{copied ? "Copied" : "Copy WhatsApp"}</span>
@@ -438,46 +441,40 @@ function WhatsAppCard({
   editing,
   body,
   onBody,
-  copied,
-  onCopy,
 }: {
   wa: SendWhatsAppPreview;
   editing: boolean;
   body: string;
   onBody: (v: string) => void;
-  copied: boolean;
-  onCopy: () => void;
 }) {
+  const initials = wa.recipient.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
   return (
-    <div className="flex flex-col gap-3 rounded-[18px] border border-rule bg-surface p-5 shadow-card">
-      <div className="flex items-center justify-between gap-3 border-b border-rule pb-3">
-        <div>
-          <p className="t-body-m text-ink">{wa.recipient}</p>
-          {wa.phone && <p className="t-small text-ink-3">{wa.phone}</p>}
+    <div className="mx-auto flex w-full max-w-[600px] flex-col gap-2.5">
+      <p className="t-micro text-ink-3">HOW IT LOOKS IN WHATSAPP</p>
+      <div className="overflow-hidden rounded-[18px] shadow-card">
+        <div className="flex items-center gap-3 bg-brand px-5 py-3.5 text-white">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white t-label text-brand">{initials}</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="t-body-m truncate">{wa.recipient}</span>
+            {wa.phone && <span className="t-small truncate text-white/80">{wa.phone}</span>}
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="t-label inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-rule px-3 py-1.5 text-ink hover:bg-sunk"
-        >
-          <Icon name={copied ? "check" : "copy"} size={14} />
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <div className="flex justify-end">
-        <div className="w-full max-w-[540px] rounded-[18px] rounded-tr-[4px] bg-brand-tint p-4 text-ink">
-          {editing ? (
-            <textarea
-              value={body}
-              onChange={(e) => onBody(e.target.value)}
-              rows={6}
-              aria-label="WhatsApp message"
-              className="t-body w-full rounded-[10px] border border-rule-strong bg-surface p-2.5 text-ink outline-none"
-            />
-          ) : (
-            <p className="t-body whitespace-pre-wrap">{body || wa.body}</p>
-          )}
-          {wa.time && <p className="t-small mt-2 text-right text-ink-3">{wa.time}</p>}
+        <div className="flex flex-col gap-3 bg-sunk px-5 py-5">
+          <span className="t-micro self-end rounded-[8px] bg-surface px-2.5 py-1 text-ink-2">Today</span>
+          <div className="rounded-[14px] bg-brand-tint p-4 text-ink">
+            {editing ? (
+              <textarea
+                value={body}
+                onChange={(e) => onBody(e.target.value)}
+                rows={8}
+                aria-label="WhatsApp message"
+                className="t-body w-full rounded-[10px] border border-rule-strong bg-surface p-2.5 text-ink outline-none"
+              />
+            ) : (
+              <p className="t-body whitespace-pre-wrap">{body || wa.body}</p>
+            )}
+            {wa.time && <p className="t-small mt-2 text-right text-ink-3">{wa.time}</p>}
+          </div>
         </div>
       </div>
     </div>

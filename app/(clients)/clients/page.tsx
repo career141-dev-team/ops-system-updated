@@ -175,7 +175,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         />
       )}
       {sendCheckInCard && (
-        <CheckInSendModal card={sendCheckInCard} me={me} closeHref={closeSendHref("/clients", sp)} />
+        <CheckInSendModal card={sendCheckInCard} me={me} closeHref={closeSendHref("/clients", sp)} db={db} now={now} />
       )}
     </div>
   );
