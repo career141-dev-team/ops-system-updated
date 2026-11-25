@@ -612,6 +612,9 @@ dialog.send-modal::backdrop {
 dialog.send-modal.popup-box {
   width: min(760px, calc(100vw - 48px));
 }
+dialog.send-modal.popup-box.popup-wide {
+  width: min(920px, calc(100vw - 48px));
+}
 dialog.send-modal.popup-box::backdrop {
   background: rgb(22 25 29 / 0.28);
   backdrop-filter: blur(6px);
