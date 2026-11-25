@@ -11,19 +11,20 @@ import { teamsFake } from "@/lib/graphCalendar";
 import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
+import AgreementView from "./AgreementView";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
 import { lastTalkWords } from "@/lib/clientsBoard";
-import { clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
+import { agreementCards, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
 import { buildThreads, threadInWords } from "@/lib/mailbox";
 import PopupBox from "@/app/ui/PopupBox";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
-import { CheckInSendModal } from "../../ClientSendModals";
+import { CheckInSendModal, ChaseAgreementSendModal, SendAgreementModal } from "../../ClientSendModals";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
@@ -312,46 +313,53 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </>
           )}
 
-          {view === "agreement" && (
-            <>
-              <Card title="Terms" sub={esa ? "Version " + esa.version : undefined}>
-                {esa ? (
-                  <dl className="flex flex-col">
-                    {ESA_FIELDS.map((f) => (
-                      <div key={f.key} className="t-body flex items-center justify-between gap-6 border-t border-rule py-2.5 first:border-t-0">
-                        <dt className="text-ink-2">{f.label}</dt>
-                        <dd className="t-body-m text-right">{esa.fields[f.key] || "—"}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : (
-                  <EmptyState icon="file" title="No agreement file here">
-                    Standard Career 141 terms, signed before Ops or through the TA System.
-                  </EmptyState>
-                )}
-              </Card>
-              {esa && (() => {
-                const esaFiles = db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId);
+          {view === "agreement" &&
+            (esa ? (
+              (() => {
+                const esaFiles = db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.draftFileId || f.id === esa.signedFileId || f.id === esa.countersignedFileId);
                 const newest = agreementVersions(esaFiles)[0] ?? null;
                 const activeDoc =
                   (esa.countersignedFileId ? db.files.find((f) => f.id === esa.countersignedFileId) : null) ??
                   (esa.signedFileId ? db.files.find((f) => f.id === esa.signedFileId) : null) ??
                   newest?.file ??
                   null;
+                const held = client.leadId ? meetingsForLead(db, client.leadId).filter((m) => m.heldAt !== null).sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0] : undefined;
+                const heldDay = held?.heldAt ? new Date(held.heldAt + 5.5 * 3_600_000).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }) : null;
+                const director = db.members.find((m) => m.role === "director_ops")?.name ?? "The Director";
+                const sendLabel = esa.state === "draft" ? "Send the agreement" : esa.state === "sent" || esa.state === "chasing" ? "Chase the agreement" : null;
                 return (
-                  <Card title="Agreement document" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "warn"} />}>
-                    {activeDoc && <DraftDocument file={activeDoc} version={newest?.version ?? esa.version} />}
-                    <AgreementVersions esa={esa} files={esaFiles} />
-                    {lead && (
-                      <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
-                        Open the full agreement view
-                      </Link>
-                    )}
-                  </Card>
+                  <AgreementView
+                    company={client.name}
+                    esa={esa}
+                    contact={person ? { name: person.name, title: person.role ?? "" } : null}
+                    ownerName={ownerName}
+                    ownerPhone={(owner as { phone?: string } | null)?.phone ?? ""}
+                    directorName={director}
+                    callDate={heldDay}
+                    callLine={heldDay ? "Enquiry, call held " + dayWords(held!.heldAt!) : null}
+                    fileName={activeDoc?.name ?? client.name.replace(/[^A-Za-z0-9]+/g, "_") + "_Agreement_v" + esa.version + ".pdf"}
+                    editHref={lead && mayManage ? "/leads/" + lead.id + "?step=agreement" : null}
+                    send={mayManage && sendLabel ? { href: sendHref(path, sp, "agreement", client.id), label: sendLabel } : null}
+                  >
+                    <Card title="Versions" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "neutral"} />}>
+                      {activeDoc && <DraftDocument file={activeDoc} version={newest?.version ?? esa.version} />}
+                      <AgreementVersions esa={esa} files={esaFiles} />
+                      {lead && (
+                        <Link href={"/leads/" + lead.id + "?step=agreement"} className={pillSecondary + " self-start"}>
+                          Open the full agreement view
+                        </Link>
+                      )}
+                    </Card>
+                  </AgreementView>
                 );
-              })()}
-            </>
-          )}
+              })()
+            ) : (
+              <Card title="Agreement">
+                <EmptyState icon="file" title="No agreement file here">
+                  Standard Career 141 terms, signed before Ops or through the TA System.
+                </EmptyState>
+              </Card>
+            ))}
 
           {view === "contacts" && (
             <>
@@ -544,6 +552,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </RailCard>
         </aside>
       </div>
+      {sp.send === "agreement" && esa && lead && esa.state === "draft" && <SendAgreementModal db={db} leadId={lead.id} me={me} closeHref={closeSendHref(path, sp)} />}
+      {sp.send === "agreement" && esa && (esa.state === "sent" || esa.state === "chasing") && (() => {
+        const chase = agreementCards(db, now).find((c) => c.id === esa.id);
+        return chase ? <ChaseAgreementSendModal db={db} card={chase} me={me} closeHref={closeSendHref(path, sp)} now={now} /> : null;
+      })()}
       {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
       {sp.panel === "requirement-call" && (
         <PopupBox
