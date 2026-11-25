@@ -139,8 +139,8 @@ export function NewsPanel({ items, now, name, memberId, mayModerate = false }: {
     return new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   };
   return (
-    <div className="flex items-start gap-[22px]">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+    <div className="flex items-start gap-[22px] max-pg-lg:flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 max-pg-lg:w-full">
         <form action={postTeamNote} className="flex items-center gap-4 rounded-[22px] inbox-item bg-surface px-[22px] py-[18px]">
           <input type="hidden" name="back" value="/mail?view=news" />
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-soft t-body-m text-brand">{initialsOf(name)}</span>
