@@ -5,7 +5,7 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
   // The owner's Word file, as it looks: Times New Roman, justified, blue numbered headings, the logo top left,
   // the CAREER141 watermark and the copyright line at the foot. Always white paper with dark ink, in dark mode too.
   return (
-    <div className="relative overflow-hidden bg-white p-6 text-[12px] leading-[18px] text-[#1f1f1f] [font-family:'Times_New_Roman',Times,serif]">
+    <div className="relative shrink-0 overflow-hidden bg-white p-6 text-[12px] leading-[18px] text-[#1f1f1f] [font-family:'Times_New_Roman',Times,serif]">
       <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[50deg] select-none whitespace-nowrap text-[110px] font-bold leading-none text-[#e9ecef]">CAREER141</span>
       <div className="relative flex flex-col gap-3 text-justify">
         <div className="flex items-start justify-between gap-3">
