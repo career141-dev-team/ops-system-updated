@@ -5,6 +5,7 @@ import { addScoop, createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, Card, DataTable, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
+import CvDropZone from "./CvDropZone";
 import { desk, scoopBatches } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
@@ -231,7 +232,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
             <input type="hidden" name="back" value="/hiring?view=scoops" />
             <PanelSection title="The CVs">
               <PanelField label="Files (PDF or Word, up to 25 MB in all)">
-                <input type="file" name="cvs" multiple required accept=".pdf,.doc,.docx" aria-label="CV files" className={panelInput} />
+                <CvDropZone />
               </PanelField>
               <PanelField label="Which vacancy">
                 <select name="vacancyId" defaultValue="" className={panelInput}>
