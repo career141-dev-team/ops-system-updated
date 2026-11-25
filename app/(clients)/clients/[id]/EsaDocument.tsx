@@ -18,12 +18,11 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
             <span key={l} className="[overflow-wrap:anywhere]">{l}</span>
           ))}
         </div>
-        {doc.parties.map((p, i) => (
-          <p key={i} className={p === "AND" ? "text-center" : ""}>{p}</p>
-        ))}
-        <p className="text-[14px]">AGREE AS FOLLOWS</p>
-        {/* The Word file runs the clauses in two columns (page 2 onward): the same here. */}
         <div className="gap-x-7 [column-count:2]">
+        {doc.parties.map((p, i) => (
+          <p key={i} className={"mb-3 " + (p === "AND" ? "text-center" : "")}>{p}</p>
+        ))}
+        <p className="mb-3 text-[14px]">AGREE AS FOLLOWS</p>
         {doc.sections.map((s, n) => (
           <section key={s.title} className="mb-3 flex flex-col gap-2">
             <h4 className="mt-1 break-after-avoid text-[14px] font-bold uppercase text-[#528dd2]">{n + 1}) {s.title}</h4>
