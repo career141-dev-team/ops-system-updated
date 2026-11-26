@@ -456,6 +456,22 @@ export async function chaseTheAgreement(
     return { ok: false, what: "That agreement is not waiting for a signature.", messageId: null };
   }
 
+  // 26 Nov (Nov 25 ops meeting): a Draft cannot be signed, so chasing it for a signature asks the impossible.
+  // What a draft waits on is the signatory's details, so one task to get them instead, and no further chase.
+  if (esa.mode === "draft") {
+    await createTask({
+      kind: "call",
+      title: "Get the signatory's details for the final agreement: " + (esa.fields.companyName ?? "a client"),
+      body: "The draft agreement went out without the signatory's name, designation or address. Ask for them, then make the final agreement.",
+      assigneeId: esa.ownerId,
+      dueAt: now,
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + esa.leadId,
+    });
+    return { ok: true, what: "A draft is not chased for a signature. A task to get the signatory's details is on your list.", messageId: null };
+  }
+
   const plan = chaseStep(esa.chaseStep + 1);
   if (!plan) return { ok: false, what: "The chase has run out. Somebody has to call them.", messageId: null };
 
@@ -2388,6 +2404,9 @@ export async function takePlacementFrom(
     : null;
   const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
   const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+  // 26 Nov (Nov 25 ops meeting): the fee for a non-Sri Lankan, kept on the placement like feeMonths so a later
+  // change to the agreement cannot move an invoice. Agreements signed before this said "x 2" in clause 5.2.
+  const expatFeeMonths = Number(agreement?.fields.expatFeeMonths ?? 2) || 2;
 
   const placement = await addPlacement({
     placementTaId,
@@ -2410,6 +2429,7 @@ export async function takePlacementFrom(
     joinedAt: null,
     dojHistory: [],
     feeMonths,
+    expatFeeMonths,
     feeBasis,
     isReplacementOf: null,
     invoiceId: null,

@@ -45,13 +45,16 @@ test("a quiet client gets a check-in to copy, a lead does not", () => {
   assert.equal(filterCards([card], "mine", "", "other").length, 0);
 });
 
-test("enquiries land in their column; a name like a client waits in Checks", () => {
+test("enquiries land in their column; a name like a client gets a badge, not a tab", () => {
   const db = make({
     leads: [lead({ id: "a", company: "Palm Court Resorts", nameKey: "palm court resorts" }), lead({ id: "b", company: "Hill Country Tea Exports", nameKey: "hill country tea exports" }), lead({ id: "c", state: "closed_other" })],
     clients: [client({})],
   });
   const cols = Object.fromEntries(enquiryCards(db, NOW).map((c) => [c.id, c.column]));
-  assert.deepEqual(cols, { a: "new", b: "checks" });
+  assert.deepEqual(cols, { a: "new", b: "new" });
+  const flags = Object.fromEntries(enquiryCards(db, NOW).map((c) => [c.id, c.flags.map((f) => f.text)]));
+  assert.deepEqual(flags.a, []);
+  assert.deepEqual(flags.b, ["Possible duplicate"]);
 });
 
 test("agreements land in their column with a due chase", () => {

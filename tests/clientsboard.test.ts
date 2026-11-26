@@ -7,7 +7,7 @@ const lead = (state: string, flagged = false, by: string | null = null) => ({ st
 
 test("enquiry columns", () => {
   assert.equal(enquiryColumn(lead("new"), [], null), "new");
-  assert.equal(enquiryColumn(lead("new", true), [], null), "checks");
+  assert.equal(enquiryColumn(lead("new", true), [], null), "new");
   assert.equal(enquiryColumn(lead("new", true, "m1"), [], null), "new");
   assert.equal(enquiryColumn(lead("intro_call"), [{ kind: "intro", state: "booked" }], null), "intro");
   assert.equal(enquiryColumn(lead("intro_call"), [{ kind: "intro", state: "held" }], null), "send");

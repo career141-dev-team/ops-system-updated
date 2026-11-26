@@ -84,7 +84,9 @@ export const ESA_FIELDS: EsaField[] = [
   { key: "signatoryTitle", label: "Their title", required: true, why: "A hole in the agreement: it signs under their designation." },
   { key: "signatoryPhone", label: "Their number", required: true, why: "The WhatsApp chase needs it; the agreement does not print it." },
   { key: "taxNo", label: "Tax number (VAT/TIN)", required: false, why: "Not in the document; kept for the invoice." },
+  { key: "clientType", label: "Local or international client", required: true, why: "Copied to the client record when the agreement is signed." },
   { key: "feeMonths", label: "Fee: months of salary", required: true, why: "One month is standard." },
+  { key: "expatFeeMonths", label: "Fee for a non-Sri Lankan: months of salary", required: true, why: "Two months is standard (clause 5.2); copied onto each placement." },
   { key: "feeBasis", label: "Fee on gross or basic", required: true, why: "Basic only for selected clients." },
   { key: "guaranteeDays", label: "Guarantee, in days", required: true, why: "90 days from joining." },
   { key: "paymentDays", label: "Payment, in days", required: true, why: "30 days from the first working day." },
@@ -95,6 +97,22 @@ export const ESA_FIELDS: EsaField[] = [
 
 export type EsaFields = Record<string, string>;
 
+/** An agreement with no mode is final: every row made before 26 Nov. */
+export type EsaMode = "draft" | "final";
+
+/**
+ * 26 Nov (Nov 25 ops meeting): the only holes a Draft may leave blank. They print as a
+ * highlighted "To be confirmed" with the draft note. Any other blank still refuses, as before.
+ */
+export const DRAFT_BLANKABLE = ["signatoryName", "signatoryTitle", "companyAddress"];
+export const TBC = "To be confirmed";
+export const DRAFT_NOTE = "This is a draft. If the signatory or the address changes, please let us know and we will send the final agreement.";
+
+/** A draft cannot be recorded as signed or countersigned: the client never signed the final text. */
+export function problemWithSigningDraft(mode: EsaMode | undefined | null): string | null {
+  return mode === "draft" ? "This is a draft agreement. Make the final agreement before recording a signature." : null;
+}
+
 /**
  * Which required fields are still blank.
  *
@@ -102,12 +120,20 @@ export type EsaFields = Record<string, string>;
  * ("Best Pacific", 22 April 2025). A blank required field therefore blocks the
  * draft outright, and the screen lists exactly which ones.
  */
-export function missingFields(fields: EsaFields): EsaField[] {
-  return ESA_FIELDS.filter((f) => f.required && !(fields[f.key] ?? "").trim());
+export function missingFields(fields: EsaFields, mode: EsaMode = "final"): EsaField[] {
+  return ESA_FIELDS.filter(
+    (f) => f.required && !(fields[f.key] ?? "").trim() && !(mode === "draft" && DRAFT_BLANKABLE.includes(f.key)),
+  );
 }
 
-export function problemWithDraft(fields: EsaFields): string | null {
-  const missing = missingFields(fields);
+export function problemWithDraft(fields: EsaFields, mode: EsaMode = "final"): string | null {
+  const missing = missingFields(fields, mode);
+  // shortcut: the owner's Word template hard-codes "{{feeText}} x 2" in clause 5.2, so any other expat fee would
+  // show on screen and be invoiced, but not be what the client signed. Lift this once the template has a hole for it.
+  const expat = String(fields.expatFeeMonths ?? "").trim();
+  if (missing.length === 0 && expat && Number(expat) !== 2) {
+    return "The agreement template says a non-Sri Lankan placement is the fee x 2, so the expat fee must be 2 months until the template is changed.";
+  }
   if (missing.length === 0) return null;
   return "Still blank: " + missing.map((f) => f.label.toLowerCase()).join(", ") + ".";
 }
@@ -117,6 +143,7 @@ const NUMBER_WORDS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven",
 /** The holes worded from other fields, and the field a person fixes when one is blank. */
 export const WORDED_HOLES: Record<string, string> = {
   feeText: "feeMonths",
+  expatFeeText: "expatFeeMonths",
   guaranteeText: "guaranteeDays",
   replacementText: "replacementWorkingDays",
 };
@@ -143,15 +170,18 @@ export function holeValues(fields: EsaFields): EsaFields {
   const months = Number(fields.feeMonths);
   const days = Number(fields.guaranteeDays);
   const basis = (fields.feeBasis ?? "").trim().toLowerCase() === "basic" ? "Basic" : "Gross";
-  const feeText =
-    Number.isInteger(months) && NUMBER_WORDS[months] ? `${NUMBER_WORDS[months]} ${months === 1 ? "Month" : "Months"} ${basis} Salary` : "";
+  const feeIn = (m: number) =>
+    Number.isInteger(m) && NUMBER_WORDS[m] ? `${NUMBER_WORDS[m]} ${m === 1 ? "Month" : "Months"} ${basis} Salary` : "";
+  const feeText = feeIn(months);
+  // 26 Nov (Nov 25 ops meeting): clause 5.2 no longer says "fee x 2"; it words its own number of months.
+  const expatFeeText = feeIn(Number(fields.expatFeeMonths));
   const guaranteeText =
     Number.isInteger(days) && days > 0
       ? `${days} calendar days` + (days % 30 === 0 ? ` (${days / 30} ${days === 30 ? "month" : "months"})` : "")
       : "";
   const replacement = Number(fields.replacementWorkingDays);
   const replacementText = inWords(replacement) ? `${inWords(replacement)} (${replacement})` : "";
-  return { ...fields, feeText, guaranteeText, replacementText };
+  return { ...fields, feeText, expatFeeText, guaranteeText, replacementText };
 }
 
 /** The numbers every agreement starts from, out of the settings. */
@@ -163,6 +193,7 @@ export function defaultFields(settings: {
 }): EsaFields {
   return {
     feeMonths: "1",
+    expatFeeMonths: "2",
     feeBasis: "gross",
     guaranteeDays: String(settings.guaranteeDays),
     paymentDays: String(settings.paymentDays),
@@ -314,16 +345,28 @@ export function chaseDraft(
 export function coverDraft(
   wording: { subject: string | null; body: string | null } | null,
   fields: EsaFields,
+  mode: EsaMode = "final",
 ): { subject: string; body: string } | { problem: string } {
   const out = fill(
     {
       subject: wording?.subject || "{{client}} · our agreement",
       body: wording?.body || "Dear {{contact}},\n\nOur agreement is attached.\n\nKind regards,\nCareer 141",
     },
-    { ...fields, client: fields.companyName ?? "", contact: fields.signatoryName ?? "" },
+    // 26 Nov: a Draft goes before the signatory is known (usually to the owner), so it cannot greet them by name.
+    {
+      ...fields,
+      client: fields.companyName ?? "",
+      contact: (fields.signatoryName ?? "").trim() || (mode === "draft" ? "Sir or Madam" : ""),
+    },
   );
   if (out.missing.length) return { problem: "The cover email has holes nothing fills: " + out.missing.join(", ") + ". Fill them in, or fix the template." };
-  return { subject: out.subject, body: out.body };
+  return { subject: out.subject, body: withDraftNote(out.body, mode) };
+}
+
+/** The draft note goes above the sign-off, once; a final agreement's email is left alone. */
+function withDraftNote(body: string, mode: EsaMode): string {
+  if (mode !== "draft" || body.includes(DRAFT_NOTE)) return body;
+  return /\n\s*Kind regards/i.test(body) ? body.replace(/\n+(\s*Kind regards)/i, "\n\n" + DRAFT_NOTE + "\n\n$1") : body + "\n\n" + DRAFT_NOTE;
 }
 
 /**
@@ -334,12 +377,13 @@ export function coverDraft(
 export function coverEmail(
   wording: { subject: string | null; body: string | null } | null,
   fields: EsaFields,
+  mode: EsaMode = "final",
 ): { subject: string; body: string } | { problem: string } {
   const subject = (fields.coverSubject ?? "").trim();
   const body = (fields.coverBody ?? "").trim();
-  if (!subject || !body) return coverDraft(wording, fields);
+  if (!subject || !body) return coverDraft(wording, fields, mode);
   if (/\{\{/.test(subject + body)) return { problem: "The cover email still has a {{hole}} in it. Fill it in, or reset to the standard wording." };
-  return { subject, body };
+  return { subject, body: withDraftNote(body, mode) };
 }
 
 /**
@@ -358,7 +402,7 @@ export function problemWithChanges(what: string): string | null {
 const SYSTEM_HOLES = ["effectiveDate"];
 
 /** Fields the owner's ESA never prints but the send and the chase need (17 Nov): where it goes, and the WhatsApp number. */
-const NOT_PRINTED = ["signatoryEmail", "signatoryPhone"];
+const NOT_PRINTED = ["signatoryEmail", "signatoryPhone", "clientType", "expatFeeMonths"];
 
 /**
  * What is wrong between a template's holes and the fields we collect (16 Nov).

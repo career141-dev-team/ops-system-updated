@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { Card, EmptyState, PageTitle, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { Card, EmptyState, PageTitle, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import {
   agreementForLead,
   clientIn,
@@ -13,7 +13,7 @@ import {
   reportsNewestFirst,
   runClocks,
 } from "@/data/desk";
-import { agreementNotSigned } from "@/lib/clients";
+import { positionAgreementNotSigned } from "@/lib/clients";
 import { contactsFor } from "@/lib/contacts";
 import { colomboIsoWeek } from "@/lib/weekNumber";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -77,12 +77,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   };
   // 26 Nov: the client's own first lead counts too, so a position TA opened with no requirement linked is not
   // flagged as unsigned when the client has signed.
-  const unsigned = (positionId: string) => {
-    const p = byId.get(positionId);
-    const clientLeadId = p?.clientId ? (clientIn(db, p.clientId)?.leadId ?? null) : null;
-    const esas = [esaOf(positionId), clientLeadId ? agreementForLead(db, clientLeadId) : null];
-    return agreementNotSigned(esas.filter((e) => e !== null));
-  };
+  const unsigned = (positionId: string) => positionAgreementNotSigned(db, byId.get(positionId)!);
   const contactsOf = (positionId: string) => {
     const p = byId.get(positionId);
     const client = p?.clientId ? clientIn(db, p.clientId) : null;
@@ -357,7 +352,10 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                           <Link href={`/positions/${r.id}?view=overview`} className="text-[17px] font-medium leading-[26px] hover:underline">
                             {r.title}
                           </Link>
-                          <span className="t-small shrink-0 text-ink-3">placed {r.placed}</span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {unsigned(r.id) && <StatusChip label="Agreement not signed" tone="warn" />}
+                            <span className="t-small text-ink-3">placed {r.placed}</span>
+                          </span>
                         </div>
                         <div className="grid grid-cols-6 gap-2.5">
                           {STEPS.map((s) => (

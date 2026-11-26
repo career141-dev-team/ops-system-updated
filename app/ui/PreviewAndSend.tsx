@@ -260,7 +260,7 @@ export default function PreviewAndSend({
                   <iframe
                     src={active.pdf.href}
                     title={active.pdf.title}
-                    className="h-[440px] w-full bg-surface"
+                    className="h-[75vh] w-full bg-surface"
                   />
                   {active.pdf.note && <p className="t-small border-t border-rule px-5 py-3 text-ink-3">{active.pdf.note}</p>}
                 </div>

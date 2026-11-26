@@ -10,6 +10,7 @@ import test from "node:test";
 
 import JSZip from "jszip";
 
+import { DRAFT_BLANKABLE, DRAFT_NOTE, TBC } from "@/lib/esa";
 import { fillDocx, forXml, holesIn, holesInDocx, problemWithFill } from "@/lib/docxFill";
 
 /** The smallest thing shaped like a .docx: one part with text in it. */
@@ -125,4 +126,44 @@ test("a split hole with no value is still refused, not left in", async () => {
   const answer = await fillDocx(file, {});
   assert.equal(answer.bytes, null);
   assert.deepEqual(answer.missing, ["registrationNo"]);
+});
+
+
+// 26 Nov (Nov 25 ops meeting): a Draft prints the three blanks highlighted, with the note on top; nothing else is let through.
+const DRAFT = { blanks: DRAFT_BLANKABLE, text: TBC, note: DRAFT_NOTE };
+
+test("a draft highlights a blank signatory and address, and adds the draft note", async () => {
+  const file = await docx("Between us and {{companyName}} of {{companyAddress}}, signed by {{signatoryName}}.");
+  const answer = await fillDocx(file, { companyName: "SAMPLE CLIENT", companyAddress: " ", signatoryName: "" }, DRAFT);
+  assert.deepEqual(answer.missing, []);
+  const body = await textOf(answer.bytes!);
+  assert.doesNotMatch(body, /\{\{/);
+  assert.equal(body.match(/<w:highlight w:val="yellow"\/>/g)?.length, 3, "two blanks and the note");
+  assert.match(body, /<w:t xml:space="preserve">To be confirmed<\/w:t>/);
+  assert.match(body, /<w:body><w:p><w:r><w:rPr><w:b\/><w:highlight w:val="yellow"\/><\/w:rPr><w:t xml:space="preserve">This is a draft\./, "the note is the first line");
+  assert.ok(body.includes("Between us and </w:t>") && body.includes(", signed by </w:t>"), "the words either side are kept");
+});
+
+test("a draft still refuses any other blank, and a final refuses these three", async () => {
+  const file = await docx("{{companyName}} of {{companyAddress}}, tax {{taxNo}}.");
+  const draft = await fillDocx(file, { companyName: "SAMPLE CLIENT", companyAddress: "" }, DRAFT);
+  assert.equal(draft.bytes, null);
+  assert.deepEqual(draft.missing, ["taxNo"]);
+  const final = await fillDocx(file, { companyName: "SAMPLE CLIENT", companyAddress: "", taxNo: "1" });
+  assert.equal(final.bytes, null);
+  assert.deepEqual(final.missing, ["companyAddress"]);
+});
+
+test("a draft fills holes in runs written as the owner's template writes them", async () => {
+  // 26 Nov: the real ESA template has an empty <w:rPr/> and holes already highlighted; the first draft code refused both.
+  const file = await docxOfParagraph(
+    '<w:r><w:rPr/><w:t xml:space="preserve">{{signatoryName}} </w:t></w:r>' +
+      '<w:r><w:rPr><w:b/><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">{{companyAddress}}</w:t></w:r>',
+  );
+  const answer = await fillDocx(file, { signatoryName: "", companyAddress: "" }, DRAFT);
+  assert.deepEqual(answer.missing, []);
+  const body = await textOf(answer.bytes!);
+  assert.match(body, /<w:r><w:rPr><w:highlight w:val="yellow"\/><\/w:rPr><w:t xml:space="preserve">To be confirmed<\/w:t><\/w:r>/);
+  assert.equal(body.match(/<w:highlight w:val="yellow"\/>/g)?.length, 3, "one highlight per blank and the note, never two in one run");
+  assert.doesNotMatch(body, /\{\{/);
 });

@@ -3,7 +3,7 @@
  * and the words on a client card. Pure, so each case is a test; the pages only read the desk.
  */
 
-export type EnquiryColumn = "new" | "checks" | "intro" | "send";
+export type EnquiryColumn = "new" | "intro" | "send";
 export type AgreementColumn = "send" | "chasing" | "changes" | "signed" | "done";
 
 const OUT = ["sent", "chasing", "negotiating", "signed", "countersigned"];
@@ -22,7 +22,8 @@ export function enquiryColumn(
   if (lead.state === "waiting_agreement") return "send";
   if (lead.state === "requirement" || lead.state === "handed_over") return null;
   if (lead.state === "intro_call" || intro.some((m) => m.state === "booked")) return "intro";
-  return lead.industryFlagged && !lead.industryConfirmedBy ? "checks" : "new";
+  // 26 Nov (Nov 25 ops meeting): no Checks tab; a flagged lead waits in New with a badge.
+  return "new";
 }
 
 const DAY = 86_400_000;

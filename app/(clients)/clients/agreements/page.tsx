@@ -73,8 +73,7 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
       <FlowStrip
         items={[
           { label: "New", n: totals.enquiryCards.filter((c) => c.column === "new").length, dot: true, href: "/leads" },
-          { label: "Checks", n: totals.enquiryCards.filter((c) => c.column === "checks").length, dot: true, href: "/leads" },
-          { label: "Intro call", n: totals.enquiryCards.filter((c) => c.column === "intro").length, href: "/leads" },
+          { label: "Call", n: totals.enquiryCards.filter((c) => c.column === "intro").length, href: "/leads" },
           { label: "Agreement to send", n: totals.enquiryCards.filter((c) => c.column === "send").length, dot: true, href: "/leads" },
           { label: "Agreements", n: totals.agreements },
           { label: "Active clients", n: totals.clients, href: "/clients" },

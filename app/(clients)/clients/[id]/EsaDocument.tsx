@@ -1,4 +1,9 @@
-import type { EsaDoc } from "@/lib/esaDocument";
+import { markedParts, type EsaDoc } from "@/lib/esaDocument";
+
+/** A line with its to-be-confirmed parts highlighted (a Draft only; 26 Nov, Nov 25 ops meeting). */
+function Marked({ text }: { text: string }) {
+  return <>{markedParts(text).map((p, i) => (p.mark ? <mark key={i} className="bg-[#ffe94d] text-[#1f1f1f]">{p.text}</mark> : p.text))}</>;
+}
 
 /** The agreement page itself: the owner's draft, filled with this client's details (src/lib/esaDocument.ts). */
 export default function EsaDocument({ doc }: { doc: EsaDoc }) {
@@ -15,12 +20,13 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
         </div>
         <div className="flex flex-col text-left">
           {doc.to.map((l) => (
-            <span key={l} className="[overflow-wrap:anywhere]">{l}</span>
+            <span key={l} className="[overflow-wrap:anywhere]"><Marked text={l} /></span>
           ))}
         </div>
+        {doc.draftNote && <p className="bg-[#ffe94d] px-2 py-1 text-left font-bold">{doc.draftNote}</p>}
         <div className="gap-x-7 [column-count:2]">
         {doc.parties.map((p, i) => (
-          <p key={i} className={"mb-3 " + (p === "AND" ? "text-center" : "")}>{p}</p>
+          <p key={i} className={"mb-3 " + (p === "AND" ? "text-center" : "")}><Marked text={p} /></p>
         ))}
         <p className="mb-3 text-[14px]">AGREE AS FOLLOWS</p>
         {doc.sections.map((s, n) => (
@@ -47,8 +53,8 @@ export default function EsaDocument({ doc }: { doc: EsaDoc }) {
           <div className="flex flex-col">
             <span className="mb-1">………………………………………</span>
             <span className="font-bold [overflow-wrap:anywhere]">On behalf of {doc.parties[2].split(" having")[0]}</span>
-            <span>NAME: {doc.signing.client}</span>
-            <span>DESIGNATION: {doc.signing.clientTitle}</span>
+            <span>NAME: <Marked text={doc.signing.client} /></span>
+            <span>DESIGNATION: <Marked text={doc.signing.clientTitle} /></span>
             <span>DATE:</span>
           </div>
         </div>

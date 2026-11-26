@@ -347,6 +347,11 @@ import { tryBuildStrategyAdditions } from "@/lib/strategies";
 import {
   type EsaFields,
   type EsaState,
+  type EsaMode,
+  DRAFT_BLANKABLE,
+  DRAFT_NOTE,
+  TBC,
+  problemWithSigningDraft,
   canMoveTo,
   chaseStep,
   coverEmail,
@@ -2059,6 +2064,9 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
     role: String(formData.get("role") ?? ""),
     packageSaid: String(formData.get("packageSaid") ?? ""),
   };
+  // 26 Nov (Nov 25 ops meeting): the call also records the job description and salary scale; both optional, left out when empty.
+  const jd = String(formData.get("jd") ?? "").trim();
+  const salaryScale = String(formData.get("salaryScale") ?? "").trim();
   const problem = problemWithHeld(notes);
   if (problem) back(problem);
 
@@ -2066,7 +2074,7 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   const row = meeting as NonNullable<typeof meeting>;
   await patchMeeting(
     meetingId,
-    { ...notes, state: "held", heldAt: now },
+    { ...notes, ...(jd ? { jd } : {}), ...(salaryScale ? { salaryScale } : {}), state: "held", heldAt: now },
     member.id,
     "meeting.held",
     notes.brief.trim().slice(0, 200),
@@ -2242,7 +2250,16 @@ function blankAgreement(row: NonNullable<ReturnType<typeof leadIn>>, fields: Esa
     countersignedFileId: null,
     reason: null,
     ownerId: row.ownerId,
+    mode: "final" as EsaMode,
   };
+}
+
+/** 26 Nov (Nov 25 ops meeting): a signed agreement says whether the client is local or international; the client keeps it. */
+async function copyClientType(row: NonNullable<ReturnType<typeof agreementIn>>, memberId: Id): Promise<void> {
+  const type = row.fields.clientType;
+  if (type !== "local" && type !== "international") return;
+  const client = clientForLead(await desk(), row.leadId);
+  if (client && client.clientType !== type) await patchClient(client.id, { clientType: type }, memberId, "client.updated", null);
 }
 
 function newAgreementFields(db: Awaited<ReturnType<typeof desk>>, row: NonNullable<ReturnType<typeof leadIn>>): EsaFields {
@@ -2312,15 +2329,20 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value);
   }
+  // 26 Nov (Nov 25 ops meeting): Draft or Final. A form that does not ask keeps what the agreement had.
+  const asked = formData.get("mode");
+  const mode: EsaMode = asked === "draft" || asked === "final" ? asked : ((esa?.mode as EsaMode | undefined) ?? "final");
+  // A draft that already went to the client and is now made final needs its new version at once.
+  const madeFinal = !!esa && esa.mode === "draft" && mode === "final" && !!esa.sentAt;
 
-  if (esa) await patchAgreement(esa.id, { fields }, member.id, "esa.fieldsSaved", null);
-  else await addAgreement(blankAgreement(lead as NonNullable<typeof lead>, fields));
+  if (esa) await patchAgreement(esa.id, { fields, mode }, member.id, "esa.fieldsSaved", null);
+  else await addAgreement({ ...blankAgreement(lead as NonNullable<typeof lead>, fields), mode });
   revalidatePath(here);
-  const problem = problemWithDraft(fields);
+  const problem = problemWithDraft(fields, mode);
   if (problem) back("Saved. " + problem);
 
   // "Save and make the draft": one click from an edited detail to the next version (17 Nov).
-  if (formData.get("makeDraft")) {
+  if (formData.get("makeDraft") || madeFinal) {
     const fresh = await desk();
     const saved = agreementForLead(fresh, leadId);
     if (saved) {
@@ -2363,7 +2385,12 @@ async function fillAgreementDraft(
   }
   const templateBytes = await readBytes(template.key);
   if (!templateBytes) return { error: "The template file is registered but its bytes are gone. Upload it again on the Files screen." };
-  const fill = await fillDocx(Buffer.from(templateBytes), { ...holeValues(esa.fields), effectiveDate: colomboDateInWords(now) });
+  // A Draft may leave the signatory and the address to be confirmed (26 Nov, Nov 25 ops meeting); a final never.
+  const fill = await fillDocx(
+    Buffer.from(templateBytes),
+    { ...holeValues(esa.fields), effectiveDate: colomboDateInWords(now) },
+    esa.mode === "draft" ? { blanks: DRAFT_BLANKABLE, text: TBC, note: DRAFT_NOTE } : undefined,
+  );
   const holeProblem = problemWithFill(
     fill.missing,
     (key) => ESA_FIELDS.find((f) => f.key === (WORDED_HOLES[key] ?? key))?.label ?? key,
@@ -2430,7 +2457,7 @@ export async function saveCoverEmail(formData: FormData): Promise<void> {
     fields.coverSubject = String(formData.get("subject") ?? "").trim();
     fields.coverBody = String(formData.get("body") ?? "").trim();
     if (!fields.coverSubject || !fields.coverBody) back("The email needs a subject and some words. Use reset to get the standard wording back.");
-    const problem = coverEmail(templateFor(db, "esa.cover"), fields);
+    const problem = coverEmail(templateFor(db, "esa.cover"), fields, row.mode ?? "final");
     if ("problem" in problem) back(problem.problem);
   }
   await patchAgreement(row.id, { fields }, member.id, "esa.coverSaved", null);
@@ -2456,7 +2483,7 @@ export async function previewAgreement(formData: FormData): Promise<void> {
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
 
-  const problem = problemWithDraft(row.fields);
+  const problem = problemWithDraft(row.fields, row.mode ?? "final");
   if (problem) back(problem);
   const draft = await fillAgreementDraft(db, row, member.id, Date.now());
   if ("error" in draft) back(draft.error);
@@ -2498,10 +2525,10 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   // again: the version number moves, the chase starts from the beginning, and
   // the clocks of the version before it stop (3 Nov).
   const again = row.state === "negotiating";
-  const problem = problemWithDraft(row.fields);
+  const problem = problemWithDraft(row.fields, row.mode ?? "final");
   if (problem) back(problem);
   // Checked before any file is made, so a broken cover leaves nothing behind.
-  const cover = coverEmail(templateFor(db, "esa.cover"), row.fields);
+  const cover = coverEmail(templateFor(db, "esa.cover"), row.fields, row.mode ?? "final");
   if ("problem" in cover) back(cover.problem);
   const coverText = cover as { subject: string; body: string };
 
@@ -2685,12 +2712,13 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   const row = esa as NonNullable<typeof esa>;
 
   const fileId = String(formData.get("fileId") ?? "").trim() || null;
-  const problem = problemWithSigned({ fileId, checked: formData.get("checked") === "on" });
+  const problem = problemWithSigningDraft(row.mode) ?? problemWithSigned({ fileId, checked: formData.get("checked") === "on" });
   if (problem) back(problem);
   if (!canMoveTo(row.state as EsaState, "signed")) back("An agreement in that state cannot be marked signed.");
 
   const now = Date.now();
   await patchAgreement(esaId, { state: "signed", signedAt: now, signedFileId: fileId }, member.id, "esa.signed", null);
+  await copyClientType(row, member.id);
   // Every clock on it stops, not only the chases: the two-week "nobody has
   // signed" clock kept running and would have fired on a signed agreement.
   await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is signed.");
@@ -2768,6 +2796,8 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
   const row = esa as NonNullable<typeof esa>;
 
   const fileId = String(formData.get("fileId") ?? "").trim() || null;
+  const draftProblem = problemWithSigningDraft(row.mode);
+  if (draftProblem) back(draftProblem);
   if (!fileId) back("Upload the countersigned copy first, on the Files screen.");
   if (!canMoveTo(row.state as EsaState, "countersigned")) back("That agreement is not waiting to be countersigned.");
 
@@ -2807,6 +2837,7 @@ async function finishCountersign(
     await clientFromLead(db, { ...signedLead, clientTaId: row.clientTaId ?? signedLead.clientTaId }, "active", member.id);
     revalidatePath("/clients");
   }
+  await copyClientType(row, member.id);
 
   const message = await draftMessage({
     channel: "email",
@@ -3977,9 +4008,13 @@ async function bookRequirement(formData: FormData, member: OpsMember, leadId: st
   const teams = await teamsPartOf(formData, member, row, "requirement", at, taLeadId);
   if (teams.refusal) back(teams.refusal);
 
+  // One requirement call per position (26 Nov, Nov 25 ops meeting); a call booked without one stays as it was.
+  const positionId = positionIn(db, String(formData.get("positionId") ?? ""))?.id;
+
   const meeting = await addMeeting({
     leadId,
     kind: "requirement",
+    ...(positionId ? { positionId } : {}),
     at,
     state: "booked",
     taLeadId,

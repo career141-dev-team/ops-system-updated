@@ -12,7 +12,7 @@
  *
  * Nothing here touches a database or sends anything.
  */
-import type { OpsClient, OpsDatabase } from "@/data/types";
+import type { OpsClient, OpsDatabase, OpsPosition } from "@/data/types";
 
 export type ClientStage = "lead" | "onboarding" | "active" | "dormant" | "closed";
 
@@ -132,6 +132,30 @@ export function callKindFor(c: { stage: string; hasPosition: boolean; heldCall: 
  */
 export function agreementNotSigned(esas: { state: string }[]): boolean {
   return !esas.some((e) => e.state === "signed" || e.state === "countersigned");
+}
+
+/**
+ * "Agreement not signed" for one position (26 Nov, Nov 25 ops meeting): the ESAs of the lead its requirement came
+ * from and of the client's own lead. One signed anywhere settles it, so a role TA opened with no requirement linked
+ * is not flagged when the client has signed.
+ */
+export function positionAgreementNotSigned(db: OpsDatabase, position: Pick<OpsPosition, "requirementId" | "clientId">): boolean {
+  const reqLead = position.requirementId ? db.requirements.find((r) => r.id === position.requirementId)?.leadId : null;
+  const clientLead = position.clientId ? db.clients.find((c) => c.id === position.clientId)?.leadId : null;
+  const leadIds = [reqLead, clientLead].filter((x): x is string => !!x);
+  return agreementNotSigned(db.agreements.filter((e) => leadIds.includes(e.leadId)));
+}
+
+/** The same for a client: its own lead, and every lead whose requirement has a position for it. */
+export function clientAgreementNotSigned(db: OpsDatabase, clientId: string): boolean {
+  const client = db.clients.find((c) => c.id === clientId);
+  const leadIds = new Set<string>(client?.leadId ? [client.leadId] : []);
+  for (const p of db.positions) {
+    if (p.clientId !== clientId || !p.requirementId) continue;
+    const lead = db.requirements.find((r) => r.id === p.requirementId)?.leadId;
+    if (lead) leadIds.add(lead);
+  }
+  return agreementNotSigned(db.agreements.filter((e) => leadIds.has(e.leadId)));
 }
 
 /** Renaming a client (23 Nov): one company, one record, so a name another client already has is refused. */

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { esaDocument, longOrdinalDate } from "@/lib/esaDocument";
+import { DRAFT_NOTE } from "@/lib/esa";
+import { esaDocument, longOrdinalDate, markedParts } from "@/lib/esaDocument";
 
 test("the agreement is the owner's draft filled with the client's own details", () => {
 const at = Date.UTC(2026, 10, 9, 6);
@@ -24,4 +25,30 @@ assert.match(d.sections[4].items[0], /Consultancy Fee for placement of Sri Lanka
 assert.match(d.sections[4].items[3], /30 calendar days/);
 assert.match(d.sections[5].items[0], /one-time replacement/);
 assert.deepEqual(d.to, ["Migara Bandara · Operations Coordinator", "VALTRIX PVT LTD", "72/B7 Kadawathe"]);
+});
+
+
+const base = { companyName: "VALTRIX PVT LTD", clientBusiness: "Apparel", feeMonths: "1", expatFeeMonths: "3", feeBasis: "gross", guaranteeDays: "90", paymentDays: "30", replacementWorkingDays: "60", refundPct: "25" };
+const at = Date.UTC(2026, 10, 9, 6);
+
+test("clause 5.2 words the expat fee from its own months, not fee x 2", () => {
+  const d = esaDocument({ ...base, signatoryName: "A", signatoryTitle: "B", companyAddress: "C" }, { company: "Valtrix", at, directorName: "D" });
+  assert.match(d.sections[4].items[1], /non-Sri Lankan is: Three Months Gross Salary of the placed candidate/);
+  assert.doesNotMatch(d.sections[4].items[1], /x 2/);
+  const none = esaDocument({ ...base, expatFeeMonths: "" }, { company: "Valtrix", at, directorName: "D" });
+  assert.match(none.sections[4].items[1], /\[fee for a non-Sri Lankan\]/);
+});
+
+test("a draft marks the signatory, the title and the address as to be confirmed, with the note above the parties", () => {
+  const draft = esaDocument(base, { company: "Valtrix", at, directorName: "D" }, "draft");
+  assert.equal(draft.draftNote, DRAFT_NOTE);
+  assert.deepEqual(markedParts(draft.to[0]), [{ text: "To be confirmed", mark: true }, { text: " · ", mark: false }, { text: "To be confirmed", mark: true }]);
+  assert.ok(markedParts(draft.parties[2]).some((p) => p.mark && p.text === "To be confirmed"));
+  assert.ok(markedParts(draft.signing.client).every((p) => p.mark));
+  assert.doesNotMatch(draft.parties.join(" "), /\[registered address\]/);
+  // the same fields as a final keep the old brackets and no note
+  const final = esaDocument(base, { company: "Valtrix", at, directorName: "D" });
+  assert.equal(final.draftNote, undefined);
+  assert.match(final.parties[2], /\[registered address\]/);
+  assert.deepEqual(markedParts(final.to[0]), [{ text: "VALTRIX PVT LTD", mark: false }]);
 });

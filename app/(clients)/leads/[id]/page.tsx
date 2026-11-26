@@ -96,6 +96,10 @@ import { outlookNote } from "@/lib/outlookNote";
 import { teamsFake } from "@/lib/graphCalendar";
 import { KeepFields } from "@/app/ui/KeepFields";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
+import PopupBox from "@/app/ui/PopupBox";
+import EsaDocument from "@/app/(clients)/clients/[id]/EsaDocument";
+import { esaDocument } from "@/lib/esaDocument";
+import { closeHref, panelHref } from "@/lib/panel";
 import { FieldList } from "@/app/ui/FieldList";
 import { MeetingOutcome } from "@/app/ui/MeetingOutcome";
 import { Answer, SubmitButton } from "@/app/ui/SubmitButton";
@@ -145,12 +149,12 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string; near?: string }>;
+  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string; near?: string; panel?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg, at, proposed: proposedJson, view, step: stepParam, near: nearJson } = await searchParams;
+  const { msg, at, proposed: proposedJson, view, step: stepParam, near: nearJson, panel } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
@@ -203,8 +207,8 @@ export default async function LeadPage({
   // A Director's lead, or a client we already had, has no intro call (and maybe no agreement) to do.
   const known = existingClientOf(lead, meetings, esa);
   const introHeldOrSkipped = known.skipsIntro || meetings.some((m) => m.kind === "intro" && m.state === "held");
-  const coverPreview = esa ? coverEmail(templateFor(db, "esa.cover"), esa.fields) : null;
-  const esaMissing = esa ? missingFields(esa.fields) : [];
+  const coverPreview = esa ? coverEmail(templateFor(db, "esa.cover"), esa.fields, esa.mode ?? "final") : null;
+  const esaMissing = esa ? missingFields(esa.fields, esa.mode ?? "final") : [];
   const esaTemplate = currentTemplate(db.files, "esa_draft");
   const nextChase = esa ? chaseStep(esa.chaseStep + 1) : null;
   const agreementDone = esa?.state === "signed" || esa?.state === "countersigned" || known.signedOnFile;
@@ -1426,6 +1430,18 @@ export default async function LeadPage({
                               className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
                             />
                           </div>
+                          {/* 26 Nov (Nov 25 ops meeting): the intro call collects the JD and the salary scale too. */}
+                          <textarea
+                            name="jd"
+                            rows={3}
+                            placeholder="Job description (optional)"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
+                          <input
+                            name="salaryScale"
+                            placeholder="Salary scale (optional)"
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          />
                           <SubmitButton id={"held-" + meeting.id} answerAt="call-held" className={pillPrimary + " self-start"}>
                             It was held
                           </SubmitButton>
@@ -1511,6 +1527,13 @@ export default async function LeadPage({
                       ? "Still blank: " + esaMissing.map((f) => f.label.toLowerCase()).join(", ") + ". Fill them in and press Save and make the draft."
                       : "Press Save and make the draft above, and the ESA shows here."}
                   </p>
+                )}
+                {/* 26 Nov (Nov 25 ops meeting): the same wide View pop-up as the client page. It is drawn from the
+                    fields, so it shows as soon as there is an agreement, with or without a Word draft. */}
+                {esa && (
+                  <Link href={panelHref("/leads/" + lead.id, { view, step: stepParam }, "esa-view")} scroll={false} className={pillSecondary + " self-start"}>
+                    View
+                  </Link>
                 )}
                 {esa && <AgreementVersions esa={esa} files={draftFiles} />}
                 <p className="text-[12.5px] text-ink-soft">
@@ -1848,6 +1871,13 @@ export default async function LeadPage({
             </FoldRow>
           </div>
         </>
+      )}
+      {panel === "esa-view" && esa && (
+        <PopupBox title="Executive Search Agreement" sub={`${lead.company} · Version ${esa.version}`} closeHref={closeHref("/leads/" + lead.id, { view, step: stepParam })} wide>
+          <EsaDocument
+            doc={esaDocument(esa.fields, { company: lead.company, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" }, esa.mode ?? "final")}
+          />
+        </PopupBox>
       )}
     </Sheet>
   );

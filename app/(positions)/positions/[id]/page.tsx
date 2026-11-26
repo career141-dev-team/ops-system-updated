@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { PillTabs, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { PillTabs, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import PhoneRoleCard from "@/app/ui/phone/PhoneRoleCard";
 import SomethingChangedPanel from "@/app/ui/SomethingChangedPanel";
+import { positionAgreementNotSigned } from "@/lib/clients";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
 import { resolveRoleTab } from "@/lib/roleTabs";
@@ -157,6 +158,8 @@ export default async function PositionPage({
               <span aria-hidden className={"size-1.5 rounded-full " + word.dot} />
               {word.label}
             </span>
+            {/* 26 Nov (Nov 25 ops meeting): a position may be opened before the ESA is signed; it must not be missed. */}
+            {positionAgreementNotSigned(c.db, position) && <StatusChip label="Agreement not signed" tone="warn" />}
           </div>
           <p className="t-small text-ink-3 max-md:hidden">{sub}</p>
         </div>
