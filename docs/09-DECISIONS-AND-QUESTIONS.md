@@ -306,3 +306,10 @@ The source is the meeting's requirements document; the plan is one PR per area, 
 - **Defaults for the meeting's open questions**, each reversible: P1/P2/P3 is an Ops-only field (TA seeing it needs a TA-repo change); testimonials are asked of both the candidate and the client; the invoice format stays until a new one is uploaded; email threading is one thread per client, starting with the set emails; feedback from WhatsApp groups stays typed by hand; WhatsApp client groups wait for Meta developer access.
 - **A role "needs you" only for:** a joining day passed; no primary TA; the agreement not signed; an interview with no time; a set sent and unanswered past `feedback.chaseDays`; a joined placement whose nationality is not confirmed; or a testimonial pending from the candidate or the client. Searching with no CV set yet, and a JD waiting for approval, no longer count (their buttons stay). Closed and held roles never count.
 - **Open, for the owner:** the ESA text's refund default is 25%, but [STATUS](STATUS.md) phase 7 says the agreement's refund is 50% of what was paid. Not changed.
+
+## 26 Nov: set tracking and the export (ops lead, 25 Nov meeting; branch `rayan/set-tracking`)
+
+- **Client feedback stays manual entry.** The tracking reads what a person recorded through "Record the answer" and the interview decisions. A WhatsApp reply is not read into it.
+- **Who is listed.** A candidate appears once they are in a set that has gone to the client, or have gone further (interview, offer, joined, out). Candidates still with the TA or in an unsent set are not shown, because the table is meant for the client.
+- **The export needs no money permission.** It holds names, sets, stages and feedback, no salary or fee, so any signed-in person may take it (as the set zip). The salary is never a column.
+- **Backup ops follows PR 1.** The collapsible block shows the Ops owner only until `backupOwnerId` exists.
