@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Fragment } from "react";
 
 import Icon from "@/app/Icon";
 import PopupBox from "@/app/ui/PopupBox";
 import { Card, EmptyState, PageTitle, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import {
-  agreementForLead,
   clientIn,
   desk,
   member as memberIn,
@@ -15,7 +15,7 @@ import {
   runClocks,
 } from "@/data/desk";
 import { moneyText } from "@/lib/clientPositionTable";
-import { positionAgreementNotSigned, positionValue } from "@/lib/clients";
+import { agreementToChase, positionAgreementNotSigned, positionValue } from "@/lib/clients";
 import { contactsFor } from "@/lib/contacts";
 import { COUNT_TITLES, countItems, isCountKind, type CountItem } from "@/lib/positionCounts";
 import { colomboIsoWeek } from "@/lib/weekNumber";
@@ -74,11 +74,6 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
 
   const positions = positionsNewestFirst(db);
   const byId = new Map(positions.map((p) => [p.id, p]));
-  const esaOf = (positionId: string) => {
-    const p = byId.get(positionId);
-    const leadId = p?.requirementId ? (db.requirements.find((r) => r.id === p.requirementId)?.leadId ?? null) : null;
-    return leadId ? agreementForLead(db, leadId) : null;
-  };
   // 26 Nov: the client's own first lead counts too, so a position TA opened with no requirement linked is not
   // flagged as unsigned when the client has signed.
   const unsigned = (positionId: string) => positionAgreementNotSigned(db, byId.get(positionId)!);
@@ -132,13 +127,12 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     return "/positions" + (text ? "?" + text : "");
   };
 
-  const actionHref = (row: RoleRow) => {
-    const a = row.action;
+  const actionHref = (row: RoleRow, a = row.action) => {
     if (!a) return "";
     if (a.kind === "call") return `/?panel=call-client&on=${row.id}`;
     if (a.kind === "find-a-time") return `/positions/${row.id}?view=interviews&panel=find-a-time&on=${a.on}`;
     if (a.kind === "chase-agreement") {
-      const esa = esaOf(row.id);
+      const esa = agreementToChase(db, byId.get(row.id)!);
       return esa ? `/clients/agreements?panel=chase-agreement&on=${esa.id}` : `/positions/${row.id}?view=requirement`;
     }
     if (a.kind === "confirm-nationality" || a.kind === "testimonial") return `/positions/${row.id}?view=offer&panel=${a.kind}&on=${a.on}`;
@@ -233,6 +227,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     panel = (
       <NewPositionPanel
         closeHref={here}
+        msg={sp.msg}
         clients={db.clients.filter((c) => c.stage !== "closed").map((c) => ({ id: c.id, name: c.name }))}
         pickedId={picked?.id ?? ""}
         call={held ? { id: held.id, when: new Date(held.heldAt! + 5.5 * 3_600_000).toISOString().slice(0, 10), role: held.role, packageSaid: held.packageSaid, brief: held.brief } : null}
@@ -408,7 +403,13 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                           </Link>
                           <span className="flex shrink-0 items-center gap-2">
                             {unsigned(r.id) && <StatusChip label="Agreement not signed" tone="warn" />}
-                            <span className="t-small text-ink-3">placed {r.placed}</span>
+                            {(r.counts.offer ?? 0) > 0 ? (
+                              <Link href={panelHref("/positions", { ...sp, k: "offered" }, "count", r.id)} scroll={false} className="t-small text-brand hover:underline">
+                                placed {r.counts.offer}
+                              </Link>
+                            ) : (
+                              <span className="t-small text-ink-3">placed 0</span>
+                            )}
                           </span>
                         </div>
                         <div className="grid grid-cols-5 gap-2.5">
@@ -436,7 +437,19 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                             <span className="truncate">{r.statusText}</span>
                           </span>
                           {/* Every reason it needs a person, not only the first. */}
-                          {r.reasons.length > 1 && <span className="t-small order-last w-full text-ink-3">Also: {r.reasons.slice(1).join(" · ")}</span>}
+                          {r.reasons.length > 1 && (
+                            <span className="t-small order-last w-full text-ink-3">
+                              Also:{" "}
+                              {r.reasons.slice(1).map((why, i) => (
+                                <Fragment key={why.text}>
+                                  {i > 0 && " · "}
+                                  <Link href={actionHref(r, why.action)} scroll={false} className="text-brand hover:underline">
+                                    {why.text}
+                                  </Link>
+                                </Fragment>
+                              ))}
+                            </span>
+                          )}
                           {r.action && (
                             <Link href={actionHref(r)} scroll={false} className={pillPrimary + " !px-4 !py-2"}>
                               {r.action.label}

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerLine, awaiting, columnOf, dayOfWindow, sentLine, shortDay } from "@/lib/setsBoard";
+import { loopSummary } from "@/lib/journey";
+import { setNextStep } from "@/lib/nextStep";
+import { answerLine, awaiting, columnOf, dayOfWindow, sentLine, shortDay, unanswered } from "@/lib/setsBoard";
 
 const at = (iso: string) => Date.parse(iso + "T05:00:00+05:30");
 const mk = (state: string, cands: { decision?: string | null; claimedAt?: number | null }[] = [], sentAt: number | null = null) => ({
@@ -32,4 +34,13 @@ test("the day counts working days from receipt, capped at the window", () => {
 test("the answer line counts each kind", () => {
   assert.equal(answerLine(mk("sent", [{ decision: "shortlisted" }, { decision: "rejected" }, { decision: "rejected" }, { claimedAt: 1 }])), "1 shortlisted, 2 rejected, 1 already theirs");
   assert.equal(answerLine(mk("sent", [{}, {}])), "2 CVs, no answers");
+});
+
+test("a set the client has claimed or answered in full is not waiting anywhere", () => {
+  const candidates = [{ name: "A", fileId: "f", problem: null, claimedAt: 1 }, { name: "B", fileId: "f", problem: null, decision: "rejected" }];
+  assert.ok(candidates.every((c) => !unanswered(c)));
+  const step = setNextStep({ state: "sent", name: "SET 1", candidates } as never, { minCvs: 1, ownershipClosesAt: null, feedback: { what: "chase", because: "" }, holdState: null }, 2);
+  assert.doesNotMatch(step.waiting, /no answer|Ask once/);
+  const loop = loopSummary({ taStatus: "active", sets: [{ state: "sent", candidates }], interviews: [] });
+  assert.equal(loop.waitingOn, "ta");
 });

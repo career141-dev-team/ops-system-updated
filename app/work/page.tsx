@@ -21,6 +21,7 @@ import { leadNextStep, positionNextStep, setNextStep } from "@/lib/nextStep";
 import { MIN_CVS } from "@/lib/clientSets";
 import { depthInWords } from "@/lib/depth";
 import { currentMember } from "@/lib/session";
+import { unanswered } from "@/lib/setsBoard";
 
 /**
  * The work, by where it is (24, section 12).
@@ -82,7 +83,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     const client = position.clientId ? clientIn(db, position.clientId) : null;
     const sets = db.clientSets.filter((set) => set.openingTaId === position.openingTaId);
     const sent = sets.filter((set) => set.state === "sent");
-    const waitingSet = sent.find((set) => set.candidates.some((who) => !who.decision)) ?? null;
+    const waitingSet = sent.find((set) => set.candidates.some(unanswered)) ?? null;
     const hold = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
     const placement =
       db.placements.find((row) => row.openingTaId === position.openingTaId && row.state !== "cancelled") ?? null;

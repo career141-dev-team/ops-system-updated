@@ -23,6 +23,7 @@ import {
   isHiringCaller,
   rejectedByKind,
   sectionOfStage,
+  slotsThisWeek,
   vacancyById,
   vacancyLine,
   vacancySourceLabel,
@@ -94,7 +95,7 @@ export default async function VacancyPage({
   ];
   const nextCall = v.applicants.find((a) => a.stage === "new" || a.stage === "call");
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
-  const interviewers = view.slots;
+  const interviewers = slotsThisWeek(view.slots, now);
   const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const local = new Date(now + COLOMBO_OFFSET_MS);
   const toMonday = local.getUTCDay() === 0 ? -6 : 1 - local.getUTCDay();
@@ -254,6 +255,11 @@ export default async function VacancyPage({
                         <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
                           <span className="t-body-m">{a.name}</span>
                           <span className="t-small text-ink-3">{a.notInterestedReason || a.rejectReason || a.detail}</span>
+                          {STAGE_ACTION[a.stage] && can(me, "client.manage") && (
+                            <Link href={panelHref(path, sp, STAGE_ACTION[a.stage]!.panel, a.id)} scroll={false} aria-label={"Call " + a.name} className="t-label rounded-full bg-ink px-3 py-[7px] text-ink-inverse">
+                              {STAGE_ACTION[a.stage]!.label}
+                            </Link>
+                          )}
                         </li>
                       ))}
                     </ul>

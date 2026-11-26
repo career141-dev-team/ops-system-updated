@@ -21,6 +21,7 @@ test("the terms and clauses come from the agreement's own fields", () => {
   const t = termRows({ clientType: "international", expatFeeMonths: "2" });
   assert.deepEqual([t[3].value, t[4].value], ["International", "Two months"]);
   assert.equal(termRows({})[1].value, "90 days");
+  assert.equal(termRows({ feeMonths: "2" })[4].value, "Four months", "no expat fee recorded reads twice the fee");
   const c = clauses({ feeMonths: "2", feeBasis: "basic", guaranteeDays: "60", paymentDays: "45" });
   assert.match(c[0].text, /two months of the placed person's basic salary/);
   assert.match(c[1].text, /within 60 days/);

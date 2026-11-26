@@ -13,7 +13,8 @@ import { duplicateOf, matchVacancy, nationalityOf, readCv, type CvFields } from 
 import { cvFieldsPrompt, type CvFieldsSaid } from "@/lib/aiTasks";
 import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
 import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
-import { fetchWhatsAppMedia, replySubjectFor, threadFor } from "@/lib/senders";
+import { fetchWhatsAppMedia, threadFor } from "@/lib/senders";
+import { unanswered } from "@/lib/setsBoard";
 import { MAX_PER_BATCH, PER_PASS, WA_BATCH_TITLE, WA_KEEPS_MS, WA_QUEUE, WA_RETRY_GAP_MS, isDirectCv, isGroupCv, parseWaRow, waBatchId, waQueueKey, waRowOf, type WaCvRow, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
 import { matchPhone, type GroupEvent, type WaMessage } from "@/lib/whatsapp";
@@ -506,16 +507,16 @@ export async function chaseTheAgreement(
   if ("problem" in draft) return { ok: false, what: draft.problem, messageId: null };
 
   const clientForEsa = clientForLead(db, esa.leadId);
-  const thread = plan.channel === "email" && clientForEsa ? threadFor(db, clientForEsa.id) : null;
+  const inReplyTo = plan.channel === "email" ? threadFor(db, clientForEsa?.id ?? null, [draft.to]) : null;
   const message = await draftMessage({
     channel: plan.channel,
     to: [draft.to],
-    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : draft.subject,
+    subject: draft.subject,
     body: draft.body,
     templateKey: plan.templateKey,
     subjectType: "esa",
     subjectId: esaId,
-    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
+    ...(inReplyTo ? { inReplyToProviderId: inReplyTo } : {}),
   });
 
   await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, by, "esa.chaseDrafted", plan.what);
@@ -834,6 +835,8 @@ export async function chaseTheFeedback(
   if (!set) return { ok: false, what: "That set is gone.", messageId: null };
   if (set.state !== "sent") return { ok: false, what: "That set has not gone out.", messageId: null };
   if (set.receivedAt === null) return { ok: false, what: "We do not know when they received it.", messageId: null };
+  // A claimed CV is an answer too (26 Nov): with nobody left to answer about, there is nothing to chase.
+  if (set.candidates.length && !set.candidates.some(unanswered)) return { ok: false, what: "They have answered about everyone.", messageId: null };
   // Anything the client has decided counts as having heard from them.
   const heardAt = set.candidates.reduce<number | null>((latest, c) => {
     const at = c.decidedAt ?? c.claimedAt ?? null;
@@ -899,17 +902,17 @@ export async function chaseTheFeedback(
       .replace(/\{\{contact\}\}/g, "all")
       .replace(/\{\{opsPerson\}\}/g, member(db, set.ownerId)?.name ?? "Career 141");
 
-  const thread = client ? threadFor(db, client.id) : null;
+  const inReplyTo = threadFor(db, client?.id ?? null, to);
   const rawSubject = fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}");
   const message = await draftMessage({
     channel: "email",
     to,
-    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : rawSubject,
+    subject: rawSubject,
     body: fill(wording?.body ?? ["Dear all,", "", "Any feedback on the CVs we sent?", "", "Career 141"].join("\n")),
     templateKey: "feedback.chase",
     subjectType: "clientSet",
     subjectId: setId,
-    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
+    ...(inReplyTo ? { inReplyToProviderId: inReplyTo } : {}),
   });
   await createTask({
     kind: "approve",
@@ -2427,7 +2430,7 @@ export async function takePlacementFrom(
   const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
   // 26 Nov (Nov 25 ops meeting): the fee for a non-Sri Lankan, kept on the placement like feeMonths so a later
   // change to the agreement cannot move an invoice. Agreements signed before this said "x 2" in clause 5.2.
-  const expatFeeMonths = Number(agreement?.fields.expatFeeMonths ?? 2) || 2;
+  const expatFeeMonths = Number(agreement?.fields.expatFeeMonths) || 2 * feeMonths;
   // 26 Nov (clause 5.4): paymentDays from the signed agreement, copied onto the placement.
   const rawPaymentDays = Number(agreement?.fields.paymentDays);
   const paymentDays = Number.isFinite(rawPaymentDays) && rawPaymentDays > 0 ? rawPaymentDays : undefined;
@@ -2481,7 +2484,7 @@ export async function takePlacementFrom(
       "Joining: " + (placement.joinDate ? colomboDateInWords(placement.joinDate) : "not given"),
       "Fee: " + feeInWords({ feeMonths, feeBasis }),
       "",
-      "The invoice is drafted on the day they join, due thirty days after their first working day.",
+      "The invoice is drafted on the day they join, due " + (paymentDays ?? numberOf(db, "invoice.dueDays", DUE_DAYS)) + " days after their first working day.",
     ].join("\n"),
     templateKey: "placement.notice",
     subjectType: "placement",
@@ -2862,45 +2865,54 @@ export async function chaseThePayment(
   );
 
   const dueAt = invoice.dueAt;
-  const client = invoice.clientId ? clientIn(db, invoice.clientId) : null;
-  const to = [client?.billingEmail, ...(client?.billingEmail ? [] : [])].filter((one): one is string => Boolean(one));
-  const wording = templateFor(db, "invoice.chase");
+  // 26 Nov: a client who replied since the last monthly run is not written to on this one. Only the draft is
+  // skipped: the charge above and the write-off below carry on, so a reply cannot freeze them.
+  // Never earlier than the due date: a reply to a reminder before it does not hold back the first overdue chase.
+  const lastRun = Math.max(dueAt, ...db.timers.filter((t) => t.kind === "invoice.chase" && t.subjectId === invoiceId).map((t) => t.startsAt));
+  const replied = db.inbound.some(
+    (i) => i.direction !== "out" && i.subjectType === "invoice" && i.subjectId === invoiceId && i.receivedAt > lastRun,
+  );
   const fresh = { ...invoice, lateCharge: charge };
-  const fill = (text: string) =>
-    text
-      .replace(/\{\{client\}\}/g, client?.name ?? "")
-      .replace(/\{\{invoiceNumber\}\}/g, invoice.number)
-      .replace(/\{\{amount\}\}/g, money(balanceOf(fresh), invoice.currency))
-      .replace(/\{\{daysLate\}\}/g, String(Math.floor((now - dueAt) / 86_400_000)));
+  if (!replied) {
+    const client = invoice.clientId ? clientIn(db, invoice.clientId) : null;
+    const to = [client?.billingEmail, ...(client?.billingEmail ? [] : [])].filter((one): one is string => Boolean(one));
+    const wording = templateFor(db, "invoice.chase");
+    const fill = (text: string) =>
+      text
+        .replace(/\{\{client\}\}/g, client?.name ?? "")
+        .replace(/\{\{invoiceNumber\}\}/g, invoice.number)
+        .replace(/\{\{amount\}\}/g, money(balanceOf(fresh), invoice.currency))
+        .replace(/\{\{daysLate\}\}/g, String(Math.floor((now - dueAt) / 86_400_000)));
 
-  const message = await draftMessage({
-    channel: "email",
-    to,
-    subject: fill(wording?.subject ?? "Invoice {{invoiceNumber}} - still outstanding"),
-    body: fill(
-      wording?.body ??
-        "Dear all,\n\nInvoice {{invoiceNumber}} is {{daysLate}} days past its due date. {{amount}} is outstanding.\n\nKind regards\nCareer 141",
-    ),
-    templateKey: "invoice.chase",
-    subjectType: "invoice",
-    subjectId: invoiceId,
-  });
+    const message = await draftMessage({
+      channel: "email",
+      to,
+      subject: fill(wording?.subject ?? "Invoice {{invoiceNumber}} - still outstanding"),
+      body: fill(
+        wording?.body ??
+          "Dear all,\n\nInvoice {{invoiceNumber}} is {{daysLate}} days past its due date. {{amount}} is outstanding.\n\nKind regards\nCareer 141",
+      ),
+      templateKey: "invoice.chase",
+      subjectType: "invoice",
+      subjectId: invoiceId,
+    });
 
-  await createTask({
-    kind: "approve",
-    title: "Chase invoice " + invoice.number,
-    body:
-      (invoice.disputed
-        ? "The client disputes this one, so no late charge is added. "
-        : months
-          ? "Late by " + months + (months === 1 ? " month" : " months") + ", so the charge is now " + money(charge, invoice.currency) + ". "
-          : "") + "The chase is drafted - read it before it goes.",
-    assigneeId: invoice.ownerId,
-    dueAt: now,
-    subjectType: "invoice",
-    subjectId: invoiceId,
-    link: "/messages/" + message.id,
-  });
+    await createTask({
+      kind: "approve",
+      title: "Chase invoice " + invoice.number,
+      body:
+        (invoice.disputed
+          ? "The client disputes this one, so no late charge is added. "
+          : months
+            ? "Late by " + months + (months === 1 ? " month" : " months") + ", so the charge is now " + money(charge, invoice.currency) + ". "
+            : "") + "The chase is drafted - read it before it goes.",
+      assigneeId: invoice.ownerId,
+      dueAt: now,
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      link: "/messages/" + message.id,
+    });
+  }
 
   // The next chase is a month away, and goes on until it is paid or written
   // off. Nothing collects itself; the clock only keeps asking.
@@ -2933,7 +2945,8 @@ export async function chaseThePayment(
       link: "/invoices/" + invoiceId,
     });
   }
-  return { ok: true, what: "The chase is drafted. " + money(balanceOf(fresh), invoice.currency) + " outstanding." };
+  const said = replied ? "They replied, so no chase this time. " : "The chase is drafted. ";
+  return { ok: true, what: said + money(balanceOf(fresh), invoice.currency) + " outstanding." };
 }
 
 /* ── Interviews and references (15, Phase 5) ───────────────────── */

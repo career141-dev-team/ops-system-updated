@@ -1,5 +1,5 @@
 import { saveAgreementFields } from "@/app/actions";
-import { ESA_FIELDS } from "@/lib/esa";
+import { ESA_FIELDS, expatMonthsOf } from "@/lib/esa";
 import { figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { KeepFields } from "@/app/ui/KeepFields";
 import { SubmitButton } from "@/app/ui/SubmitButton";
@@ -29,7 +29,8 @@ export function AgreementFieldsForm({
   esa: { id: string; fields: Record<string, string>; mode?: "draft" | "final" } | null;
   returnTo: "intro" | "agreement";
 }) {
-  const value = (key: string) => esa?.fields[key] ?? "";
+  // An agreement with no expat fee opens at twice its fee; saving a new fee carries it along (`followFee`).
+  const value = (key: string) => (key === "expatFeeMonths" ? String(expatMonthsOf(esa?.fields ?? {})) : (esa?.fields[key] ?? ""));
   return (
     <form action={saveAgreementFields} className="flex flex-col gap-4">
       <KeepFields id={"agreement-fields-" + returnTo} />

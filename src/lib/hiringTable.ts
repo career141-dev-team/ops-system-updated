@@ -105,7 +105,7 @@ export function pageOf<T>(rows: T[], page: number, size = PAGE_SIZE): { items: T
 
 export const BOARD_CARDS = 8;
 
-const PRIMARY_BOARD_STAGES = new Set<ApplicantStage>(["call", "fits", "interview", "decision", "hired", "rejected"]);
+const PRIMARY_BOARD_STAGES = new Set<ApplicantStage>(["call", "fits", "interview", "shortlisted", "offered", "decision", "hired", "rejected"]);
 
 /** The board: each stage with its first few cards and the count of all of them. "New" folds into "To call". */
 export function boardColumns(rows: ApplicantRow[], cards = BOARD_CARDS): { stage: ApplicantStage; label: string; total: number; shown: ApplicantRow[] }[] {

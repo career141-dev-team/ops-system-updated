@@ -40,7 +40,7 @@ export function seed(now = Date.now()): OpsDatabase {
       { key: "scoop.mailbox", value: "", updatedBy: null, updatedAt: null },
       { key: "scoop.senders", value: "", updatedBy: null, updatedAt: null },
       // Leadership interviewers for Scoops & vacancies (26 Nov, Nov 25 ops meeting).
-      { key: "hiring.interviewers", value: "Director of Operations, Ops Lead", updatedBy: null, updatedAt: null },
+      { key: "hiring.interviewers", value: "", updatedBy: null, updatedAt: null },
       // Interviews (15, Phase 5 step 19 and the owner's notice rule).
       { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
       { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },
@@ -501,7 +501,7 @@ Career 141`,
         subject: "{{client}} - invoice {{invoiceNumber}}",
         body: `Dear {{contact}},
 
-Our invoice for the placement of {{candidate}} is below. It is payable by {{dueDate}}, thirty days from their first working day.
+Our invoice for the placement of {{candidate}} is below. It is payable by {{dueDate}}.
 
 {{invoice}}
 

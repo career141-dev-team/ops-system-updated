@@ -45,6 +45,8 @@ export function MeetingBookingForm({
 type MeetingFieldsProps = {
   contact: { name: string; email: string };
   taPeople: { id: string; fullName: string }[];
+  /** A requirement call: the position's TA, picked to start with. */
+  taLeadId?: string;
   members: { id: string; name: string }[];
   organiserId: string;
   teamsOn: boolean;
@@ -58,6 +60,7 @@ type MeetingFieldsProps = {
 export function MeetingFields({
   contact,
   taPeople,
+  taLeadId,
   members,
   organiserId,
   teamsOn,
@@ -97,7 +100,7 @@ export function MeetingFields({
         <label className="flex flex-col gap-1">
           <span className={figmaLabel}>Which TA lead is joining</span>
           {taPeople.length > 0 ? (
-            <select name="taLeadId" className={field}>
+            <select name="taLeadId" defaultValue={taLeadId} className={field}>
               {taPeople.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.fullName}
@@ -105,7 +108,7 @@ export function MeetingFields({
               ))}
             </select>
           ) : (
-            <input name="taLeadId" placeholder="TA lead name" className={field} />
+            <input name="taLeadId" defaultValue={taLeadId} placeholder="TA lead name" className={field} />
           )}
         </label>
       </div>

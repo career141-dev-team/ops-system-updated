@@ -19,6 +19,11 @@ test("nothing changes without a reason, whatever the value is", () => {
   assert.deepEqual(r, { ok: false, message: "Say why it is changing before you save it." });
 });
 
+test("the hiring interviewers may be emptied, other text may not", () => {
+  assert.deepEqual(settingChange("hiring.interviewers", "Asma", " ", REASON), { ok: true, value: "" });
+  assert.equal(settingChange("scoop.mailbox", "a@example.test", " ", REASON).ok, false);
+});
+
 test("a switch is flipped by the server, and the page cannot decide it", () => {
   assert.deepEqual(settingChange("switch.timersEnabled", true, "on", REASON), { ok: true, value: false });
   assert.deepEqual(settingChange("switch.timersEnabled", false, "off", REASON), { ok: true, value: true });

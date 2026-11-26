@@ -275,9 +275,12 @@ export function NewPositionPanel(p: {
   pickedId: string;
   /** The held call it is written from, so the brief, the role and the package are already filled. */
   call: { id: string; when: string; role: string; packageSaid: string; brief: string } | null;
+  /** What happened on the way here, e.g. "+ New client" saved the client but could not book the call. */
+  msg?: string;
 }) {
   return (
     <Panel kicker="New position" title="New position" sub="Pick the client, then name the position" closeHref={p.closeHref} boxed>
+      {p.msg && <p className="t-small mb-3.5 rounded-[14px] bg-warn-soft px-4 py-3">{p.msg}</p>}
       <form action={createPosition} className="flex flex-col gap-5">
         <input type="hidden" name="back" value={p.closeHref} />
         {p.call && <input type="hidden" name="meetingId" value={p.call.id} />}

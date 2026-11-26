@@ -54,6 +54,9 @@ test("firing wins over warning when both are true", () => {
 test("a client's reply stops the chasing and nothing else", () => {
   assert.equal(isChase("esa.chase"), true);
   assert.equal(isChase("feedback.chase"), true);
+  assert.equal(isChase("invoice.remind"), true);
+  // The monthly clock also adds the late charge and asks about writing off: a reply skips one draft, not the clock.
+  assert.equal(isChase("invoice.chase"), false);
   // The ownership window and the guarantee measure something real; a reply does
   // not change when they end.
   assert.equal(isChase("set.ownership"), false);

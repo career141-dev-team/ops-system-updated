@@ -14,7 +14,7 @@ import type { RoleCtx } from "../ctx";
  * foot of the page, reached from the "..." menu in the head. Every form is the one that was here before.
  */
 export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open on arrival: the "..." menu link asks for it. */ open?: boolean }) {
-  const { position, opsOwnerName, mayManage, clientName, taPeopleList, primaryTaPerson, taName, checklist, related, waitingOn, whenDate } = c;
+  const { position, opsOwnerName, backupName, mayManage, clientName, taPeopleList, primaryTaPerson, taName, checklist, related, waitingOn, whenDate } = c;
   const team = position.team ?? [];
   return (
     <details id="opening-admin" open={open} className="group scroll-mt-6">
@@ -49,6 +49,13 @@ export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open
                   <Avatar name={opsOwnerName} size="28" tone="brand" />
                   <span className="t-body">{opsOwnerName}</span>
                   <span className="t-small text-ink-3">Ops owner</span>
+                </li>
+              )}
+              {backupName && (
+                <li className="flex items-center gap-2 py-2">
+                  <Avatar name={backupName} size="28" tone="brand" />
+                  <span className="t-body">{backupName}</span>
+                  <span className="t-small text-ink-3">Backup Ops</span>
                 </li>
               )}
               <li className="flex items-center gap-2 py-2">

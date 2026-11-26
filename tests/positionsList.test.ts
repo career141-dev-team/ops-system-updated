@@ -30,6 +30,15 @@ test("a set with no answer past the chase days is a call, in red", () => {
   assert.equal(r.waitingDays, 8);
 });
 
+test("a CV the client already had is not waiting for an answer", () => {
+  const [r] = roleRows(input({
+    positions: [pos("a")],
+    sets: [{ openingTaId: "o_a", setNumber: 1, state: "sent", receivedAt: NOW - 8 * DAY, candidates: [{ claimedAt: NOW }, { decision: "rejected" }] }],
+  }));
+  assert.equal(r.withClient, false);
+  assert.equal(r.needsYou, false);
+});
+
 test("no TA asks to choose one; an interview with no time asks to find one", () => {
   const rows = roleRows(input({
     positions: [pos("a", { primaryTaId: null }), pos("b")],
@@ -82,7 +91,9 @@ test("a joined person needs you until the nationality is confirmed and both test
   const joined = { id: "x1", openingTaId: "o_a", state: "joined", joinDate: NOW - 3 * DAY, joinedAt: NOW - 3 * DAY, candidateName: "Sam" };
   const of = (over: object) => roleRows(input({ positions: [pos("a")], placements: [{ ...joined, ...over }] }))[0];
   const both = of({ testimonial: { candidate: "done", client: "pending" } });
-  assert.deepEqual(both.reasons, ["Sam: nationality not confirmed", "Sam: testimonial pending (client)"]);
+  assert.deepEqual(both.reasons.map((r) => r.text), ["Sam: nationality not confirmed", "Sam: testimonial pending (client)"]);
+  // Each later reason keeps its own action, so the card can link to it.
+  assert.deepEqual(both.reasons[1].action, { kind: "testimonial", label: "Testimonial", on: "x1" });
   assert.deepEqual(both.action, { kind: "confirm-nationality", label: "Confirm nationality", on: "x1" });
   assert.equal(of({ nationalityConfirmedAt: NOW, testimonial: { candidate: "pending", client: "done" } }).action?.kind, "testimonial");
   assert.equal(of({ nationalityConfirmedAt: NOW, testimonial: { candidate: "done", client: "done" } }).needsYou, false);

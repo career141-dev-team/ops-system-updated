@@ -23,6 +23,7 @@ import {
   problemWithRequirement,
   requirementLocked,
   parseMonthlySalary,
+  currencyCode,
 } from "@/lib/requirements";
 
 const filled = (): Record<string, string> => ({
@@ -217,6 +218,11 @@ test("a requirement with every required field written is finished and locked", (
   assert.equal(requirementLocked({}), false, "nothing written yet");
   assert.equal(requirementLocked({ ...filled(), salary: "  " }), false, "one required field blank keeps it open");
   assert.equal(requirementLocked({ ...filled(), insights: "", reportsTo: "" }), true, "the optional fields do not matter");
+});
+
+test("a currency is stored uppercased", () => {
+  assert.equal(currencyCode(" lkr "), "LKR");
+  assert.equal(currencyCode(""), "");
 });
 
 test("the monthly salary is optional, a plain positive number, and never guessed", () => {

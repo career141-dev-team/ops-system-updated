@@ -38,7 +38,7 @@ export function CheckInSendModal({
       extra={lastTalkLine(card.quietDays, now)}
       closeHref={closeHref}
       action={email ? writeNewMessage : undefined}
-      hidden={{ to: email, about: `client|${card.id}`, back: closeHref, sendNow: "1" }}
+      hidden={{ to: email, about: `client|${card.id}`, templateKey: "checkin", back: closeHref, sendNow: "1" }}
       disabledReason={email ? null : "Add a client contact email before sending by email (you can still copy the WhatsApp message)."}
       contact={person ? { name: person.name, role: person.role ?? "", company: card.name, email, phone } : null}
       sender={{ name: card.owner || me.name, email: me.email }}

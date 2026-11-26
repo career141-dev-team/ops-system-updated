@@ -92,11 +92,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     .sort((a, b) => Number(a.stage === "closed") - Number(b.stage === "closed") || b.handedOverAt - a.handedOverAt)
     .map((p) => ({
       p,
-      sum: positionSummary(
-        db.clientSets.filter((x) => x.openingTaId === p.openingTaId),
-        db.interviews.filter((i) => i.positionId === p.id),
-        db.placements.filter((pl) => pl.positionId === p.id),
-      ),
+      sum: positionSummary(db, p),
     }));
   const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
@@ -253,7 +249,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                       </Link>
                     </>
                   ) : (
-                    <p className="t-body text-ink-2">Standard Career 141 terms, signed before Ops or through the TA System ({client.taClientId || "not linked yet"}).</p>
+                    <p className="t-body text-ink-2">{card.agreementNotSigned ? "No signed agreement yet." : "Standard Career 141 terms, signed before Ops or through the TA System (" + (client.taClientId || "not linked yet") + ")."}</p>
                   )}
                 </Card>
                 <Card title="Contacts" sub="Who gets what">
@@ -397,7 +393,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             ) : (
               <Card title="Agreement">
                 <EmptyState icon="file" title="No agreement file here">
-                  Standard Career 141 terms, signed before Ops or through the TA System.
+                  {card.agreementNotSigned ? "No signed agreement yet." : "Standard Career 141 terms, signed before Ops or through the TA System."}
                 </EmptyState>
               </Card>
             ))}
@@ -642,6 +638,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   hidden={{ clientId: client.id, ...(forPosition ? { positionId: forPosition.id } : {}) }}
                   contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
                   taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
+                  taLeadId={forPosition?.primaryTaId ?? undefined}
                   members={db.members}
                   organiserId={(forPosition && requirementOrganiser(forPosition, db.members)) || client.ownerId}
                   teamsOn={teamsOn}

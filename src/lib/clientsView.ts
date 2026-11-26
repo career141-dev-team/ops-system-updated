@@ -108,21 +108,10 @@ export interface ClientCard {
   openRoles: { id: string; title: string }[];
   esa: OpsEsa | null;
   needsYou: boolean;
-  /** No signed or countersigned ESA on the client's own lead or any lead its positions came from (26 Nov). */
+  /** `clientAgreementNotSigned`: the one "signed" rule, for the chip, the pill and the filters (26 Nov). */
   agreementNotSigned: boolean;
-  /** The agreement is signed (or the client is one of ours from before Ops had agreements). */
-  signed: boolean;
   /** Every position this client has given us, closed ones too. */
   positionsGiven: number;
-}
-
-/**
- * Signed means the agreement is signed or countersigned. A client with no agreement on file counts as signed
- * only when it is already active: those are clients from before Ops, whose card already says "Agreement signed".
- */
-export function isSigned(esa: { state: string } | null, stage: string): boolean {
-  if (esa) return esa.state === "signed" || esa.state === "countersigned";
-  return stage === "active";
 }
 
 const QUIET_AFTER = 3;
@@ -143,6 +132,7 @@ export function clientCards(db: OpsDatabase, now: number): ClientCard[] {
       const quietDays = talk === null ? null : Math.max(0, Math.floor((now + 5.5 * 3_600_000) / DAY) - Math.floor((talk + 5.5 * 3_600_000) / DAY));
       const roles = db.positions.filter((p) => p.clientId === client.id && p.stage !== "closed");
       const replied = repliedSince(db, client, esa?.sentAt ?? null);
+      const notSigned = clientAgreementNotSigned(db, client.id);
 
       let status: ClientCard["status"] = { text: "No openings yet", tone: "neutral" };
       let tileTone: ClientCard["tileTone"] = "neutral";
@@ -165,11 +155,13 @@ export function clientCards(db: OpsDatabase, now: number): ClientCard[] {
         needsYou = true;
       } else if (esa?.state === "signed") {
         status = { text: "Signed, waiting for the Director", tone: "info" };
-      } else if (esa?.state === "countersigned" || client.stage === "active") {
+      } else if (!notSigned) {
         status = { text: "Agreement signed", tone: "brand" };
         tileTone = "brand";
       } else if (esa?.state === "draft") {
         status = { text: "Agreement not sent yet", tone: "warn" };
+      } else if (esa?.state === "declined" || esa?.state === "expired") {
+        status = { text: "Agreement " + esa.state, tone: "warn" };
       } else if (client.stage === "dormant") {
         status = { text: "Quiet: nothing open", tone: "neutral" };
       }
@@ -193,8 +185,7 @@ export function clientCards(db: OpsDatabase, now: number): ClientCard[] {
         openRoles: roles.map((p) => ({ id: p.id, title: p.title })),
         esa,
         needsYou,
-        agreementNotSigned: clientAgreementNotSigned(db, client.id),
-        signed: isSigned(esa, client.stage),
+        agreementNotSigned: notSigned,
         positionsGiven: db.positions.filter((p) => p.clientId === client.id).length,
       };
     });
@@ -212,6 +203,14 @@ export const CLIENT_FILTERS: { key: ClientFilter; label: string }[] = [
 ];
 
 /**
+ * The filter a chip links to: pressing the lit chip clears it. With no search, Signed is the default view, so it
+ * needs no filter; with a search on, no filter means everyone, so Signed has to be asked for.
+ */
+export function chipFilter(key: ClientFilter, filter: string, q: string): ClientFilter | "" {
+  return filter === key || (key === "signed" && !q) ? "" : key;
+}
+
+/**
  * Narrows the cards to one filter and a search ("Client or contact"). With no filter chosen the list is the signed
  * clients (Ops lead, 25 Nov); a search with no filter looks across everyone, so a client still unsigned can be found by name.
  */
@@ -221,8 +220,8 @@ export function filterCards(cards: ClientCard[], filter: string, q: string, meId
     if (s && ![c.name, c.person?.name, c.person?.email].some((v) => (v ?? "").toLowerCase().includes(s))) return false;
     // A client with an open position is in work, whatever its stage says (23 Nov: a new client's first position
     // used to stay hidden under Leads).
-    if (filter === "signed" || (!filter && !s)) return c.signed;
-    if (filter === "notsigned") return !c.signed;
+    if (filter === "signed" || (!filter && !s)) return !c.agreementNotSigned;
+    if (filter === "notsigned") return c.agreementNotSigned;
     if (filter === "active") return c.stage === "active" || c.stage === "onboarding" || c.openRoles.length > 0;
     if (filter === "quiet") return c.quietDays !== null && c.quietDays > QUIET_AFTER;
     if (filter === "leads") return c.stage === "lead" && c.openRoles.length === 0;
@@ -391,18 +390,18 @@ export function clientsLine(t: { clients: number; enquiries: number; agreements:
 }
 
 /** The days of this week, Monday to Saturday, each with the count of booked intro calls on it. */
-export function weekStrip(meetings: { at: number; state: string }[], now: number): { label: string; day: number; today: boolean; calls: number }[] {
+export function weekStrip(events: { when: number | null }[], now: number): { label: string; day: number; today: boolean; events: number }[] {
   const c = colombo(now);
   const monday = Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()) - ((c.getUTCDay() + 6) % 7) * DAY;
   return Array.from({ length: 6 }, (_, i) => {
     const start = monday + i * DAY;
     const d = new Date(start);
-    const calls = meetings.filter((m) => m.state === "booked" && colombo(m.at).getTime() >= start && colombo(m.at).getTime() < start + DAY).length;
+    const count = events.filter((e) => e.when !== null && colombo(e.when).getTime() >= start && colombo(e.when).getTime() < start + DAY).length;
     return {
       label: d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }),
       day: d.getUTCDate(),
       today: Math.floor(colombo(now).getTime() / DAY) * DAY === start,
-      calls,
+      events: count,
     };
   });
 }

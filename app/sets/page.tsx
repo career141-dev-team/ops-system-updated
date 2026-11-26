@@ -7,6 +7,7 @@ import { clientSetsNewestFirst, desk, member as memberIn, runClocks } from "@/da
 import { MIN_CVS, whereItStands } from "@/lib/clientSets";
 import { day, foundInWords, listed, type Listed } from "@/lib/listing";
 import { currentMember } from "@/lib/session";
+import { awaiting } from "@/lib/setsBoard";
 
 export default async function SetsPage({
   searchParams,
@@ -25,7 +26,7 @@ export default async function SetsPage({
   const rows: Listed[] = sets.map((set) => {
     const owner = memberIn(db, set.ownerId)?.name ?? "nobody";
     const missing = set.candidates.filter((who) => !who.fileId).length;
-    const undecided = set.candidates.filter((who) => !who.decision).length;
+    const undecided = awaiting(set);
     return {
       id: set.id,
       href: "/sets/" + set.id,

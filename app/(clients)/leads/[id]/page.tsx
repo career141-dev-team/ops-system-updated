@@ -7,14 +7,13 @@ import {
   checkLeadDuplicate,
   chooseLeadMatch,
   markLeadNewClient,
+  makeFinalAgreement,
   closeLead,
   decideLeadIndustry,
   declineAgreement,
   dictateRequirement,
   readRequirementFromCall,
   draftNextChase,
-  markMeetingHeld,
-  markMeetingNotHeld,
   openEarly,
   previewAgreement,
   recordAgreementCountersigned,
@@ -52,6 +51,7 @@ import {
   meetingsForLead,
   member as memberIn,
   numberOf,
+  positionIn,
   requirementForLead,
   switchedOn,
   templateFor,
@@ -67,6 +67,8 @@ import {
   ESA_FIELDS,
   agreementVersions,
   coverEmail,
+  expatMonthsOf,
+  isSentDraft,
   missingFields,
   nextDraftVersion,
   startingFields,
@@ -76,6 +78,7 @@ import { SOURCE_MEANINGS, STATE_MEANINGS, existingClientOf, introSatisfied, type
 import {
   KIND_MEANINGS,
   MAX_REBOOKS,
+  requirementOrganiser,
   STATE_MEANINGS as MEETING_STATES,
   type MeetingKind,
   type MeetingState,
@@ -101,11 +104,12 @@ import EsaDocument from "@/app/(clients)/clients/[id]/EsaDocument";
 import { esaDocument } from "@/lib/esaDocument";
 import { closeHref, panelHref } from "@/lib/panel";
 import { FieldList } from "@/app/ui/FieldList";
-import { MeetingOutcome } from "@/app/ui/MeetingOutcome";
 import { Answer, SubmitButton } from "@/app/ui/SubmitButton";
 import { AgreementFieldsForm } from "./AgreementFieldsForm";
 import { CoverEmailPreview } from "./CoverEmailPreview";
 import { MeetingBookingForm } from "./MeetingBookingForm";
+import { CallOutcomeForms } from "./CallOutcomeForms";
+import { HeardMore } from "@/app/ui/HeardMore";
 import { leadNextStep } from "@/lib/nextStep";
 import { actionInWords } from "@/lib/auditWords";
 import { REQUIREMENT_FIELDS, briefText, handoverChecklist, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
@@ -149,12 +153,12 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string; near?: string; panel?: string }>;
+  searchParams: Promise<{ msg?: string; at?: string; proposed?: string; runId?: string; view?: string; step?: string; near?: string; panel?: string; position?: string }>;
 }) {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const { id } = await params;
-  const { msg, at, proposed: proposedJson, view, step: stepParam, near: nearJson, panel } = await searchParams;
+  const { msg, at, proposed: proposedJson, view, step: stepParam, near: nearJson, panel, position: askedPositionId } = await searchParams;
 
   const db = await desk();
   const lead = leadIn(db, id);
@@ -181,7 +185,8 @@ export default async function LeadPage({
   const meetings = meetingsForLead(db, lead.id);
   const nextBooked = meetings.find((m) => m.state === "booked") ?? null;
   const introMeetings = meetings.filter((m) => m.kind === "intro");
-  const requirementMeeting = meetings.find((m) => m.kind === "requirement") ?? null;
+  const asked = askedPositionId ? positionIn(db, askedPositionId) : null;
+  const askedPosition = asked && db.requirements.find((r) => r.id === asked.requirementId)?.leadId === lead.id ? asked : null;
 
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   const taSide = await taPeople();
@@ -234,6 +239,9 @@ export default async function LeadPage({
   const position = requirement
     ? (db.positions.find((p) => p.requirementId === requirement.id) ?? null)
     : null;
+  // A call asked for from a position's tab (a lead with no client record yet) is that position's call.
+  const callPosition = askedPosition ?? position;
+  const requirementMeeting = meetings.find((m) => m.kind === "requirement" && (!askedPosition || m.positionId === askedPosition.id)) ?? null;
 
   const signedFiles = db.files.filter((f) => f.kind === "esa_signed");
   const countersignedFiles = db.files.filter((f) => f.kind === "esa_countersigned");
@@ -600,9 +608,19 @@ export default async function LeadPage({
                       Approve &amp; send
                     </button>
                   </form>
-                  <a href="#versions-card" className={pillSecondary}>
-                    Record signed copy
-                  </a>
+                  {/* 26 Nov (Nov 25 ops meeting): a draft cannot be signed; it is made final first. */}
+                  {isSentDraft(esa) ? (
+                    <form action={makeFinalAgreement}>
+                      <input type="hidden" name="esaId" value={esa.id} />
+                      <SubmitButton id="make-final" className={pillSecondary}>
+                        Make the final agreement
+                      </SubmitButton>
+                    </form>
+                  ) : (
+                    <a href="#versions-card" className={pillSecondary}>
+                      Record signed copy
+                    </a>
+                  )}
                   <a href="#versions-card" className="px-3 py-2 text-[14px] font-medium text-brand hover:underline">
                     They want changes
                   </a>
@@ -692,11 +710,11 @@ export default async function LeadPage({
               {esa && agreementDone && (
                 <div className="flex flex-col gap-3 border-t border-rule pt-3">
                   <span className={figmaLabel}>THE AGREEMENT DETAILS</span>
-                  <FieldList items={ESA_FIELDS.map((f) => ({ label: f.label, value: esa.fields[f.key] }))} />
+                  <FieldList items={ESA_FIELDS.map((f) => ({ label: f.label, value: f.key === "expatFeeMonths" ? String(expatMonthsOf(esa.fields)) : esa.fields[f.key] }))} />
                 </div>
               )}
 
-              {esa && mayManage && !agreementDone && (
+              {esa && mayManage && !agreementDone && !isSentDraft(esa) && (
                 <details
                   open={esa.state === "negotiating"}
                   className="border-t border-rule pt-3"
@@ -755,7 +773,7 @@ export default async function LeadPage({
                 (esa.state === "sent" || esa.state === "chasing") &&
                 mayManage && (
                   <div className="flex flex-col gap-3 border-t border-rule pt-3">
-                    <details open>
+                    <details open hidden={isSentDraft(esa)}>
                       <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
                         Record signed copy from client
                       </summary>
@@ -1006,46 +1024,57 @@ export default async function LeadPage({
                 </div>
               )}
 
-              {requirementMeeting && (
-                <div className="flex flex-col gap-1 border-t border-rule pt-3 text-[13px] text-ink-soft">
+              {/* One requirement call per position (26 Nov, Nov 25 ops meeting): each is listed, and a booked one is answered here. */}
+              {meetings.filter((m) => m.kind === "requirement").map((meeting) => (
+                <div key={meeting.id} className="flex flex-col gap-1 border-t border-rule pt-3 text-[13px] text-ink-soft">
                   <p>
-                    <span className="font-medium text-ink">Requirement meeting:</span>{" "}
-                    {whenDate(requirementMeeting.at)} · {requirementMeeting.state}
+                    <span className="font-medium text-ink">
+                      Requirement meeting{meeting.positionId ? " for " + (positionIn(db, meeting.positionId)?.title ?? "a position") : ""}:
+                    </span>{" "}
+                    {whenLocal(meeting.at)} · {MEETING_STATES[meeting.state as MeetingState] ?? meeting.state}
                   </p>
-                  {requirementMeeting.joinUrl && (
+                  {meeting.joinUrl && (
                     <p>
                       Join link:{" "}
-                      <a href={requirementMeeting.joinUrl} className="text-brand hover:underline">
-                        {requirementMeeting.joinUrl}
+                      <a href={meeting.joinUrl} className="text-brand hover:underline">
+                        {meeting.joinUrl}
                       </a>
                     </p>
                   )}
-                  {requirementMeeting.teamsProblem && (
-                    <p className="text-warn">No Teams link was made: {requirementMeeting.teamsProblem}</p>
+                  {meeting.teamsProblem && <p className="text-warn">No Teams link was made: {meeting.teamsProblem}</p>}
+                  {renderInviteOutcome(db.messages.find((m) => m.subjectType === "meeting" && m.subjectId === meeting.id))}
+                  {meeting.brief && (
+                    <p>
+                      What they said: <span className="text-ink">{meeting.brief}</span>
+                    </p>
                   )}
-                  {(() => {
-                    const inv = db.messages.find(
-                      (m) => m.subjectType === "meeting" && m.subjectId === requirementMeeting.id,
-                    );
-                    return renderInviteOutcome(inv);
-                  })()}
+                  {(meeting.role || meeting.packageSaid) && (
+                    <p>
+                      {meeting.role || "Position not specified"} · {meeting.packageSaid || "Package not specified"}
+                    </p>
+                  )}
+                  <HeardMore meeting={meeting} />
+                  {mayManage && meeting.state === "booked" && <CallOutcomeForms meetingId={meeting.id} />}
                 </div>
-              )}
+              ))}
 
-              {mayManage && !requirementDone && (
+              {mayManage && (!requirementDone || askedPosition) && (
                 <details open={!requirementMeeting} className="border-t border-rule pt-3">
                   <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
                     {requirementMeeting
                       ? "Rebook requirement meeting"
                       : "Book the requirement meeting"}
+                    {callPosition ? " for " + callPosition.title : ""}
                   </summary>
                   <MeetingBookingForm
                     action={bookRequirementMeeting}
                     leadId={lead.id}
+                    hidden={callPosition ? { positionId: callPosition.id } : {}}
                     contact={{ name: lead.contactName, email: lead.contactEmail }}
                     taPeople={taPeopleList}
+                    taLeadId={callPosition?.primaryTaId ?? undefined}
                     members={db.members}
-                    organiserId={lead.ownerId}
+                    organiserId={(callPosition && requirementOrganiser(callPosition, db.members)) || lead.ownerId}
                     teamsOn={teamsOn}
                     submitLabel="Book the requirement meeting"
                   />
@@ -1401,77 +1430,9 @@ export default async function LeadPage({
                       </p>
                     )}
 
-                    {mayManage && meeting.state === "booked" && (
-                      <MeetingOutcome
-                        meetingId={meeting.id}
-                        held={
-                        <form action={markMeetingHeld} className="flex flex-col gap-2.5">
-                          <KeepFields id="meeting-held" />
-                          <input type="hidden" name="meetingId" value={meeting.id} />
-                          <span className={figmaLabel}>
-                            It happened — what did they say?
-                          </span>
-                          <textarea
-                            name="brief"
-                            rows={2}
-                            required
-                            placeholder="Brief from the call (required)"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              name="role"
-                              placeholder="The position"
-                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                            />
-                            <input
-                              name="packageSaid"
-                              placeholder="Package mentioned"
-                              className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                            />
-                          </div>
-                          {/* 26 Nov (Nov 25 ops meeting): the intro call collects the JD and the salary scale too. */}
-                          <textarea
-                            name="jd"
-                            rows={3}
-                            placeholder="Job description (optional)"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                          <input
-                            name="salaryScale"
-                            placeholder="Salary scale (optional)"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                          <SubmitButton id={"held-" + meeting.id} answerAt="call-held" className={pillPrimary + " self-start"}>
-                            It was held
-                          </SubmitButton>
-                        </form>
-                        }
-                        notHeld={
-                        <form
-                          action={markMeetingNotHeld}
-                          className="flex flex-col gap-2.5"
-                        >
-                          <input type="hidden" name="meetingId" value={meeting.id} />
-                          <KeepFields id="meeting-not-held" />
-                          <span className={figmaLabel}>It did not happen — why?</span>
-                          <input
-                            name="reason"
-                            required
-                            placeholder="Reason it was not held"
-                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
-                          />
-                          <label className="flex items-center gap-2 text-[13px] text-ink">
-                            <input type="checkbox" name="clientReplied" />
-                            <span>The client is still answering us</span>
-                          </label>
-                          <SubmitButton id={"not-held-" + meeting.id} className={pillSecondary + " self-start"}>
-                            It was not held
-                          </SubmitButton>
-                        </form>
-                        }
-                      />
-                    )}
+                    <HeardMore meeting={meeting} />
+
+                    {mayManage && meeting.state === "booked" && <CallOutcomeForms meetingId={meeting.id} />}
                   </div>
                 ))}
 

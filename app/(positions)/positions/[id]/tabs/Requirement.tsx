@@ -95,7 +95,7 @@ export default function Requirement({ c, sp }: TabProps) {
                 {mayManage && !meeting?.heldAt && (
                   <div className="col-span-2">
                     {/* The requirement call is booked from the client's page, for this position, in its TA's calendar (26 Nov, Nov 25 ops meeting). */}
-                    <Link href={(client ? "/clients/" + client.id : "/leads/" + requirement.leadId + "?step=requirement") + "?panel=requirement-call&position=" + position.id} scroll={false} className={small}>
+                    <Link href={(client ? "/clients/" + client.id + "?panel=requirement-call&" : "/leads/" + requirement.leadId + "?step=requirement&") + "position=" + position.id} scroll={false} className={small}>
                       {meeting ? "Rebook the requirement call" : "Book the requirement call"}
                     </Link>
                   </div>

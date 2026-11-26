@@ -81,6 +81,13 @@ test("nationality is read from a labelled line or a known demonym (26 Nov)", () 
   assert.equal(nationalityOf("Nationality: Sri Lankan Male"), "Sri Lankan");
   assert.equal(nationalityOf("Nationality: Sinhala"), "Sri Lankan");
   assert.equal(nationalityOf("Nationality: Indian Female"), "Indian");
+  assert.equal(nationalityOf("Nationality : Sri Lankan Gender : Male"), "Sri Lankan");
+  assert.equal(nationalityOf("Nationality : Indian Marital Status : Single"), "Indian");
+  assert.equal(nationalityOf("Nationality\n\n: Indian"), "Indian");
+  assert.equal(nationalityOf("Nationality :\nSri Lankan"), "Sri Lankan");
+  assert.equal(nationalityOf("Nationality:\nReligion\nBuddhist"), "", "the next label is not a nationality");
+  assert.equal(nationalityOf("Citizenship\nBritish Council certificate, 2019"), "");
+  assert.equal(nationalityOf("Nationality\nTamil Nadu, India"), "");
   assert.equal(nationalityOf("No country or demonym mentioned here."), "");
   assert.equal(nationalityOf(""), "");
 });

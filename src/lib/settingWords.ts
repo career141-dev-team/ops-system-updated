@@ -44,6 +44,7 @@ const WORDS: Record<string, Words> = {
   "report.recipients": { label: "Weekly report goes to", about: "The Director's address", value: (v) => (String(v) || "Nobody yet") },
   "scoop.mailbox": { label: "Scoop mailbox", about: "The mailbox the Scoop emails arrive in", value: (v) => (String(v) || "Not set") },
   "scoop.senders": { label: "Scoop senders", about: "Who sends a Scoop: addresses or whole domains, separated by commas", value: (v) => (String(v) || "Nobody yet") },
+  "hiring.interviewers": { label: "Internal hiring interviewers", about: "Names separated by commas. Empty: the Director of Operations and Ops lead on the team list", value: (v) => (String(v) || "From the team list") },
   "invoice.series": { label: "Invoice numbers start", about: "The series prefix", value: (v) => String(v) },
   "ad.days": { label: "Advert runs for", about: "Then it is taken down", value: n("days", "day") },
 };

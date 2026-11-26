@@ -23,6 +23,8 @@ import {
   defaultFields,
   holeValues,
   expiresAt,
+  followFee,
+  isSentDraft,
   missingFields,
   nextChaseAt,
   problemWithChanges,
@@ -414,7 +416,7 @@ test("a Draft may leave only the signatory, the title and the address blank", ()
   assert.equal(problemWithDraft(blank, "draft"), null);
   assert.deepEqual(missingFields(blank).map((f) => f.key), ["companyAddress", "signatoryName", "signatoryTitle"], "final still blocks, and no mode means final");
   const noCompany = { ...filled(), companyName: "", clientType: "", expatFeeMonths: "" };
-  assert.deepEqual(missingFields(noCompany, "draft").map((f) => f.key), ["companyName", "clientType", "expatFeeMonths"], "anything else still blocks in a draft");
+  assert.deepEqual(missingFields(noCompany, "draft").map((f) => f.key), ["companyName", "clientType"], "anything else still blocks in a draft; a blank expat fee means twice the fee");
 });
 
 test("the cover email carries the draft note once, above the sign-off, and still refuses holes", () => {
@@ -437,14 +439,31 @@ test("a draft cannot be recorded as signed", () => {
 
 test("the expat fee is worded from its own months", () => {
   assert.equal(holeValues({ ...filled(), expatFeeMonths: "2" }).expatFeeText, "Two Months Gross Salary");
-  assert.equal(holeValues({ ...filled(), expatFeeMonths: "" }).expatFeeText, "");
+  assert.equal(holeValues({ ...filled(), feeMonths: "2", expatFeeMonths: "" }).expatFeeText, "Four Months Gross Salary");
   assert.equal(defaultFields({ guaranteeDays: 90, paymentDays: 30, replacementWorkingDays: 60, refundPct: 25 }).expatFeeMonths, "2");
 });
 
-test("the expat fee must stay 2 months while the template prints \"x 2\"", () => {
+test("the expat fee must stay twice the fee while the template prints \"x 2\"", () => {
   // 26 Nov: what the client signs in Word and what the screen and the invoice use must be the same number.
   assert.equal(problemWithDraft({ ...filled(), expatFeeMonths: "2" }), null);
   assert.match(problemWithDraft({ ...filled(), expatFeeMonths: "3" }) ?? "", /must be 2 months/);
+  assert.match(problemWithDraft({ ...filled(), feeMonths: "2", expatFeeMonths: "2" }) ?? "", /must be 4 months/);
+  assert.equal(problemWithDraft({ ...filled(), feeMonths: "2", expatFeeMonths: "4" }), null);
+  assert.equal(problemWithDraft({ ...filled(), feeMonths: "2", expatFeeMonths: "" }), null);
+});
+
+test("saving a new fee carries the expat fee with it", () => {
+  const before = { ...filled(), feeMonths: "1", expatFeeMonths: "2" };
+  assert.equal(followFee(before, { ...before, feeMonths: "2" }).expatFeeMonths, "4");
+  assert.equal(followFee(before, { ...before, expatFeeMonths: "" }).expatFeeMonths, "2");
+  assert.equal(followFee(before, { ...before, expatFeeMonths: "3" }).expatFeeMonths, "3", "typed by somebody: left for the send to refuse");
+});
+
+test("only a draft that is with the client can be made final", () => {
+  assert.equal(isSentDraft({ state: "sent", mode: "draft" }), true);
+  assert.equal(isSentDraft({ state: "chasing", mode: "draft" }), true);
+  assert.equal(isSentDraft({ state: "draft", mode: "draft" }), false);
+  assert.equal(isSentDraft({ state: "sent" }), false, "no mode is final");
 });
 
 test("a sent draft is not chased for a signature; one task asks for the signatory's details", async () => {

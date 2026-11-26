@@ -55,19 +55,18 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const closed = db.leads.filter((l) => (l.state.startsWith("closed") || l.state === "declined_industry") && l.updatedAt > monthAgo);
 
   // The week: calendar items (client meetings, interviews, joining days) plus unbooked intro calls.
-  const booked = db.meetings.filter((m) => m.kind === "intro" && m.state === "booked");
-  const week = weekStrip(booked, now);
+  const items = calendarItems(db);
+  const week = weekStrip(items, now);
   const weekEnd = now + 7 * 86_400_000;
-  const slots = booked.filter((m) => m.at >= now - 3_600_000 && m.at < weekEnd).sort((a, b) => a.at - b.at);
-  const weekEvents = calendarItems(db)
+  const weekEvents = items
     .filter((ev) => ev.when !== null && ev.when >= now - 3_600_000 && ev.when < weekEnd)
     .sort((a, b) => (a.when as number) - (b.when as number));
   const unbooked = all.filter((c) => c.column === "intro" && !c.meeting);
   const toCheck = all.filter((c) => c.column === "new" && c.flags.length > 0);
   const stands = {
-    head: slots.length + (slots.length === 1 ? " intro call" : " intro calls") + " this week.",
+    head: weekEvents.length + (weekEvents.length === 1 ? " thing" : " things") + " on the calendar this week.",
     body: [
-      ...slots.slice(0, 1).map((m) => (db.leads.find((l) => l.id === m.leadId)?.company ?? "A lead") + " is booked for " + dayWords(m.at) + " " + clockWords(m.at) + "."),
+      ...weekEvents.slice(0, 1).map((ev) => "Next: " + ev.title + ", " + ev.sub + ", " + dayWords(ev.when!) + " " + clockWords(ev.when!) + "."),
       ...unbooked.slice(0, 1).map((c) => c.company + " still needs a time."),
       ...toCheck.slice(0, 1).map((c) => (c.match ? c.company + " may already be a client." : c.company + " is waiting for its checks.")),
     ].join(" "),
@@ -182,7 +181,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 <div key={d.day} className={"flex w-[47px] flex-col items-center gap-0.5 rounded-[12px] py-2 " + (d.today ? "bg-bg-brand" : "border border-rule")}>
                   <span className="t-micro text-ink-3">{d.label}</span>
                   <span className={"t-body-m " + (d.today ? "text-brand" : "")}>{d.day}</span>
-                  {(d.today || d.calls > 0) && <span aria-hidden="true" className="size-[5px] rounded-[3px] bg-brand" />}
+                  {(d.today || d.events > 0) && <span aria-hidden="true" className="size-[5px] rounded-[3px] bg-brand" />}
                 </div>
               ))}
             </div>

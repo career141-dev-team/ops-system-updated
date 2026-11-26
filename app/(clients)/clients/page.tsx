@@ -11,6 +11,7 @@ import { agoShort } from "@/lib/clientCards";
 import {
   CLIENT_FILTERS,
   checkInText,
+  chipFilter,
   clientCards,
   clientTotals,
   clientsLine,
@@ -77,7 +78,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             {CLIENT_FILTERS.map((x) => (
               <Link
                 key={x.key}
-                href={x.key === "signed" ? keep({}) : keep(f === x.key ? {} : { f: x.key })}
+                href={keep({ f: chipFilter(x.key, f, q) })}
                 aria-current={f === x.key || (!f && !q && x.key === "signed") ? "true" : undefined}
                 className={"t-label rounded-full px-3.5 py-1.5 " + (f === x.key || (!f && !q && x.key === "signed") ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
               >

@@ -14,7 +14,7 @@ import { currentMember } from "@/lib/session";
 import { people as taPeople } from "@/lib/ta";
 import { ClientsHead, Msg } from "../../parts";
 
-type SP = { msg?: string; q?: string; handler?: string; type?: string; min?: string; max?: string; priority?: string; backup?: string; panel?: string; on?: string; k?: string };
+type SP = { msg?: string; q?: string; handler?: string; type?: string; min?: string; max?: string; currency?: string; priority?: string; backup?: string; panel?: string; on?: string; k?: string };
 
 /**
  * Clients, positions (23 Nov, the ops team's feedback): every client's positions with the package and the
@@ -27,18 +27,21 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const sp = await searchParams;
-  const { msg, q = "", handler = "", type = "", min = "", max = "", priority = "", backup = "" } = sp;
+  const { msg, q = "", handler = "", type = "", min = "", max = "", currency = "", priority = "", backup = "" } = sp;
   const db = await desk();
   const totals = clientTotals(db, Date.now());
   const ta = await taPeople();
   const taList = ta.ok ? ta.data : [];
   const all = positionRows(db, (id) => taList.find((p) => p.id === id)?.fullName ?? null);
-  const rows = filterPositionRows(all, q, handler, { type, min, max, priority, backup });
+  const currencies = [...new Set(all.filter((r) => r.value !== null).map((r) => r.currency || "LKR"))].sort();
+  // With only one currency there is nothing to choose, and the range is in that one.
+  const inCurrency = currency || (currencies.length === 1 ? currencies[0] : "LKR");
+  const rows = filterPositionRows(all, q, handler, { type, min, max, currency: inCurrency, priority, backup });
   const popupRow = sp.panel === "count" && sp.on && sp.k && isCountKind(sp.k) ? (all.find((r) => r.positionId === sp.on) ?? null) : null;
   const mayEdit = can(me, "client.manage");
   const mayMove = can(me, "task.reassign");
   const team = db.members.filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"));
-  const filters: Record<string, string> = { ...(q ? { q } : {}), ...(handler ? { handler } : {}), ...(type ? { type } : {}), ...(min ? { min } : {}), ...(max ? { max } : {}), ...(priority ? { priority } : {}), ...(backup ? { backup } : {}) };
+  const filters: Record<string, string> = { ...(q ? { q } : {}), ...(handler ? { handler } : {}), ...(type ? { type } : {}), ...(min ? { min } : {}), ...(max ? { max } : {}), ...(currency ? { currency } : {}), ...(priority ? { priority } : {}), ...(backup ? { backup } : {}) };
   const anyFilter = Object.keys(filters).length > 0;
   const here = "/clients/positions" + (anyFilter ? "?" + new URLSearchParams(filters).toString() : "");
   // A count is a link that opens the list behind it; a zero is plain text.
@@ -98,12 +101,24 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
               <option value="P3">P3</option>
             </select>
           </label>
+          {currencies.length > 1 && (
+            <label className="flex flex-col gap-1">
+              <span className="t-small text-ink-3">Value currency</span>
+              <select name="currency" defaultValue={inCurrency} className={sel}>
+                {[...new Set(["LKR", ...currencies])].map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
-            <span className="t-small text-ink-3">Value from</span>
+            <span className="t-small text-ink-3">Value from ({inCurrency})</span>
             <input name="min" type="number" min="0" defaultValue={min} className={sel + " w-28"} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="t-small text-ink-3">Value to</span>
+            <span className="t-small text-ink-3">Value to ({inCurrency})</span>
             <input name="max" type="number" min="0" defaultValue={max} className={sel + " w-28"} />
           </label>
           <button type="submit" className={pillSecondary}>
@@ -174,7 +189,7 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
                       <input type="hidden" name="back" value={here} />
                       <span className="t-small text-ink-3">Monthly salary (gives the value)</span>
                       <div className="flex gap-2">
-                        <input name="salaryMonthly" type="number" min="0" defaultValue={r.salaryMonthly ?? ""} placeholder="Monthly" className={panelInput} />
+                        <input name="salaryMonthly" inputMode="decimal" defaultValue={r.salaryMonthly || ""} placeholder="Monthly" className={panelInput} />
                         <input name="currency" defaultValue={r.currency} placeholder="LKR" className={panelInput + " !w-24"} />
                       </div>
                       <button type="submit" className={pillSecondary + " w-fit"}>

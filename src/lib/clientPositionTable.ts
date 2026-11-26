@@ -79,6 +79,8 @@ export interface PositionFilters {
   type?: string;
   min?: string;
   max?: string;
+  /** The currency min and max are in. Blank means LKR, and so does a row with no currency written. */
+  currency?: string;
   priority?: string;
   backup?: string;
 }
@@ -96,6 +98,8 @@ export function filterPositionRows(rows: PositionRow[], q: string, handlerId: st
     // A row with no value cannot be inside a range, so a bound drops it.
     if ((min !== null && Number.isFinite(min)) || (max !== null && Number.isFinite(max))) {
       if (r.value === null) return false;
+      // Amounts in different currencies are never compared.
+      if ((r.currency || "LKR") !== (f.currency || "LKR")) return false;
       if (min !== null && Number.isFinite(min) && r.value < min) return false;
       if (max !== null && Number.isFinite(max) && r.value > max) return false;
     }

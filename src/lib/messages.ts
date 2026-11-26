@@ -204,6 +204,7 @@ export function draftKind(message: { subjectType: string | null; templateKey?: s
   if (message.templateKey?.includes("chase")) return "chases";
   if (message.subjectType === "esa") return "agreements";
   if (message.subjectType === "invoice") return "invoices";
+  if (message.subjectType === "applicant") return "candidates";
   if (
     (message.subjectType === "interview" || message.subjectType === "placement" || message.subjectType === "reference") &&
     message.templateKey !== "interview.client_feedback"

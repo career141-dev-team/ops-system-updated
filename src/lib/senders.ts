@@ -129,16 +129,6 @@ export function isClientThreadedTemplate(templateKey: string | null | undefined)
   );
 }
 
-/** Format a reply subject without stacking "Re:" or stale reference tags. */
-export function replySubjectFor(firstSubject: string): string {
-  const clean = firstSubject
-    .replace(/\[C141-[^\]]*\]/gi, " ")
-    .replace(/^(?:\s*re\s*:\s*)+/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return clean ? `Re: ${clean}` : "Re:";
-}
-
 type ThreadDb = Pick<OpsDatabase, "messages" | "clientSets" | "agreements" | "clients" | "leads" | "positions" | "placements" | "interviews">;
 
 /** Resolve the Ops client id for a message's subject, if it belongs to one. */
@@ -174,49 +164,37 @@ export function clientIdForMessage(
 }
 
 /**
- * One email thread per client (26 Nov, PR 8): returns the last `providerMessageId` sent to that
- * client and the thread's first subject, so later set covers, feedback chases, check-ins and
- * ESA chases thread under the first email.
+ * One email thread per client (26 Nov, PR 8): the `providerMessageId` of the last client-threaded email
+ * sent to this Ops client that shares a recipient with the new one. Candidate mail is never answered.
+ * Threading is the mail headers only; a message keeps its own subject.
  */
-export function threadFor(
-  db: ThreadDb,
-  clientId: string,
-): { inReplyToProviderId: string | null; subject: string | null } {
+export function threadFor(db: ThreadDb, clientId: string | null, to: string[]): string | null {
+  if (!clientId) return null;
+  const theirs = new Set(to.map((a) => a.trim().toLowerCase()));
   const sent = db.messages
     .filter(
       (m) =>
         m.channel === "email" &&
         m.state === "sent" &&
         Boolean(m.providerMessageId) &&
+        isClientThreadedTemplate(m.templateKey) &&
+        m.to.some((a) => theirs.has(a.trim().toLowerCase())) &&
         clientIdForMessage(db, m.subjectType, m.subjectId) === clientId,
     )
     .sort((a, b) => (a.sentAt ?? a.createdAt) - (b.sentAt ?? b.createdAt));
-  if (sent.length === 0) return { inReplyToProviderId: null, subject: null };
-  return {
-    inReplyToProviderId: sent[sent.length - 1]!.providerMessageId,
-    subject: sent[0]!.subject,
-  };
+  return sent[sent.length - 1]?.providerMessageId ?? null;
 }
 
 /**
  * Our reference goes in every subject we send, because it is the one thing that
  * matches a reply back with certainty. Added here rather than at drafting time
- * so it cannot be edited out of a draft by accident.
- *
- * For per-client threaded kinds (`set.cover`, `feedback.chase`, check-in, `esa.chase*`),
- * uses one `[C141-CLIENT-…]` reference per client so set numbers don't split the thread.
+ * so it cannot be edited out of a draft by accident. It always names the
+ * message's own record: one shared per client left a reply unable to stop its
+ * record's chase (26 Nov).
  */
-export function subjectWithReference(
-  subject: string,
-  subjectType: string | null,
-  subjectId: string | null,
-  options?: { clientId?: string | null; templateKey?: string | null },
-): string {
+export function subjectWithReference(subject: string, subjectType: string | null, subjectId: string | null): string {
   if (!subjectType || !subjectId) return subject;
   if (/\[C141-[^\]]*\]/i.test(subject)) return subject;
-  if (options?.clientId && isClientThreadedTemplate(options.templateKey)) {
-    return (subject + " " + referenceFor("client", options.clientId)).trim();
-  }
   return (subject + " " + referenceFor(subjectType, subjectId)).trim();
 }
 
@@ -257,8 +235,8 @@ export interface EmailToSend {
    * The message this one answers (5 Nov).
    *
    * Without it a reply arrives as a new email beside the conversation, which
-   * is exactly what made people go back to Outlook. Microsoft threads on the
-   * headers, so they are set on the draft rather than on the send.
+   * is exactly what made people go back to Outlook. The draft is made as
+   * Microsoft's own reply to this message when the sender's mailbox holds it.
    */
   inReplyTo?: string | null;
 }
@@ -271,6 +249,36 @@ export interface EmailToSend {
  * this refuses and says so.
  */
 export const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+
+/**
+ * Microsoft's own reply draft to this message, or null when the sender's mailbox does
+ * not hold it or Microsoft will not make one. Graph refuses `In-Reply-To` as a custom header (only `x-`
+ * names are allowed), so this is the way into a thread. Null means: send it as a new email.
+ */
+async function replyDraft(
+  mailbox: string,
+  /** An internet message id ("<...>") from our own sends, or Graph's own id from mail we read (the /mail reply). */
+  messageId: string,
+  auth: Record<string, string>,
+  signal: AbortSignal,
+): Promise<{ id: string; internetMessageId?: string } | null> {
+  try {
+    let original: string | undefined = messageId;
+    if (messageId.startsWith("<")) {
+      const filter = "internetMessageId eq '" + messageId.replace(/'/g, "''") + "'";
+      const found = await fetch(mailbox + "/messages?$filter=" + encodeURIComponent(filter) + "&$select=id", { headers: auth, signal });
+      if (!found.ok) return null;
+      original = ((await found.json()) as { value?: { id?: string }[] }).value?.[0]?.id;
+    }
+    if (!original) return null;
+    const made = await fetch(mailbox + "/messages/" + encodeURIComponent(original) + "/createReply", { method: "POST", headers: auth, signal });
+    if (!made.ok) return null;
+    const draft = (await made.json()) as { id?: string; internetMessageId?: string };
+    return draft.id ? { id: draft.id, internetMessageId: draft.internetMessageId } : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Sends as a draft and then sends the draft, rather than Graph's one-step
@@ -299,29 +307,26 @@ export async function sendEmail(mail: EmailToSend): Promise<SendOutcome> {
 
     // The common box is copied, so a client thread is never one person's alone.
     const copyTo = (process.env.OPS_COMMON_MAILBOX ?? "").trim();
-    const draft = await fetch(mailbox + "/messages", {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        subject: mail.subject,
-        body: { contentType: "Text", content: mail.body },
-        toRecipients: mail.to.map((address) => ({ emailAddress: { address } })),
-        ccRecipients: copyTo && !mail.to.includes(copyTo) ? [{ emailAddress: { address: copyTo } }] : [],
-        ...(mail.inReplyTo
-          ? {
-              internetMessageHeaders: [
-                { name: "In-Reply-To", value: mail.inReplyTo },
-                { name: "References", value: mail.inReplyTo },
-              ],
-            }
-          : {}),
-      }),
-      signal: stop,
-    });
+    const fields = {
+      subject: mail.subject,
+      body: { contentType: "Text", content: mail.body },
+      toRecipients: mail.to.map((address) => ({ emailAddress: { address } })),
+      ccRecipients: copyTo && !mail.to.includes(copyTo) ? [{ emailAddress: { address: copyTo } }] : [],
+    };
+    const reply = mail.inReplyTo ? await replyDraft(mailbox, mail.inReplyTo, auth, stop) : null;
+    // createReply addresses the draft itself, so our recipients and words replace its own before anything goes.
+    const draft = reply
+      ? await fetch(mailbox + "/messages/" + encodeURIComponent(reply.id), {
+          method: "PATCH",
+          headers: auth,
+          body: JSON.stringify(fields),
+          signal: stop,
+        })
+      : await fetch(mailbox + "/messages", { method: "POST", headers: auth, body: JSON.stringify(fields), signal: stop });
     if (!draft.ok) {
       return { ok: false, providerMessageId: null, reason: "Microsoft refused the draft (" + draft.status + ")." };
     }
-    const created = (await draft.json()) as { id?: string; internetMessageId?: string };
+    const created = reply ?? ((await draft.json()) as { id?: string; internetMessageId?: string });
     if (!created.id) return { ok: false, providerMessageId: null, reason: "Microsoft made a draft without naming it." };
 
     // The files go onto the draft, before it is sent. If one will not attach the

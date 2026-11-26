@@ -20,6 +20,7 @@
  */
 
 import { existingClientOf } from "@/lib/leads";
+import { unanswered } from "@/lib/setsBoard";
 
 const DAY = 86_400_000;
 
@@ -430,7 +431,7 @@ export function setNextStep(
 ): Step {
   const ready = set.candidates.filter((c) => !c.problem && c.fileId);
   const missing = set.candidates.filter((c) => c.problem || !c.fileId);
-  const undecided = set.candidates.filter((c) => !c.decision);
+  const undecided = set.candidates.filter(unanswered);
 
   if (set.state === "withdrawn") {
     return {

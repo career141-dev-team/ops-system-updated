@@ -141,10 +141,23 @@ const KNOWN_DEMONYMS = [
  */
 export function nationalityOf(text: string): string {
   if (!text) return "";
-  for (const raw of text.split(/\r?\n/)) {
-    const m = raw.trim().match(/^(?:nationality|citizenship)\s*[:\-–]\s*([A-Za-z][A-Za-z\s'-]{1,35}?)(?:\s*[|,;.(].*)?$/i);
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    const label = lines[i].match(/^(?:nationality|citizenship)\s*(?:[:\-–]\s*(.*))?$/i);
+    if (!label) continue;
+    const below = !label[1];
+    // Two columns flattened onto one line ("Sri Lankan Gender : Male"): stop before the next label.
+    const value = (below ? (lines[i + 1] ?? "").replace(/^[:\-–]\s*/, "") : label[1]).replace(/\s+[A-Za-z]+\s*:.*$/, "");
+    const m = value.match(/^([A-Za-z][A-Za-z\s'-]{1,35}?)(?:\s*[|,;.(].*)?$/);
     if (!m) continue;
     const cleaned = m[1].trim().replace(/[.;,]+$/, "");
+    // The line under a bare label may be anything (a heading, the next label): only an exact nationality is taken from it.
+    if (below) {
+      if (/^(?:sri[\s-]*lankan?|sinhala|sinhalese)$/i.test(cleaned)) return "Sri Lankan";
+      const exact = KNOWN_DEMONYMS.find((k) => k.toLowerCase() === cleaned.toLowerCase());
+      if (exact) return exact;
+      continue;
+    }
     if (/lanka|\b(?:sinhala|sinhalese|tamil|moor|muslim|burgher)\b/i.test(cleaned)) return "Sri Lankan";
     // Known demonym at the start: drops trailing words such as "Male" or "Female".
     const lc = cleaned.toLowerCase().replace(/\s+/g, " ");

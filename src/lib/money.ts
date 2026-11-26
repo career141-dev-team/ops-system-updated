@@ -52,9 +52,6 @@ export const LATE_PCT_PER_MONTH = 5;
 /** Unpaid this long and somebody has to decide to write it off. */
 export const WRITE_OFF_DAYS = 90;
 
-/** Default expat fee when an agreement did not record one (clause 5.2, 26 Nov). */
-export const EXPAT_FEE_MONTHS = 2;
-
 /**
  * Whether a candidate's nationality is non-Sri Lankan (26 Nov, Nov 25 ops meeting).
  *
@@ -85,7 +82,7 @@ export function nationalityFromChoice(kind: string, typed: string): { ok: true; 
 /**
  * The number of months of salary billed for a placement (26 Nov, Nov 25 ops meeting).
  *
- * An expat placement gets the agreement's `expatFeeMonths` (default 2, clause 5.2);
+ * An expat placement gets the `expatFeeMonths` stored on it, or twice the fee when none was (clause 5.2);
  * a Sri Lankan (or not-yet-confirmed) placement gets `feeMonths` (default 1).
  */
 export function feeMonthsFor(placement: {
@@ -93,10 +90,11 @@ export function feeMonthsFor(placement: {
   expatFeeMonths?: number;
   nationality?: string;
 }): number {
+  const local = placement.feeMonths > 0 ? placement.feeMonths : 1;
   if (isExpat(placement.nationality)) {
-    return placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : EXPAT_FEE_MONTHS;
+    return placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : 2 * local;
   }
-  return placement.feeMonths > 0 ? placement.feeMonths : 1;
+  return local;
 }
 
 /**

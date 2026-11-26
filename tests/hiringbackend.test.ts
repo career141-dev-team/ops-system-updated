@@ -21,6 +21,13 @@ import {
   rejectMessage,
   sectionOfStage,
   vacancySourceLabel,
+  STAGE_ACTION,
+  problemWithDecisionStage,
+  rejectKind,
+  slotsThisWeek,
+  staleInvites,
+  totals,
+  triesSoFar,
 } from "../src/lib/hiring";
 
 test("Talked - not a fit needs a reason; other call results do not (22 Nov)", () => {
@@ -165,4 +172,46 @@ test("PR 7: Scoops & vacancies source, callers, call outcomes, default 4 pm slot
     { id: "a1", vacancyId: "v1", name: "Shortlisted Person", source: "Scoop", phone: null, email: null, stage: "shortlisted", tries: 1, detail: "Shortlisted", checkResults: {}, interviewAt: now + 86_400_000, interviewer: "Asma", place: "Office", score: 5, notes: null, salary: null, startDate: null, rejectReason: null, cvFileId: null, createdAt: now, updatedAt: now },
   ];
   assert.equal(hiringView(db, null).slots.length, 1);
+});
+
+test("hiring audit fixes: reject kind, hold, reopen, guards, week, invites (26 Nov)", () => {
+  assert.equal(rejectKind("shortlisted"), "final");
+  assert.equal(rejectKind("offered"), "final");
+  assert.equal(rejectKind("fits"), "screening");
+
+  const hold = offerOutcomeTransition({ decision: "hold", startDate: null, salary: null, reason: "", currentStage: "offered" });
+  assert.deepEqual([hold.stage, hold.detail], ["offered", "Offered · on hold"]);
+
+  assert.equal(STAGE_ACTION.non_responsive?.panel, "call");
+  assert.equal(STAGE_ACTION.not_interested?.panel, "call");
+  assert.equal(triesSoFar("non_responsive", 3), 0);
+  assert.equal(triesSoFar("call", 2), 2);
+  const again = callOutcomeTransition({ result: "No answer (try 1 of 3)", currentTries: triesSoFar("non_responsive", 3), note: "" });
+  assert.deepEqual([again.stage, again.tries, again.detail], ["call", 1, "No answer · try 1 of 3"]);
+
+  assert.ok(problemWithDecisionStage("accept", "hired"));
+  assert.ok(problemWithDecisionStage("reject", "rejected"));
+  assert.ok(problemWithDecisionStage("accept", "call"));
+  assert.equal(problemWithDecisionStage("accept", "offered"), null);
+  assert.equal(problemWithDecisionStage("reject", "call"), null);
+
+  const draft = { state: "draft", templateKey: "hiring.interview_invite", subjectType: "applicant", subjectId: "a1" };
+  const others = [{ ...draft, state: "sent" }, { ...draft, subjectId: "a2" }, { ...draft, templateKey: null }];
+  assert.deepEqual(staleInvites([draft, ...others], "a1"), [draft]);
+
+  assert.deepEqual(hiringInterviewersFrom("Director of Operations, Ops Lead", [{ name: "Asma", role: "director_ops", active: true }]), ["Asma"]);
+  assert.equal(seed(Date.now()).settings.find((s) => s.key === "hiring.interviewers")?.value, "");
+
+  assert.ok(problemWithVacancy("Recruiter", 1, "referral", " "));
+  assert.equal(problemWithVacancy("Recruiter", 1, "referral", "Asma"), null);
+  assert.equal(problemWithVacancy("Recruiter", 1, "scoop"), null);
+
+  const two = hiringView({ vacancies: [{ id: "v", title: "R", places: 1, filled: 0, status: "open", checks: [], postedAt: 0 }], applicants: ["shortlisted", "offered"].map((stage) => ({ id: stage, vacancyId: "v", stage })) }, null);
+  assert.equal(totals(two, 0).decision, 1);
+
+  // Wednesday 18 Nov 2026: the week is Monday 16 to Sunday 22, Colombo time.
+  const wed = Date.parse("2026-11-18T06:00:00Z");
+  const slot = (iso: string) => ({ at: Date.parse(iso), name: iso, line: "" });
+  const slots = [slot("2026-11-15T23:00:00+05:30"), slot("2026-11-16T00:30:00+05:30"), slot("2026-11-22T23:00:00+05:30"), slot("2026-11-23T00:30:00+05:30")];
+  assert.deepEqual(slotsThisWeek(slots, wed), slots.slice(1, 3));
 });

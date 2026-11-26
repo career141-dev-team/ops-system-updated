@@ -54,6 +54,7 @@ export function settingChange(
   }
 
   const text = raw.trim();
-  if (!text) return { ok: false, message: key + " cannot be left empty." };
+  // Empty interviewers means "the leadership on the team list".
+  if (!text && key !== "hiring.interviewers") return { ok: false, message: key + " cannot be left empty." };
   return { ok: true, value: text };
 }

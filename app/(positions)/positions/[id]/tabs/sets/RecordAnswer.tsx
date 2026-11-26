@@ -2,7 +2,7 @@ import Panel, { PanelSection } from "@/app/ui/Panel";
 import { EmptyState, PanelField, panelInput, pillSecondary } from "@/app/ui/figma";
 import { recordSetReceived } from "@/app/actions";
 import { closeHref } from "@/lib/panel";
-import { awaiting, shortDay } from "@/lib/setsBoard";
+import { awaiting, shortDay, unanswered } from "@/lib/setsBoard";
 
 import type { TabProps } from "../ctx";
 import { AnswerForm, WhatNext, WhoAndHow, WhyNow, rolePath, trail } from "./shared";
@@ -18,8 +18,8 @@ export default function RecordAnswer({ c, sp }: TabProps) {
       </Panel>
     );
   }
-  const open = set.candidates.filter((x) => !x.decision && !x.claimedAt);
-  const said = set.candidates.filter((x) => x.decision || x.claimedAt);
+  const open = set.candidates.filter(unanswered);
+  const said = set.candidates.filter((x) => !unanswered(x));
   const chases = c.db.messages.filter((m) => m.subjectId === set.id && m.templateKey === "feedback.chase" && m.state !== "draft");
   const whenLocal = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
   return (

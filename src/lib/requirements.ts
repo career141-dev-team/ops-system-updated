@@ -231,8 +231,13 @@ export function problemWithNewPosition(fields: RequirementFields, clientFound: b
   return null;
 }
 
+/** A currency as it is stored: " lkr" is "LKR". */
+export function currencyCode(text: string): string {
+  return text.trim().toUpperCase().slice(0, 5);
+}
+
 /**
- * The monthly salary typed on "New position" (26 Nov, Ops lead): optional, a plain positive number, so the value
+ * The monthly salary typed on "New position" or the positions table (26 Nov, Ops lead): optional, a plain positive number, so the value
  * of a position can be worked out later. "350,000" and "350 000" are read; anything else is refused, never guessed.
  */
 export function parseMonthlySalary(text: string): { ok: true; value: number | undefined } | { ok: false; problem: string } {

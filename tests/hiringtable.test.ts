@@ -42,8 +42,13 @@ test("the board shows a few cards a column and counts all of them", () => {
   const cols = boardColumns(applicantRows(view), 2);
   const to = cols.find((c) => c.stage === "call")!;
   assert.deepEqual([to.total, to.shown.length], [3, 2]);
-  assert.deepEqual(cols.map((c) => c.stage), ["call", "fits", "interview", "decision", "hired", "rejected"]);
+  assert.deepEqual(cols.map((c) => c.stage), ["call", "fits", "interview", "shortlisted", "offered", "decision", "hired", "rejected"]);
   assert.equal(cols.find((c) => c.stage === "decision")!.total, 0);
+});
+
+test("shortlisted and offered have their own board columns", () => {
+  const cols = boardColumns(applicantRows({ ...view, vacancies: [vac("v3", "Analyst", [person("8", "shortlisted", 1), person("9", "offered", 2)])] }));
+  assert.deepEqual(cols.filter((c) => c.total).map((c) => c.stage), ["shortlisted", "offered"]);
 });
 
 test("a long list is paged, and a page out of range lands on a real one", () => {

@@ -21,9 +21,13 @@ export function columnOf(set: BoardSet): BoardColumn {
   return awaiting(set) > 0 ? "client" : "answered";
 }
 
-/** People the client has neither answered nor claimed as their own. */
-export function awaiting(set: BoardSet): number {
-  return set.candidates.filter((c) => !c.decision && !c.claimedAt).length;
+/** The client has neither answered about this person nor claimed them as their own. The one rule for "no answer". */
+export function unanswered(c: { decision?: string | null; claimedAt?: number | null }): boolean {
+  return !c.decision && !c.claimedAt;
+}
+
+export function awaiting(set: { candidates: Parameters<typeof unanswered>[0][] }): number {
+  return set.candidates.filter(unanswered).length;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

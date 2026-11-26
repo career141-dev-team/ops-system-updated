@@ -162,6 +162,9 @@ import {
   problemWithCvBytes,
   problemWithHiringDecision,
   problemWithVacancy,
+  problemWithDecisionStage,
+  staleInvites,
+  triesSoFar,
 } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
@@ -184,7 +187,7 @@ import {
 import { settingChange } from "@/lib/settingsRules";
 import { askWithTools, problemWithRunning } from "@/lib/ai";
 import { agentSystemPrompt, AGENT_TOOLS, runAgentTool, withTaNames } from "@/lib/agentTools";
-import { answerGroupJoinRequest, clientIdForMessage, createWhatsAppGroup, getGroupInviteLink, graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, replySubjectFor, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference, threadFor } from "@/lib/senders";
+import { answerGroupJoinRequest, clientIdForMessage, createWhatsAppGroup, getGroupInviteLink, graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference, threadFor } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
@@ -207,6 +210,7 @@ import { invoiceSheet, nextInvoiceVersion } from "@/lib/invoiceDoc";
 import { drawInvoicePdf, problemWithBank } from "@/lib/invoicePdf";
 import {
   briefText,
+  currencyCode,
   parseMonthlySalary,
   problemWithNewPosition,
   missingFields as requirementMissing,
@@ -376,6 +380,8 @@ import {
   DRAFT_NOTE,
   TBC,
   problemWithSigningDraft,
+  followFee,
+  isSentDraft,
   canMoveTo,
   chaseStep,
   coverEmail,
@@ -394,6 +400,7 @@ import {
 import {
   type ClientStage,
   STAGE_MEANINGS,
+  clientAgreementNotSigned,
   callKindFor,
   problemWithBilling,
   problemWithClientRename,
@@ -404,6 +411,7 @@ import { invoiceHoles, problemWithInvoiceFill } from "@/lib/invoiceDoc";
 import {
   afterNotHeld,
   agreementDueAt,
+  callEffects,
   missingFromHeld,
   problemWithBooking,
   problemWithHeld,
@@ -505,7 +513,8 @@ export async function changeSetting(formData: FormData): Promise<void> {
   if (!can(member, "settings.manage")) {
     return redirect(landed(formData, "/settings", refusal("settings.manage")));
   }
-  const current = (await desk()).settings.find((s) => s.key === key);
+  // A desk seeded before 26 Nov has no interviewers row yet; saving it makes one.
+  const current = (await desk()).settings.find((s) => s.key === key) ?? (key === "hiring.interviewers" ? { value: "" } : undefined);
   if (!current) return redirect(landed(formData, "/settings", "There is no setting called " + key + "."));
 
   const decided = settingChange(key, current.value, raw, reason);
@@ -960,15 +969,20 @@ export async function writeNewMessage(formData: FormData): Promise<void> {
     .map((value) => String(value))
     .filter(Boolean);
 
+  // Only the client check-in is threaded: the form's key is taken for that and nothing else (and never for
+  // WhatsApp, where a key means a Meta template).
+  const checkin = channel === "email" && subjectType === "client" && formData.get("templateKey") === "checkin";
+  const inReplyTo = checkin ? threadFor(await desk(), subjectId, to) : null;
   const message = await draftMessage({
     channel,
     to,
     subject: subject.trim(),
     body,
-    templateKey: null,
+    templateKey: checkin ? "checkin" : null,
     subjectType,
     subjectId,
     attachmentFileIds,
+    ...(inReplyTo ? { inReplyToProviderId: inReplyTo } : {}),
   });
 
   revalidatePath("/mail");
@@ -1138,11 +1152,7 @@ async function approveOne(
   // The gate said yes. Now it actually goes, from the sender's mailbox,
   // and whatever the sender says is recorded as it is - including "we do not
   // know whether it went", which is a real answer and not a failure to hide.
-  const threadClientId = clientIdForMessage(db, message.subjectType, message.subjectId);
-  const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId, {
-    clientId: threadClientId,
-    templateKey: message.templateKey,
-  });
+  const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId);
   const outcome =
     message.channel === "group_post"
       ? groupPostIsManual()
@@ -2084,7 +2094,8 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   const db = await desk();
   const meeting = meetingIn(db, meetingId);
   const here = "/leads/" + (meeting?.leadId ?? "");
-  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
+  const call = callEffects(meeting?.kind ?? "intro");
+  const back = (msg: string) => redirect(leadBack(here, call.step, msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
 
@@ -2111,17 +2122,19 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   await cancelMeetingClocks(db, meetingId, member.id);
 
   const hours = numberOf(db, "esa.sendHours", 2);
-  await startTimer({
-    kind: "esa.send",
-    subjectType: "lead",
-    subjectId: row.leadId,
-    startsAt: now,
-    dueAt: agreementDueAt(now, hours),
-    warnAt: null,
-    ownerId: member.id,
-    payload: { label: leadIn(db, row.leadId)?.company ?? "" },
-  });
-  await patchLead(row.leadId, { state: "waiting_agreement" }, member.id, "lead.callHeld", null);
+  if (call.startsAgreement) {
+    await startTimer({
+      kind: "esa.send",
+      subjectType: "lead",
+      subjectId: row.leadId,
+      startsAt: now,
+      dueAt: agreementDueAt(now, hours),
+      warnAt: null,
+      ownerId: member.id,
+      payload: { label: leadIn(db, row.leadId)?.company ?? "" },
+    });
+    await patchLead(row.leadId, { state: "waiting_agreement" }, member.id, "lead.callHeld", null);
+  }
 
   // The TA lead needs the brief, not a summary of it. Two ways, because the TA
   // lead is a person in the TA System and may have no Ops account at all:
@@ -2135,7 +2148,7 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   const ours = db.members.find((m) => m.taUserId && m.taUserId === row.taLeadId) ?? null;
   await createTask({
     kind: "record",
-    title: "The brief from the intro call",
+    title: "The brief from the " + call.name,
     body:
       notes.brief.trim() +
       (ours ? "" : "\n\nPass this to the TA lead: we have no Ops account matched to them."),
@@ -2151,7 +2164,7 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
       {
         userId: row.taLeadId,
         type: "ops_brief",
-        title: "Intro call held: " + (leadIn(db, row.leadId)?.company ?? "a client"),
+        title: (call.step === "intro" ? "Intro call" : "Requirement call") + " held: " + (leadIn(db, row.leadId)?.company ?? "a client"),
         body: notes.brief.trim(),
       },
       { type: "lead", id: row.leadId },
@@ -2160,14 +2173,11 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
 
   revalidatePath(here);
   const missing = missingFromHeld(notes);
-  redirect(
-    leadMoved(
-      here,
-      "Saved. The agreement is due in " + hours + " hours." +
-        (missing.length ? " Still not known: " + missing.join(" and ") + "." : ""),
-      formData,
-    ),
-  );
+  const said =
+    (call.startsAgreement ? "Saved. The agreement is due in " + hours + " hours." : "Saved. The requirement call is held.") +
+    (missing.length ? " Still not known: " + missing.join(" and ") + "." : "");
+  if (!call.startsAgreement) back(said);
+  redirect(leadMoved(here, said, formData));
 }
 
 /**
@@ -2184,12 +2194,13 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
   const db = await desk();
   const meeting = meetingIn(db, meetingId);
   const here = "/leads/" + (meeting?.leadId ?? "");
-  const back = (msg: string) => redirect(leadBack(here, "intro", msg, formData));
+  const call = callEffects(meeting?.kind ?? "intro");
+  const back = (msg: string) => redirect(leadBack(here, call.step, msg, formData));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   if (!meeting) redirect("/leads?msg=" + encodeURIComponent("That meeting is gone."));
 
   const row = meeting as NonNullable<typeof meeting>;
-  const why = String(formData.get("reason") ?? "").trim();
+  const why =String(formData.get("reason") ?? "").trim();
   if (why.length < 4) back("Write one line about why it did not happen.");
   const clientReplied = formData.get("clientReplied") === "on";
 
@@ -2247,7 +2258,7 @@ export async function markMeetingNotHeld(formData: FormData): Promise<void> {
   }
   await createTask({
     kind: "call",
-    title: "Book the intro call again",
+    title: "Book the " + call.name + " again",
     body: outcome.because + " What happened last time: " + why,
     assigneeId: member.id,
     dueAt: nextNineAm(now),
@@ -2364,10 +2375,11 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
   // A draft that already went to the client and is now made final needs its new version at once.
   const madeFinal = !!esa && esa.mode === "draft" && mode === "final" && !!esa.sentAt;
 
-  if (esa) await patchAgreement(esa.id, { fields, mode }, member.id, "esa.fieldsSaved", null);
-  else await addAgreement({ ...blankAgreement(lead as NonNullable<typeof lead>, fields), mode });
+  const saving = followFee(esa?.fields ?? {}, fields);
+  if (esa) await patchAgreement(esa.id, { fields: saving, mode }, member.id, "esa.fieldsSaved", null);
+  else await addAgreement({ ...blankAgreement(lead as NonNullable<typeof lead>, saving), mode });
   revalidatePath(here);
-  const problem = problemWithDraft(fields, mode);
+  const problem = problemWithDraft(saving, mode);
   if (problem) back("Saved. " + problem);
 
   // "Save and make the draft": one click from an edited detail to the next version (17 Nov).
@@ -2644,6 +2656,38 @@ export async function sendAgreement(formData: FormData): Promise<void> {
           : "The cover email is drafted. Read it, then approve it to send.",
       ),
   );
+}
+
+/**
+ * A sent Draft becomes the Final (26 Nov, Nov 25 ops meeting): the same step as "They want changes" (negotiating,
+ * the chase stops, the two weeks keep running), with the mode turned to final and the next version made. Nothing is
+ * sent; blanks the Draft was allowed are named and filled on the lead page first.
+ */
+export async function makeFinalAgreement(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const esaId = String(formData.get("esaId") ?? "");
+  const db = await desk();
+  const esa = agreementIn(db, esaId);
+  const here = "/leads/" + (esa?.leadId ?? "");
+  const back = (msg: string) => redirect(leadBack(here, "agreement", msg, formData));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
+  const row = esa as NonNullable<typeof esa>;
+  if (!isSentDraft({ state: row.state, mode: row.mode })) back("Only a draft that is with the client can be made final.");
+
+  await patchAgreement(esaId, { state: "negotiating", mode: "final" }, member.id, "esa.negotiating", "Making the final agreement.");
+  await cancelClocksFor(db, "esa", esaId, member.id, "The final agreement is being made.", ["esa.chase"]);
+  revalidatePath(here);
+  const problem = problemWithDraft(row.fields, "final");
+  if (problem) back("It is now the final agreement. " + problem + " Fill it in below, then send.");
+  // Read again: the fill takes the mode off the row.
+  const fresh = await desk();
+  const made = await fillAgreementDraft(fresh, agreementIn(fresh, esaId)!, member.id, Date.now());
+  revalidatePath(here);
+  if ("error" in made) back("It is now the final agreement. " + made.error);
+  const done = made as Exclude<typeof made, { error: string }>;
+  back("The final agreement is drafted as version " + done.version + ". Read it, then send it. Nothing was sent.");
 }
 
 /**
@@ -3246,9 +3290,22 @@ export async function setPositionBackup(formData: FormData): Promise<void> {
       link: "/positions/" + positionId,
     });
   }
+  // Whoever was the backup is told they no longer are.
+  if (row.backupOwnerId && row.backupOwnerId !== newId) {
+    await createTask({
+      kind: "check",
+      title: "You are no longer the backup on " + row.title,
+      body: (newId ? "The backup is now " + nameOf(newId) + ": " : "The backup was removed: ") + reason,
+      assigneeId: row.backupOwnerId,
+      dueAt: Date.now(),
+      subjectType: "position",
+      subjectId: positionId,
+      link: "/positions/" + positionId,
+    });
+  }
   revalidatePath("/clients/positions");
   revalidatePath("/positions/" + positionId);
-  redirect(here + confirmed(newId ? "Backup is now " + nameOf(newId) + "." : "Backup removed.", here));
+  redirect(here + confirmed(newId ? "Backup is now "+ nameOf(newId) + "." : "Backup removed.", here));
 }
 
 /** Priority of a position: P1, P2, P3 or none (26 Nov, Nov 25 ops meeting). No reason needed. */
@@ -3279,10 +3336,10 @@ export async function setPositionSalary(formData: FormData): Promise<void> {
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
   if (!positionIn(db, positionId)) back("That position is gone.");
-  const text = String(formData.get("salaryMonthly") ?? "").replace(/,/g, "").trim();
-  const currency = String(formData.get("currency") ?? "").trim().toUpperCase().slice(0, 5);
-  const salary = text ? Number(text) : undefined;
-  if (salary !== undefined && !(salary > 0)) back("The monthly salary is a number above zero, or leave it empty to remove it.");
+  const currency = currencyCode(String(formData.get("currency") ?? ""));
+  const read = parseMonthlySalary(String(formData.get("salaryMonthly") ?? ""));
+  if (!read.ok) back(read.problem + " Leave it empty to remove it.");
+  const salary = read.ok ? read.value : undefined;
   if (salary !== undefined && !currency) back("Say which currency, like LKR or USD.");
   await patchPosition(positionId, { salaryMonthly: salary ?? 0, salaryCurrency: salary === undefined ? "" : currency }, member.id, "position.salary", salary === undefined ? "removed" : currency + " " + salary);
   revalidatePath("/clients/positions");
@@ -3538,18 +3595,18 @@ export async function sendClientSet(formData: FormData): Promise<void> {
       .replace(/\{\{contact\}\}/g, (theirs?.contacts ?? []).find((c) => (c.role ?? "") === "hr")?.name ?? "all")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
-  const thread = theirs ? threadFor(db, theirs.id) : null;
+  const inReplyTo = threadFor(db, clientIdForMessage(db, "clientSet", setId), to);
   const rawSubject = fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}");
   const message = await draftMessage({
     channel: "email",
     to,
-    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : rawSubject,
+    subject: rawSubject,
     body: fill(wording?.body ?? "Dear {{contact}},\n\n{{cvCount}} CVs are attached.\n\nKind regards\nCareer 141"),
     templateKey: "set.cover",
     subjectType: "clientSet",
     subjectId: setId,
     attachmentFileIds: row.candidates.map((c) => c.fileId).filter((id): id is string => id !== null),
-    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
+    ...(inReplyTo ? { inReplyToProviderId: inReplyTo } : {}),
   });
 
   const now = Date.now();
@@ -4544,7 +4601,7 @@ export async function createPosition(formData: FormData): Promise<void> {
     handedOverAt: now,
     closedAt: null,
     ownerId: row.ownerId,
-    ...(salaryMonthly !== undefined ? { salaryMonthly, salaryCurrency: f("salaryCurrency") || "LKR" } : {}),
+    ...(salaryMonthly !== undefined ? { salaryMonthly, salaryCurrency: currencyCode(f("salaryCurrency")) || "LKR" } : {}),
   });
   await queueTaWrite(
     "/integrations/v1/openings",
@@ -4567,7 +4624,7 @@ export async function createPosition(formData: FormData): Promise<void> {
   revalidatePath("/clients");
   revalidatePath("/clients/" + row.id);
   redirect(
-    "/positions/" + position.id + "?msg=" + encodeURIComponent("Saved. " + fields.title + " for " + row.name + " is queued for the TA System." + (agreementForLead(db, lead.id)?.state === "countersigned" || agreementForLead(db, lead.id)?.state === "signed" ? "" : " The agreement is not signed yet, so no CVs go to them until it is.")),
+    "/positions/" + position.id + "?msg=" + encodeURIComponent("Saved. " + fields.title + " for " + row.name + " is queued for the TA System." + (!clientAgreementNotSigned(db, row.id) ? "" : " The agreement is not signed yet, so no CVs go to them until it is.")),
   );
 }
 
@@ -6957,7 +7014,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? "")
       .replace(/\{\{invoiceNumber\}\}/g, row.number)
       .replace(/\{\{invoice\}\}/g, lines)
-      .replace(/\{\{dueDate\}\}/g, row.dueAt ? colomboDateInWords(row.dueAt) : "thirty days from the first working day")
+      .replace(/\{\{dueDate\}\}/g, row.dueAt ? colomboDateInWords(row.dueAt) : (placement?.paymentDays ?? numberOf(db, "invoice.dueDays", 30)) + " days from the first working day")
       .replace(/\{\{surchargePct\}\}/g, String(numberOf(db, "hire.surchargePct", 50)))
       .replace(/\{\{amount\}\}/g, money(row.amount, row.currency))
       .replace(/\{\{why\}\}/g, row.reason ?? "")
@@ -9117,7 +9174,7 @@ export async function createVacancy(formData: FormData): Promise<void> {
   const sourceRaw = String(formData.get("source") ?? "").trim();
   const source = sourceRaw === "scoop" || sourceRaw === "job_post" || sourceRaw === "referral" ? sourceRaw : undefined;
   const sourceDetail = String(formData.get("sourceDetail") ?? "").trim() || undefined;
-  const problem = problemWithVacancy(title, places);
+  const problem = problemWithVacancy(title, places, source, sourceDetail);
   if (problem) redirect(withMsg(dest, problem));
   const v = await addVacancy({ title, places, checks, ownerId: member.id, ...(source ? { source } : {}), ...(sourceDetail ? { sourceDetail } : {}) });
   revalidatePath("/hiring");
@@ -9221,6 +9278,8 @@ export async function saveApplicantDetails(formData: FormData): Promise<void> {
       laptop: d.laptop || null,
       targetPosition: text("targetPosition") || null,
       packageSaid: text("packageSaid") || null,
+      // The table and cards read expectedSalary first, so the correction goes there too.
+      expectedSalary: text("packageSaid"),
       ...(moveTo && moveTo !== row.vacancyId ? { vacancyId: moveTo } : {}),
     },
     member.id,
@@ -9275,6 +9334,11 @@ async function dropApplicantEvent(db: Awaited<ReturnType<typeof desk>>, person: 
   return "";
 }
 
+/** An unsent invite with the old time or link must not stay approvable: blocked, with why. */
+async function voidInvites(db: Awaited<ReturnType<typeof desk>>, applicantId: string, by: string, why: string): Promise<void> {
+  for (const m of staleInvites(db.messages, applicantId)) await settleMessage(m.id, by, "blocked", m.to, why);
+}
+
 /** Scoops & vacancies: log screening call result, salaries, availability, and outcome (26 Nov). */
 export async function recordHiringCall(formData: FormData): Promise<void> {
   const member = await currentMember();
@@ -9297,7 +9361,7 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   const problem = problemWithHiringCall(result, note, notInterestedReason);
   if (problem) redirect(withMsg(dest, problem));
 
-  const next = callOutcomeTransition({ result, currentTries: app.tries, note, notInterestedReason });
+  const next = callOutcomeTransition({ result, currentTries: triesSoFar(app.stage, app.tries), note, notInterestedReason });
   await patchApplicant(
     applicantId,
     {
@@ -9309,7 +9373,7 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
       ...(currentSalary ? { currentSalary } : {}),
       ...(expectedSalary ? { expectedSalary } : {}),
       ...(availability ? { availability } : {}),
-      ...(next.notInterestedReason ? { notInterestedReason: next.notInterestedReason } : {}),
+      ...(next.notInterestedReason ? { notInterestedReason: next.notInterestedReason } : app.notInterestedReason ? { notInterestedReason: "" } : {}),
       ...(next.rejectReason !== undefined ? { rejectReason: next.rejectReason } : {}),
       ...(next.stage === "rejected" ? { rejectedAtStage: app.stage } : {}),
     },
@@ -9317,7 +9381,9 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
     "applicant.called",
     next.detail,
   );
-  const dropped = next.stage === "rejected" || next.stage === "not_interested" ? await dropApplicantEvent(db, app, member) : "";
+  const closed = next.stage === "rejected" || next.stage === "not_interested";
+  if (closed) await voidInvites(db, applicantId, member.id, "Not sent: the applicant was closed after a call.");
+  const dropped = closed ? await dropApplicantEvent(db, app, member) : "";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed("Call result saved." + dropped, dest));
@@ -9381,6 +9447,7 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
     `Booked with ${interviewer} (${place})`,
   );
 
+  await voidInvites(db, applicantId, member.id, "Replaced: the interview was booked again.");
   let emailNote = "";
   if (applicant?.email) {
     const vac = db.vacancies.find((v) => v.id === vacancyId);
@@ -9449,6 +9516,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
     "applicant.resultRecorded",
     reason || notes || result,
   );
+  if (result === "fail") await voidInvites(await desk(), applicantId, member.id, "Not sent: the applicant failed the interview.");
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
   redirect(dest + confirmed("Interview result saved.", dest));
@@ -9472,7 +9540,11 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   const db = await desk();
   const vac = db.vacancies.find((v) => v.id === vacancyId);
   const before = db.applicants.find((a) => a.id === applicantId);
-  const out = offerOutcomeTransition({ decision, startDate, salary, reason });
+  if (!before) redirect(withMsg(dest, "That applicant is gone."));
+  // shortcut: read then write, so two submits in the same instant can both pass; move the check into the store if that happens.
+  const closedAlready = problemWithDecisionStage(decision, before.stage);
+  if (closedAlready) redirect(withMsg(dest, closedAlready));
+  const out = offerOutcomeTransition({ decision, startDate, salary, reason, currentStage: before.stage });
   await patchApplicant(
     applicantId,
     {
@@ -9490,6 +9562,7 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
   if (out.incrementsFilled && vac) {
     await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Offer accepted.");
   }
+  if (decision === "reject" || decision === "decline") await voidInvites(db, applicantId, member.id, "Not sent: the applicant was closed.");
   const dropped = decision === "reject" || decision === "decline" ? await dropApplicantEvent(db, before, member) : "";
   const msg =
     decision === "offer"

@@ -58,3 +58,19 @@ test("placed counts placed and joined, against the headcount", () => {
   assert.equal(n.joining.n, 1);
   assert.equal(n.guarantee.line, "day 35 of 89");
 });
+
+test("a claimed CV is answered, and Offer counts every standing offer", () => {
+  const n = roleNumbers({
+    ...base,
+    sets: [{ name: "SET 1", state: "sent", sentAt: now - DAY, candidates: [{ claimedAt: now }] }],
+    placements: [
+      { state: "joined", joinDate: now - DAY },
+      { state: "placed", joinDate: null },
+      { state: "no_show", joinDate: now - DAY },
+      { state: "cancelled", joinDate: null },
+    ],
+  });
+  assert.equal(n.withClient.n, 0);
+  assert.equal(n.offer.n, 2);
+  assert.equal(n.offer.line, "1 waiting for a start day");
+});

@@ -47,3 +47,15 @@ test("the CSV guards formulas and the table text is safe to paste", () => {
   assert.equal(stageRowsTsv(rows).split("\n").length, 2);
   assert.match(stageRowsHtml([{ ...rows[0], name: "<b>x</b>" }]), /&lt;b&gt;x&lt;\/b&gt;/);
 });
+
+test("a claimed CV shows the claim, and interview answers read as words", () => {
+  const claimed: TrackSet[] = [{ id: "s1", setNumber: 1, state: "sent", candidates: [
+    { applicationTaId: "a", claimedAt: T, claimVerdict: "dropped" },
+    { applicationTaId: "b", claimedAt: T, claimVerdict: "refused" },
+  ] }];
+  const cands: TrackCandidate[] = ["a", "b"].map((id) => ({ id, applicationTaId: id, name: id, setId: "s1", level: "external" }));
+  assert.deepEqual(trackingRows(cands, claimed, []).map((r) => r.feedback), ["Client already had this CV", "Client says they already had this CV: refused"]);
+  const said = (decision: string) => trackingRows([cands[0]], claimed, [{ applicationTaId: "a", round: 1, decision, decidedAt: T + DAY }])[0].feedback;
+  assert.equal(said("next"), "Interview 1: Next round");
+  assert.equal(said("selected"), "Interview 1: Selected");
+});
