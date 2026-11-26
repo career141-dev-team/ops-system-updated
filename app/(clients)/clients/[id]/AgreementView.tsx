@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 
 import Icon from "@/app/Icon";
 import { StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { clauses, coverNote, termRows } from "@/lib/agreementView";
+import { coverNote, termRows } from "@/lib/agreementView";
+import { esaDocument } from "@/lib/esaDocument";
+import EsaDocument from "./EsaDocument";
 import { STATE_MEANINGS as ESA_STATES, type EsaState } from "@/lib/esa";
 import type { OpsEsa } from "@/data/types";
 
@@ -11,7 +13,6 @@ const initials = (name: string) => {
   const w = name.trim().split(/\s+/).filter(Boolean);
   return ((w[0]?.[0] ?? "") + (w.length > 1 ? (w[w.length - 1][0] ?? "") : "")).toUpperCase() || "—";
 };
-const longDate = (t: number) => new Date(t + 5.5 * 3_600_000).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
 /**
  * The Agreement view of a client (Figma 219:302): the terms, the template and who it goes to on the left; on the
@@ -30,10 +31,13 @@ export default function AgreementView(p: {
   callLine: string | null;
   fileName: string;
   editHref: string | null;
+  /** Opens the whole document as a popup. */
+  viewHref: string;
   /** The button that opens the send popup, or null when this state has none. */
   send: { href: string; label: string } | null;
   children?: ReactNode;
 }) {
+  const doc = esaDocument(p.esa.fields, { company: p.company, at: p.esa.updatedAt, directorName: p.directorName });
   const f = p.esa.fields;
   const contactName = f.signatoryName || p.contact?.name || "";
   const contactTitle = f.signatoryTitle || p.contact?.title || "";
@@ -43,8 +47,8 @@ export default function AgreementView(p: {
   const card = "rounded-[18px] border border-rule-strong bg-surface shadow-[0_2px_8px_rgb(15_23_31/0.07)]";
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid items-start gap-5 pg-lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="flex flex-col gap-6 rounded-[24px] bg-sunk p-6">
+      <div className="grid items-start gap-5 pg-lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="flex flex-col gap-6 rounded-[24px] bg-sunk p-5">
           <div className="flex flex-col gap-1.5">
             <p className="t-micro text-ink-3">AGREEMENT</p>
             <h2 className="text-[24px] font-medium leading-[32px] text-ink [overflow-wrap:anywhere]">{p.company}</h2>
@@ -58,9 +62,9 @@ export default function AgreementView(p: {
             <p className="t-micro text-ink-3">THE TERMS</p>
             <div className="flex flex-col rounded-[16px] bg-surface">
               {termRows(f).map((r) => (
-                <div key={r.label} className="flex items-center gap-4 border-t border-rule px-4 py-3 first:border-t-0">
-                  <span className="t-body w-24 shrink-0 text-ink-3">{r.label}</span>
-                  <span className="t-body-m text-[17px] text-ink">{r.value}</span>
+                <div key={r.label} className="flex items-center gap-3 border-t border-rule px-3.5 py-3 first:border-t-0">
+                  <span className="t-body w-[76px] shrink-0 text-ink-3">{r.label}</span>
+                  <span className="t-body-m whitespace-nowrap text-[16px] text-ink">{r.value}</span>
                 </div>
               ))}
             </div>
@@ -92,7 +96,7 @@ export default function AgreementView(p: {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-4 rounded-[24px] bg-sunk p-5">
-          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <section className={card + " flex flex-col"}>
               <div className="flex flex-col gap-3 border-b border-rule px-6 py-5">
                 <p className="t-h3 text-ink [overflow-wrap:anywhere]">Career141 · Employment Services Agreement for {company}</p>
@@ -120,38 +124,16 @@ export default function AgreementView(p: {
 
             <div className="flex min-w-0 flex-col gap-2.5">
               <p className="t-micro text-ink-3 [overflow-wrap:anywhere]">ATTACHED: {p.fileName.toUpperCase()}</p>
-              <article className={card + " flex flex-col gap-4 px-8 py-8"}>
-                <div className="flex items-center justify-between gap-3 border-b border-rule pb-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/career141-lockup.png" alt="career141 · 20 years" className="h-10 w-[126px] object-contain" />
-                  <span className="t-micro text-ink-3">Colombo 03, Sri Lanka</span>
-                </div>
-                <h3 className="text-[24px] font-medium leading-8 text-ink">Employment Services Agreement</h3>
-                <p className="t-body text-ink-3">Version {p.esa.version} · {longDate(p.esa.updatedAt)}</p>
-                <p className="t-body text-ink">Between Career141 (Pvt) Ltd (&ldquo;Career141&rdquo;) and {company} (&ldquo;the Client&rdquo;).</p>
-                <div className="flex flex-col gap-3">
-                  {clauses(f).map((c) => (
-                    <div key={c.title} className="flex flex-col">
-                      <span className="t-body text-ink">{c.title}</span>
-                      <span className="t-body text-ink-2">{c.text}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-6 grid grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1 border-t border-ink pt-2">
-                    <span className="t-body text-ink">For Career141</span>
-                    <span className="t-micro text-ink-3">{p.directorName}, Director</span>
-                  </div>
-                  <div className="flex flex-col gap-1 border-t border-ink pt-2">
-                    <span className="t-body text-ink [overflow-wrap:anywhere]">For {company}</span>
-                    <span className="t-micro text-ink-3">Name and date</span>
-                  </div>
-                </div>
+              <article className={card + " max-h-[720px] overflow-y-auto"}>
+                <EsaDocument doc={doc} />
               </article>
             </div>
           </div>
-          {(p.editHref || p.send) && (
-            <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Link href={p.viewHref} scroll={false} className={pillSecondary + " !gap-2"}>
+              <Icon name="file" size={16} />
+              View
+            </Link>
               {p.editHref && (
                 <Link href={p.editHref} className={pillSecondary + " !gap-2"}>
                   <Icon name="pen" size={16} />
@@ -164,8 +146,7 @@ export default function AgreementView(p: {
                   {p.send.label}
                 </Link>
               )}
-            </div>
-          )}
+          </div>
         </div>
       </div>
       {p.children}

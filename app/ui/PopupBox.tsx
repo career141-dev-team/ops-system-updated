@@ -16,6 +16,7 @@ export default function PopupBox({
   sub,
   right,
   closeHref,
+  wide,
   children,
 }: {
   title: string;
@@ -23,10 +24,12 @@ export default function PopupBox({
   /** Something beside the close button, such as a "New position" link. */
   right?: ReactNode;
   closeHref: string;
+  /** For a long document: a wider box. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <dialog open aria-labelledby="popup-title" className="send-modal popup-box">
+    <dialog open aria-labelledby="popup-title" className={"send-modal popup-box" + (wide ? " popup-wide" : "")}>
       <PanelOpen closeHref={closeHref} />
       <div className="flex max-h-[calc(100dvh-48px)] flex-col gap-5 overflow-y-auto p-7">
         <div className="flex items-start gap-3">

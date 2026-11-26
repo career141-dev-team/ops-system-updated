@@ -11,6 +11,8 @@ import { teamsFake } from "@/lib/graphCalendar";
 import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
+import { esaDocument } from "@/lib/esaDocument";
+import EsaDocument from "./EsaDocument";
 import AgreementView from "./AgreementView";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
@@ -339,6 +341,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     callLine={heldDay ? "Enquiry, call held " + dayWords(held!.heldAt!) : null}
                     fileName={activeDoc?.name ?? client.name.replace(/[^A-Za-z0-9]+/g, "_") + "_Agreement_v" + esa.version + ".pdf"}
                     editHref={lead && mayManage ? "/leads/" + lead.id + "?step=agreement" : null}
+                    viewHref={panelHref(path, sp, "esa-view")}
                     send={mayManage && sendLabel ? { href: sendHref(path, sp, "agreement", client.id), label: sendLabel } : null}
                   >
                     <Card title="Versions" right={<StatusChip label={ESA_STATES[esa.state as EsaState]?.split(".")[0] ?? esa.state} tone={esa.state === "signed" || esa.state === "countersigned" ? "brand" : "neutral"} />}>
@@ -561,6 +564,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         return chase ? <ChaseAgreementSendModal db={db} card={chase} me={me} closeHref={closeSendHref(path, sp)} now={now} /> : null;
       })()}
       {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
+      {sp.panel === "esa-view" && esa && (
+        <PopupBox title="Executive Search Agreement" sub={`${client.name} · Version ${esa.version}`} closeHref={closeHref(path, sp)} wide>
+          <EsaDocument doc={esaDocument(esa.fields, { company: client.name, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" })} />
+        </PopupBox>
+      )}
       {sp.panel === "requirement-call" && (
         <PopupBox
           title={callKind === "intro" ? "Intro call" : "Requirement call"}
