@@ -44,7 +44,7 @@ export default function AgreementView(p: {
   const state = ESA_STATES[p.esa.state as EsaState]?.split(".")[0] ?? p.esa.state;
   const tone = p.esa.state === "signed" || p.esa.state === "countersigned" ? "brand" : p.esa.state === "negotiating" || p.esa.state === "declined" || p.esa.state === "expired" ? "warn" : "neutral";
   const company = f.companyName || p.company;
-  const card = "rounded-[18px] border border-rule-strong bg-surface shadow-[0_2px_8px_rgb(15_23_31/0.07)]";
+  const card = "rounded-[18px] border border-rule-strong bg-surface shadow-[0_0_10px_rgb(15_23_31/0.1),0_2px_8px_rgb(15_23_31/0.07)]";
   return (
     <div className="flex flex-col gap-5">
       <div className="grid items-start gap-5 pg-lg:grid-cols-[260px_minmax(0,1fr)]">
