@@ -158,6 +158,26 @@ export function clientAgreementNotSigned(db: OpsDatabase, clientId: string): boo
   return agreementNotSigned(db.agreements.filter((e) => leadIds.has(e.leadId)));
 }
 
+/**
+ * A position's value (26 Nov, Nov 25 ops meeting, PR 4): the monthly salary times the fee months of the
+ * client's signed agreement (1 when there is none yet). Null when nobody has typed a salary, so a screen
+ * shows "—" rather than a zero that looks like a real number. Local rate: nationality is unknown until a hire.
+ */
+export function positionValue(
+  db: OpsDatabase,
+  position: Pick<OpsPosition, "requirementId" | "clientId" | "salaryMonthly">,
+): number | null {
+  const salary = position.salaryMonthly;
+  if (!salary || !(salary > 0)) return null;
+  const reqLead = position.requirementId ? db.requirements.find((r) => r.id === position.requirementId)?.leadId : null;
+  const clientLead = position.clientId ? db.clients.find((c) => c.id === position.clientId)?.leadId : null;
+  const signed = db.agreements
+    .filter((e) => (e.leadId === reqLead || e.leadId === clientLead) && (e.state === "signed" || e.state === "countersigned"))
+    .sort((a, b) => b.version - a.version)[0];
+  const months = Number(signed?.fields.feeMonths);
+  return Math.round(salary * (months > 0 ? months : 1));
+}
+
 /** Renaming a client (23 Nov): one company, one record, so a name another client already has is refused. */
 export function problemWithClientRename(name: string, clash: boolean): string | null {
   if (name.trim().length < 2) return "Write the client's name.";

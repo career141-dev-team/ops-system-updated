@@ -658,3 +658,18 @@ Proved by `tests/cvparse.test.ts`, `tests/money.test.ts`, `tests/accountsboard.t
 - **The testimonial request goes to the right side** (the candidate's typed email, or the client's HR contact), each side keeps its own channel and day, and the task is due a week after joining and closes when both are done.
 - **The reminder clock leaves no extra "this clock has run out" task**, and the re-arm pass restores future reminders. The screen says "Reminders drafted", which is what the count is.
 - **The address panel shows the expat fee** for an expat placement.
+
+## Built: the Nov 25 meeting's changes, PR 4 positions, ops assignment and My Work (26 Nov, on branch `hdbinath/ops-nov25-positions`, stacked on PR 3, not merged and not live)
+
+| Piece | Where | What it does |
+|---|---|---|
+| **A position's value** | `positionValue` in `src/lib/clients.ts` | monthly salary times the signed agreement's fee months (1 without one); "—" until somebody types a salary, never a zero |
+| **Positions table** | `app/(clients)/clients/positions`, `src/lib/clientPositionTable.ts` | Ops (main), Backup ops, TA(s), Sets, interviews 1st / 2nd / Final / Dropout, Offered, Joined, Value (package under it), Priority; filters by Ops, backup, local or international, priority and value range |
+| **Every count opens its list** | `countItems` in `src/lib/positionCounts.ts` | the number is the length of the same list the popup shows (`?panel=count&on=&k=`). Dropout is withdrew or no-show; cancelled interviews count nowhere; Offered is a placement not cancelled or no-show |
+| **Ops assignment** | `setPositionBackup`, `setPositionPriority`, `setPositionSalary`, `problemWithNewBackup` | main and backup need a reason, tell the person and are audited; the backup can't be the main; a priority or salary is a quick save. The "Who owns what" page links here |
+| **Positions cards** | `src/lib/positionsList.ts`, `app/(positions)/positions/page.tsx` | "Client" is now **Sets** (sets sent), "Guar." is gone, each card shows its value, counts and the summary tiles open their lists; Offer now means every offer taken and Join means actually joined |
+| **"Needs you"** | `roleRows` | only: joining day passed, no TA, agreement not signed, an interview with no time, a set unanswered past the chase days, a joiner's nationality unconfirmed (until the invoice has gone), a testimonial pending. A plain searching role no longer counts (09, 26 Nov) |
+| **Position page** | the strip on `app/(positions)/positions/[id]` | "With the client" is now Sets; the Guarantee cell is gone (the Guarantee tab stays) |
+| **My Work** | `src/lib/myWorkView.ts`, `app/page.tsx` | "My positions" where I am main or backup, each with value and a total per currency; "Testimonials to ask for" |
+
+Proved by `tests/positionvalue.test.ts`, `tests/positioncounts.test.ts`, `tests/clientpositiontable.test.ts`, `tests/positionsList.test.ts`, `tests/rolenumbers.test.ts` and `tests/myworkview.test.ts`; all 141 suites and `tsc` green on the JSON store. **Walked in the browser** on the invented data (table, a count popup, salary and backup saved, filters, cards, Needs you, My Work, the position strip). The walk found `/clients/positions` crashing on a placement with no package (older local sample data; the same line is on `main`), fixed. **Not run against the Convex store.** On the invented data the TA column shows TA ids, because the sample ids are not in the stand-in TA's list.

@@ -22,6 +22,8 @@ export interface RoleNumbers {
   taSearch: { n: number; line: string };
   ready: { n: number; line: string };
   withClient: { n: number; line: string };
+  /** Sets sent to the client: the strip's "Sets" cell (26 Nov, Nov 25 ops meeting). */
+  setsSent: { n: number; line: string };
   interviews: { n: number; line: string; needsTime: number };
   offer: { n: number; line: string };
   joining: { n: number; line: string };
@@ -44,6 +46,8 @@ export function roleNumbers(i: RoleNumbersInput): RoleNumbers {
     .map((s) => (s.sentAt ? `${s.name} day ${Math.max(1, Math.floor((i.now - s.sentAt) / DAY) + 1)}` : s.name))
     .join(" · ");
 
+  const setsSent = i.sets.filter((s) => s.state === "sent").length;
+
   const live = i.interviews.filter((iv) => LIVE_INTERVIEW.includes(iv.state));
   const needsTime = live.filter((iv) => iv.at === null).length;
 
@@ -62,6 +66,7 @@ export function roleNumbers(i: RoleNumbersInput): RoleNumbers {
     taSearch: { n: unset, line: unset ? "not in a set yet" : "—" },
     ready: { n: readyN, line: readyN ? "from TA" : "—" },
     withClient: { n: withClientN, line: withClientLine || "—" },
+    setsSent: { n: setsSent, line: withClientLine || (setsSent ? "all answered" : "—") },
     interviews: { n: live.length, needsTime, line: needsTime ? `${needsTime} needs a time` : live.length ? "all have a time" : "—" },
     offer: { n: offerN, line: offerN ? "waiting for a start day" : "—" },
     joining: { n: joining.length, line: soonest ? `DOJ ${dayMonth(soonest)}` : "—" },

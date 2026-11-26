@@ -1,33 +1,64 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { savePositionRequirement, setPositionOwner } from "@/app/actions";
+import { savePositionRequirement, setPositionBackup, setPositionOwner, setPositionPriority, setPositionSalary } from "@/app/actions";
 import { Card, DataTable, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import PopupBox from "@/app/ui/PopupBox";
 import { desk } from "@/data/desk";
-import { filterPositionRows, positionRows } from "@/lib/clientPositionTable";
+import { filterPositionRows, moneyText, positionRows } from "@/lib/clientPositionTable";
 import { clientTotals, clientsLine } from "@/lib/clientsView";
+import { closeHref, panelHref } from "@/lib/panel";
+import { COUNT_TITLES, countItems, isCountKind, type CountKind } from "@/lib/positionCounts";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
+import { people as taPeople } from "@/lib/ta";
 import { ClientsHead, Msg } from "../../parts";
 
-type SP = { msg?: string; q?: string; handler?: string };
+type SP = { msg?: string; q?: string; handler?: string; type?: string; min?: string; max?: string; priority?: string; backup?: string; panel?: string; on?: string; k?: string };
 
 /**
  * Clients, positions (23 Nov, the ops team's feedback): every client's positions with the package and the
  * Ops person handling each, and an Edit on each row. It replaces the sheet the team kept by hand.
+ *
+ * 26 Nov (Nov 25 ops meeting): main and backup Ops, TAs, the counts (each one opens the list behind it),
+ * value, priority, and filters on client type, value, priority and backup. Filters are GET params, so a link shares them.
  */
 export default async function ClientPositionsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
-  const { msg, q = "", handler = "" } = await searchParams;
+  const sp = await searchParams;
+  const { msg, q = "", handler = "", type = "", min = "", max = "", priority = "", backup = "" } = sp;
   const db = await desk();
   const totals = clientTotals(db, Date.now());
-  const all = positionRows(db);
-  const rows = filterPositionRows(all, q, handler);
+  const ta = await taPeople();
+  const taList = ta.ok ? ta.data : [];
+  const all = positionRows(db, (id) => taList.find((p) => p.id === id)?.fullName ?? null);
+  const rows = filterPositionRows(all, q, handler, { type, min, max, priority, backup });
+  const popupRow = sp.panel === "count" && sp.on && sp.k && isCountKind(sp.k) ? (all.find((r) => r.positionId === sp.on) ?? null) : null;
   const mayEdit = can(me, "client.manage");
   const mayMove = can(me, "task.reassign");
   const team = db.members.filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"));
-  const here = "/clients/positions" + (q || handler ? "?" + new URLSearchParams({ ...(q ? { q } : {}), ...(handler ? { handler } : {}) }).toString() : "");
+  const filters: Record<string, string> = { ...(q ? { q } : {}), ...(handler ? { handler } : {}), ...(type ? { type } : {}), ...(min ? { min } : {}), ...(max ? { max } : {}), ...(priority ? { priority } : {}), ...(backup ? { backup } : {}) };
+  const anyFilter = Object.keys(filters).length > 0;
+  const here = "/clients/positions" + (anyFilter ? "?" + new URLSearchParams(filters).toString() : "");
+  // A count is a link that opens the list behind it; a zero is plain text.
+  const count = (r: (typeof rows)[number], k: CountKind) =>
+    r.counts[k] > 0 ? (
+      <Link key={k} href={panelHref("/clients/positions", filters, "count", r.positionId) + "&k=" + k} scroll={false} className="text-brand hover:underline">
+        {r.counts[k]}
+      </Link>
+    ) : (
+      <span key={k} className="text-ink-3">0</span>
+    );
+  const sel = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none";
+  const teamOptions = (skip = "") =>
+    team
+      .filter((m) => m.id !== skip)
+      .map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.name}
+        </option>
+      ));
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -37,20 +68,48 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
         <form method="get" action="/clients/positions" className="flex flex-wrap items-end gap-3">
           {q && <input type="hidden" name="q" value={q} />}
           <label className="flex flex-col gap-1">
-            <span className="t-small text-ink-3">Ops handler</span>
-            <select name="handler" defaultValue={handler} className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none">
+            <span className="t-small text-ink-3">Ops (main)</span>
+            <select name="handler" defaultValue={handler} className={sel}>
               <option value="">Everyone</option>
-              {team.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
+              {teamOptions()}
             </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Backup ops</span>
+            <select name="backup" defaultValue={backup} className={sel}>
+              <option value="">Anyone</option>
+              {teamOptions()}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Client</span>
+            <select name="type" defaultValue={type} className={sel}>
+              <option value="">Local and international</option>
+              <option value="local">Local</option>
+              <option value="international">International</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Priority</span>
+            <select name="priority" defaultValue={priority} className={sel}>
+              <option value="">Any</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Value from</span>
+            <input name="min" type="number" min="0" defaultValue={min} className={sel + " w-28"} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Value to</span>
+            <input name="max" type="number" min="0" defaultValue={max} className={sel + " w-28"} />
           </label>
           <button type="submit" className={pillSecondary}>
             Filter
           </button>
-          {(q || handler) && (
+          {anyFilter && (
             <Link href="/clients/positions" className="t-small pb-2 text-ink-3 hover:underline">
               Clear
             </Link>
@@ -60,7 +119,7 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
           {rows.length} of {all.length} {all.length === 1 ? "position" : "positions"}
         </p>
         <DataTable
-          columns={[{ label: "CLIENT" }, { label: "POSITION" }, { label: "PACKAGE" }, { label: "OPS HANDLER" }, { label: "" }]}
+          columns={["CLIENT", "POSITION", "OPS", "BACKUP OPS", "TA(S)", "SETS", "1ST", "2ND", "FINAL", "DROPOUT", "OFFERED", "JOINED", "VALUE", "PRIORITY", ""].map((label) => ({ label }))}
           rows={rows.map((r) => ({
             key: r.positionId,
             cells: [
@@ -74,15 +133,21 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
               <Link key="p" href={"/positions/" + r.positionId} className="t-body-m hover:underline">
                 {r.position}
               </Link>,
-              r.pack ? (
-                <span key="k" className="flex flex-col">
-                  <span>{r.pack}</span>
-                  {r.packFrom === "placement" && <span className="t-small text-ink-3">as placed</span>}
-                </span>
-              ) : (
-                <span key="k" className="text-ink-3">Not written down</span>
-              ),
               r.handler,
+              r.backup,
+              r.tas,
+              count(r, "sets"),
+              count(r, "i1"),
+              count(r, "i2"),
+              count(r, "ifinal"),
+              count(r, "dropout"),
+              count(r, "offered"),
+              count(r, "joined"),
+              <span key="v" className="flex flex-col">
+                <span>{moneyText(r.value, r.currency)}</span>
+                {r.pack && <span className="t-small text-ink-3">{r.pack}{r.packFrom === "placement" ? " (as placed)" : ""}</span>}
+              </span>,
+              r.priority,
               mayEdit ? (
                 <details key="e" className="relative">
                   <summary className="t-label cursor-pointer list-none text-brand hover:underline [&::-webkit-details-marker]:hidden">Edit</summary>
@@ -104,23 +169,60 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
                         </p>
                       )}
                     </form>
+                    <form action={setPositionSalary} className="flex flex-col gap-2">
+                      <input type="hidden" name="positionId" value={r.positionId} />
+                      <input type="hidden" name="back" value={here} />
+                      <span className="t-small text-ink-3">Monthly salary (gives the value)</span>
+                      <div className="flex gap-2">
+                        <input name="salaryMonthly" type="number" min="0" defaultValue={r.salaryMonthly ?? ""} placeholder="Monthly" className={panelInput} />
+                        <input name="currency" defaultValue={r.currency} placeholder="LKR" className={panelInput + " !w-24"} />
+                      </div>
+                      <button type="submit" className={pillSecondary + " w-fit"}>
+                        Save the salary
+                      </button>
+                    </form>
+                    <form action={setPositionPriority} className="flex flex-col gap-2">
+                      <input type="hidden" name="positionId" value={r.positionId} />
+                      <input type="hidden" name="back" value={here} />
+                      <span className="t-small text-ink-3">Priority</span>
+                      <select name="priority" defaultValue={r.priority} className={panelInput}>
+                        <option value="">None</option>
+                        <option value="P1">P1</option>
+                        <option value="P2">P2</option>
+                        <option value="P3">P3</option>
+                      </select>
+                      <button type="submit" className={pillSecondary + " w-fit"}>
+                        Save the priority
+                      </button>
+                    </form>
                     {mayMove ? (
-                      <form action={setPositionOwner} className="flex flex-col gap-2">
-                        <input type="hidden" name="positionId" value={r.positionId} />
-                        <input type="hidden" name="back" value={here} />
-                        <span className="t-small text-ink-3">Ops handler</span>
-                        <select name="handlerId" defaultValue={r.handlerId} className={panelInput}>
-                          {team.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input name="reason" required placeholder="Why it is moving" className={panelInput} />
-                        <button type="submit" className={pillSecondary + " w-fit"}>
-                          Change the handler
-                        </button>
-                      </form>
+                      <>
+                        <form action={setPositionOwner} className="flex flex-col gap-2">
+                          <input type="hidden" name="positionId" value={r.positionId} />
+                          <input type="hidden" name="back" value={here} />
+                          <span className="t-small text-ink-3">Ops (main)</span>
+                          <select name="handlerId" defaultValue={r.handlerId} className={panelInput}>
+                            {teamOptions()}
+                          </select>
+                          <input name="reason" required placeholder="Why it is moving" className={panelInput} />
+                          <button type="submit" className={pillSecondary + " w-fit"}>
+                            Change the main Ops
+                          </button>
+                        </form>
+                        <form action={setPositionBackup} className="flex flex-col gap-2">
+                          <input type="hidden" name="positionId" value={r.positionId} />
+                          <input type="hidden" name="back" value={here} />
+                          <span className="t-small text-ink-3">Backup ops</span>
+                          <select name="backupId" defaultValue={r.backupId} className={panelInput}>
+                            <option value="">No backup</option>
+                            {teamOptions(r.handlerId)}
+                          </select>
+                          <input name="reason" required placeholder="Why it is changing" className={panelInput} />
+                          <button type="submit" className={pillSecondary + " w-fit"}>
+                            Change the backup
+                          </button>
+                        </form>
+                      </>
                     ) : (
                       <p className="t-small text-ink-3">The Ops lead changes who handles a position.</p>
                     )}
@@ -134,6 +236,20 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
           empty={<p className="t-body text-ink-3">{all.length === 0 ? "A position appears here when it is handed to the TA System." : "No position matches. Clear the filter or the search."}</p>}
         />
       </Card>
+      {popupRow && sp.k && isCountKind(sp.k) && (
+        <PopupBox title={COUNT_TITLES[sp.k]} sub={popupRow.client + " · " + popupRow.position} closeHref={closeHref("/clients/positions", { ...sp, k: undefined })}>
+          <ul className="flex flex-col divide-y divide-rule">
+            {countItems(db, popupRow.positionId, sp.k).map((it) => (
+              <li key={it.id} className="flex flex-col py-2.5">
+                <Link href={it.href} className="t-body-m hover:underline">
+                  {it.title}
+                </Link>
+                <span className="t-small text-ink-3">{it.line}</span>
+              </li>
+            ))}
+          </ul>
+        </PopupBox>
+      )}
     </div>
   );
 }

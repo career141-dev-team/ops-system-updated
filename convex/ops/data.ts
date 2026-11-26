@@ -1386,7 +1386,10 @@ export const patchPosition = internalMutation({
   handler: async (ctx, args) => {
     const found = await ctx.db.get(args.positionId as Id<"opsPositions">);
     if (!found) return { ok: false };
-    await ctx.db.patch(found._id, { ...args.patch, updatedAt: Date.now() });
+    const patch = { ...args.patch, updatedAt: Date.now() };
+    // "" clears the priority: an undefined never reaches here, and the schema allows only P1 to P3.
+    if (patch.priority === "") patch.priority = undefined;
+    await ctx.db.patch(found._id, patch);
     const after = await ctx.db.get(found._id);
     await writeAudit(ctx, {
       actorId: args.by,

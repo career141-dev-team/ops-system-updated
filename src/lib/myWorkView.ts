@@ -8,6 +8,7 @@
 import type { OpsCallLog, OpsClient, OpsClientSet, OpsDatabase, OpsInterview, OpsMessage, OpsPosition, OpsTask } from "../data/types";
 import { telLink, tidyPhone } from "./calls";
 import { DRAFT_KINDS, draftKind, isRoutine, messageInWords, messageTitle } from "./messages";
+import { positionValue } from "./clients";
 import { lateInWords } from "./myWork";
 
 const DAY_MS = 86_400_000;
@@ -199,6 +200,12 @@ export interface WorkView {
   clientsToday: { name: string; line: string; tone: Tone }[];
   drafts: OpsMessage[];
   routine: OpsMessage[];
+  /** 26 Nov (Nov 25 ops meeting): the open positions where I am the Ops main or the backup. */
+  myPositions: { id: string; title: string; client: string; role: "Main" | "Backup"; value: number | null; currency: string; href: string }[];
+  /** One total per currency: adding LKR to USD would be a made-up number. */
+  myPositionTotals: { currency: string; amount: number }[];
+  /** 26 Nov (Nov 25 ops meeting): joined people whose candidate or client testimonial is still to ask for. */
+  testimonialsPending: { id: string; candidate: string; client: string; sides: ("candidate" | "client")[]; href: string }[];
 }
 
 /** `mail` is the "emails wait" item from desk.dayItems, so the page can fold it into Do first. */
@@ -299,8 +306,34 @@ export function workView(
   }
   for (const m of meetings) if (m.client && !seen.has(m.client)) seen.set(m.client, { name: m.client, line: m.title + " at " + clockOf(m.at), tone: "info" });
 
+  // Open = not closed, the same test the roles list uses (stage or a closing day).
+  const clientName = (id: string | null) => db.clients.find((c) => c.id === id)?.name ?? "";
+  const myPositions: WorkView["myPositions"] = [];
+  for (const p of db.positions) {
+    if (p.stage === "closed" || p.closedAt) continue;
+    const role = p.ownerId === memberId ? "Main" : p.backupOwnerId === memberId ? "Backup" : null;
+    if (!role) continue;
+    myPositions.push({ id: p.id, title: p.title, client: clientName(p.clientId), role, value: positionValue(db, p), currency: p.salaryCurrency ?? "", href: "/positions/" + p.id });
+  }
+  myPositions.sort((a, b) => (a.role === b.role ? (b.value ?? -1) - (a.value ?? -1) : a.role === "Main" ? -1 : 1));
+  const totals = new Map<string, number>();
+  for (const r of myPositions) if (r.value !== null) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.value);
+
+  const testimonialsPending: WorkView["testimonialsPending"] = [];
+  for (const x of db.placements) {
+    if (!(x.state === "joined" || x.joinedAt) || !x.testimonial) continue;
+    const pos = db.positions.find((p) => p.id === x.positionId);
+    if (x.ownerId !== memberId && pos?.ownerId !== memberId) continue;
+    const sides = (["candidate", "client"] as const).filter((s) => x.testimonial![s] === "pending");
+    if (sides.length === 0) continue;
+    testimonialsPending.push({ id: x.id, candidate: x.candidateName, client: clientName(x.clientId ?? pos?.clientId ?? null), sides, href: pos ? "/positions/" + pos.id + "?view=offer" : "/positions" });
+  }
+
   const oldest = buckets.late[0];
   return {
+    myPositions,
+    myPositionTotals: [...totals].map(([currency, amount]) => ({ currency, amount })),
+    testimonialsPending,
     counts: { today: doFirst.length, approve: drafts.length, calls: callTasks.length, tasks: mine.length },
     late: buckets.late.length,
     oldestLate: oldest ? days(oldest.dueAt, now) : null,

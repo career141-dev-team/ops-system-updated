@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LeadAssignRow, MoveClientCard } from "@/app/(clients)/clients/owners/OwnersClient";
@@ -80,6 +81,10 @@ export default async function ClientOwnersPage({
       {msg && (
         <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
+
+      <Link href="/clients/positions" className="t-label w-fit text-brand hover:underline">
+        Assign ops to positions
+      </Link>
 
       {/* Section 1: WAITING FOR AN OWNER (Figma 1:3786) */}
       <Card title="Waiting for an owner" sub={`${openLeads.length} open`}>

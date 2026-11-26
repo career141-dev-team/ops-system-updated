@@ -26,6 +26,7 @@ test("with the client counts only people still waiting for a yes or no", () => {
   });
   assert.equal(n.withClient.n, 2);
   assert.equal(n.withClient.line, "SET 2 day 5");
+  assert.equal(n.setsSent.n, 2); // sent sets, answered or not; the draft is not one
   assert.equal(n.ready.n, 2);
 });
 

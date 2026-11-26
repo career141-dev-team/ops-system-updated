@@ -233,7 +233,7 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { decodeRoles, permissionSentence } from "@/lib/integrationHealth";
 import { MAX_PER_BATCH } from "@/lib/scoop";
-import { problemWithNewHandler } from "@/lib/clientPositionTable";
+import { problemWithNewBackup, problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -3168,7 +3168,9 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
   const problem = problemWithNewHandler(newId, row.ownerId, db.members, reason);
   if (problem) back(problem);
 
-  await patchPosition(positionId, { ownerId: newId }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
+  // The backup cannot also be the main person (26 Nov, Nov 25 ops meeting), so taking over clears it.
+  const wasBackup = newId === row.backupOwnerId;
+  await patchPosition(positionId, { ownerId: newId, ...(wasBackup ? { backupOwnerId: "" } : {}) }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
   await createTask({
     kind: "check",
     title: "You now handle " + row.title,
@@ -3182,7 +3184,89 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
   revalidatePath("/clients/positions");
   revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
-  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + ".", here));
+  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + "." + (wasBackup ? " They were the backup, so there is no backup now." : ""), here));
+}
+
+/**
+ * Backup Ops person for a position (26 Nov, Nov 25 ops meeting). Same right and same reason as the main
+ * handler; a blank choice removes the backup.
+ */
+export async function setPositionBackup(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "task.reassign")) back(refusal("task.reassign"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) back("That position is gone.");
+  const row = position as NonNullable<typeof position>;
+  const newId = String(formData.get("backupId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Say why the backup is changing. It is kept with the change.");
+  if (newId) {
+    const problem = problemWithNewBackup(newId, row.ownerId, db.members);
+    if (problem) back(problem);
+  } else if (!row.backupOwnerId) back("There is no backup to remove.");
+  // "" means none: a patch with undefined would not remove the field on the Convex store.
+  const nameOf = (id?: string) => (id ? (db.members.find((m) => m.id === id)?.name ?? id) : "nobody");
+
+  await patchPosition(positionId, { backupOwnerId: newId }, member.id, "position.backupOwner", reason + " (was " + nameOf(row.backupOwnerId) + ")");
+  if (newId) {
+    await createTask({
+      kind: "check",
+      title: "You are the backup on " + row.title,
+      body: "You were made the backup: " + reason,
+      assigneeId: newId,
+      dueAt: Date.now(),
+      subjectType: "position",
+      subjectId: positionId,
+      link: "/positions/" + positionId,
+    });
+  }
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(newId ? "Backup is now " + nameOf(newId) + "." : "Backup removed.", here));
+}
+
+/** Priority of a position: P1, P2, P3 or none (26 Nov, Nov 25 ops meeting). No reason needed. */
+export async function setPositionPriority(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  if (!positionIn(db, positionId)) back("That position is gone.");
+  const to = String(formData.get("priority") ?? "");
+  if (to && !["P1", "P2", "P3"].includes(to)) back("Priority is P1, P2 or P3.");
+  await patchPosition(positionId, { priority: to as "P1" | "P2" | "P3" }, member.id, "position.priority", to || "none");
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(to ? "Priority " + to + "." : "Priority cleared.", here));
+}
+
+/** The monthly salary and its currency: what gives a position its value (26 Nov, Nov 25 ops meeting). */
+export async function setPositionSalary(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  if (!positionIn(db, positionId)) back("That position is gone.");
+  const text = String(formData.get("salaryMonthly") ?? "").replace(/,/g, "").trim();
+  const currency = String(formData.get("currency") ?? "").trim().toUpperCase().slice(0, 5);
+  const salary = text ? Number(text) : undefined;
+  if (salary !== undefined && !(salary > 0)) back("The monthly salary is a number above zero, or leave it empty to remove it.");
+  if (salary !== undefined && !currency) back("Say which currency, like LKR or USD.");
+  await patchPosition(positionId, { salaryMonthly: salary ?? 0, salaryCurrency: salary === undefined ? "" : currency }, member.id, "position.salary", salary === undefined ? "removed" : currency + " " + salary);
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(salary === undefined ? "Salary removed." : "Salary saved.", here));
 }
 
 /** Live, quiet or finished. Going quiet needs a reason, like closing does. */

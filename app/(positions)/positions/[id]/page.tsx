@@ -269,11 +269,10 @@ export default async function PositionPage({
       <section className="max-md:hidden flex flex-wrap items-center gap-x-2 gap-y-4 rounded-[28px] bg-surface px-7 py-[22px] shadow-card">
         {cell("TA search", n.taSearch.n, n.taSearch.line, to("sets"))}
         {cell("Ready to send", n.ready.n, n.ready.line, to("sets"))}
-        {cell("With the client", n.withClient.n, n.withClient.line, to("sets"))}
+        {cell("Sets", n.setsSent.n, n.setsSent.line, to("sets"))}
         {cell("Interviews", n.interviews.n, n.interviews.line, to("interviews"), n.interviews.needsTime > 0)}
         {cell("Offer", n.offer.n, n.offer.line, to("offer"))}
         {cell("Joining", n.joining.n, n.joining.line, to("offer"))}
-        {cell("Guarantee", n.guarantee.n, n.guarantee.line, to("guarantee"))}
         <div className="mx-3 hidden h-[70px] w-px bg-rule pg-lg:block" />
         <div className="flex min-w-[200px] flex-col gap-2 py-1 pg-lg:w-[200px]">
           <span className="t-micro text-ink-3">PLACED</span>
