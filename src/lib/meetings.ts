@@ -205,3 +205,16 @@ export function whenInWords(at: number, now: number): string {
   if (days === 1) return "Tomorrow at " + time;
   return day(at) + " at " + time;
 }
+
+/**
+ * Whose calendar a position's requirement call goes in (26 Nov, Nov 25 ops meeting): the Ops member linked to the
+ * position's primary TA through `taUserId`. Null when there is no TA or no linked member, and the form keeps its
+ * usual default.
+ */
+export function requirementOrganiser(
+  position: { primaryTaId: string | null },
+  members: { id: string; active: boolean; taUserId: string | null }[],
+): string | null {
+  if (!position.primaryTaId) return null;
+  return members.find((m) => m.active && m.taUserId === position.primaryTaId)?.id ?? null;
+}

@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { PillTabs, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { PillTabs, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import PhoneRoleCard from "@/app/ui/phone/PhoneRoleCard";
 import SomethingChangedPanel from "@/app/ui/SomethingChangedPanel";
+import { positionAgreementNotSigned } from "@/lib/clients";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
 import { resolveRoleTab } from "@/lib/roleTabs";
@@ -157,6 +158,8 @@ export default async function PositionPage({
               <span aria-hidden className={"size-1.5 rounded-full " + word.dot} />
               {word.label}
             </span>
+            {/* 26 Nov (Nov 25 ops meeting): a position may be opened before the ESA is signed; it must not be missed. */}
+            {positionAgreementNotSigned(c.db, position) && <StatusChip label="Agreement not signed" tone="warn" />}
           </div>
           <p className="t-small text-ink-3 max-md:hidden">{sub}</p>
         </div>
@@ -238,7 +241,7 @@ export default async function PositionPage({
                   Open {clientName}
                 </Link>
               )}
-              <Link href={`${path}?view=overview#opening-admin`} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
+              <Link href={`${path}?view=overview&open=admin#opening-admin`} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
                 People, contacts and closing
               </Link>
               {c.hold && (
@@ -266,11 +269,10 @@ export default async function PositionPage({
       <section className="max-md:hidden flex flex-wrap items-center gap-x-2 gap-y-4 rounded-[28px] bg-surface px-7 py-[22px] shadow-card">
         {cell("TA search", n.taSearch.n, n.taSearch.line, to("sets"))}
         {cell("Ready to send", n.ready.n, n.ready.line, to("sets"))}
-        {cell("With the client", n.withClient.n, n.withClient.line, to("sets"))}
+        {cell("Sets", n.setsSent.n, n.setsSent.line, to("sets"))}
         {cell("Interviews", n.interviews.n, n.interviews.line, to("interviews"), n.interviews.needsTime > 0)}
         {cell("Offer", n.offer.n, n.offer.line, to("offer"))}
         {cell("Joining", n.joining.n, n.joining.line, to("offer"))}
-        {cell("Guarantee", n.guarantee.n, n.guarantee.line, to("guarantee"))}
         <div className="mx-3 hidden h-[70px] w-px bg-rule pg-lg:block" />
         <div className="flex min-w-[200px] flex-col gap-2 py-1 pg-lg:w-[200px]">
           <span className="t-micro text-ink-3">PLACED</span>

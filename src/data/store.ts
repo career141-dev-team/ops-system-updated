@@ -1588,7 +1588,14 @@ export const repo = {
     save();
   },
 
-  addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): OpsVacancy {
+  addVacancy(input: {
+    title: string;
+    places: number;
+    checks: string[];
+    ownerId: Id;
+    source?: "scoop" | "job_post" | "referral";
+    sourceDetail?: string;
+  }): OpsVacancy {
     const db = load();
     const now = Date.now();
     const row: OpsVacancy = {
@@ -1599,6 +1606,8 @@ export const repo = {
       status: "open",
       checks: input.checks,
       ownerId: input.ownerId,
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.sourceDetail ? { sourceDetail: input.sourceDetail } : {}),
       postedAt: now,
       createdAt: now,
       updatedAt: now,

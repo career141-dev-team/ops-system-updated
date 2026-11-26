@@ -10,7 +10,7 @@ const input = "rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: "Company", keys: ["companyName", "companyAddress", "clientBusiness", "registrationNo", "taxNo"] },
   { title: "Who signs for them", keys: ["signatoryName", "signatoryTitle", "signatoryEmail", "signatoryPhone"] },
-  { title: "Terms", keys: ["feeMonths", "feeBasis", "paymentDays", "guaranteeDays", "replacementWorkingDays", "refundPct"] },
+  { title: "Terms", keys: ["clientType", "feeMonths", "expatFeeMonths", "feeBasis", "paymentDays", "guaranteeDays", "replacementWorkingDays", "refundPct"] },
   { title: "Agreed on the call", keys: ["notes"] },
 ];
 
@@ -26,7 +26,7 @@ export function AgreementFieldsForm({
   returnTo,
 }: {
   leadId: string;
-  esa: { id: string; fields: Record<string, string> } | null;
+  esa: { id: string; fields: Record<string, string>; mode?: "draft" | "final" } | null;
   returnTo: "intro" | "agreement";
 }) {
   const value = (key: string) => esa?.fields[key] ?? "";
@@ -36,6 +36,14 @@ export function AgreementFieldsForm({
       <input type="hidden" name="leadId" value={leadId} />
       <input type="hidden" name="esaId" value={esa?.id ?? ""} />
       <input type="hidden" name="returnTo" value={returnTo} />
+      {/* 26 Nov (Nov 25 ops meeting): a Draft may leave the signatory and the address to be confirmed; it can never be marked signed. */}
+      <label className="flex flex-col gap-1">
+        <span className="text-[13px] text-ink-soft">Agreement type</span>
+        <select name="mode" defaultValue={esa?.mode ?? "final"} className={input}>
+          <option value="final">Final: every detail filled in</option>
+          <option value="draft">Draft: signatory, title and address may say &ldquo;To be confirmed&rdquo;</option>
+        </select>
+      </label>
       {GROUPS.map((group) => (
         <div key={group.title} className="flex flex-col gap-2">
           <span className={figmaLabel}>{group.title}</span>
@@ -49,7 +57,13 @@ export function AgreementFieldsForm({
                     {field.label}
                     {field.required ? " *" : " (optional)"}
                   </span>
-                  {key === "feeBasis" ? (
+                  {key === "clientType" ? (
+                    <select name="field.clientType" defaultValue={value(key)} className={input}>
+                      <option value="">Choose…</option>
+                      <option value="local">Local</option>
+                      <option value="international">International</option>
+                    </select>
+                  ) : key === "feeBasis" ? (
                     <select name="field.feeBasis" defaultValue={value(key) || "gross"} className={input}>
                       <option value="gross">Gross salary</option>
                       <option value="basic">Basic salary</option>

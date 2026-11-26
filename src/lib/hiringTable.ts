@@ -7,15 +7,20 @@
  * for that stage, so a column of 400 people never becomes a page of 400 cards. The table is filtered and
  * paged on the server. Pure: it reads the typed view and draws nothing.
  */
-import type { Applicant, ApplicantStage, HiringView } from "@/lib/hiring";
+import { vacancySourceLabel, type Applicant, type ApplicantStage, type HiringView } from "@/lib/hiring";
 
 export const FUNNEL: { stage: ApplicantStage; label: string }[] = [
   { stage: "new", label: "New CVs" },
   { stage: "call", label: "To call" },
-  { stage: "fits", label: "Called · fits" },
+  { stage: "fits", label: "Scheduled" },
   { stage: "interview", label: "Interview" },
+  { stage: "shortlisted", label: "Shortlisted" },
+  { stage: "offered", label: "Offered" },
   { stage: "decision", label: "Decision" },
   { stage: "hired", label: "Hired" },
+  { stage: "non_responsive", label: "Non-responsive" },
+  { stage: "not_interested", label: "Not interested" },
+  { stage: "declined", label: "Declined" },
   { stage: "rejected", label: "Rejected" },
 ];
 
@@ -25,6 +30,7 @@ export interface ApplicantRow {
   id: string;
   name: string;
   source: string;
+  vacancySource: string;
   phone: string | null;
   vacancyId: string;
   vacancy: string;
@@ -35,6 +41,10 @@ export interface ApplicantRow {
   nic: string;
   targetPosition: string;
   packageSaid: string;
+  currentSalary: string;
+  expectedSalary: string;
+  availability: string;
+  callerId: string | null;
   laptop: string;
 }
 
@@ -45,6 +55,7 @@ export function applicantRows(view: HiringView): ApplicantRow[] {
       id: a.id,
       name: a.name,
       source: a.source,
+      vacancySource: vacancySourceLabel(v),
       phone: a.phone,
       vacancyId: v.id,
       vacancy: v.title,
@@ -54,7 +65,11 @@ export function applicantRows(view: HiringView): ApplicantRow[] {
       hasCv: !!a.cvFileId,
       nic: a.nic ?? "",
       targetPosition: a.targetPosition ?? "",
-      packageSaid: a.packageSaid ?? "",
+      packageSaid: a.expectedSalary || a.packageSaid || "",
+      currentSalary: a.currentSalary ?? "",
+      expectedSalary: a.expectedSalary ?? a.packageSaid ?? "",
+      availability: a.availability ?? "",
+      callerId: a.callerId ?? null,
       laptop: a.laptop ?? "",
     })),
   );
@@ -90,9 +105,11 @@ export function pageOf<T>(rows: T[], page: number, size = PAGE_SIZE): { items: T
 
 export const BOARD_CARDS = 8;
 
+const PRIMARY_BOARD_STAGES = new Set<ApplicantStage>(["call", "fits", "interview", "decision", "hired", "rejected"]);
+
 /** The board: each stage with its first few cards and the count of all of them. "New" folds into "To call". */
 export function boardColumns(rows: ApplicantRow[], cards = BOARD_CARDS): { stage: ApplicantStage; label: string; total: number; shown: ApplicantRow[] }[] {
-  return FUNNEL.filter((f) => f.stage !== "new").map((f) => {
+  return FUNNEL.filter((f) => PRIMARY_BOARD_STAGES.has(f.stage)).map((f) => {
     const here = rows.filter((r) => (f.stage === "call" ? r.stage === "call" || r.stage === "new" : r.stage === f.stage));
     return { stage: f.stage, label: f.stage === "call" ? "To call" : f.label, total: here.length, shown: here.slice(0, cards) };
   });

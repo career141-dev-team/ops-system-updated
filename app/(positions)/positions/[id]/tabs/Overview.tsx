@@ -293,7 +293,7 @@ export default function Overview({ c, sp }: TabProps) {
         </aside>
       </div>
 
-      <OpeningAdmin c={c} />
+      <OpeningAdmin c={c} open={sp.open === "admin"} />
 
       {sp.panel === "hold-close-reopen" && <HoldPanel c={c} sp={sp} />}
       {sp.panel === "not-practical" && <NotPracticalPanel c={c} sp={sp} />}

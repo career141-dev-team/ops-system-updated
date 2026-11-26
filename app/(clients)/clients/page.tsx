@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { pillSecondary } from "@/app/ui/figma";
+import { StatusChip, pillSecondary } from "@/app/ui/figma";
 import { EmptyState } from "@/app/ui/figma";
 import { desk, member as memberIn, switchedOn } from "@/data/desk";
 import { teamsFake } from "@/lib/graphCalendar";
@@ -124,7 +124,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   </div>
                   <div className="h-px bg-rule" />
                   <div className="flex min-h-[34px] flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[13px] @min-[400px]:text-[15px]">
-                    <span className={"whitespace-nowrap rounded-full px-3 py-1.5 font-medium leading-5 @min-[400px]:px-3.5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className={"whitespace-nowrap rounded-full px-3 py-1.5 font-medium leading-5 @min-[400px]:px-3.5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
+                      {c.agreementNotSigned && <StatusChip label="Agreement not signed" tone="warn" />}
+                    </span>
                     {c.copy ? (
                       c.copy.kind === "checkin" ? (
                         <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 ml-auto shrink-0 rounded-full bg-ink px-3.5 py-1.5 font-medium leading-5 text-ink-inverse @min-[400px]:px-4">

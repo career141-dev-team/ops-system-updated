@@ -8,12 +8,14 @@ import { OWNERSHIP_WORKING_DAYS } from "@/lib/clientFeedback";
 import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel } from "@/lib/positionCandidates";
 import { panelHref } from "@/lib/panel";
 import { sendHref } from "@/lib/sendModal";
+import { trackingForPosition } from "@/lib/setTracking";
 import { answerLine, awaiting, columnOf, dayOfWindow, sentLine, shortDay } from "@/lib/setsBoard";
 
 import type { TabProps } from "./ctx";
 import BuildSet from "./sets/BuildSet";
 import ChaseClient from "./sets/ChaseClient";
 import ClientHadCv from "./sets/ClientHadCv";
+import ExportPanel from "./sets/ExportPanel";
 import RecordAnswer from "./sets/RecordAnswer";
 import UnreportedHire from "./sets/UnreportedHire";
 import { chipBtn, chipInk } from "./sets/shared";
@@ -48,6 +50,7 @@ export default function Sets({ c, sp }: TabProps) {
       ? { title: `SET ${ready[0].setNumber} is ready to build.`, body: `${ready[0].candidates.length} CVs are ready from the TA. Nothing reaches the client until a person has read it.`, label: `Build SET ${ready[0].setNumber}`, href: open("build-set", ready[0].id) }
       : { title: "No set is waiting on anyone.", body: itsSets.length ? "Every set sent has an answer." : "A set appears when the TA System says its CVs are ready.", label: "", href: "" };
 
+  const tracking = trackingForPosition(db, position, allCandidates);
   const levelCount = (level: CandidateLevel) => allCandidates.filter((x) => x.level === level).length;
   const shown = allCandidates.filter((x) => stage === "all" || x.level === stage);
   const levelHref = (key: string) => `${path}?view=sets&stage=${key}`;
@@ -124,6 +127,49 @@ export default function Sets({ c, sp }: TabProps) {
               </div>
             )}
             <p className="t-small text-ink-3">The {windowDays}-day clock starts when the client gets a set.</p>
+          </Card>
+
+          <Card
+            title="Where the sets stand"
+            sub={tracking.summary}
+            right={
+              tracking.rows.length > 0 ? (
+                <Link href={open("export")} scroll={false} className={pillSecondary + " !gap-2 !px-3.5 !py-2 !text-[12px]"}>
+                  <Icon name="copy" size={14} />
+                  Export
+                </Link>
+              ) : undefined
+            }
+          >
+            {tracking.rows.length === 0 ? (
+              <p className="t-small text-ink-3">Nobody has been shown to the client yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left">
+                  <thead>
+                    <tr className="t-micro text-ink-3">
+                      <th className="py-2 pr-3 font-medium">CANDIDATE</th>
+                      <th className="py-2 pr-3 font-medium">SET</th>
+                      <th className="py-2 pr-3 font-medium">STAGE</th>
+                      <th className="py-2 font-medium">LAST FEEDBACK</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule">
+                    {tracking.rows.map((r) => (
+                      <tr key={r.id} className="t-small align-top">
+                        <td className="t-body-m py-2.5 pr-3">{r.name}</td>
+                        <td className="py-2.5 pr-3 text-ink-3">{r.setNumber === null ? "—" : r.setNumber}</td>
+                        <td className="py-2.5 pr-3">{r.stage}</td>
+                        <td className="py-2.5 text-ink-2">
+                          {r.feedback}
+                          {r.feedbackAt ? <span className="text-ink-3"> · {shortDay(r.feedbackAt)}</span> : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
 
           <Card title="Candidates" sub="The TA works this list in the TA System. People added here by hand stay in Ops.">
@@ -257,6 +303,7 @@ export default function Sets({ c, sp }: TabProps) {
       </div>
 
       {sp.panel === "record-answer" && <RecordAnswer c={c} sp={sp} />}
+      {sp.panel === "export" && <ExportPanel c={c} sp={sp} />}
       {sp.panel === "build-set" && <BuildSet c={c} sp={sp} />}
       {sp.panel === "chase-client" && <ChaseClient c={c} sp={sp} />}
       {sp.panel === "client-had-cv" && <ClientHadCv c={c} sp={sp} />}

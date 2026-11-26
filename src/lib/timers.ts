@@ -33,7 +33,7 @@ export function nextState(timer: Pick<OpsTimer, "state" | "warnAt" | "dueAt">, n
  * Only the chases stop: a clock measuring something real, such as the CV
  * ownership window or the guarantee, keeps running whatever the client says.
  */
-const CHASE_KINDS = ["esa.chase", "feedback.chase", "invoice.chase", "slots.chase", "interview.report"];
+const CHASE_KINDS = ["esa.chase", "feedback.chase", "invoice.chase", "invoice.remind", "slots.chase", "interview.report"];
 
 export function isChase(kind: string): boolean {
   return CHASE_KINDS.includes(kind);
@@ -91,6 +91,7 @@ export function clockInWords(kind: string): string {
     "set.due": "a set due at the client",
     "set.ownership": "the CV ownership window",
     "invoice.chase": "an unpaid invoice",
+    "invoice.remind": "an invoice payment reminder",
     "invoice.due": "an invoice due",
     "doj.remind.week": "somebody joining in a week",
     "doj.remind.day": "somebody joining tomorrow",

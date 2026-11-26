@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { boardSummary, columnOf, reminderText, type BoardInvoice } from "@/lib/accountsBoard";
+import { boardSummary, columnOf, columnsForFilter, matchesFilter, reminderText, type BoardInvoice } from "@/lib/accountsBoard";
 
 const DAY = 86_400_000;
 const now = Date.parse("2026-11-19T10:00:00+05:30");
@@ -57,4 +57,29 @@ test("a day is written as 17 Nov, in Colombo", async () => {
   const { dayShort } = await import("@/lib/accountsBoard");
   assert.equal(dayShort(Date.parse("2026-11-17T23:00:00+05:30")), "17 Nov");
   assert.equal(dayShort(null), "no date");
+});
+
+test("show filters (paid, unpaid, late) pick the right columns and rows (26 Nov)", () => {
+  assert.deepEqual(columnsForFilter("all"), ["to_send", "sent", "late", "paid"]);
+  assert.deepEqual(columnsForFilter("unpaid"), ["to_send", "sent", "late"]);
+  assert.deepEqual(columnsForFilter("late"), ["late"]);
+  assert.deepEqual(columnsForFilter("paid"), ["paid"]);
+
+  const draft = inv({ state: "draft" });
+  const sent = inv({ state: "sent", dueAt: now + 5 * DAY });
+  const late = inv({ state: "sent", dueAt: now - 2 * DAY });
+  const paidRecent = inv({ state: "paid", paidAt: now - DAY });
+  const paidOld = inv({ state: "paid", paidAt: now - 45 * DAY });
+
+  assert.equal(matchesFilter(draft, "unpaid", now), true);
+  assert.equal(matchesFilter(sent, "unpaid", now), true);
+  assert.equal(matchesFilter(late, "unpaid", now), true);
+  assert.equal(matchesFilter(paidRecent, "unpaid", now), false);
+
+  assert.equal(matchesFilter(late, "late", now), true);
+  assert.equal(matchesFilter(sent, "late", now), false);
+
+  assert.equal(matchesFilter(paidRecent, "paid", now), true);
+  assert.equal(matchesFilter(paidOld, "paid", now), true, "paid filter shows older settled invoices too");
+  assert.equal(matchesFilter(draft, "paid", now), false);
 });

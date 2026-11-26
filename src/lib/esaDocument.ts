@@ -3,9 +3,22 @@
  * Pure: no database, nothing sent. The numbering is by position, so "Clause 5.1" and "clause 6.1" in the text
  * stay true as long as the order here matches the order of the draft.
  */
-import { holeValues, type EsaFields } from "@/lib/esa";
+import { DRAFT_NOTE, TBC, holeValues, type EsaFields, type EsaMode } from "@/lib/esa";
+
+/**
+ * 26 Nov (Nov 25 ops meeting): a part of a line that a Draft leaves to be confirmed sits between these two
+ * marks, so the screen can highlight it. An inline mark keeps every line a plain string.
+ */
+export const MARK_OPEN = "⟦";
+export const MARK_CLOSE = "⟧";
+/** A line cut at its marks: `{ mark: true }` parts are the highlighted ones. */
+export function markedParts(line: string): { text: string; mark: boolean }[] {
+  return line.split(new RegExp(`[${MARK_OPEN}${MARK_CLOSE}]`)).map((text, i) => ({ text, mark: i % 2 === 1 })).filter((p) => p.text !== "");
+}
 
 export interface EsaDoc {
+  /** Draft only: the note that goes above the parties. */
+  draftNote?: string;
   /** The addressee lines at the top. */
   to: string[];
   /** The opening paragraphs, before "AGREE AS FOLLOWS". */
@@ -22,20 +35,24 @@ export function longOrdinalDate(t: number): string {
   return `${ordinal(d.getUTCDate())} ${d.toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" })} ${d.getUTCFullYear()}`;
 }
 
-export function esaDocument(fields: EsaFields, o: { company: string; at: number; directorName: string }): EsaDoc {
+export function esaDocument(fields: EsaFields, o: { company: string; at: number; directorName: string }, mode: EsaMode = "final"): EsaDoc {
   const h = holeValues(fields);
   const company = (fields.companyName || o.company).trim();
-  const address = (fields.companyAddress || "").trim() || "[registered address]";
+  const draft = mode === "draft";
+  const tbc = MARK_OPEN + TBC + MARK_CLOSE;
+  const address = (fields.companyAddress || "").trim() || (draft ? tbc : "[registered address]");
   const business = (fields.clientBusiness || "").trim() || "[their business]";
   const fee = h.feeText || "[fee]";
+  const expatFee = h.expatFeeText || "[fee for a non-Sri Lankan]";
   const guarantee = h.guaranteeText || "[guarantee period]";
   const pay = fields.paymentDays || "30";
   const replace = h.replacementText || "[replacement period]";
   const refund = fields.refundPct || "25";
-  const signer = (fields.signatoryName || "").trim();
-  const title = (fields.signatoryTitle || "").trim();
+  const signer = (fields.signatoryName || "").trim() || (draft ? tbc : "");
+  const title = (fields.signatoryTitle || "").trim() || (draft ? tbc : "");
 
   return {
+    draftNote: draft ? DRAFT_NOTE : undefined,
     to: [[signer, title].filter(Boolean).join(" · "), company, address].filter(Boolean),
     parties: [
       `This Agreement is made on this day of ${longOrdinalDate(o.at)} between CAREER CONSULTANTS PVT LTD (Reg No. PV73499), a company duly incorporated and organized under the laws of (Act No. 07 of 2007) having its registered office at 35/1 Sir Lester James Pieris Mawatha, Stubbs Plc, Colombo-05, Sri Lanka. (Hereinafter called Career141) which expression shall include all its heirs, executors and assignees of Career141.`,
@@ -93,7 +110,7 @@ export function esaDocument(fields: EsaFields, o: { company: string; at: number;
         title: "CONSULTANCY FEE AND PAYMENT TERMS",
         items: [
           `The Consultancy Fee for placement of Sri Lankan is: ${fee} of the placed candidate.`,
-          `The Consultancy Fee for placement of non-Sri Lankan is: ${fee} x 2 of the placed candidate.`,
+          `The Consultancy Fee for placement of non-Sri Lankan is: ${expatFee} of the placed candidate.`,
           "If the placed candidate is paid in any other currency other than LKR then the Consultancy Fee must be transferred to Career 141’s foreign currency bank account in Singapore.",
           `The ‘Consultancy Fee’ should be made available by the Client to Career141 on or within ${pay} calendar days from the 1st working day (Physical or Online) of the placed candidate, irrespective of any pending procedures with regard to legal or government-related onboarding documents.`,
           "A late payment charge will be incurred on overdue invoices calculated and compounded at 5% monthly on the amount outstanding from the due date until the date of payment.",

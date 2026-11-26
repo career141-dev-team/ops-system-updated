@@ -24,6 +24,10 @@ export function termRows(fields: EsaFields): { label: string; value: string }[] 
     { label: "Fee", value: cap(monthsWords(fields.feeMonths)) },
     { label: "Guarantee", value: (fields.guaranteeDays || "90") + " days" },
     { label: "Payment", value: (fields.paymentDays || "30") + " days" },
+    // 26 Nov (Nov 25 ops meeting): who the client is and what a non-Sri Lankan costs. Last, because coverNote reads rows 1 and 2 by position.
+    { label: "Client", value: fields.clientType === "international" ? "International" : fields.clientType === "local" ? "Local" : "Not chosen" },
+    // An agreement from before the field said "fee x 2", and the placement bills it as 2, so it reads 2 here too.
+    { label: "Expat fee", value: cap(monthsWords(fields.expatFeeMonths || "2")) },
   ];
 }
 

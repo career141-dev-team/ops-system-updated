@@ -291,3 +291,25 @@ confirm each one while walking the flow.
 - **One WhatsApp group, made by the Ops number, is read as a CV inbox.** Documents posted in it go into the same Scoop CV intake as the emails ([28](28-WHATSAPP.md)). This is the one group the system reads, because it is one the system created. A group message never goes to the Inbox, matches a phone or stops a chase.
 - **Costs and limits, accepted:** it needs a Cloud API number (not Coexistence on the same number); 8 people at most, our number included; a CV after 17:30 misses that day's summary; a CV sent 1:1 by somebody who is not a client's or an enquiry's contact is read too (decided later the same day, because Meta does not yet allow groups on the Ops number: it is not an Official Business Account); phone-made groups still cannot be joined. Meta publishes no sample of a document inside a group, so a real test comes before anyone relies on it.
 - **Open question: who are these CVs for?** They are filed as applicants to Career 141's own vacancies. If the people posting them are candidates for **clients**, they belong in the TA System, through its API, not in Ops internal hiring. Needs the owner's answer before the group is switched on.
+
+## 26 Nov: the ops team's 25 Nov walkthrough, decided for the build (owner; branches `hdbinath/ops-nov25-*`)
+
+The source is the meeting's requirements document; the plan is one PR per area, in order. Decided here so each later PR has something to point at:
+
+- **Invoicing waits for nationality and the client's payment details**, then reminders in weeks 1, 2 and 3, then the late surcharge. **The due date stays as the signed agreement words it** (clause 5.4: `paymentDays` from the candidate's first working day), not "invoice date + 1 month" as the meeting notes say: the client signed clause 5.4, so the system follows it.
+- **The expat fee is a term of each agreement** (`expatFeeMonths`, 2 by default). Clause 5.2 used to say "x 2" in the text; it now prints the field, and the placement copies it, so a later agreement change never moves an invoice. Whether it ever differs from 2 is still the owner's to say.
+- **A draft agreement is the one exception to "a document never has a hole".** Only the signatory's name, designation and the company address may be blank, only in Draft mode, and they print as a yellow-highlighted "To be confirmed" with a draft note at the top. Every other blank still refuses, a Final refuses all of them, and a signature cannot be recorded on a Draft. Making it final goes through "They want changes", which makes the next version.
+- **The enquiry board is New, Call, Agreement to send.** The Checks column is gone because the checks run by themselves; a flagged industry or a likely duplicate is a badge on the New card that opens the same check.
+- **The requirement call is per position and defaults to the position's TA**, because the Ops person on the intro call does not know the role in depth.
+- **"Agreement not signed" is derived, not a stage**: no ESA, or none signed or countersigned, on the client's own lead or any lead with a position for them. It cannot go stale.
+- **"Internal hiring" is the top-bar entry**, renamed "Scoops & vacancies" in its own PR; our own interview before a CV goes to a client stays.
+- **Defaults for the meeting's open questions**, each reversible: P1/P2/P3 is an Ops-only field (TA seeing it needs a TA-repo change); testimonials are asked of both the candidate and the client; the invoice format stays until a new one is uploaded; email threading is one thread per client, starting with the set emails; feedback from WhatsApp groups stays typed by hand; WhatsApp client groups wait for Meta developer access.
+- **A role "needs you" only for:** a joining day passed; no primary TA; the agreement not signed; an interview with no time; a set sent and unanswered past `feedback.chaseDays`; a joined placement whose nationality is not confirmed; or a testimonial pending from the candidate or the client. Searching with no CV set yet, and a JD waiting for approval, no longer count (their buttons stay). Closed and held roles never count.
+- **Open, for the owner:** the ESA text's refund default is 25%, but [STATUS](STATUS.md) phase 7 says the agreement's refund is 50% of what was paid. Not changed.
+
+## 26 Nov: set tracking and the export (ops lead, 25 Nov meeting; branch `rayan/set-tracking`)
+
+- **Client feedback stays manual entry.** The tracking reads what a person recorded through "Record the answer" and the interview decisions. A WhatsApp reply is not read into it.
+- **Who is listed.** A candidate appears once they are in a set that has gone to the client, or have gone further (interview, offer, joined, out). Candidates still with the TA or in an unsent set are not shown, because the table is meant for the client.
+- **The export needs no money permission.** It holds names, sets, stages and feedback, no salary or fee, so any signed-in person may take it (as the set zip). The salary is never a column.
+- **Backup ops follows PR 1.** The collapsible block shows the Ops owner only until `backupOwnerId` exists.

@@ -65,9 +65,9 @@ export function SendAgreementModal({
   if (!lead) return null;
   const esa = agreementForLead(db, leadId);
   const fields = esa?.fields ?? {};
-  const missing = missingFields(fields);
+  const missing = missingFields(fields, esa?.mode ?? "final");
   const template = db.templates.find((t) => t.key === "esa.cover") ?? null;
-  const filled = coverDraft(template, fields);
+  const filled = coverDraft(template, fields, esa?.mode ?? "final");
   const subject = "problem" in filled ? `Executive Search Agreement — ${lead.company}` : filled.subject;
   const body =
     "problem" in filled

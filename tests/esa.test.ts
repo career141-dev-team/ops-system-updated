@@ -14,10 +14,14 @@ import {
   chaseStep,
   agreementVersions,
   checkTemplate,
+  DRAFT_BLANKABLE,
+  DRAFT_NOTE,
+  problemWithSigningDraft,
   coverDraft,
   coverEmail,
   nextDraftVersion,
   defaultFields,
+  holeValues,
   expiresAt,
   missingFields,
   nextChaseAt,
@@ -39,7 +43,9 @@ const filled = (): EsaFields => ({
   signatoryEmail: "hr@example.test",
   signatoryTitle: "Head of HR",
   signatoryPhone: "+94 77 000 0000",
+  clientType: "local",
   feeMonths: "1",
+  expatFeeMonths: "2",
   feeBasis: "gross",
   guaranteeDays: "90",
   paymentDays: "30",
@@ -398,4 +404,92 @@ test("every drafted copy is the next version, so a second draft never writes ove
   assert.equal(nextDraftVersion([f("Agreement - A - v1.docx"), f("Agreement - A - v1.pdf")]), 2);
   assert.equal(nextDraftVersion([f("Agreement - A - v1.docx"), f("Agreement - A - v2.docx")]), 3);
   assert.equal(nextDraftVersion([f("Agreement - A - v7.pdf", "esa_signed")]), 1, "a signed copy is not a draft");
+});
+
+
+// 26 Nov (Nov 25 ops meeting): the Draft exception is narrow.
+test("a Draft may leave only the signatory, the title and the address blank", () => {
+  assert.deepEqual(DRAFT_BLANKABLE, ["signatoryName", "signatoryTitle", "companyAddress"]);
+  const blank = { ...filled(), signatoryName: "", signatoryTitle: " ", companyAddress: "" };
+  assert.equal(problemWithDraft(blank, "draft"), null);
+  assert.deepEqual(missingFields(blank).map((f) => f.key), ["companyAddress", "signatoryName", "signatoryTitle"], "final still blocks, and no mode means final");
+  const noCompany = { ...filled(), companyName: "", clientType: "", expatFeeMonths: "" };
+  assert.deepEqual(missingFields(noCompany, "draft").map((f) => f.key), ["companyName", "clientType", "expatFeeMonths"], "anything else still blocks in a draft");
+});
+
+test("the cover email carries the draft note once, above the sign-off, and still refuses holes", () => {
+  const wording = { subject: "{{client}} · our agreement", body: "Dear {{contact}},\n\nAttached.\n\nKind regards,\nCareer 141" };
+  const draft = coverDraft(wording, filled(), "draft") as { body: string };
+  assert.ok(draft.body.includes(DRAFT_NOTE));
+  assert.ok(draft.body.indexOf(DRAFT_NOTE) < draft.body.indexOf("Kind regards"));
+  assert.equal(draft.body.split(DRAFT_NOTE).length, 2);
+  assert.ok(!(coverDraft(wording, filled()) as { body: string }).body.includes(DRAFT_NOTE), "a final agreement's email is unchanged");
+  const edited = coverEmail(wording, { ...filled(), coverSubject: "Our ESA", coverBody: "Hello." }, "draft") as { body: string };
+  assert.match(edited.body, /^Hello\.\n\nThis is a draft\./);
+  assert.ok("problem" in coverDraft({ subject: "x", body: "Pay {{mysteryHole}}" }, filled(), "draft"));
+});
+
+test("a draft cannot be recorded as signed", () => {
+  assert.equal(problemWithSigningDraft("draft"), "This is a draft agreement. Make the final agreement before recording a signature.");
+  assert.equal(problemWithSigningDraft("final"), null);
+  assert.equal(problemWithSigningDraft(undefined), null, "no mode is final");
+});
+
+test("the expat fee is worded from its own months", () => {
+  assert.equal(holeValues({ ...filled(), expatFeeMonths: "2" }).expatFeeText, "Two Months Gross Salary");
+  assert.equal(holeValues({ ...filled(), expatFeeMonths: "" }).expatFeeText, "");
+  assert.equal(defaultFields({ guaranteeDays: 90, paymentDays: 30, replacementWorkingDays: 60, refundPct: 25 }).expatFeeMonths, "2");
+});
+
+test("the expat fee must stay 2 months while the template prints \"x 2\"", () => {
+  // 26 Nov: what the client signs in Word and what the screen and the invoice use must be the same number.
+  assert.equal(problemWithDraft({ ...filled(), expatFeeMonths: "2" }), null);
+  assert.match(problemWithDraft({ ...filled(), expatFeeMonths: "3" }) ?? "", /must be 2 months/);
+});
+
+test("a sent draft is not chased for a signature; one task asks for the signatory's details", async () => {
+  // 26 Nov (Nov 25 ops meeting): a Draft cannot be signed, so the chase would ask the impossible.
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-chase-draft-"));
+  process.env.OPS_STORE = "json";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const now = Date.now();
+  const esa = repo.addAgreement({
+    mode: "draft",
+    leadId: "ld_draft",
+    clientTaId: null,
+    state: "sent",
+    version: 1,
+    fields: { ...filled(), signatoryName: "" },
+    draftFileId: null,
+    sentAt: now - 3 * DAY,
+    sentMessageId: null,
+    chaseStep: 0,
+    expiresAt: now + 11 * DAY,
+    signedAt: null,
+    signedFileId: null,
+    countersignedAt: null,
+    countersignedFileId: null,
+    reason: null,
+    ownerId: "m_owner",
+  });
+
+  const answer = await desk.chaseTheAgreement(esa.id, "m_owner", now);
+  assert.equal(answer.ok, true);
+  assert.match(answer.what, /not chased for a signature/);
+  assert.equal(repo.all().messages.filter((m) => m.subjectId === esa.id).length, 0, "nothing drafted to the client");
+  assert.equal(repo.all().tasks.filter((t) => t.subjectId === esa.id).length, 1);
+});
+
+test("a draft with no signatory yet greets Sir or Madam; a final with none still refuses", () => {
+  // 26 Nov, found walking the lead page: the draft's cover refused on {{contact}}, the blank signatory.
+  const wording = { subject: "{{client}} · our agreement", body: "Dear {{contact}},\n\nAttached.\n\nKind regards,\nCareer 141" };
+  const draft = coverDraft(wording, { ...filled(), signatoryName: "" }, "draft") as { body: string };
+  assert.match(draft.body, /^Dear Sir or Madam,/);
+  assert.ok("problem" in coverDraft(wording, { ...filled(), signatoryName: "" }));
 });

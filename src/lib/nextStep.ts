@@ -909,6 +909,8 @@ export function invoiceNextStep(
     /** Where the money goes - empty if the client record has no billing address. */
     billingEmail: string;
     writeOffAfterDays: number;
+    /** What still blocks a draft fee invoice from being sent (nationality, payment details). */
+    blockers?: string[];
   },
   now: number,
 ): Step {
@@ -936,14 +938,22 @@ export function invoiceNextStep(
     if (!parts.billingEmail) {
       return {
         at: "client",
-        where: "Drafted, waiting for accounts",
+        where: "To be sent",
         waiting: "This client has no billing address, so the " + what + " has nowhere to go. Put one on their record first.",
         clock: null,
       };
     }
+    if (parts.blockers && parts.blockers.length > 0) {
+      return {
+        at: "blockers",
+        where: "To be sent — blocked",
+        waiting: "Cannot send yet: " + parts.blockers.join(" and ") + ".",
+        clock: "Due the agreed number of days after their first working day (clause 5.4).",
+      };
+    }
     return {
       at: "send",
-      where: "Drafted, waiting for accounts",
+      where: "To be sent",
       waiting: "Send it to " + parts.billingEmail + ". It goes as a draft somebody approves, like every other message.",
       clock: "Due the agreed number of days after their first working day, once it has gone.",
     };

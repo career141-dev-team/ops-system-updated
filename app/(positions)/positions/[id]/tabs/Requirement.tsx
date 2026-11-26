@@ -35,7 +35,10 @@ export default function Requirement({ c, sp }: TabProps) {
   const path = `/positions/${position.id}`;
   const f = requirement?.fields ?? {};
   const locked = Boolean(requirement && requirementLocked(requirement.fields));
-  const meeting = requirement?.meetingId ? meetingIn(db, requirement.meetingId) : null;
+  // One requirement call per position (26 Nov, Nov 25 ops meeting); older calls carry no position, so the requirement's own is the fallback.
+  const meeting =
+    db.meetings.filter((m) => m.kind === "requirement" && m.positionId === position.id).sort((a, b) => b.at - a.at)[0] ??
+    (requirement?.meetingId ? meetingIn(db, requirement.meetingId) : null);
   const contact = client?.contacts?.[0] ?? null;
   const team = (position.team ?? []).map((t) => taPeopleList.find((p) => p.id === t.taId)?.fullName.split(" ")[0] ?? t.taId);
   const thisWeek = issuesNewestFirst(db).find((i) => i.weekOf === weekOf(now)) ?? null;
@@ -91,8 +94,8 @@ export default function Requirement({ c, sp }: TabProps) {
                 </div>
                 {mayManage && !meeting?.heldAt && (
                   <div className="col-span-2">
-                    {/* The requirement call belongs to a client we already work for opening a role; it is booked on the lead (23 Nov). */}
-                    <Link href={"/leads/" + requirement.leadId + "?step=requirement"} className={small}>
+                    {/* The requirement call is booked from the client's page, for this position, in its TA's calendar (26 Nov, Nov 25 ops meeting). */}
+                    <Link href={(client ? "/clients/" + client.id : "/leads/" + requirement.leadId + "?step=requirement") + "?panel=requirement-call&position=" + position.id} scroll={false} className={small}>
                       {meeting ? "Rebook the requirement call" : "Book the requirement call"}
                     </Link>
                   </div>

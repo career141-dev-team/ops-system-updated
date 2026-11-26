@@ -56,6 +56,7 @@ test("each kind of clock says, in its task, what it actually means", () => {
   const kinds: [string, RegExp][] = [
     ["feedback.chase", /Call them today/],
     ["invoice.chase", /late charge/],
+    ["invoice.remind", /Read the reminder/],
     ["guarantee.end", /clean end/],
     ["set.ownership", /claim on any CV/],
   ];

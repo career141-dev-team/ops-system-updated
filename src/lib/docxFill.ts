@@ -129,14 +129,71 @@ export async function holesInDocx(file: Buffer): Promise<string[]> {
  * A value that is blank counts as no value: an agreement that says "between
  * CAREER CONSULTANTS PVT LTD and  " is worse than one that was never sent.
  */
-export async function fillDocx(file: Buffer, values: Record<string, string>): Promise<FillAnswer> {
+const AFTER_HIGHLIGHT = /<w:(?:u|effect|bdr|shd|fitText|vertAlign|rtl|cs|em|lang|eastAsianLayout|specVanish|oMath)[\s/>]/;
+
+/** A run's properties with a yellow highlight added, in the place Word reads it from. */
+function highlighted(rPr: string): string {
+  const mark = '<w:highlight w:val="yellow"/>';
+  // The owner's template writes an empty one as <w:rPr/>, and some holes are highlighted already (26 Nov).
+  if (!rPr || rPr === "<w:rPr/>") return `<w:rPr>${mark}</w:rPr>`;
+  if (rPr.includes("<w:highlight ")) return rPr;
+  const at = rPr.search(AFTER_HIGHLIGHT);
+  return at >= 0 ? rPr.slice(0, at) + mark + rPr.slice(at) : rPr.replace("</w:rPr>", mark + "</w:rPr>");
+}
+
+/**
+ * 26 Nov (Nov 25 ops meeting), Draft agreements only: a blank hole named in `tbc` becomes a
+ * yellow-highlighted run saying `text`. The hole's run is split around it so the words either side keep
+ * their look. A run this cannot read (more than one text part) is left alone, and the normal pass then
+ * refuses the blank as it always did, so the exception cannot leak into a final agreement.
+ */
+function markBlanks(xml: string, values: Record<string, string>, tbc: string[], text: string): string {
+  const one = /^(<w:r(?:\s[^>]*)?>)(<w:rPr\/>|<w:rPr>[\s\S]*?<\/w:rPr>)?<w:t(?:\s[^>]*)?>([^<]*)<\/w:t><\/w:r>$/;
+  const holeOnly = /^\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}$/;
+  const isBlank = (piece: string) => {
+    const name = holeOnly.exec(piece)?.[1];
+    return !!name && tbc.includes(name) && !(values[name] ?? "").trim();
+  };
+  return xml.replace(RUN, (run) => {
+    const m = one.exec(run);
+    if (!m) return run;
+    const [, open, rPr = "", body] = m;
+    const pieces = body.split(/(\{\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}\})/).filter((piece) => piece !== "");
+    if (!pieces.some(isBlank)) return run;
+    return pieces
+      .map((piece) =>
+        isBlank(piece)
+          ? `${open}${highlighted(rPr)}<w:t xml:space="preserve">${forXml(text)}</w:t></w:r>`
+          : `${open}${rPr}<w:t xml:space="preserve">${piece}</w:t></w:r>`,
+      )
+      .join("");
+  });
+}
+
+/**
+ * `draft` (26 Nov, Nov 25 ops meeting): the holes named in `blanks` may be empty and print as a
+ * highlighted `text`; `note` goes in as a highlighted line at the top of the document, because the
+ * owner's template has no hole for it. Every other blank still refuses.
+ */
+export async function fillDocx(
+  file: Buffer,
+  values: Record<string, string>,
+  draft?: { blanks: string[]; text: string; note: string },
+): Promise<FillAnswer> {
   const zip = await JSZip.loadAsync(file);
   const missing: string[] = [];
   const filled: string[] = [];
 
   for (const path of Object.keys(zip.files)) {
     if (!TEXT_PARTS.test(path)) continue;
-    const xml = joinSplitHoles(await zip.file(path)!.async("string"));
+    let xml = joinSplitHoles(await zip.file(path)!.async("string"));
+    if (draft) {
+      xml = markBlanks(xml, values, draft.blanks, draft.text);
+      if (path === "word/document.xml") {
+        const note = `<w:p><w:r><w:rPr><w:b/><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">${forXml(draft.note)}</w:t></w:r></w:p>`;
+        xml = xml.replace(/<w:body>/, "<w:body>" + note);
+      }
+    }
     const next = xml.replace(HOLE, (whole, name: string) => {
       const value = (values[name] ?? "").trim();
       if (!value) {

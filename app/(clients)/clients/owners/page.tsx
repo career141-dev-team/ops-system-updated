@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LeadAssignRow, MoveClientCard } from "@/app/(clients)/clients/owners/OwnersClient";
@@ -12,7 +13,7 @@ import {
 } from "@/data/desk";
 import { SOURCE_MEANINGS } from "@/lib/leads";
 import { day } from "@/lib/listing";
-import { can } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
 /**
@@ -31,9 +32,8 @@ export default async function ClientOwnersPage({
   const db = await desk();
   const now = Date.now();
   const members = activeMembers(db);
-  const opsMembers = members.filter((m) =>
-    ["ops", "ops_lead", "director_ops"].includes(m.role),
-  );
+  // 26 Nov: "ops" is not a role, so this list was always empty and fell back to everyone. Same people as the positions picker.
+  const opsMembers = members.filter((m) => ASSIGNABLE_ROLES.includes(m.role));
   const team = opsMembers.length > 0 ? opsMembers : members;
 
   const ownerStats = team.map((m) => {
@@ -81,6 +81,10 @@ export default async function ClientOwnersPage({
       {msg && (
         <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
+
+      <Link href="/clients/positions" className="t-label w-fit text-brand hover:underline">
+        Assign ops to positions
+      </Link>
 
       {/* Section 1: WAITING FOR AN OWNER (Figma 1:3786) */}
       <Card title="Waiting for an owner" sub={`${openLeads.length} open`}>

@@ -11,6 +11,7 @@
 
 import { colomboDateInWords } from "./calendar";
 import type { InvoiceBank, InvoicePdfInput } from "./invoicePdf";
+import { feeMonthsFor } from "./money";
 
 export const INVOICE_HOLES = [
   "invoiceNumber",
@@ -50,6 +51,8 @@ export interface InvoiceDocInput {
     candidateName: string;
     joinedAt: number | null;
     feeMonths: number;
+    expatFeeMonths?: number;
+    nationality?: string;
     feeBasis: string;
     basicSalary: number | null;
     allowances: number;
@@ -83,7 +86,7 @@ export function invoiceHoles(i: InvoiceDocInput): Record<string, string> {
     package: p?.package ?? "",
     basicSalary: knownSplit ? plain(p!.basicSalary!) : "",
     allowances: knownSplit ? plain(p!.allowances) : "",
-    feeMonths: p ? String(p.feeMonths) : "",
+    feeMonths: p ? String(feeMonthsFor(p)) : "",
     feeBasis: p ? (p.feeBasis === "basic" ? "basic salary" : "gross salary") : "",
     amount: plain(i.amount),
     // "0.00" is a real answer for a late charge, so it is never left blank.

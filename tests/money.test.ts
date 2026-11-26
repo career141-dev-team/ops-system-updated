@@ -522,3 +522,258 @@ test("only an invoice the client has, and owes on, takes a payment (18 Nov)", as
   assert.equal(problemWithPaymentOn("sent"), null);
   assert.equal(problemWithPaymentOn("partly_paid"), null);
 });
+
+test("expat nationality sets the expat fee, and blockers gate sending (26 Nov)", async () => {
+  const {
+    daysUntilDue,
+    feeMonthsFor,
+    invoiceBlockers,
+    invoiceReminderClocks,
+    isExpat,
+    problemWithTestimonial,
+  } = await import("@/lib/money");
+
+  assert.equal(isExpat("Sri Lankan"), false);
+  assert.equal(isExpat("sri lanka"), false);
+  assert.equal(isExpat(""), false);
+  assert.equal(isExpat(undefined), false);
+  assert.equal(isExpat("Indian"), true);
+  assert.equal(isExpat("Pakistani"), true);
+  for (const local of ["Sri-Lankan", "Sri Lankan.", "Sinhala", "SL", "sri lankan citizen", "SRI LANKAN"]) {
+    assert.equal(isExpat(local), false, local);
+  }
+  assert.equal(isExpat("Maldivian"), true);
+
+  assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Sri Lankan" }), 1);
+  assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Indian" }), 2);
+  assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 3, nationality: "British" }), 3);
+  assert.equal(feeMonthsFor({ feeMonths: 1, nationality: "Indian" }), 2, "defaults to 2 when agreement predates expatFeeMonths");
+
+  assert.deepEqual(invoiceBlockers(null), []);
+  assert.deepEqual(invoiceBlockers({}), ["nationality not confirmed", "payment details not received"]);
+  assert.deepEqual(
+    invoiceBlockers({ nationality: "Indian", nationalityConfirmedAt: MONDAY }),
+    ["payment details not received"],
+  );
+  assert.deepEqual(
+    invoiceBlockers({
+      nationality: "Indian",
+      nationalityConfirmedAt: MONDAY,
+      paymentDetails: { offeredSalary: 500_000, receivedAt: MONDAY, by: "m_accounts" },
+    }),
+    [],
+  );
+
+  // Weekly reminders at +7, +14, +21 days; any falling on/after dueAt are skipped.
+  const all3 = invoiceReminderClocks(MONDAY, MONDAY + 30 * DAY);
+  assert.deepEqual(
+    all3.map((r) => ({ kind: r.kind, week: r.week, days: (r.dueAt - MONDAY) / DAY })),
+    [
+      { kind: "invoice.remind", week: 1, days: 7 },
+      { kind: "invoice.remind", week: 2, days: 14 },
+      { kind: "invoice.remind", week: 3, days: 21 },
+    ],
+  );
+  const shortWindow = invoiceReminderClocks(MONDAY, MONDAY + 14 * DAY);
+  assert.deepEqual(shortWindow.map((r) => r.week), [1], "week 2 and 3 fall on/after due date and are skipped");
+
+  assert.equal(daysUntilDue(MONDAY + 5 * DAY, MONDAY), 5);
+  assert.equal(daysUntilDue(MONDAY, MONDAY), 0);
+  assert.equal(daysUntilDue(MONDAY - 3 * DAY, MONDAY), -3);
+  assert.equal(daysUntilDue(null, MONDAY), null);
+
+  assert.equal(problemWithTestimonial("candidate", "LinkedIn"), null);
+  assert.equal(problemWithTestimonial("client", "Google"), null);
+  assert.match(problemWithTestimonial("other", "LinkedIn") ?? "", /candidate or the client/i);
+  assert.match(problemWithTestimonial("client", "") ?? "", /channel/i);
+});
+
+test("join creates testimonial task, uses agreement paymentDays and expat fee, and reminders increment and stop on reply (26 Nov)", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-money-pr3-"));
+  process.env.OPS_STORE = "json";
+  process.env.OPS_TA_FAKE = "on";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  repo.reset();
+
+  const now = MONDAY;
+  const lead = repo.addLead({
+    company: "EXPAT CLIENT",
+    nameKey: "expat client",
+    contactName: "Finance Lead",
+    contactEmail: "finance@expat.test",
+    contactPhone: "",
+    source: "website",
+    industry: "Tech",
+    website: "",
+    notes: "",
+    industryFlagged: false,
+    industryBecause: null,
+    industryConfirmedBy: null,
+    state: "requirement",
+    reason: null,
+    doNotInvite: false,
+    clientTaId: "ta_c_exp",
+    ownerId: "m_owner",
+    createdBy: "m_owner",
+  });
+  repo.addAgreement({
+    leadId: lead.id,
+    clientTaId: "ta_c_exp",
+    state: "signed",
+    version: 1,
+    fields: { companyName: "EXPAT CLIENT", feeMonths: "1", expatFeeMonths: "2", feeBasis: "gross", paymentDays: "45" },
+    draftFileId: null,
+    sentAt: now - 10 * DAY,
+    sentMessageId: null,
+    chaseStep: 0,
+    expiresAt: null,
+    signedAt: now - 5 * DAY,
+    signedFileId: "f_s",
+    countersignedAt: null,
+    countersignedFileId: null,
+    reason: null,
+    ownerId: "m_owner",
+  });
+  const client = repo.addClient({
+    leadId: lead.id,
+    taClientId: "ta_c_exp",
+    name: "EXPAT CLIENT",
+    nameKey: "expat client",
+    stage: "active",
+    billingName: "EXPAT CLIENT (PVT) LTD",
+    billingEmail: "finance@expat.test",
+    billingAddress: "10 Test Road, Colombo 03",
+    groupName: "",
+    notes: "",
+    reason: null,
+    ownerId: "m_owner",
+  });
+  repo.addPosition({
+    requirementId: null,
+    clientId: client.id,
+    clientTaId: "ta_c_exp",
+    openingTaId: "ta_j_exp",
+    title: "VP Engineering",
+    stage: "searching",
+    primaryTaId: "ta_u2",
+    hundredPercentDay: null,
+    taStatus: "open",
+    jdApprovedAt: null,
+    linkedInUrl: null,
+    linkedInPostedAt: null,
+    depthStage: null,
+    shortlistedTotal: null,
+    pendingCount: null,
+    depthCheckedAt: null,
+    handedOverAt: now,
+    closedAt: null,
+    ownerId: "m_owner",
+  });
+
+  const placement = await desk.takePlacementFrom(
+    "ta_p_exp",
+    {
+      id: "ta_p_exp",
+      applicationId: "ta_a_exp",
+      openingId: "ta_j_exp",
+      clientId: "ta_c_exp",
+      candidateName: "RAJ KUMAR",
+      placedSalary: 500_000,
+      currency: "LKR",
+      salaryBasis: "gross",
+      package: "500,000 gross",
+      offerLetterFileId: "f_offer",
+      joinDateMs: now,
+      joinConfirmedAt: null,
+      fellThroughAt: null,
+      fellThroughReason: null,
+    },
+    now,
+  );
+  assert(placement);
+  assert.equal(placement.paymentDays, 45, "paymentDays copied from signed agreement");
+  assert.equal(placement.expatFeeMonths, 2);
+
+  // Confirm expat nationality before join: fee should be 2 months.
+  repo.patchPlacement(
+    placement.id,
+    { nationality: "Indian", nationalityConfirmedBy: "m_owner", nationalityConfirmedAt: now },
+    "m_owner",
+    "placement.nationalityConfirmed",
+    "Indian",
+  );
+
+  const joined = await desk.markPlacementJoined(placement.id, "m_owner", now);
+  assert.equal(joined.ok, true);
+  const updated = repo.placementIn(placement.id)!;
+  assert.deepEqual(updated.testimonial, { candidate: "pending", client: "pending" });
+  const testimonialTask = repo.all().tasks.find((t) => t.kind === "record" && t.subjectId === placement.id && /testimonial/i.test(t.title));
+  assert(testimonialTask, "mandatory testimonial task created on join");
+
+  const invoice = repo.all().invoices.find((i) => i.placementId === placement.id)!;
+  assert.equal(invoice.amount, 1_000_000, "expat gets 2 months");
+  assert.equal(invoice.dueAt, now + 45 * DAY, "due date uses agreement paymentDays (clause 5.4)");
+
+  // Send and fire a week-1 reminder.
+  repo.patchInvoice(invoice.id, { state: "sent", sentAt: now }, "m_accounts", "invoice.sent", null);
+  await desk.startTimer({
+    kind: "invoice.remind",
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    startsAt: now,
+    dueAt: now + 7 * DAY,
+    warnAt: null,
+    ownerId: invoice.ownerId,
+    payload: { label: invoice.number, week: "1" },
+  });
+  const rem = await desk.remindAboutInvoice(invoice.id, 1, now + 7 * DAY);
+  assert.equal(rem.ok, true);
+  assert.equal(repo.invoiceIn(invoice.id)?.remindersSent, 1);
+  assert(repo.all().messages.some((m) => m.templateKey === "invoice.remind" && m.subjectId === invoice.id && m.state === "draft"));
+
+  // A reminder past due date is skipped.
+  const skipped = await desk.remindAboutInvoice(invoice.id, 3, now + 46 * DAY);
+  assert.equal(skipped.ok, false);
+
+  // A client reply cancels pending invoice.remind timers.
+  await desk.startTimer({
+    kind: "invoice.remind",
+    subjectType: "invoice",
+    subjectId: invoice.id,
+    startsAt: now,
+    dueAt: now + 14 * DAY,
+    warnAt: null,
+    ownerId: invoice.ownerId,
+    payload: { label: invoice.number, week: "2" },
+  });
+  const stopped = await desk.recordReply("invoice", invoice.id, "m_accounts");
+  assert(stopped >= 1, "reply stops pending invoice reminders");
+});
+
+test("26 Nov (PR 3 review): the first chase of a late-sent invoice is a week after sending", async () => {
+  const { firstChaseAt, splitFromPaymentDetails } = await import("@/lib/money");
+  const D = 86_400_000;
+  assert.equal(firstChaseAt(1000 * D, 900 * D), 1000 * D);
+  assert.equal(firstChaseAt(800 * D, 900 * D), 907 * D);
+
+  const ok = (r: ReturnType<typeof splitFromPaymentDetails>) => (r.ok ? [r.basicSalary, r.allowances] : r.what);
+  assert.deepEqual(ok(splitFromPaymentDetails(200000, 150000, {}, "basic")), [150000, 50000]);
+  assert.match(String(ok(splitFromPaymentDetails(200000, 250000, {}, "basic"))), /cannot be more/);
+  assert.deepEqual(ok(splitFromPaymentDetails(200000, null, { basicSalary: 150000, allowances: 50000 }, "basic")), [150000, 50000]);
+  assert.match(String(ok(splitFromPaymentDetails(210000, null, { basicSalary: 150000, allowances: 50000 }, "basic"))), /bills on basic salary/);
+  assert.match(String(ok(splitFromPaymentDetails(200000, null, {}, "basic"))), /bills on basic salary/);
+  assert.deepEqual(ok(splitFromPaymentDetails(210000, null, { basicSalary: 150000, allowances: 50000 }, "gross")), [210000, 0]);
+});
+
+test("26 Nov (PR 3 review): the nationality choice is explicit", async () => {
+  const { nationalityFromChoice: f } = await import("@/lib/money");
+  assert.deepEqual(f("local", "whatever"), { ok: true, nationality: "Sri Lankan" });
+  assert.deepEqual(f("expat", " Indian "), { ok: true, nationality: "Indian" });
+  assert.equal(f("expat", "").ok, false);
+  assert.equal(f("expat", "Sri-Lankan").ok, false);
+  assert.equal(f("", "Indian").ok, false);
+});

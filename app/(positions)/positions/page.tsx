@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
-import { Card, EmptyState, PageTitle, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import PopupBox from "@/app/ui/PopupBox";
+import { Card, EmptyState, PageTitle, StatusChip, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import {
   agreementForLead,
   clientIn,
@@ -13,7 +14,10 @@ import {
   reportsNewestFirst,
   runClocks,
 } from "@/data/desk";
+import { moneyText } from "@/lib/clientPositionTable";
+import { positionAgreementNotSigned, positionValue } from "@/lib/clients";
 import { contactsFor } from "@/lib/contacts";
+import { COUNT_TITLES, countItems, isCountKind, type CountItem } from "@/lib/positionCounts";
 import { colomboIsoWeek } from "@/lib/weekNumber";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
@@ -37,12 +41,13 @@ import { PositionSendModal } from "./PositionSendModals";
 
 export const dynamic = "force-dynamic";
 
-type Sp = { msg?: string; q?: string; filter?: string; panel?: string; send?: string; on?: string; all?: string };
+type Sp = { msg?: string; q?: string; filter?: string; panel?: string; send?: string; on?: string; all?: string; k?: string };
 
 const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "mine", label: "Mine" },
   { key: "needs", label: "Needs you" },
+  { key: "client", label: "With the client" },
   { key: "hold", label: "On hold" },
 ];
 const SHOWN_CLIENTS = 8;
@@ -74,10 +79,9 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     const leadId = p?.requirementId ? (db.requirements.find((r) => r.id === p.requirementId)?.leadId ?? null) : null;
     return leadId ? agreementForLead(db, leadId) : null;
   };
-  const unsigned = (positionId: string) => {
-    const esa = esaOf(positionId);
-    return !!esa && esa.state !== "signed" && esa.state !== "countersigned";
-  };
+  // 26 Nov: the client's own first lead counts too, so a position TA opened with no requirement linked is not
+  // flagged as unsigned when the client has signed.
+  const unsigned = (positionId: string) => positionAgreementNotSigned(db, byId.get(positionId)!);
   const contactsOf = (positionId: string) => {
     const p = byId.get(positionId);
     const client = p?.clientId ? clientIn(db, p.clientId) : null;
@@ -95,7 +99,10 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     positions,
     sets: db.clientSets,
     interviews: db.interviews,
-    placements: db.placements,
+    placements: db.placements.map((x) => ({
+      ...x,
+      invoiceSent: db.invoices.some((i) => i.id === x.invoiceId && i.state !== "draft"),
+    })),
     holds: db.holds.filter((h) => h.state !== "lifted").map((h) => h.openingTaId),
     clientNameOf: (p) => clientNameOf(p.id),
     contactFirstNameOf: (p) => {
@@ -107,6 +114,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       return n ? first(n) : null;
     },
     agreementPendingOf: (p) => unsigned(p.id),
+    countOf: (p, k) => countItems(db, p.id, k).length,
   });
 
   const shown = filterRows(view.rows, filter, q, me.id);
@@ -133,6 +141,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       const esa = esaOf(row.id);
       return esa ? `/clients/agreements?panel=chase-agreement&on=${esa.id}` : `/positions/${row.id}?view=requirement`;
     }
+    if (a.kind === "confirm-nationality" || a.kind === "testimonial") return `/positions/${row.id}?view=offer&panel=${a.kind}&on=${a.on}`;
     const name = a.kind === "choose-ta" ? "choose-ta" : a.kind === "chase-hr" ? "chase-hr" : "ask-ta-cvs";
     return panelHref("/positions", sp, name, row.id);
   };
@@ -171,7 +180,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     };
   });
 
-  const urgent = shown.find((r) => r.tone === "danger" && r.action) ?? openRows.find((r) => r.action) ?? null;
+  const urgent = shown.find((r) => r.tone === "danger" && r.needsYou) ?? openRows.find((r) => r.needsYou) ?? null;
 
   /* The panel that is open, if any. */
   const here = closeHref("/positions", sp);
@@ -183,8 +192,41 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   };
   const rolesOf = (id: string) => openRows.filter((r) => byId.get(r.id)?.primaryTaId === id).length;
 
+  // The list behind a number (26 Nov, Nov 25 ops meeting): as many lines as the number says.
+  const listBox = (title: string, sub: string, items: CountItem[]) => (
+    <PopupBox title={title} sub={sub} closeHref={closeHref("/positions", { ...sp, k: undefined })}>
+      <ul className="flex flex-col divide-y divide-rule">
+        {items.map((it) => (
+          <li key={it.id} className="flex flex-col py-2.5">
+            <Link href={it.href} className="t-body-m hover:underline">
+              {it.title}
+            </Link>
+            <span className="t-small text-ink-3">{it.line}</span>
+          </li>
+        ))}
+      </ul>
+    </PopupBox>
+  );
+
   let panel = null;
-  if (sp.panel === "new-position") {
+  if (panelRow && sp.panel === "count" && sp.k && isCountKind(sp.k)) {
+    panel = listBox(COUNT_TITLES[sp.k], `${panelRow.clientName} · ${panelRow.title}`, countItems(db, panelRow.id, sp.k));
+  } else if (sp.panel === "tile-interviews") {
+    panel = listBox(
+      COUNT_TITLES.live,
+      "Every open role",
+      openRows.flatMap((r) => countItems(db, r.id, "live").map((it) => ({ ...it, line: `${r.clientName} · ${r.title} · ${it.line}` }))),
+    );
+  } else if (sp.panel === "tile-joining") {
+    panel = listBox(
+      "Joining",
+      "Due to start",
+      view.joiningList.map((pl) => {
+        const o = nameOfOpening(pl.openingTaId);
+        return { id: pl.id, title: pl.candidateName, line: `${o ? `${o.client} · ${o.title} · ` : ""}joins ${dayMonth(pl.joinDate!)}`, href: o ? `/positions/${o.id}?view=offer` : `/placements/${pl.id}` };
+      }),
+    );
+  } else if (sp.panel === "new-position") {
     // The latest held call of the picked client, for the brief, the role and the package.
     const picked = sp.on ? clientIn(db, sp.on) : null;
     const held = picked?.leadId ? db.meetings.filter((m) => m.leadId === picked.leadId && m.heldAt !== null).sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0] : undefined;
@@ -264,7 +306,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
 
   const counter = (r: RoleRow, k: StepKey) => (r.counts[k] === null ? "–" : String(r.counts[k]));
   const stepBar = (r: RoleRow, k: StepKey) =>
-    r.problemStep === k ? BAR[r.tone] : (r.counts[k] ?? 0) > 0 ? (k === "join" || k === "guar" ? BAR.ok : BAR.info) : "bg-rule";
+    r.problemStep === k ? BAR[r.tone] : (r.counts[k] ?? 0) > 0 ? (k === "join" ? BAR.ok : BAR.info) : "bg-rule";
 
   return (
     <div className="flex flex-col gap-6">
@@ -289,18 +331,30 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       <Card className="!py-6">
         <div className="grid grid-cols-2 gap-y-5 md:grid-cols-5 md:divide-x md:divide-rule">
           {[
-            { label: "Needs you", value: view.needsYou, cls: "text-warn", sub: "act today" },
-            { label: "With the client", value: view.withClient, cls: "text-info", sub: view.withClient ? `oldest day ${view.oldestWaitDays}` : "nothing waiting" },
-            { label: "Interviews", value: view.interviews, cls: "text-info", sub: `${view.interviewsThisWeek} this week` },
-            { label: "Joining", value: view.joining, cls: "text-ok", sub: view.nextJoinAt ? `next ${dayMonth(view.nextJoinAt)}` : "nobody due" },
-            { label: "On hold", value: view.onHold, cls: "text-ink", sub: "paused roles" },
-          ].map((t) => (
-            <div key={t.label} className="flex flex-col gap-1 px-7 first:pl-0">
-              <span className="t-micro text-ink-3">{t.label.toUpperCase()}</span>
-              <span className={"text-[40px] font-light leading-[50px] " + t.cls}>{t.value}</span>
-              <span className="t-small text-ink-3">{t.sub}</span>
-            </div>
-          ))}
+            { label: "Needs you", value: view.needsYou, cls: "text-warn", sub: "act today", to: href({ filter: "needs", q: "", all: "1" }) },
+            { label: "With the client", value: view.withClient, cls: "text-info", sub: view.withClient ? `oldest day ${view.oldestWaitDays}` : "nothing waiting", to: href({ filter: "client", q: "", all: "1" }) },
+            { label: "Interviews", value: view.interviews, cls: "text-info", sub: `${view.interviewsThisWeek} this week`, to: panelHref("/positions", sp, "tile-interviews") },
+            { label: "Joining", value: view.joining, cls: "text-ok", sub: view.nextJoinAt ? `next ${dayMonth(view.nextJoinAt)}` : "nobody due", to: panelHref("/positions", sp, "tile-joining") },
+            { label: "On hold", value: view.onHold, cls: "text-ink", sub: "paused roles", to: href({ filter: "hold", q: "", all: "1" }) },
+          ].map((t) => {
+            const body = (
+              <>
+                <span className="t-micro text-ink-3">{t.label.toUpperCase()}</span>
+                <span className={"text-[40px] font-light leading-[50px] " + t.cls}>{t.value}</span>
+                <span className="t-small text-ink-3">{t.sub}</span>
+              </>
+            );
+            const box = "flex flex-col gap-1 px-7 first:pl-0";
+            return t.value > 0 ? (
+              <Link key={t.label} href={t.to} scroll={false} className={box + " hover:bg-sunk"}>
+                {body}
+              </Link>
+            ) : (
+              <div key={t.label} className={box}>
+                {body}
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -352,23 +406,37 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                           <Link href={`/positions/${r.id}?view=overview`} className="text-[17px] font-medium leading-[26px] hover:underline">
                             {r.title}
                           </Link>
-                          <span className="t-small shrink-0 text-ink-3">placed {r.placed}</span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {unsigned(r.id) && <StatusChip label="Agreement not signed" tone="warn" />}
+                            <span className="t-small text-ink-3">placed {r.placed}</span>
+                          </span>
                         </div>
-                        <div className="grid grid-cols-6 gap-2.5">
-                          {STEPS.map((s) => (
-                            <div key={s.key} className="flex flex-col gap-1.5">
-                              <span className={"h-[5px] rounded-full " + stepBar(r, s.key)} />
-                              <span className={"t-small " + ((r.counts[s.key] ?? 0) > 0 ? "text-ink" : "text-ink-faint")}>
-                                {s.label} {counter(r, s.key)}
-                              </span>
-                            </div>
-                          ))}
+                        <div className="grid grid-cols-5 gap-2.5">
+                          {STEPS.map((s) => {
+                            const some = (r.counts[s.key] ?? 0) > 0;
+                            const label = `${s.label} ${counter(r, s.key)}`;
+                            return (
+                              <div key={s.key} className="flex flex-col gap-1.5">
+                                <span className={"h-[5px] rounded-full " + stepBar(r, s.key)} />
+                                {some && s.count ? (
+                                  <Link href={panelHref("/positions", { ...sp, k: s.count }, "count", r.id)} scroll={false} className="t-small text-brand hover:underline">
+                                    {label}
+                                  </Link>
+                                ) : (
+                                  <span className={"t-small " + (some ? "text-ink" : "text-ink-faint")}>{label}</span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
+                        <p className="t-small text-ink-3">Value {moneyText(positionValue(db, byId.get(r.id)!), byId.get(r.id)!.salaryCurrency ?? "")}</p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <span className="t-small flex min-w-0 flex-1 items-center gap-2 text-ink-2">
                             <span className={"size-[7px] shrink-0 rounded-full " + BAR[r.tone]} aria-hidden="true" />
                             <span className="truncate">{r.statusText}</span>
                           </span>
+                          {/* Every reason it needs a person, not only the first. */}
+                          {r.reasons.length > 1 && <span className="t-small order-last w-full text-ink-3">Also: {r.reasons.slice(1).join(" · ")}</span>}
                           {r.action && (
                             <Link href={actionHref(r)} scroll={false} className={pillPrimary + " !px-4 !py-2"}>
                               {r.action.label}

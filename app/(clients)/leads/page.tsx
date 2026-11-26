@@ -30,8 +30,7 @@ type SP = { msg?: string; q?: string; panel?: string; send?: string; on?: string
 
 const COLUMNS: { key: EnquiryColumn; label: string; dot: string }[] = [
   { key: "new", label: "New", dot: "bg-warn" },
-  { key: "checks", label: "Checks", dot: "bg-warn" },
-  { key: "intro", label: "Intro call", dot: "bg-info" },
+  { key: "intro", label: "Call", dot: "bg-info" },
   { key: "send", label: "Agreement to send", dot: "bg-brand" },
 ];
 
@@ -60,7 +59,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const weekEnd = now + 7 * 86_400_000;
   const slots = booked.filter((m) => m.at >= now - 3_600_000 && m.at < weekEnd).sort((a, b) => a.at - b.at);
   const unbooked = all.filter((c) => c.column === "intro" && !c.meeting);
-  const toCheck = all.filter((c) => c.column === "checks");
+  const toCheck = all.filter((c) => c.column === "new" && c.flags.length > 0);
   const stands = {
     head: slots.length + (slots.length === 1 ? " intro call" : " intro calls") + " this week.",
     body: [
@@ -96,8 +95,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <FlowStrip
         items={[
           { label: "New", n: count("new"), dot: true },
-          { label: "Checks", n: count("checks"), dot: true },
-          { label: "Intro call", n: count("intro") },
+          { label: "Call", n: count("intro") },
           { label: "Agreement to send", n: count("send"), dot: true },
           { label: "Agreements", n: totals.agreements, href: "/clients/agreements" },
           { label: "Active clients", n: totals.clients, href: "/clients" },
@@ -147,6 +145,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                           </Link>
                         </div>
                         <p className={"t-small " + TONE_TEXT[c.state.tone]}>{c.state.text}</p>
+                        {c.flags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {c.flags.map((f) => (
+                              <Link key={f.panel} href={panelHref("/leads", sp, f.panel, c.id)} scroll={false} className="t-micro rounded-full bg-sunk px-2.5 py-1 text-warn hover:underline">
+                                {f.text}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                         {c.note && col.key === "new" && <p className="t-small text-ink-3">{c.note}</p>}
                         <div>
                           <Link href={panelHref("/leads", sp, action.name, c.id)} scroll={false} className="t-label inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] hover:bg-sunk">

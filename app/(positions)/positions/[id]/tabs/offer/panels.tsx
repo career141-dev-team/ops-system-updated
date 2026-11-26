@@ -1,8 +1,18 @@
-import { cancelPlacement, changeJoinDate, markNoShow, recordNoShowChoice, saveClientDetails } from "@/app/actions";
-import { ChoiceGroup, PanelField, panelInput } from "@/app/ui/figma";
+import {
+  cancelPlacement,
+  changeJoinDate,
+  confirmNationality,
+  draftTestimonialAsk,
+  markNoShow,
+  markTestimonialDone,
+  recordNoShowChoice,
+  saveClientDetails,
+} from "@/app/actions";
+import Panel, { PanelSection } from "@/app/ui/Panel";
+import { SubmitButton } from "@/app/ui/SubmitButton";
+import { ChoiceGroup, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { colomboDate, colomboDateInWords } from "@/lib/calendar";
-import { feeAmount, moneyWhole } from "@/lib/money";
-import { missingInWords } from "@/lib/offerBoard";
+import { TESTIMONIAL_CHANNELS, feeAmount, feeMonthsFor, isExpat, moneyWhole } from "@/lib/money";
 import { closeHref } from "@/lib/panel";
 
 import type { TabProps } from "../ctx";
@@ -38,7 +48,8 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
 
   if (sp.panel === "record-address" && c.client) {
     const cl = c.client;
-    const fee = placement.monthlySalary ? feeAmount(placement, placement.monthlySalary, placement) : null;
+    const months = feeMonthsFor(placement);
+    const fee = placement.monthlySalary ? feeAmount({ feeMonths: months, feeBasis: placement.feeBasis }, placement.monthlySalary, placement) : null;
     return (
       <ActionPanel
         kicker="Record the address"
@@ -48,7 +59,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
         why={[
           joinWords ? `${first} joins on ${joinWords}` : `${first} has no joining day yet`,
           cl.billingAddress ? "The invoice address on the client record is out of date or incomplete" : "The invoice address is missing on the client record",
-          fee ? `The fee invoice is ${placement.feeMonths} month of salary, ${moneyWhole(fee, placement.currency)}` : "The fee is worked out once the package is recorded",
+          fee ? `The fee invoice is ${months} month${months === 1 ? "" : "s"} of salary, ${moneyWhole(fee, placement.currency)}` : "The fee is worked out once the package is recorded",
         ]}
         people={clientPeople(c)}
         askTitle="What to ask"
@@ -158,6 +169,150 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
           </PanelField>
         )}
       </ActionPanel>
+    );
+  }
+
+  if (sp.panel === "confirm-nationality" && (placement.state === "placed" || placement.state === "joined")) {
+    const suggested = placement.nationality || placement.nationalityFromCv || "";
+    const localMonths = placement.feeMonths > 0 ? placement.feeMonths : 1;
+    const expatMonths = placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : 2;
+    return (
+      <ActionPanel
+        kicker="Confirm nationality"
+        title={`Confirm nationality for ${first}`}
+        sub={`${where} > ${placement.candidateName}`}
+        closeHref={close}
+        why={[
+          placement.nationalityFromCv
+            ? `Read from prepared CV: ${placement.nationalityFromCv}`
+            : "No nationality was found automatically in the prepared CV",
+          `Sri Lankan placements are billed at ${localMonths} month${localMonths === 1 ? "" : "s"} of salary; non-Sri Lankan (expat) placements are billed at ${expatMonths} months (ESA clause 5.2)`,
+          "Accounts cannot send the fee invoice until nationality is confirmed",
+        ]}
+        people={[{ name: placement.candidateName, detail: "Candidate", phone: placement.candidatePhone ?? undefined, missing: CANDIDATE_PHONE }]}
+        hidden={{ placementId: placement.id }}
+        next={`Saves the confirmed nationality on the placement${placement.invoiceId ? " and updates the draft invoice amount if needed" : ""}.`}
+        action={confirmNationality}
+      >
+        <PanelField label="Is the candidate Sri Lankan?">
+          <ChoiceGroup
+            name="nationalityKind"
+            label="Is the candidate Sri Lankan?"
+            required
+            value={suggested ? (isExpat(suggested) ? "expat" : "local") : undefined}
+            options={[{ value: "local", label: "Sri Lankan" }, { value: "expat", label: "Not Sri Lankan" }]}
+          />
+        </PanelField>
+        <PanelField label="Nationality (needed for Not Sri Lankan)">
+          <input
+            name="nationality"
+            type="text"
+            defaultValue={suggested && isExpat(suggested) ? suggested : ""}
+            list="nationality-choices"
+            placeholder="e.g. Indian, Pakistani, British"
+            className={panelInput}
+          />
+          <datalist id="nationality-choices">
+            <option value="Indian" />
+            <option value="Pakistani" />
+            <option value="Bangladeshi" />
+            <option value="British" />
+            <option value="Maldivian" />
+            <option value="Filipino" />
+          </datalist>
+        </PanelField>
+        {suggested && (
+          <p className="t-small text-ink-3">
+            The CV or earlier entry suggests {suggested}: {isExpat(suggested) ? `Expat (${expatMonths} months' salary)` : `Local (${localMonths} month${localMonths === 1 ? "" : "s"}' salary)`}.
+          </p>
+        )}
+      </ActionPanel>
+    );
+  }
+
+  if (sp.panel === "testimonial" && placement.state === "joined") {
+    const t = placement.testimonial ?? { candidate: "pending" as const, client: "pending" as const };
+    const clientContact = c.client?.contacts?.[0] ?? null;
+    return (
+      <Panel
+        kicker="Testimonial"
+        title={`Testimonials for ${placement.candidateName}`}
+        sub={`${where} > Joined ${placement.joinedAt ? shortDay(placement.joinedAt) : ""}`}
+        closeHref={close}
+      >
+        <PanelSection title="Where it stands">
+          <div className="flex flex-col gap-2">
+            <p className="t-body text-ink-2">
+              Candidate: <strong className="font-medium text-ink">{t.candidate === "done" ? "Done" : "Pending"}</strong>
+            </p>
+            <p className="t-body text-ink-2">
+              Client: <strong className="font-medium text-ink">{t.client === "done" ? "Done" : "Pending"}</strong>
+            </p>
+            {(t.candidateChannel ?? (t.candidate === "done" ? t.channel : undefined)) && <p className="t-small text-ink-3">Candidate received on {t.candidateChannel ?? t.channel}</p>}
+            {(t.clientChannel ?? (t.client === "done" ? t.channel : undefined)) && <p className="t-small text-ink-3">Client received on {t.clientChannel ?? t.channel}</p>}
+          </div>
+        </PanelSection>
+
+        <PanelSection title="Draft a request">
+          <form action={draftTestimonialAsk} className="flex flex-col gap-3">
+            <input type="hidden" name="placementId" value={placement.id} />
+            <input type="hidden" name="back" value={close} />
+            <ChoiceGroup
+              name="side"
+              label="Who to ask"
+              value={t.candidate === "pending" ? "candidate" : "client"}
+              options={[
+                { value: "candidate", label: "Candidate" },
+                { value: "client", label: "Client" },
+              ]}
+            />
+            <ChoiceGroup
+              name="channel"
+              label="Channel"
+              value="LinkedIn"
+              options={TESTIMONIAL_CHANNELS.map((ch) => ({ value: ch, label: ch }))}
+            />
+            <PanelField label="Email address (optional)">
+              <input name="to" type="email" placeholder="person@company.com" className={panelInput} />
+              <p className="t-small text-ink-3">
+                Blank: the client side goes to {clientContact?.email ? `${clientContact.name}, ${clientContact.email}` : "the client's HR contact (none on file yet)"}. The candidate has no email on file, so type one for them.
+              </p>
+            </PanelField>
+            <div>
+              <SubmitButton id="draft-testimonial" className={pillSecondary}>
+                Draft request for approval
+              </SubmitButton>
+            </div>
+          </form>
+        </PanelSection>
+
+        <PanelSection title="Mark received">
+          <form action={markTestimonialDone} className="flex flex-col gap-3">
+            <input type="hidden" name="placementId" value={placement.id} />
+            <input type="hidden" name="back" value={close} />
+            <ChoiceGroup
+              name="side"
+              label="Which side"
+              value={t.candidate === "pending" ? "candidate" : "client"}
+              options={[
+                { value: "candidate", label: "Candidate" },
+                { value: "client", label: "Client" },
+              ]}
+            />
+            <ChoiceGroup
+              name="channel"
+              label="Channel received on"
+              value="LinkedIn"
+              options={TESTIMONIAL_CHANNELS.map((ch) => ({ value: ch, label: ch }))}
+            />
+            <div>
+              <SubmitButton id="mark-testimonial-done" className={pillPrimary}>
+                Mark done
+              </SubmitButton>
+            </div>
+          </form>
+        </PanelSection>
+      </Panel>
     );
   }
   return null;

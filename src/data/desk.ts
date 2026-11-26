@@ -8,8 +8,8 @@ import { repo } from "./store";
 import { seed } from "./seed";
 import { firstRunDesk, wantsSampleDesk } from "@/lib/firstRun";
 import { cvText } from "./cvText";
-import { putBytes } from "./fileStore";
-import { duplicateOf, matchVacancy, readCv, type CvFields } from "@/lib/cvParse";
+import { putBytes, readBytes } from "./fileStore";
+import { duplicateOf, matchVacancy, nationalityOf, readCv, type CvFields } from "@/lib/cvParse";
 import { cvFieldsPrompt, type CvFieldsSaid } from "@/lib/aiTasks";
 import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
 import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
@@ -97,6 +97,9 @@ import {
   dueOn,
   feeAmount,
   feeInWords,
+  feeMonthsFor,
+  invoiceReminderClocks,
+  invoiceBlockers,
   invoiceNumber,
   joinClocks,
   lateCharge,
@@ -389,6 +392,10 @@ const AFTER_FIRED: Record<string, (timer: OpsTimer, now: number) => Promise<void
   "interview.report": async (timer, now) => {
     await chaseForDate(timer.subjectId, now);
   },
+  // Weekly payment reminders (weeks 1, 2 and 3 after send, before the due date; 26 Nov).
+  "invoice.remind": async (timer, now) => {
+    await remindAboutInvoice(timer.subjectId, Number(timer.payload.week ?? 1) || 1, now);
+  },
   // Thirty days after the first working day, and every month after that: the
   // late charge is recomputed and the chase drafted (Phase 6 steps 13 and 14).
   "invoice.due": async (timer, now) => {
@@ -454,6 +461,22 @@ export async function chaseTheAgreement(
   // a finished agreement.
   if (esa.state !== "sent" && esa.state !== "chasing") {
     return { ok: false, what: "That agreement is not waiting for a signature.", messageId: null };
+  }
+
+  // 26 Nov (Nov 25 ops meeting): a Draft cannot be signed, so chasing it for a signature asks the impossible.
+  // What a draft waits on is the signatory's details, so one task to get them instead, and no further chase.
+  if (esa.mode === "draft") {
+    await createTask({
+      kind: "call",
+      title: "Get the signatory's details for the final agreement: " + (esa.fields.companyName ?? "a client"),
+      body: "The draft agreement went out without the signatory's name, designation or address. Ask for them, then make the final agreement.",
+      assigneeId: esa.ownerId,
+      dueAt: now,
+      subjectType: "esa",
+      subjectId: esaId,
+      link: "/leads/" + esa.leadId,
+    });
+    return { ok: true, what: "A draft is not chased for a signature. A task to get the signatory's details is on your list.", messageId: null };
   }
 
   const plan = chaseStep(esa.chaseStep + 1);
@@ -2210,6 +2233,14 @@ export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise
     const dueAt = inv.dueAt > now ? inv.dueAt : now + 30 * 86_400_000 - ((now - inv.dueAt) % (30 * 86_400_000));
     await startTimer({ kind: inv.dueAt > now ? "invoice.due" : "invoice.chase", subjectType: "invoice", subjectId: inv.id, startsAt: inv.sentAt ?? now, dueAt, warnAt: null, ownerId, payload: { label: inv.number } });
   }
+  for (const inv of money.invoices) {
+    if (!["sent", "partly_paid"].includes(inv.state) || inv.kind === "credit_note" || !inv.sentAt) continue;
+    // 26 Nov (PR 3 review): the weekly reminders still ahead, as sendInvoice would have set them.
+    for (const rem of invoiceReminderClocks(inv.sentAt, inv.dueAt ?? null)) {
+      if (rem.dueAt <= now) continue;
+      await startTimer({ kind: rem.kind, subjectType: "invoice", subjectId: inv.id, startsAt: inv.sentAt, dueAt: rem.dueAt, warnAt: null, ownerId, payload: { label: inv.number, week: String(rem.week) } });
+    }
+  }
   for (const g of money.guarantees) {
     if (g.state === "running") {
       await startTimer({ kind: "guarantee.warn", subjectType: "guarantee", subjectId: g.id, startsAt: g.startsAt, dueAt: warnOn(g.startsAt, numberOf(db, "guarantee.warnDay", WARN_DAY)), warnAt: null, ownerId, payload: { label: g.candidateName } });
@@ -2388,6 +2419,15 @@ export async function takePlacementFrom(
     : null;
   const feeMonths = Number(agreement?.fields.feeMonths ?? 1) || 1;
   const feeBasis = String(agreement?.fields.feeBasis ?? "gross");
+  // 26 Nov (Nov 25 ops meeting): the fee for a non-Sri Lankan, kept on the placement like feeMonths so a later
+  // change to the agreement cannot move an invoice. Agreements signed before this said "x 2" in clause 5.2.
+  const expatFeeMonths = Number(agreement?.fields.expatFeeMonths ?? 2) || 2;
+  // 26 Nov (clause 5.4): paymentDays from the signed agreement, copied onto the placement.
+  const rawPaymentDays = Number(agreement?.fields.paymentDays);
+  const paymentDays = Number.isFinite(rawPaymentDays) && rawPaymentDays > 0 ? rawPaymentDays : undefined;
+
+  // 26 Nov (Nov 25 ops meeting): read the placed candidate's prepared CV for nationality, as a suggestion for Ops to confirm.
+  const nationalityFromCv = await readPlacementNationalityFromCv(db, theirs.applicationId ?? "");
 
   const placement = await addPlacement({
     placementTaId,
@@ -2410,6 +2450,9 @@ export async function takePlacementFrom(
     joinedAt: null,
     dojHistory: [],
     feeMonths,
+    expatFeeMonths,
+    ...(paymentDays !== undefined ? { paymentDays } : {}),
+    ...(nationalityFromCv ? { nationalityFromCv } : {}),
     feeBasis,
     isReplacementOf: null,
     invoiceId: null,
@@ -2518,6 +2561,28 @@ export async function takePlacementOutcome(
  * because thirty days runs from the first working day whether or not anybody
  * remembered to draft it.
  */
+/** Reads the placed candidate's prepared CV from our kept client sets to pre-fill nationalityFromCv. */
+async function readPlacementNationalityFromCv(db: OpsDatabase, applicationTaId: string): Promise<string> {
+  if (!applicationTaId) return "";
+  try {
+    const sets = [...db.clientSets].reverse();
+    for (const set of sets) {
+      const cand = set.candidates.find((c) => c.applicationTaId === applicationTaId && c.fileId);
+      if (!cand?.fileId) continue;
+      const file = fileIn(db, cand.fileId);
+      if (!file) continue;
+      const bytes = await readBytes(file.key);
+      if (!bytes) continue;
+      const { text } = await cvText(bytes, file.name);
+      const found = nationalityOf(text);
+      if (found) return found;
+    }
+  } catch {
+    // Missing file bytes or unreadable PDF must never block taking a placement.
+  }
+  return "";
+}
+
 export async function markPlacementJoined(
   placementId: Id,
   by: Id | null,
@@ -2529,8 +2594,37 @@ export async function markPlacementJoined(
   if (placement.state === "joined") return { ok: false, what: "They are already down as joined." };
   if (placement.state !== "placed") return { ok: false, what: "That placement is not waiting to join." };
 
-  await patchPlacement(placementId, { state: "joined", joinedAt: now }, by, "placement.joined", null);
+  const nationalityFromCv =
+    placement.nationalityFromCv || (await readPlacementNationalityFromCv(db, placement.applicationTaId));
+
+  await patchPlacement(
+    placementId,
+    {
+      state: "joined",
+      joinedAt: now,
+      testimonial: placement.testimonial ?? { candidate: "pending", client: "pending" },
+      ...(nationalityFromCv && !placement.nationalityFromCv ? { nationalityFromCv } : {}),
+    },
+    by,
+    "placement.joined",
+    null,
+  );
   await cancelClocksFor(db, "placement", placementId, by ?? placement.ownerId, "They joined.", null);
+
+  // 26 Nov (Nov 25 ops meeting): mandatory testimonial task on every join.
+  await createTask({
+    kind: "record",
+    title: "Ask for a testimonial: " + placement.candidateName,
+    body: "They joined. Ask both the candidate and the client for a testimonial (LinkedIn, site or Google), and mark each side done once received.",
+    assigneeId: placement.ownerId,
+    // 26 Nov (PR 3 review): a week to ask, so it does not escalate on day 1.
+    dueAt: now + 7 * 86_400_000,
+    subjectType: "placement",
+    subjectId: placement.id,
+    link: placement.positionId
+      ? "/positions/" + placement.positionId + "?view=offer&panel=testimonial&on=" + placement.id
+      : "/placements/" + placement.id,
+  });
 
   const invoiced = await draftFeeInvoice(placementId, by ?? placement.ownerId, now);
   // Ninety days from today, whatever happens with the money (Phase 7 step 2).
@@ -2606,8 +2700,9 @@ export async function draftFeeInvoice(
     : "This placement has no client record. Link it to a client with a billing name, address and email first.";
   if (billing) return { ok: false, what: billing, invoiceId: null };
 
-  const rule = { feeMonths: placement.feeMonths, feeBasis: placement.feeBasis };
+  const rule = { feeMonths: feeMonthsFor(placement), feeBasis: placement.feeBasis };
   const amount = feeAmount(rule, placement.monthlySalary ?? 0, placement);
+  const dueDays = placement.paymentDays ?? numberOf(db, "invoice.dueDays", DUE_DAYS);
   const invoice = await addInvoice({
     number: invoiceNumber(textOf(db, "invoice.series", "C141"), db.invoices.length, now),
     kind: "fee",
@@ -2626,7 +2721,7 @@ export async function draftFeeInvoice(
     payments: [],
     sentAt: null,
     sentMessageId: null,
-    dueAt: dueOn(placement.joinedAt ?? now, numberOf(db, "invoice.dueDays", DUE_DAYS)),
+    dueAt: dueOn(placement.joinedAt ?? now, dueDays),
     paidAt: null,
     writtenOffAt: null,
     reason: null,
@@ -2634,11 +2729,17 @@ export async function draftFeeInvoice(
   });
   await patchPlacement(placementId, { invoiceId: invoice.id }, by, "placement.invoiced", invoice.number);
 
+  const blockers = invoiceBlockers(placement);
   await createTask({
     kind: "approve",
     title: "Invoice " + invoice.number + ": " + placement.candidateName,
     body:
-      "They joined, so the fee is due thirty days from their first working day. Read the invoice, then approve it and it goes to the client's billing address.",
+      (blockers.length
+        ? "Waiting before it can be sent: " + blockers.join(" and ") + ". "
+        : "") +
+      "They joined, so the fee is due " +
+      dueDays +
+      " days from their first working day (clause 5.4). Confirm nationality and payment details, then approve and send.",
     assigneeId: invoice.ownerId,
     dueAt: now,
     subjectType: "invoice",
@@ -2646,6 +2747,76 @@ export async function draftFeeInvoice(
     link: "/invoices/" + invoice.id,
   });
   return { ok: true, what: "Invoice " + invoice.number + " is drafted for accounts.", invoiceId: invoice.id };
+}
+
+/**
+ * Payment reminder at weeks 1, 2 and 3 after sending (26 Nov, Nov 25 ops meeting).
+ *
+ * Drafted through the approval gate; skipped if already paid or past the due date
+ * (when the late chase takes over). A client reply also cancels pending reminders.
+ */
+export async function remindAboutInvoice(
+  invoiceId: Id,
+  week: number,
+  now = Date.now(),
+): Promise<{ ok: boolean; what: string }> {
+  const db = await desk();
+  const invoice = invoiceIn(db, invoiceId);
+  if (!invoice) return { ok: false, what: "That invoice is gone." };
+  if (invoice.state !== "sent" && invoice.state !== "partly_paid") {
+    return { ok: false, what: "That invoice is not waiting for payment." };
+  }
+  if (invoice.dueAt && now >= invoice.dueAt) {
+    return { ok: false, what: "Past due date; the late chase takes over." };
+  }
+
+  const nextCount = (invoice.remindersSent ?? 0) + 1;
+  await patchInvoice(
+    invoiceId,
+    { remindersSent: nextCount },
+    null,
+    "invoice.reminded",
+    "Week " + week + " payment reminder",
+  );
+
+  const client = invoice.clientId ? clientIn(db, invoice.clientId) : null;
+  const to = [client?.billingEmail].filter((one): one is string => Boolean(one));
+  const wording = templateFor(db, "invoice.remind");
+  const owner = member(db, invoice.ownerId);
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{invoiceNumber\}\}/g, invoice.number)
+      .replace(/\{\{amount\}\}/g, money(balanceOf(invoice), invoice.currency))
+      .replace(/\{\{dueDate\}\}/g, invoice.dueAt ? colomboDateInWords(invoice.dueAt) : "the due date")
+      .replace(/\{\{reminderNumber\}\}/g, String(nextCount))
+      .replace(/\{\{opsPerson\}\}/g, owner?.name ?? "Career 141 Accounts");
+
+  const message = await draftMessage({
+    channel: "email",
+    to,
+    subject: fill(wording?.subject ?? "Reminder {{reminderNumber}}: invoice {{invoiceNumber}} - {{client}}"),
+    body: fill(
+      wording?.body ??
+        "Dear all,\n\nA quick reminder that invoice {{invoiceNumber}} for {{amount}} is due on {{dueDate}}.\n\nKind regards,\n{{opsPerson}}\nCareer 141",
+    ),
+    templateKey: "invoice.remind",
+    subjectType: "invoice",
+    subjectId: invoiceId,
+  });
+
+  await createTask({
+    kind: "approve",
+    title: "Payment reminder " + nextCount + " for " + invoice.number,
+    body: "Week " + week + " reminder drafted for " + (client?.name ?? "the client") + ". Read it before it goes.",
+    assigneeId: invoice.ownerId,
+    dueAt: now,
+    subjectType: "invoice",
+    subjectId: invoiceId,
+    link: "/messages/" + message.id,
+  });
+
+  return { ok: true, what: "Reminder " + nextCount + " drafted." };
 }
 
 /**
@@ -4097,7 +4268,14 @@ export async function removeTeamNote(noteId: Id, actorId: Id): Promise<void> {
   repo.removeTeamNote(noteId, actorId);
 }
 
-export async function addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): Promise<OpsVacancy> {
+export async function addVacancy(input: {
+  title: string;
+  places: number;
+  checks: string[];
+  ownerId: Id;
+  source?: "scoop" | "job_post" | "referral";
+  sourceDetail?: string;
+}): Promise<OpsVacancy> {
   if (usingConvex()) {
     return (await convexMutation("ops/data:addVacancy", input)) as OpsVacancy;
   }

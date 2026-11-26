@@ -2,7 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { seed } from "../src/data/seed";
-import { CALL_NOT_FIT, colomboLocalToMs, hiringView, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy, rejectMessage } from "../src/lib/hiring";
+import {
+  CALL_NOT_FIT,
+  callOutcomeTransition,
+  colomboLocalToMs,
+  defaultHiringInterviewAt,
+  filterByCaller,
+  hiringInterviewersFrom,
+  hiringView,
+  isHiringCaller,
+  offerOutcomeTransition,
+  problemWithApplicant,
+  problemWithHiringCall,
+  problemWithCv,
+  problemWithCvBytes,
+  problemWithHiringDecision,
+  problemWithVacancy,
+  rejectMessage,
+  sectionOfStage,
+  vacancySourceLabel,
+} from "../src/lib/hiring";
 
 test("Talked - not a fit needs a reason; other call results do not (22 Nov)", () => {
   assert.ok(problemWithHiringCall(CALL_NOT_FIT, ""));
@@ -76,4 +95,74 @@ test("hiringView reads real vacancies and applicants from db when present", () =
   assert.equal(view.vacancies[0]!.applicants.length, 1);
   assert.equal(view.slots.length, 1);
   assert.equal(view.slots[0]!.name, "Dilini Perera");
+});
+
+test("PR 7: Scoops & vacancies source, callers, call outcomes, default 4 pm slot, and offer flow (26 Nov)", () => {
+  assert.equal(vacancySourceLabel({ source: "scoop", sourceDetail: "Scoop 2" }), "Scoop 2");
+  assert.equal(vacancySourceLabel({ source: "job_post", sourceDetail: "TopJobs" }), "Job post · TopJobs");
+  assert.equal(vacancySourceLabel({ source: "referral", sourceDetail: "Asma" }), "Referral · Asma");
+
+  // Leadership is never offered as a caller; ops members are.
+  assert.equal(isHiringCaller({ role: "ops_owner", active: true }), true);
+  assert.equal(isHiringCaller({ role: "ops_lead", active: true }), true);
+  assert.equal(isHiringCaller({ role: "director_ops", active: true }), false);
+  assert.equal(isHiringCaller({ role: "director_ro", active: true }), false);
+  assert.equal(isHiringCaller({ role: "ops_owner", active: false }), false);
+
+  const mine = filterByCaller(
+    [
+      { id: "1", callerId: "m_owner" },
+      { id: "2", callerId: "m_lead" },
+      { id: "3", callerId: null },
+    ],
+    "m_owner",
+  );
+  assert.deepEqual(mine.map((x) => x.id), ["1"]);
+
+  // Call outcomes: Not interested requires reason; 3rd No answer becomes non_responsive automatically.
+  assert.ok(problemWithHiringCall("Not interested", "", ""));
+  assert.ok(problemWithHiringCall("Not interested", "no", "Other"));
+  assert.equal(problemWithHiringCall("Not interested", "", "Too expensive"), null);
+  assert.equal(callOutcomeTransition({ result: "Scheduled", currentTries: 0, note: "4pm" }).stage, "fits");
+  assert.equal(
+    callOutcomeTransition({ result: "Not interested", currentTries: 1, note: "", notInterestedReason: "Got another offer" }).stage,
+    "not_interested",
+  );
+  assert.equal(callOutcomeTransition({ result: "No answer (try 3 of 3)", currentTries: 2, note: "" }).stage, "non_responsive");
+  assert.equal(callOutcomeTransition({ result: "No answer (try 1 of 3)", currentTries: 0, note: "" }).stage, "call");
+
+  // Next working day 16:00 Colombo time (Friday 20 Nov -> Monday 23 Nov 16:00 = 10:30 UTC).
+  const fridayMorning = Date.parse("2026-11-20T04:00:00Z");
+  const nextSlot = defaultHiringInterviewAt(fridayMorning, []);
+  assert.equal(new Date(nextSlot).toISOString(), "2026-11-23T10:30:00.000Z");
+
+  // Leadership interviewers from setting or fallback to director_ops/ops_lead.
+  assert.deepEqual(hiringInterviewersFrom("Asma, Usman", []), ["Asma", "Usman"]);
+  assert.deepEqual(
+    hiringInterviewersFrom("", [
+      { name: "Ops One", role: "ops_owner", active: true },
+      { name: "Director", role: "director_ops", active: true },
+    ]),
+    ["Director"],
+  );
+
+  // Offer outcomes and sections.
+  assert.ok(problemWithHiringDecision("decline", ""));
+  assert.equal(problemWithHiringDecision("decline", "Accepted another role"), null);
+  assert.equal(offerOutcomeTransition({ decision: "offer", startDate: "1 Dec", salary: "LKR 150k", reason: "" }).stage, "offered");
+  const acc = offerOutcomeTransition({ decision: "accept", startDate: "1 Dec", salary: "LKR 150k", reason: "" });
+  assert.equal(acc.stage, "hired");
+  assert.equal(acc.incrementsFilled, true);
+  assert.equal(sectionOfStage("shortlisted"), "shortlisted_offered");
+  assert.equal(sectionOfStage("offered"), "shortlisted_offered");
+  assert.equal(sectionOfStage("call"), "calling");
+
+  // Calendar slots stay visible once shortlisted or offered.
+  const now = Date.now();
+  const db = seed(now);
+  db.vacancies = [{ id: "v1", title: "Recruiter", places: 1, filled: 0, status: "open", checks: [], ownerId: "m_lead", postedAt: now, createdAt: now, updatedAt: now }];
+  db.applicants = [
+    { id: "a1", vacancyId: "v1", name: "Shortlisted Person", source: "Scoop", phone: null, email: null, stage: "shortlisted", tries: 1, detail: "Shortlisted", checkResults: {}, interviewAt: now + 86_400_000, interviewer: "Asma", place: "Office", score: 5, notes: null, salary: null, startDate: null, rejectReason: null, cvFileId: null, createdAt: now, updatedAt: now },
+  ];
+  assert.equal(hiringView(db, null).slots.length, 1);
 });

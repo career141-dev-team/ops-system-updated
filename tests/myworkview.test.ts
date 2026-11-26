@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { bucketOf, buttonFor, clockOf, dayBounds, firstLines, standsLine, taskSource, workView } from "@/lib/myWorkView";
-import type { OpsDatabase, OpsTask } from "@/data/types";
+import type { OpsDatabase, OpsPlacement, OpsPosition, OpsTask } from "@/data/types";
 
 const NOW = Date.parse("2026-11-19T05:00:00Z"); // 10:30 in Colombo
 const task = (o: Partial<OpsTask>): OpsTask => ({
@@ -10,7 +10,7 @@ const task = (o: Partial<OpsTask>): OpsTask => ({
   subjectType: null, subjectId: null, link: null, outcome: null, doneBy: null, doneAt: null, createdAt: 0, ...o,
 });
 const dbWith = (tasks: OpsTask[]) =>
-  ({ tasks, messages: [], templates: [], calls: [], interviews: [], clients: [], clientSets: [], positions: [], leads: [] }) as unknown as OpsDatabase;
+  ({ tasks, messages: [], templates: [], calls: [], interviews: [], clients: [], clientSets: [], positions: [], leads: [], placements: [], agreements: [], requirements: [] }) as unknown as OpsDatabase;
 const panel = (n: string, id: string) => `/?panel=${n}&on=${id}`;
 
 test("buckets: late, today, waits, later", () => {
@@ -72,4 +72,43 @@ test("a board card says where the task came from; only a task with nothing attac
   assert.equal(taskSource({ subjectType: "client", link: null }, "Nippon Paint"), "Nippon Paint");
   assert.equal(taskSource({ subjectType: null, link: "/x" }, ""), "From the system");
   assert.equal(taskSource({ subjectType: null, link: null }, ""), "Free task");
+});
+
+// 26 Nov (Nov 25 ops meeting): My positions and testimonials to ask for.
+const pos = (o: Partial<OpsPosition>) => ({ id: "p1", title: "Cook", stage: "open", ownerId: "m1", clientId: "c1", requirementId: null, closedAt: null, salaryMonthly: 1000, salaryCurrency: "USD", ...o }) as unknown as OpsPosition;
+const pl = (o: Partial<OpsPlacement>) => ({ id: "pl1", state: "joined", joinedAt: 1, positionId: "p1", clientId: "c1", ownerId: "m1", candidateName: "Ann", testimonial: { candidate: "pending", client: "done" }, ...o }) as unknown as OpsPlacement;
+const dbPos = (positions: OpsPosition[], placements: OpsPlacement[] = []) =>
+  ({ ...dbWith([]), positions, placements, clients: [{ id: "c1", name: "Acme", leadId: null }] }) as unknown as OpsDatabase;
+
+test("my positions: main and backup, open only, value and one total per currency", () => {
+  const w = workView(
+    dbPos([
+      pos({ id: "a" }),
+      pos({ id: "b", ownerId: "m2", backupOwnerId: "m1", salaryMonthly: undefined }),
+      pos({ id: "c", stage: "closed" }),
+      pos({ id: "d", ownerId: "m2" }),
+      pos({ id: "e", salaryCurrency: "LKR", salaryMonthly: 500 }),
+    ]),
+    "m1", NOW, panel,
+  );
+  assert.deepEqual(w.myPositions.map((p) => [p.id, p.role, p.value]), [["a", "Main", 1000], ["e", "Main", 500], ["b", "Backup", null]]);
+  assert.equal(w.myPositions[0].client, "Acme");
+  assert.deepEqual(w.myPositionTotals, [{ currency: "USD", amount: 1000 }, { currency: "LKR", amount: 500 }]);
+});
+
+test("testimonials pending: only joined, mine, and a side still pending", () => {
+  const w = workView(
+    dbPos([pos({})], [
+      pl({}),
+      pl({ id: "x2", testimonial: { candidate: "done", client: "done" } }),
+      pl({ id: "x3", state: "offered", joinedAt: null }),
+      pl({ id: "x4", ownerId: "m2" }),
+      pl({ id: "x5", testimonial: { candidate: "pending", client: "pending" } }),
+    ]),
+    "m1", NOW, panel,
+  );
+  assert.equal(w.testimonialsPending.length, 3); // x4 is m2's placement but m1 owns the position
+  assert.deepEqual(w.testimonialsPending[0].sides, ["candidate"]);
+  assert.deepEqual(w.testimonialsPending.at(-1)!.sides, ["candidate", "client"]);
+  assert.equal(w.testimonialsPending[0].href, "/positions/p1?view=offer");
 });

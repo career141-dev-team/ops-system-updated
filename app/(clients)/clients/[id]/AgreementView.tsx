@@ -37,7 +37,7 @@ export default function AgreementView(p: {
   send: { href: string; label: string } | null;
   children?: ReactNode;
 }) {
-  const doc = esaDocument(p.esa.fields, { company: p.company, at: p.esa.updatedAt, directorName: p.directorName });
+  const doc = esaDocument(p.esa.fields, { company: p.company, at: p.esa.updatedAt, directorName: p.directorName }, p.esa.mode ?? "final");
   const f = p.esa.fields;
   const contactName = f.signatoryName || p.contact?.name || "";
   const contactTitle = f.signatoryTitle || p.contact?.title || "";
@@ -96,10 +96,11 @@ export default function AgreementView(p: {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-4 rounded-[24px] bg-sunk p-5">
-          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <section className={card + " flex flex-col"}>
-              <div className="flex flex-col gap-3 border-b border-rule px-6 py-5">
-                <p className="t-h3 text-ink [overflow-wrap:anywhere]">Career141 · Employment Services Agreement for {company}</p>
+          <div className="grid items-start gap-5 pg-xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            {/* 26 Nov (Nov 25 ops meeting): the document is the wider side, and the cover email folds away to give it more. */}
+            <details open className={card + " flex flex-col"}>
+              <summary className="cursor-pointer px-6 py-5 t-h3 text-ink [overflow-wrap:anywhere]">Career141 · Employment Services Agreement for {company}</summary>
+              <div className="flex flex-col gap-3 border-y border-rule px-6 py-5">
                 <dl className="grid grid-cols-[48px_1fr] gap-y-1.5 text-[14px]">
                   <dt className="text-ink-3">From</dt>
                   <dd className="text-ink">{p.ownerName}, Career141</dd>
@@ -120,7 +121,7 @@ export default function AgreementView(p: {
                   {p.fileName}
                 </span>
               </div>
-            </section>
+            </details>
 
             <div className="flex min-w-0 flex-col gap-2.5">
               <p className="t-micro text-ink-3 [overflow-wrap:anywhere]">ATTACHED: {p.fileName.toUpperCase()}</p>

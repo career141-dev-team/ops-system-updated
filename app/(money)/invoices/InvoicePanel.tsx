@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-import { previewInvoice, recordPayment, sendInvoice } from "@/app/actions";
+import {
+  previewInvoice,
+  recordPayment,
+  recordPaymentDetails,
+  requestPaymentDetails,
+  sendInvoice,
+} from "@/app/actions";
 import Icon from "@/app/Icon";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { SubmitButton } from "@/app/ui/SubmitButton";
@@ -10,7 +16,15 @@ import type { OpsDatabase, OpsInvoice } from "@/data/types";
 import { reminderText } from "@/lib/accountsBoard";
 import { colomboDate } from "@/lib/calendar";
 import { dayShort as day } from "@/lib/accountsBoard";
-import { balanceOf, money, problemWithPaymentOn } from "@/lib/money";
+import {
+  balanceOf,
+  daysUntilDue,
+  feeMonthsFor,
+  invoiceBlockers,
+  isExpat,
+  money,
+  problemWithPaymentOn,
+} from "@/lib/money";
 import CopyButton from "./CopyButton";
 
 const smallBtn = "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-[7px] t-label text-ink hover:bg-sunk";
@@ -39,6 +53,8 @@ export default function InvoicePanel({
   const bal = balanceOf(inv);
   const late = Boolean(inv.dueAt && inv.dueAt < now && inv.state !== "paid" && inv.state !== "written_off" && inv.state !== "draft");
   const lateDays = inv.dueAt ? Math.floor((now - inv.dueAt) / 86_400_000) : 0;
+  const dueLeft = daysUntilDue(inv.dueAt, now);
+  const blockers = inv.kind === "fee" && inv.state === "draft" ? invoiceBlockers(placement) : [];
   const contact =
     client?.contacts?.find((c) => /financ|account|billing/i.test(c.role)) ??
     client?.contacts?.[0] ??
@@ -55,14 +71,28 @@ export default function InvoicePanel({
 
   const why = [
     placement?.joinedAt ? `${placement.candidateName} joined on ${day(placement.joinedAt)}` : null,
+    placement
+      ? placement.nationalityConfirmedAt && placement.nationality
+        ? `Nationality: ${placement.nationality} (${isExpat(placement.nationality) ? `Expat · ${feeMonthsFor(placement)} months` : `Local · ${feeMonthsFor(placement)} month${feeMonthsFor(placement) === 1 ? "" : "s"}`})`
+        : `Nationality not confirmed yet${placement.nationalityFromCv ? ` (CV: ${placement.nationalityFromCv})` : ""}`
+      : null,
     inv.state === "draft"
-      ? "The invoice is made and not yet sent"
+      ? blockers.length > 0
+        ? `Blocked from sending: ${blockers.join(" and ")}`
+        : "The invoice is ready to send"
       : inv.state === "paid"
         ? "The invoice is paid"
         : inv.sentAt
           ? `Sent ${day(inv.sentAt)}, ${money(bal, inv.currency)} still owed`
           : null,
-    inv.dueAt ? (late ? `Due ${day(inv.dueAt)}, ${lateDays} day${lateDays === 1 ? "" : "s"} late` : `Due ${day(inv.dueAt)}`) : null,
+    inv.dueAt
+      ? late
+        ? `Due ${day(inv.dueAt)}, ${lateDays} day${lateDays === 1 ? "" : "s"} late`
+        : dueLeft !== null
+          ? `Due ${day(inv.dueAt)} (${dueLeft === 0 ? "due today" : `${dueLeft} day${dueLeft === 1 ? "" : "s"} left`})`
+          : `Due ${day(inv.dueAt)}`
+      : null,
+    (inv.remindersSent ?? 0) > 0 ? `Reminders drafted: ${inv.remindersSent} of 3` : null,
     inv.disputed ? "Disputed: no late charge runs while it is" : null,
   ].filter(Boolean) as string[];
 
@@ -134,10 +164,69 @@ export default function InvoicePanel({
       </PanelSection>
 
       {inv.state === "draft" && (
-        <PanelSection title="Log it here">
-          <p className="t-body text-ink-2">
-            Look at the invoice first, then approve it. Amounts come from the placement, not from this panel.
-          </p>
+        <PanelSection title="Before sending">
+          {blockers.length > 0 && (
+            <p className="t-small rounded-[14px] bg-warn-soft px-4 py-3 text-warn">
+              Cannot send yet: {blockers.join(" and ")}.
+            </p>
+          )}
+          {placement && (
+            <div className="flex flex-wrap items-center gap-2">
+              {canMoney && (
+                <form action={requestPaymentDetails}>
+                  <input type="hidden" name="invoiceId" value={inv.id} />
+                  <input type="hidden" name="back" value={closeHref} />
+                  <SubmitButton id="panel-req-details" className={smallBtn}>
+                    {inv.detailsRequestedAt ? `Details asked (${day(inv.detailsRequestedAt)}) · Ask again` : "Ask for payment details"}
+                  </SubmitButton>
+                </form>
+              )}
+              {placement.positionId && !placement.nationalityConfirmedAt && (
+                <Link
+                  href={`/positions/${placement.positionId}?view=offer&panel=confirm-nationality&on=${placement.id}`}
+                  className={smallBtn}
+                >
+                  Confirm nationality
+                </Link>
+              )}
+            </div>
+          )}
+          {placement && canMoney && (
+            <form action={recordPaymentDetails} className="flex flex-col gap-3 rounded-[14px] border border-rule p-3.5">
+              <input type="hidden" name="invoiceId" value={inv.id} />
+              <input type="hidden" name="back" value={closeHref} />
+              <p className="t-label text-ink">
+                {placement.paymentDetails ? `Payment details recorded (${money(placement.paymentDetails.offeredSalary, inv.currency)})` : "Record client's payment details"}
+              </p>
+              <PanelField label={`Actual offered monthly salary (${inv.currency})`}>
+                <input
+                  name="offeredSalary"
+                  type="number"
+                  step="0.01"
+                  required
+                  defaultValue={placement.paymentDetails?.offeredSalary ?? placement.monthlySalary ?? ""}
+                  className={panelInput}
+                />
+              </PanelField>
+              <PanelField label="Basic salary (optional: needed when the agreement bills on basic)">
+                <input name="basicSalary" type="number" step="0.01" defaultValue="" placeholder={placement.basicSalary ? `Now ${placement.basicSalary}` : ""} className={panelInput} />
+              </PanelField>
+              <PanelField label="Note (optional)">
+                <input
+                  name="note"
+                  type="text"
+                  defaultValue={placement.paymentDetails?.note ?? ""}
+                  placeholder="e.g. Confirmed via email with HR"
+                  className={panelInput}
+                />
+              </PanelField>
+              <div>
+                <SubmitButton id="panel-record-details" className={smallBtn}>
+                  Save payment details
+                </SubmitButton>
+              </div>
+            </form>
+          )}
           <div className="flex flex-wrap gap-2">
             <Link href={`/invoices/${inv.id}`} className={smallBtn}>Open the invoice</Link>
             {canMoney && (

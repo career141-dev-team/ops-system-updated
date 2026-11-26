@@ -90,6 +90,75 @@ export function guessPosition(text: string): string {
   return "";
 }
 
+const KNOWN_DEMONYMS = [
+  "Sri Lankan",
+  "Indian",
+  "Pakistani",
+  "Bangladeshi",
+  "British",
+  "American",
+  "Australian",
+  "Canadian",
+  "Emirati",
+  "Filipino",
+  "Indonesian",
+  "Kenyan",
+  "Malaysian",
+  "Maldivian",
+  "Nepalese",
+  "Nepali",
+  "Nigerian",
+  "Omani",
+  "Qatari",
+  "Saudi",
+  "Singaporean",
+  "South African",
+  "Thai",
+  "Vietnamese",
+  "Chinese",
+  "Japanese",
+  "Korean",
+  "German",
+  "French",
+  "Dutch",
+  "Italian",
+  "Spanish",
+  "Irish",
+  "New Zealander",
+  "Russian",
+  "Egyptian",
+  "Jordanian",
+  "Lebanese",
+  "Bahraini",
+  "Kuwaiti",
+] as const;
+
+/**
+ * The candidate's nationality from a labelled line only (26 Nov, PR 3 review).
+ *
+ * "Nationality:" or "Citizenship:". A demonym found anywhere else is not used: "British Council" or
+ * "Indian Ocean" in a Sri Lankan's CV would bill them at the expat rate. A person still confirms it.
+ */
+export function nationalityOf(text: string): string {
+  if (!text) return "";
+  for (const raw of text.split(/\r?\n/)) {
+    const m = raw.trim().match(/^(?:nationality|citizenship)\s*[:\-–]\s*([A-Za-z][A-Za-z\s'-]{1,35}?)(?:\s*[|,;.(].*)?$/i);
+    if (!m) continue;
+    const cleaned = m[1].trim().replace(/[.;,]+$/, "");
+    if (/lanka|\b(?:sinhala|sinhalese|tamil|moor|muslim|burgher)\b/i.test(cleaned)) return "Sri Lankan";
+    // Known demonym at the start: drops trailing words such as "Male" or "Female".
+    const lc = cleaned.toLowerCase().replace(/\s+/g, " ");
+    const known = KNOWN_DEMONYMS.find((k) => lc === k.toLowerCase() || lc.startsWith(k.toLowerCase() + " "));
+    if (known) return known;
+    return cleaned
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  }
+  return "";
+}
+
 /** What the pattern finds on its own, without a model. */
 export function readByPattern(text: string): CvFields {
   return { name: guessName(text), email: findEmail(text), phone: findPhone(text), nic: findNic(text), targetPosition: guessPosition(text) };

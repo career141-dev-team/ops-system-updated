@@ -52,6 +52,148 @@ export const LATE_PCT_PER_MONTH = 5;
 /** Unpaid this long and somebody has to decide to write it off. */
 export const WRITE_OFF_DAYS = 90;
 
+/** Default expat fee when an agreement did not record one (clause 5.2, 26 Nov). */
+export const EXPAT_FEE_MONTHS = 2;
+
+/**
+ * Whether a candidate's nationality is non-Sri Lankan (26 Nov, Nov 25 ops meeting).
+ *
+ * Blank or unknown is never assumed expat: Ops confirms nationality before the
+ * invoice goes out. Any non-empty nationality other than Sri Lankan counts as expat.
+ */
+export function isExpat(nationality: string | null | undefined): boolean {
+  // 26 Nov (PR 3 review): letters only, so "Sri-Lankan." or "SRI LANKAN citizen" is never billed as expat.
+  const n = (nationality ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!n) return false;
+  if (n.includes("srilanka") || ["lankan", "sinhala", "sinhalese", "ceylonese", "sl"].includes(n)) return false;
+  return true;
+}
+
+/**
+ * The nationality to store from the confirm form (26 Nov, PR 3 review): an explicit choice, never a guess.
+ * "local" stores "Sri Lankan"; "expat" needs a nationality that does not read as Sri Lankan.
+ */
+export function nationalityFromChoice(kind: string, typed: string): { ok: true; nationality: string } | { ok: false; what: string } {
+  if (kind === "local") return { ok: true, nationality: "Sri Lankan" };
+  if (kind !== "expat") return { ok: false, what: "Pick Sri Lankan or Not Sri Lankan." };
+  const t = typed.trim();
+  if (!t) return { ok: false, what: "Type the nationality for a candidate who is not Sri Lankan." };
+  if (!isExpat(t)) return { ok: false, what: "That reads as Sri Lankan. Pick Sri Lankan, or type their real nationality." };
+  return { ok: true, nationality: t };
+}
+
+/**
+ * The number of months of salary billed for a placement (26 Nov, Nov 25 ops meeting).
+ *
+ * An expat placement gets the agreement's `expatFeeMonths` (default 2, clause 5.2);
+ * a Sri Lankan (or not-yet-confirmed) placement gets `feeMonths` (default 1).
+ */
+export function feeMonthsFor(placement: {
+  feeMonths: number;
+  expatFeeMonths?: number;
+  nationality?: string;
+}): number {
+  if (isExpat(placement.nationality)) {
+    return placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : EXPAT_FEE_MONTHS;
+  }
+  return placement.feeMonths > 0 ? placement.feeMonths : 1;
+}
+
+/**
+ * What still blocks a fee invoice from being sent (26 Nov, Nov 25 ops meeting).
+ *
+ * The draft is created on join so nothing is forgotten, but it cannot go to the
+ * client until Ops confirms nationality (which decides 1 vs 2 months) and the
+ * client sends payment details with the actual offered salary (clause 2.12).
+ */
+export function invoiceBlockers(
+  placement:
+    | {
+        nationality?: string;
+        nationalityConfirmedAt?: number;
+        paymentDetails?: { offeredSalary: number; receivedAt: number; by: string; note?: string };
+      }
+    | null
+    | undefined,
+): string[] {
+  if (!placement) return [];
+  const blockers: string[] = [];
+  if (!placement.nationality?.trim() || !placement.nationalityConfirmedAt) {
+    blockers.push("nationality not confirmed");
+  }
+  if (!placement.paymentDetails || !(placement.paymentDetails.offeredSalary > 0)) {
+    blockers.push("payment details not received");
+  }
+  return blockers;
+}
+
+/**
+ * The three payment reminders after an invoice is sent: weeks 1, 2 and 3 (26 Nov).
+ *
+ * Any reminder that would fall on or after the due date is skipped, because the
+ * late payment chase takes over once the due date arrives.
+ */
+export function invoiceReminderClocks(
+  sentAt: number,
+  dueAt: number | null,
+): { kind: string; week: number; dueAt: number }[] {
+  const weeks = [1, 2, 3];
+  return weeks
+    .map((week) => ({ kind: "invoice.remind", week, dueAt: sentAt + week * 7 * DAY }))
+    .filter((r) => dueAt === null || r.dueAt < dueAt);
+}
+
+/**
+ * When the first late chase runs (26 Nov, PR 3 review). An invoice sent after its due date is not
+ * chased at once: the first chase is a week after sending. The late charge still counts from dueAt (clause 5.5).
+ */
+export function firstChaseAt(dueAt: number, sentAt: number): number {
+  return dueAt > sentAt ? dueAt : sentAt + 7 * DAY;
+}
+
+/**
+ * The salary split to store when the client sends their payment details (26 Nov, PR 3 review).
+ *
+ * Never overwrites a known split silently: a typed basic wins; a blank basic keeps the existing split when it
+ * still adds up to the offered salary; otherwise an agreement that bills on basic must be given one.
+ */
+export function splitFromPaymentDetails(
+  offered: number,
+  givenBasic: number | null,
+  existing: { basicSalary?: number | null; allowances?: number | null },
+  feeBasis: string,
+): { ok: true; basicSalary: number; allowances: number } | { ok: false; what: string } {
+  if (givenBasic !== null && givenBasic > 0) {
+    if (givenBasic > offered) return { ok: false, what: "The basic salary cannot be more than the offered salary." };
+    return { ok: true, basicSalary: givenBasic, allowances: offered - givenBasic };
+  }
+  const b = existing.basicSalary ?? 0;
+  const a = existing.allowances ?? 0;
+  if (b > 0 && b + a === offered) return { ok: true, basicSalary: b, allowances: a };
+  if (feeBasis === "basic") {
+    return { ok: false, what: "This agreement bills on basic salary. Give the basic as well as the offered salary." };
+  }
+  return { ok: true, basicSalary: offered, allowances: 0 };
+}
+
+/**
+ * Whole days left until the due date (positive = days left, 0 = due today, negative = days late).
+ */
+export function daysUntilDue(dueAt: number | null, now = Date.now()): number | null {
+  if (dueAt === null) return null;
+  const diff = dueAt - now;
+  return diff >= 0 ? Math.ceil(diff / DAY) : -Math.floor((now - dueAt) / DAY);
+}
+
+export const TESTIMONIAL_CHANNELS = ["LinkedIn", "Site", "Google"] as const;
+export type TestimonialChannel = (typeof TESTIMONIAL_CHANNELS)[number];
+
+export function problemWithTestimonial(side: string, channel: string): string | null {
+  if (side !== "candidate" && side !== "client") return "Pick whether this testimonial is from the candidate or the client.";
+  if (!channel.trim()) return "Pick which channel it came through (LinkedIn, Site or Google).";
+  return null;
+}
+
 /**
  * What TA must have sent with a placement.
  *

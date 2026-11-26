@@ -147,7 +147,22 @@ import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/ca
 import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
-import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicantDetails, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import {
+  CALL_NOT_FIT,
+  callOutcomeTransition,
+  colomboLocalToMs,
+  defaultHiringInterviewAt,
+  hiringInterviewersFrom,
+  isHiringCaller,
+  offerOutcomeTransition,
+  problemWithApplicantDetails,
+  problemWithApplicant,
+  problemWithHiringCall,
+  problemWithCv,
+  problemWithCvBytes,
+  problemWithHiringDecision,
+  problemWithVacancy,
+} from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
   problemWithInviteBack,
@@ -233,7 +248,7 @@ import { referenceFor } from "@/lib/mailMatch";
 import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { decodeRoles, permissionSentence } from "@/lib/integrationHealth";
 import { MAX_PER_BATCH } from "@/lib/scoop";
-import { problemWithNewHandler } from "@/lib/clientPositionTable";
+import { problemWithNewBackup, problemWithNewHandler } from "@/lib/clientPositionTable";
 import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -276,7 +291,14 @@ import {
   balanceOf,
   feeAmount,
   feeInWords,
+  feeMonthsFor,
+  invoiceBlockers,
   invoiceLines,
+  firstChaseAt,
+  nationalityFromChoice,
+  splitFromPaymentDetails,
+  invoiceReminderClocks,
+  isExpat,
   money,
   problemWithDojChange,
   problemWithNoShow,
@@ -285,6 +307,7 @@ import {
   paymentDate,
   problemWithPayment,
   problemWithPaymentOn,
+  problemWithTestimonial,
   problemWithWriteOff,
 } from "@/lib/money";
 import {
@@ -347,6 +370,11 @@ import { tryBuildStrategyAdditions } from "@/lib/strategies";
 import {
   type EsaFields,
   type EsaState,
+  type EsaMode,
+  DRAFT_BLANKABLE,
+  DRAFT_NOTE,
+  TBC,
+  problemWithSigningDraft,
   canMoveTo,
   chaseStep,
   coverEmail,
@@ -2059,6 +2087,9 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
     role: String(formData.get("role") ?? ""),
     packageSaid: String(formData.get("packageSaid") ?? ""),
   };
+  // 26 Nov (Nov 25 ops meeting): the call also records the job description and salary scale; both optional, left out when empty.
+  const jd = String(formData.get("jd") ?? "").trim();
+  const salaryScale = String(formData.get("salaryScale") ?? "").trim();
   const problem = problemWithHeld(notes);
   if (problem) back(problem);
 
@@ -2066,7 +2097,7 @@ export async function markMeetingHeld(formData: FormData): Promise<void> {
   const row = meeting as NonNullable<typeof meeting>;
   await patchMeeting(
     meetingId,
-    { ...notes, state: "held", heldAt: now },
+    { ...notes, ...(jd ? { jd } : {}), ...(salaryScale ? { salaryScale } : {}), state: "held", heldAt: now },
     member.id,
     "meeting.held",
     notes.brief.trim().slice(0, 200),
@@ -2242,7 +2273,16 @@ function blankAgreement(row: NonNullable<ReturnType<typeof leadIn>>, fields: Esa
     countersignedFileId: null,
     reason: null,
     ownerId: row.ownerId,
+    mode: "final" as EsaMode,
   };
+}
+
+/** 26 Nov (Nov 25 ops meeting): a signed agreement says whether the client is local or international; the client keeps it. */
+async function copyClientType(row: NonNullable<ReturnType<typeof agreementIn>>, memberId: Id): Promise<void> {
+  const type = row.fields.clientType;
+  if (type !== "local" && type !== "international") return;
+  const client = clientForLead(await desk(), row.leadId);
+  if (client && client.clientType !== type) await patchClient(client.id, { clientType: type }, memberId, "client.updated", null);
 }
 
 function newAgreementFields(db: Awaited<ReturnType<typeof desk>>, row: NonNullable<ReturnType<typeof leadIn>>): EsaFields {
@@ -2312,15 +2352,20 @@ export async function saveAgreementFields(formData: FormData): Promise<void> {
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("field.")) fields[key.slice("field.".length)] = String(value);
   }
+  // 26 Nov (Nov 25 ops meeting): Draft or Final. A form that does not ask keeps what the agreement had.
+  const asked = formData.get("mode");
+  const mode: EsaMode = asked === "draft" || asked === "final" ? asked : ((esa?.mode as EsaMode | undefined) ?? "final");
+  // A draft that already went to the client and is now made final needs its new version at once.
+  const madeFinal = !!esa && esa.mode === "draft" && mode === "final" && !!esa.sentAt;
 
-  if (esa) await patchAgreement(esa.id, { fields }, member.id, "esa.fieldsSaved", null);
-  else await addAgreement(blankAgreement(lead as NonNullable<typeof lead>, fields));
+  if (esa) await patchAgreement(esa.id, { fields, mode }, member.id, "esa.fieldsSaved", null);
+  else await addAgreement({ ...blankAgreement(lead as NonNullable<typeof lead>, fields), mode });
   revalidatePath(here);
-  const problem = problemWithDraft(fields);
+  const problem = problemWithDraft(fields, mode);
   if (problem) back("Saved. " + problem);
 
   // "Save and make the draft": one click from an edited detail to the next version (17 Nov).
-  if (formData.get("makeDraft")) {
+  if (formData.get("makeDraft") || madeFinal) {
     const fresh = await desk();
     const saved = agreementForLead(fresh, leadId);
     if (saved) {
@@ -2363,7 +2408,12 @@ async function fillAgreementDraft(
   }
   const templateBytes = await readBytes(template.key);
   if (!templateBytes) return { error: "The template file is registered but its bytes are gone. Upload it again on the Files screen." };
-  const fill = await fillDocx(Buffer.from(templateBytes), { ...holeValues(esa.fields), effectiveDate: colomboDateInWords(now) });
+  // A Draft may leave the signatory and the address to be confirmed (26 Nov, Nov 25 ops meeting); a final never.
+  const fill = await fillDocx(
+    Buffer.from(templateBytes),
+    { ...holeValues(esa.fields), effectiveDate: colomboDateInWords(now) },
+    esa.mode === "draft" ? { blanks: DRAFT_BLANKABLE, text: TBC, note: DRAFT_NOTE } : undefined,
+  );
   const holeProblem = problemWithFill(
     fill.missing,
     (key) => ESA_FIELDS.find((f) => f.key === (WORDED_HOLES[key] ?? key))?.label ?? key,
@@ -2430,7 +2480,7 @@ export async function saveCoverEmail(formData: FormData): Promise<void> {
     fields.coverSubject = String(formData.get("subject") ?? "").trim();
     fields.coverBody = String(formData.get("body") ?? "").trim();
     if (!fields.coverSubject || !fields.coverBody) back("The email needs a subject and some words. Use reset to get the standard wording back.");
-    const problem = coverEmail(templateFor(db, "esa.cover"), fields);
+    const problem = coverEmail(templateFor(db, "esa.cover"), fields, row.mode ?? "final");
     if ("problem" in problem) back(problem.problem);
   }
   await patchAgreement(row.id, { fields }, member.id, "esa.coverSaved", null);
@@ -2456,7 +2506,7 @@ export async function previewAgreement(formData: FormData): Promise<void> {
   if (!esa) redirect("/leads?msg=" + encodeURIComponent("That agreement is gone."));
   const row = esa as NonNullable<typeof esa>;
 
-  const problem = problemWithDraft(row.fields);
+  const problem = problemWithDraft(row.fields, row.mode ?? "final");
   if (problem) back(problem);
   const draft = await fillAgreementDraft(db, row, member.id, Date.now());
   if ("error" in draft) back(draft.error);
@@ -2498,10 +2548,10 @@ export async function sendAgreement(formData: FormData): Promise<void> {
   // again: the version number moves, the chase starts from the beginning, and
   // the clocks of the version before it stop (3 Nov).
   const again = row.state === "negotiating";
-  const problem = problemWithDraft(row.fields);
+  const problem = problemWithDraft(row.fields, row.mode ?? "final");
   if (problem) back(problem);
   // Checked before any file is made, so a broken cover leaves nothing behind.
-  const cover = coverEmail(templateFor(db, "esa.cover"), row.fields);
+  const cover = coverEmail(templateFor(db, "esa.cover"), row.fields, row.mode ?? "final");
   if ("problem" in cover) back(cover.problem);
   const coverText = cover as { subject: string; body: string };
 
@@ -2685,12 +2735,13 @@ export async function recordAgreementSigned(formData: FormData): Promise<void> {
   const row = esa as NonNullable<typeof esa>;
 
   const fileId = String(formData.get("fileId") ?? "").trim() || null;
-  const problem = problemWithSigned({ fileId, checked: formData.get("checked") === "on" });
+  const problem = problemWithSigningDraft(row.mode) ?? problemWithSigned({ fileId, checked: formData.get("checked") === "on" });
   if (problem) back(problem);
   if (!canMoveTo(row.state as EsaState, "signed")) back("An agreement in that state cannot be marked signed.");
 
   const now = Date.now();
   await patchAgreement(esaId, { state: "signed", signedAt: now, signedFileId: fileId }, member.id, "esa.signed", null);
+  await copyClientType(row, member.id);
   // Every clock on it stops, not only the chases: the two-week "nobody has
   // signed" clock kept running and would have fired on a signed agreement.
   await cancelClocksFor(db, "esa", esaId, member.id, "The agreement is signed.");
@@ -2768,6 +2819,8 @@ export async function recordAgreementCountersigned(formData: FormData): Promise<
   const row = esa as NonNullable<typeof esa>;
 
   const fileId = String(formData.get("fileId") ?? "").trim() || null;
+  const draftProblem = problemWithSigningDraft(row.mode);
+  if (draftProblem) back(draftProblem);
   if (!fileId) back("Upload the countersigned copy first, on the Files screen.");
   if (!canMoveTo(row.state as EsaState, "countersigned")) back("That agreement is not waiting to be countersigned.");
 
@@ -2807,6 +2860,7 @@ async function finishCountersign(
     await clientFromLead(db, { ...signedLead, clientTaId: row.clientTaId ?? signedLead.clientTaId }, "active", member.id);
     revalidatePath("/clients");
   }
+  await copyClientType(row, member.id);
 
   const message = await draftMessage({
     channel: "email",
@@ -3129,7 +3183,9 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
   const problem = problemWithNewHandler(newId, row.ownerId, db.members, reason);
   if (problem) back(problem);
 
-  await patchPosition(positionId, { ownerId: newId }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
+  // The backup cannot also be the main person (26 Nov, Nov 25 ops meeting), so taking over clears it.
+  const wasBackup = newId === row.backupOwnerId;
+  await patchPosition(positionId, { ownerId: newId, ...(wasBackup ? { backupOwnerId: "" } : {}) }, member.id, "position.handlerChanged", reason + " (was " + (db.members.find((m) => m.id === row.ownerId)?.name ?? row.ownerId) + ")");
   await createTask({
     kind: "check",
     title: "You now handle " + row.title,
@@ -3143,7 +3199,89 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
   revalidatePath("/clients/positions");
   revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
-  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + ".", here));
+  redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + "." + (wasBackup ? " They were the backup, so there is no backup now." : ""), here));
+}
+
+/**
+ * Backup Ops person for a position (26 Nov, Nov 25 ops meeting). Same right and same reason as the main
+ * handler; a blank choice removes the backup.
+ */
+export async function setPositionBackup(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "task.reassign")) back(refusal("task.reassign"));
+  const db = await desk();
+  const position = positionIn(db, positionId);
+  if (!position) back("That position is gone.");
+  const row = position as NonNullable<typeof position>;
+  const newId = String(formData.get("backupId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 4) back("Say why the backup is changing. It is kept with the change.");
+  if (newId) {
+    const problem = problemWithNewBackup(newId, row.ownerId, db.members);
+    if (problem) back(problem);
+  } else if (!row.backupOwnerId) back("There is no backup to remove.");
+  // "" means none: a patch with undefined would not remove the field on the Convex store.
+  const nameOf = (id?: string) => (id ? (db.members.find((m) => m.id === id)?.name ?? id) : "nobody");
+
+  await patchPosition(positionId, { backupOwnerId: newId }, member.id, "position.backupOwner", reason + " (was " + nameOf(row.backupOwnerId) + ")");
+  if (newId) {
+    await createTask({
+      kind: "check",
+      title: "You are the backup on " + row.title,
+      body: "You were made the backup: " + reason,
+      assigneeId: newId,
+      dueAt: Date.now(),
+      subjectType: "position",
+      subjectId: positionId,
+      link: "/positions/" + positionId,
+    });
+  }
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(newId ? "Backup is now " + nameOf(newId) + "." : "Backup removed.", here));
+}
+
+/** Priority of a position: P1, P2, P3 or none (26 Nov, Nov 25 ops meeting). No reason needed. */
+export async function setPositionPriority(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  if (!positionIn(db, positionId)) back("That position is gone.");
+  const to = String(formData.get("priority") ?? "");
+  if (to && !["P1", "P2", "P3"].includes(to)) back("Priority is P1, P2 or P3.");
+  await patchPosition(positionId, { priority: to as "P1" | "P2" | "P3" }, member.id, "position.priority", to || "none");
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(to ? "Priority " + to + "." : "Priority cleared.", here));
+}
+
+/** The monthly salary and its currency: what gives a position its value (26 Nov, Nov 25 ops meeting). */
+export async function setPositionSalary(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const positionId = String(formData.get("positionId") ?? "");
+  const here = backTo(formData, "/clients/positions");
+  const back = (msg: string) => redirect(withMsg(here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+  const db = await desk();
+  if (!positionIn(db, positionId)) back("That position is gone.");
+  const text = String(formData.get("salaryMonthly") ?? "").replace(/,/g, "").trim();
+  const currency = String(formData.get("currency") ?? "").trim().toUpperCase().slice(0, 5);
+  const salary = text ? Number(text) : undefined;
+  if (salary !== undefined && !(salary > 0)) back("The monthly salary is a number above zero, or leave it empty to remove it.");
+  if (salary !== undefined && !currency) back("Say which currency, like LKR or USD.");
+  await patchPosition(positionId, { salaryMonthly: salary ?? 0, salaryCurrency: salary === undefined ? "" : currency }, member.id, "position.salary", salary === undefined ? "removed" : currency + " " + salary);
+  revalidatePath("/clients/positions");
+  revalidatePath("/positions/" + positionId);
+  redirect(here + confirmed(salary === undefined ? "Salary removed." : "Salary saved.", here));
 }
 
 /** Live, quiet or finished. Going quiet needs a reason, like closing does. */
@@ -3977,9 +4115,13 @@ async function bookRequirement(formData: FormData, member: OpsMember, leadId: st
   const teams = await teamsPartOf(formData, member, row, "requirement", at, taLeadId);
   if (teams.refusal) back(teams.refusal);
 
+  // One requirement call per position (26 Nov, Nov 25 ops meeting); a call booked without one stays as it was.
+  const positionId = positionIn(db, String(formData.get("positionId") ?? ""))?.id;
+
   const meeting = await addMeeting({
     leadId,
     kind: "requirement",
+    ...(positionId ? { positionId } : {}),
     at,
     state: "booked",
     taLeadId,
@@ -6213,7 +6355,7 @@ export async function correctSalarySplit(formData: FormData): Promise<void> {
   await patchPlacement(placementId, { basicSalary: basic, allowances }, member.id, "placement.salarySplit", reason);
   if (invoice) {
     const amount = feeAmount(
-      { feeMonths: row.feeMonths, feeBasis: row.feeBasis },
+      { feeMonths: feeMonthsFor(row), feeBasis: row.feeBasis },
       row.monthlySalary ?? 0,
       { basicSalary: basic, allowances },
     );
@@ -6222,6 +6364,335 @@ export async function correctSalarySplit(formData: FormData): Promise<void> {
   revalidatePath(here);
   revalidatePath("/invoices");
   back("Saved. The fee now follows basic " + money(basic, row.currency) + " and allowances " + money(allowances, row.currency) + ".");
+}
+
+/**
+ * Confirm the placed candidate's nationality (26 Nov, Nov 25 ops meeting).
+ *
+ * Non-Sri Lankan placements are billed at the agreement's expat rate (default 2 months).
+ * Reprices an unsent fee invoice immediately when nationality flips between local and expat.
+ */
+export async function confirmNationality(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "client.manage") && !can(member, "money.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/positions?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  // 26 Nov (PR 3 review): two explicit choices; the text box is only for "Not Sri Lankan".
+  const chosen = nationalityFromChoice(String(formData.get("nationalityKind") ?? ""), String(formData.get("nationality") ?? ""));
+  if (!chosen.ok) back(chosen.what);
+  const nationality = chosen.ok ? chosen.nationality : "";
+
+  const invoice = row.invoiceId ? invoiceIn(db, row.invoiceId) : null;
+  if (invoice && invoice.state !== "draft") {
+    back("The invoice has already been sent. Change it with a credit note instead.");
+  }
+
+  const now = Date.now();
+  await patchPlacement(
+    placementId,
+    { nationality, nationalityConfirmedBy: member.id, nationalityConfirmedAt: now },
+    member.id,
+    "placement.nationalityConfirmed",
+    nationality,
+  );
+
+  const months = feeMonthsFor({ feeMonths: row.feeMonths, expatFeeMonths: row.expatFeeMonths, nationality });
+  if (invoice && invoice.state === "draft") {
+    const amount = feeAmount(
+      { feeMonths: months, feeBasis: row.feeBasis },
+      row.monthlySalary ?? 0,
+      row,
+    );
+    await patchInvoice(
+      invoice.id,
+      { amount },
+      member.id,
+      "invoice.repriced",
+      "Nationality confirmed as " + nationality + " (" + months + " month" + (months === 1 ? "" : "s") + ")",
+    );
+  }
+
+  if (row.positionId) revalidatePath("/positions/" + row.positionId);
+  revalidatePath("/invoices");
+  if (invoice) revalidatePath("/invoices/" + invoice.id);
+  back(
+    "Confirmed as " +
+      nationality +
+      " (" +
+      (isExpat(nationality) ? "expat · " : "local · ") +
+      months +
+      " month" +
+      (months === 1 ? "" : "s") +
+      " fee).",
+  );
+}
+
+/**
+ * Draft a testimonial request through the approval gate (26 Nov, Nov 25 ops meeting).
+ */
+export async function draftTestimonialAsk(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/positions?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const side = String(formData.get("side") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
+  const problem = problemWithTestimonial(side, channel);
+  if (problem) back(problem);
+
+  const client = row.clientId ? clientIn(db, row.clientId) : null;
+  // 26 Nov (PR 3 review): the recipient follows the side. A blank box means the client's HR contact for the
+  // client side; a placement holds no candidate email, so the candidate side needs one typed.
+  const hr = client?.contacts?.find((k) => /hr/i.test(k.role) && k.email.trim()) ?? client?.contacts?.find((k) => k.email.trim()) ?? null;
+  const typedTo = String(formData.get("to") ?? "").trim();
+  const to = typedTo || (side === "client" ? hr?.email.trim() ?? "" : "");
+  if (!to || !to.includes("@")) {
+    back(
+      side === "candidate"
+        ? "There is no email address for " + row.candidateName + " on file. Type one in the box, or ring them" + (row.candidatePhone ? " on " + row.candidatePhone : "") + "."
+        : "The client has no contact email on file. Type one in the box.",
+    );
+  }
+
+  const position = row.positionId ? positionIn(db, row.positionId) : null;
+  const wording = templateFor(db, "testimonial.ask");
+  const contact = side === "candidate" ? row.candidateName.split(/\s+/)[0] : (hr?.name ?? "").split(/\s+/)[0] || "all";
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{contact\}\}/g, contact)
+      .replace(/\{\{candidate\}\}/g, row.candidateName)
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{position\}\}/g, position?.title ?? "the role")
+      .replace(/\{\{channel\}\}/g, channel)
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const message = await draftMessage({
+    channel: "email",
+    to: [to],
+    subject: fill(wording?.subject ?? "Thank you - a quick testimonial for Career 141"),
+    body: fill(
+      wording?.body ??
+        "Dear {{contact}},\n\nWe would really appreciate a short testimonial on {{channel}} about working with Career 141.\n\nKind regards,\n{{opsPerson}}\nCareer 141",
+    ),
+    templateKey: "testimonial.ask",
+    subjectType: "placement",
+    subjectId: placementId,
+  });
+
+  if (row.positionId) revalidatePath("/positions/" + row.positionId);
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Testimonial request drafted. Read it, then approve it."));
+}
+
+/**
+ * Mark either the candidate's or the client's testimonial Done, with its channel (26 Nov).
+ */
+export async function markTestimonialDone(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const placementId = String(formData.get("placementId") ?? "");
+  const here = "/placements/" + placementId;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "client.manage")) back(refusal("client.manage"));
+
+  const db = await desk();
+  const placement = placementIn(db, placementId);
+  if (!placement) redirect("/positions?msg=" + encodeURIComponent("That placement is gone."));
+  const row = placement as NonNullable<typeof placement>;
+
+  const side = String(formData.get("side") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "").trim();
+  const problem = problemWithTestimonial(side, channel);
+  if (problem) back(problem);
+
+  const now = Date.now();
+  const current = row.testimonial ?? { candidate: "pending" as const, client: "pending" as const };
+  // 26 Nov (PR 3 review): each side keeps its own channel, day and person, so the second never overwrites the first.
+  const updated = {
+    ...current,
+    [side]: "done" as const,
+    [side + "Channel"]: channel,
+    [side + "DoneAt"]: now,
+    [side + "By"]: member.id,
+  };
+  await patchPlacement(
+    placementId,
+    { testimonial: updated },
+    member.id,
+    "placement.testimonial." + side,
+    side + " testimonial done via " + channel,
+  );
+  // Both sides done: the task made on join is finished.
+  if (updated.candidate === "done" && updated.client === "done") {
+    for (const t of db.tasks.filter((x) => x.state === "open" && x.subjectType === "placement" && x.subjectId === placementId && /testimonial/i.test(x.title))) {
+      await finishTaskWrite(t.id, member.id, "Both testimonials received.");
+    }
+  }
+
+  if (row.positionId) revalidatePath("/positions/" + row.positionId);
+  back((side === "candidate" ? "Candidate" : "Client") + " testimonial marked done (" + channel + ").");
+}
+
+/**
+ * Ask the client for payment details and offered salary breakdown under ESA clause 2.12 (26 Nov).
+ * Drafts through the approval gate and records detailsRequestedAt on the invoice.
+ */
+export async function requestPaymentDetails(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const placementIdRaw = String(formData.get("placementId") ?? "");
+  const here = invoiceId ? "/invoices/" + invoiceId : "/placements/" + placementIdRaw;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
+
+  const db = await desk();
+  // 26 Nov (PR 3 review): works from the placement when there is no invoice row yet (a client without billing details).
+  const invoice = invoiceId ? invoiceIn(db, invoiceId) : null;
+  if (invoiceId && !invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  if (invoice && invoice.state !== "draft") back("That invoice has already been sent.");
+
+  const placement = (invoice?.placementId ? placementIn(db, invoice.placementId) : null) ?? (placementIdRaw ? placementIn(db, placementIdRaw) : null);
+  if (!invoice && !placement) back("That placement is gone.");
+  const clientId = invoice?.clientId ?? placement?.clientId ?? null;
+  const client = clientId ? clientIn(db, clientId) : null;
+  const position = placement?.positionId ? positionIn(db, placement.positionId) : null;
+
+  const billingOrHr =
+    client?.contacts?.find((c) => /billing|finance|account|hr/i.test(c.role) && c.email.trim()) ??
+    client?.contacts?.find((c) => c.email.trim()) ??
+    null;
+  const billingEmail = client?.billingEmail.trim() ?? "";
+  const toEmail = billingEmail || billingOrHr?.email.trim() || "";
+  if (!toEmail) back("Add a billing or HR email address on the client record first.");
+
+  // The greeting names the person the email goes to: the billing contact when the billing address is used.
+  const contactName = (billingEmail ? client?.billingName : billingOrHr?.name) || billingOrHr?.name || "all";
+  const wording = templateFor(db, "invoice.details_request");
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{client\}\}/g, client?.name ?? "")
+      .replace(/\{\{contact\}\}/g, contactName)
+      .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? invoice?.about ?? "the candidate")
+      .replace(/\{\{position\}\}/g, position?.title ?? "the role")
+      .replace(/\{\{opsPerson\}\}/g, member.name);
+
+  const now = Date.now();
+  const message = await draftMessage({
+    channel: "email",
+    to: [toEmail],
+    subject: fill(wording?.subject ?? "{{client}} - payment details for {{candidate}}"),
+    body: fill(
+      wording?.body ??
+        "Dear {{contact}},\n\nUnder clause 2.12 of our agreement, please share the confirmed total salary package breakdown and billing address for {{candidate}} ({{position}}) so we can raise the placement fee invoice.\n\nKind regards,\n{{opsPerson}}\nCareer 141",
+    ),
+    templateKey: "invoice.details_request",
+    subjectType: invoice ? "invoice" : "placement",
+    subjectId: invoice ? invoice.id : placementIdRaw,
+  });
+
+  if (invoice) {
+    await patchInvoice(invoice.id, { detailsRequestedAt: now }, member.id, "invoice.detailsRequested", toEmail);
+  } else if (placement) {
+    // No invoice yet and no placement field for it (not adding schema): the audit holds the record.
+    await patchPlacement(placement.id, {}, member.id, "placement.detailsRequested", toEmail);
+  }
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (placement?.positionId) revalidatePath("/positions/" + placement.positionId);
+  redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Payment details request drafted. Read it, then approve it."));
+}
+
+/**
+ * Record the client's payment details and offered salary, recomputing the draft invoice (26 Nov).
+ *
+ * Writes the offered salary through the same salary-split audit path ("placement.salarySplit")
+ * with the reason "client's payment details", then recomputes the fee using feeMonthsFor.
+ */
+export async function recordPaymentDetails(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  const placementIdRaw = String(formData.get("placementId") ?? "");
+  const here = invoiceId ? "/invoices/" + invoiceId : "/placements/" + placementIdRaw;
+  const back = (msg: string) => redirect(landed(formData, here, msg));
+  if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
+
+  const db = await desk();
+  const invoice = invoiceId ? invoiceIn(db, invoiceId) : null;
+  const placementId = placementIdRaw || invoice?.placementId || "";
+  const placement = placementId ? placementIn(db, placementId) : null;
+  if (!placement) back("That placement is gone.");
+  const row = placement as NonNullable<typeof placement>;
+
+  const linkedInvoice = invoice ?? (row.invoiceId ? invoiceIn(db, row.invoiceId) : null);
+  if (linkedInvoice && linkedInvoice.state !== "draft") {
+    back("The invoice has gone to the client. Change it with a credit note, not by editing payment details.");
+  }
+
+  const offeredSalary = Number(String(formData.get("offeredSalary") ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(offeredSalary) || offeredSalary <= 0) {
+    back("Give the client's confirmed offered monthly salary as a number above zero.");
+  }
+  const basicRaw = String(formData.get("basicSalary") ?? "").replace(/,/g, "").trim();
+  const typedBasic = basicRaw ? Number(basicRaw) : null;
+  if (typedBasic !== null && !(typedBasic > 0)) back("Give the basic salary as a number above zero, or leave it blank.");
+  const note = String(formData.get("note") ?? "").trim();
+  // 26 Nov (PR 3 review): the split is never wiped silently, and the reason carries what it was.
+  const split = splitFromPaymentDetails(offeredSalary, typedBasic, { basicSalary: row.basicSalary, allowances: row.allowances }, row.feeBasis);
+  if (!split.ok) back(split.what);
+  const basic = split.ok ? split.basicSalary : 0;
+  const allowances = split.ok ? split.allowances : 0;
+  const reason =
+    "client's payment details (was basic " + (row.basicSalary ?? 0).toLocaleString("en-US") + " + allowances " + (row.allowances ?? 0).toLocaleString("en-US") +
+    "; TA said " + (row.monthlySalary ?? 0).toLocaleString("en-US") + ")";
+
+  const splitProblem = problemWithSalarySplit(basic, allowances, reason);
+  if (splitProblem) back(splitProblem);
+
+  const now = Date.now();
+  await patchPlacement(
+    row.id,
+    {
+      monthlySalary: offeredSalary,
+      basicSalary: basic,
+      allowances,
+      paymentDetails: { offeredSalary, receivedAt: now, by: member.id, ...(note ? { note } : {}) },
+    },
+    member.id,
+    "placement.salarySplit",
+    reason,
+  );
+
+  if (linkedInvoice) {
+    const months = feeMonthsFor(row);
+    const amount = feeAmount(
+      { feeMonths: months, feeBasis: row.feeBasis },
+      offeredSalary,
+      { basicSalary: basic, allowances },
+    );
+    await patchInvoice(linkedInvoice.id, { amount }, member.id, "invoice.repriced", reason);
+  }
+
+  revalidatePath(here);
+  revalidatePath("/invoices");
+  if (row.positionId) revalidatePath("/positions/" + row.positionId);
+  back("Payment details recorded (" + money(offeredSalary, row.currency) + ") and the invoice amount updated.");
 }
 
 /** We lost them before they joined (step 6). */
@@ -6437,6 +6908,14 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     : "This invoice has no client record. Link it to a client first.";
   if (billingProblem) back(billingProblem);
 
+  // 26 Nov (Nov 25 ops meeting): a fee invoice cannot go out until nationality is confirmed and payment details are in.
+  if (row.kind === "fee" && placement) {
+    const blockers = invoiceBlockers(placement);
+    if (blockers.length) {
+      back("Cannot send yet: " + blockers.join(" and ") + ".");
+    }
+  }
+
   const lines = invoiceLines({
     number: row.number,
     // A surcharge and a credit note have no placement: what they are about is
@@ -6444,7 +6923,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     candidateName: placement?.candidateName ?? row.about ?? "",
     positionTitle: positionIn(db, placement?.positionId ?? "")?.title ?? "",
     clientName: client?.billingName || client?.name || "",
-    feeWords: feeInWords({ feeMonths: placement?.feeMonths ?? 1, feeBasis: placement?.feeBasis ?? "gross" }),
+    feeWords: feeInWords({ feeMonths: placement ? feeMonthsFor(placement) : 1, feeBasis: placement?.feeBasis ?? "gross" }),
     monthlySalary: placement?.monthlySalary ?? 0,
     amount: row.amount,
     lateCharge: row.lateCharge,
@@ -6503,14 +6982,28 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     "invoice.sent",
     null,
   );
-  // The clock that asks for the money, counted from the due date.
+  // 26 Nov (Nov 25 ops meeting): three payment reminders at weeks 1, 2 and 3 after send (skipping any past dueAt).
+  for (const rem of invoiceReminderClocks(now, row.dueAt)) {
+    await startTimer({
+      kind: rem.kind,
+      subjectType: "invoice",
+      subjectId: invoiceId,
+      startsAt: now,
+      dueAt: rem.dueAt,
+      warnAt: null,
+      ownerId: row.ownerId,
+      payload: { label: row.number, week: String(rem.week) },
+    });
+  }
+  // The clock that asks for the money, counted from the due date. 26 Nov (PR 3 review): an invoice sent
+  // after its due date is first chased a week later, not at once; the late charge still counts from dueAt.
   if (row.dueAt) {
     await startTimer({
       kind: "invoice.due",
       subjectType: "invoice",
       subjectId: invoiceId,
       startsAt: now,
-      dueAt: row.dueAt,
+      dueAt: firstChaseAt(row.dueAt, now),
       warnAt: null,
       ownerId: row.ownerId,
       payload: { label: row.number },
@@ -8598,7 +9091,7 @@ export async function deleteTeamNote(formData: FormData): Promise<void> {
   redirect(dest + confirmed("Note deleted.", dest));
 }
 
-/** Internal hiring: create a new Career141 vacancy (H1). */
+/** Scoops & vacancies: create a new Career141 vacancy (H1, source added 26 Nov). */
 export async function createVacancy(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -8608,11 +9101,33 @@ export async function createVacancy(formData: FormData): Promise<void> {
   const places = Number(formData.get("places") ?? 1);
   const checksRaw = String(formData.get("checks") ?? "");
   const checks = checksRaw.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean);
+  const sourceRaw = String(formData.get("source") ?? "").trim();
+  const source = sourceRaw === "scoop" || sourceRaw === "job_post" || sourceRaw === "referral" ? sourceRaw : undefined;
+  const sourceDetail = String(formData.get("sourceDetail") ?? "").trim() || undefined;
   const problem = problemWithVacancy(title, places);
   if (problem) redirect(withMsg(dest, problem));
-  const v = await addVacancy({ title, places, checks, ownerId: member.id });
+  const v = await addVacancy({ title, places, checks, ownerId: member.id, ...(source ? { source } : {}), ...(sourceDetail ? { sourceDetail } : {}) });
   revalidatePath("/hiring");
   redirect(`/hiring/${v.id}?msg=` + encodeURIComponent(`Vacancy "${v.title}" opened.`));
+}
+
+/** Scoops & vacancies: an ops team member claims an applicant to call (26 Nov; leadership never calls). */
+export async function claimApplicant(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!isHiringCaller(member)) {
+    redirect(withMsg(dest, "Only ops team members claim and call applicants — leadership never makes the first call."));
+  }
+  const db = await desk();
+  const app = db.applicants.find((a) => a.id === applicantId);
+  if (!app) redirect(withMsg(dest, "That applicant is gone."));
+  await patchApplicant(applicantId, { callerId: member.id }, member.id, "applicant.claimed", member.name);
+  revalidatePath("/hiring");
+  revalidatePath(`/hiring/${app.vacancyId}`);
+  redirect(dest + confirmed(`Claimed ${app.name}.`, dest));
 }
 
 /** Internal hiring: add an applicant to a vacancy (H2). */
@@ -8747,7 +9262,7 @@ async function dropApplicantEvent(db: Awaited<ReturnType<typeof desk>>, person: 
   return "";
 }
 
-/** Internal hiring: log screening call result (H2 -> Call panel). */
+/** Scoops & vacancies: log screening call result, salaries, availability, and outcome (26 Nov). */
 export async function recordHiringCall(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -8757,31 +9272,45 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
   const result = String(formData.get("result") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
+  const notInterestedReason = String(formData.get("notInterestedReason") ?? "").trim();
+  const currentSalary = String(formData.get("currentSalary") ?? "").trim();
+  const expectedSalary = String(formData.get("expectedSalary") ?? "").trim();
+  const availability = String(formData.get("availability") ?? "").trim();
   if (!result) redirect(withMsg(dest, "Pick the call result."));
 
   const db = await desk();
   const app = db.applicants.find((a) => a.id === applicantId);
   if (!app) redirect(withMsg(dest, "That applicant is gone."));
-  const problem = problemWithHiringCall(result, note);
+  const problem = problemWithHiringCall(result, note, notInterestedReason);
   if (problem) redirect(withMsg(dest, problem));
-  const tries = app.tries + 1;
-  if (result === CALL_NOT_FIT) {
-    await patchApplicant(applicantId, { stage: "rejected", rejectedAtStage: app.stage, tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
-    const dropped = await dropApplicantEvent(db, app, member);
-    revalidatePath(`/hiring/${vacancyId}`);
-    revalidatePath("/hiring");
-    redirect(dest + confirmed("Marked rejected." + dropped, dest));
-  }
-  const isFits = result === "Talked" || result === "Fits";
-  const nextStage = isFits ? "fits" : "call";
-  const detail = isFits ? `Called · fits${note ? " — " + note : ""}` : `${result} · try ${Math.min(tries, 3)} of 3`;
-  await patchApplicant(applicantId, { stage: nextStage, tries, detail, notes: note || app.notes }, member.id, "applicant.called", detail);
+
+  const next = callOutcomeTransition({ result, currentTries: app.tries, note, notInterestedReason });
+  await patchApplicant(
+    applicantId,
+    {
+      stage: next.stage,
+      tries: next.tries,
+      detail: next.detail,
+      notes: note || app.notes,
+      ...(app.callerId ? {} : isHiringCaller(member) ? { callerId: member.id } : {}),
+      ...(currentSalary ? { currentSalary } : {}),
+      ...(expectedSalary ? { expectedSalary } : {}),
+      ...(availability ? { availability } : {}),
+      ...(next.notInterestedReason ? { notInterestedReason: next.notInterestedReason } : {}),
+      ...(next.rejectReason !== undefined ? { rejectReason: next.rejectReason } : {}),
+      ...(next.stage === "rejected" ? { rejectedAtStage: app.stage } : {}),
+    },
+    member.id,
+    "applicant.called",
+    next.detail,
+  );
+  const dropped = next.stage === "rejected" || next.stage === "not_interested" ? await dropApplicantEvent(db, app, member) : "";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
-  redirect(dest + confirmed("Call result saved.", dest));
+  redirect(dest + confirmed("Call result saved." + dropped, dest));
 }
 
-/** Internal hiring: book an internal interview (H2 -> Book an interview panel). */
+/** Scoops & vacancies: book an internal interview with leadership and draft the candidate email (26 Nov). */
 export async function bookHiringInterview(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -8789,23 +9318,23 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   const vacancyId = String(formData.get("vacancyId") ?? "").trim();
   const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
   if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
   const whenRaw = String(formData.get("interviewAt") ?? "").trim();
   const place = String(formData.get("place") ?? "Office").trim();
-  const interviewer = String(formData.get("interviewer") ?? member.name).trim();
-  const interviewAt = whenRaw ? colomboLocalToMs(whenRaw) : NaN;
+  const leadership = hiringInterviewersFrom(textOf(db, "hiring.interviewers", ""), db.members);
+  const interviewer = String(formData.get("interviewer") ?? "").trim() || leadership[0] || member.name;
+  const holidays = db.holidays.map((h) => h.date);
+  const interviewAt = whenRaw ? colomboLocalToMs(whenRaw) : defaultHiringInterviewAt(Date.now(), holidays);
   if (Number.isNaN(interviewAt)) redirect(withMsg(dest, "Pick a valid interview date and time."));
-  // An online interview gets a Teams link in the booker's calendar, the same way client interviews do (21 Nov).
   let joinUrl: string | null = null;
   let graphEventId: string | null = null;
   let teamsNote = "";
-  const db = await desk();
-  // A booking that is moved, or stops being online, must not leave the old event in the calendar.
   let keepOld = false;
-  const earlier = (db.applicants ?? []).find((a) => a.id === applicantId)?.graphEventId;
+  const applicant = (db.applicants ?? []).find((a) => a.id === applicantId);
+  const earlier = applicant?.graphEventId;
   if (earlier) {
     const gone = await cancelTeamsEvent(member.email, earlier, switchedOn(db, "switch.teamsEnabled"));
     if (gone && !gone.ok) {
-      // The old event is still there: keep its id so it can be found, and make no second one.
       keepOld = true;
       teamsNote = " The earlier Outlook event could not be cancelled, so it was kept as it is: " + gone.reason;
     }
@@ -8814,7 +9343,7 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
     if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
       teamsNote = " Teams is switched off in Settings, so no link was made.";
     } else {
-      const who = (db.applicants ?? []).find((a) => a.id === applicantId)?.name ?? "candidate";
+      const who = applicant?.name ?? "candidate";
       const made = await createTeamsEvent(member.email, {
         company: "Career 141",
         kind: "interview",
@@ -8833,17 +9362,50 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   }
   await patchApplicant(
     applicantId,
-    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place}`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
+    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
     member.id,
     "applicant.interviewBooked",
     `Booked with ${interviewer} (${place})`,
   );
+
+  let emailNote = "";
+  if (applicant?.email) {
+    const vac = db.vacancies.find((v) => v.id === vacancyId);
+    const whenText = colomboDateInWords(interviewAt) + " at " + new Date(interviewAt + 5.5 * 3_600_000).toISOString().slice(11, 16) + " Colombo time";
+    const msg = await draftMessage({
+      channel: "email",
+      to: [applicant.email],
+      subject: `Interview with Career 141 — ${vac?.title ?? "our team"}`,
+      body: [
+        `Hi ${applicant.name.split(/\s+/)[0]},`,
+        "",
+        `Thank you for speaking with us about the ${vac?.title ?? "role"} at Career 141. We would like to invite you for an interview with ${interviewer} on ${whenText} (${place}).`,
+        ...(joinUrl ? ["", `Meeting link: ${joinUrl}`] : []),
+        "",
+        "Please reply to confirm this time works for you.",
+        "",
+        "Kind regards,",
+        member.name,
+        "Career 141",
+      ].join("\n"),
+      templateKey: "hiring.interview_invite",
+      subjectType: "applicant",
+      subjectId: applicantId,
+    });
+    emailNote = " Interview email drafted for approval.";
+    revalidatePath("/messages");
+    revalidatePath(`/messages/${msg.id}`);
+  } else {
+    emailNote = " No candidate email on file, so no email was drafted.";
+  }
+
   revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
   revalidatePath("/calendar");
-  redirect(dest + confirmed("Internal interview booked and added to Calendar." + (joinUrl ? " The Teams link is saved on it." : "") + teamsNote, dest));
+  redirect(dest + confirmed("Internal interview booked and added to Calendar." + (joinUrl ? " The Teams link is saved on it." : "") + teamsNote + emailNote, dest));
 }
 
-/** Internal hiring: record interview result (H2 -> Add the result panel). */
+/** Scoops & vacancies: record interview result — Pass moves to Shortlisted (26 Nov). */
 export async function recordHiringResult(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -8859,7 +9421,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Pass, Hold, or Fail."));
   if (result === "fail" && reason.length < 4) redirect(withMsg(dest, "Write the reason before marking Fail."));
 
-  const nextStage = result === "pass" ? "decision" : result === "fail" ? "rejected" : "interview";
+  const nextStage = result === "pass" ? "shortlisted" : result === "fail" ? "rejected" : "interview";
   await patchApplicant(
     applicantId,
     {
@@ -8868,7 +9430,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
       notes: notes || null,
       rejectReason: result === "fail" ? reason : null,
       ...(result === "fail" ? { rejectedAtStage: "interview" } : {}),
-      detail: result === "pass" ? "Passed interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
+      detail: result === "pass" ? "Shortlisted after interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
     },
     member.id,
     "applicant.resultRecorded",
@@ -8879,7 +9441,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   redirect(dest + confirmed("Interview result saved.", dest));
 }
 
-/** Internal hiring: final decision — Hire, Hold, or Reject (H2 -> Decide panel). */
+/** Scoops & vacancies: Shortlisted -> Offered -> Accepted (hired) / Declined / Rejected (26 Nov). */
 export async function decideHiringApplicant(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -8896,29 +9458,40 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
 
   const db = await desk();
   const vac = db.vacancies.find((v) => v.id === vacancyId);
-  const nextStage = decision === "hire" ? "hired" : decision === "reject" ? "rejected" : "decision";
   const before = db.applicants.find((a) => a.id === applicantId);
+  const out = offerOutcomeTransition({ decision, startDate, salary, reason });
   await patchApplicant(
     applicantId,
     {
-      stage: nextStage,
-      ...(decision === "reject" ? { rejectedAtStage: before?.stage ?? null } : {}),
-      startDate,
-      salary,
-      rejectReason: decision === "reject" ? reason : null,
-      detail: decision === "hire" ? `Hired${startDate ? " · starts " + startDate : ""}` : decision === "reject" ? `Rejected: ${reason}` : "Decision on hold",
+      stage: out.stage,
+      ...(decision === "reject" || decision === "decline" ? { rejectedAtStage: before?.stage ?? null } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(salary ? { salary } : {}),
+      rejectReason: out.rejectReason,
+      detail: out.detail,
     },
     member.id,
     "applicant.decided",
     reason || `${decision}${salary ? " (" + salary + ")" : ""}`,
   );
-  if (decision === "hire" && vac) {
-    await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Applicant hired.");
+  if (out.incrementsFilled && vac) {
+    await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Offer accepted.");
   }
-  const dropped = decision === "reject" ? await dropApplicantEvent(db, before, member) : "";
+  const dropped = decision === "reject" || decision === "decline" ? await dropApplicantEvent(db, before, member) : "";
+  const msg =
+    decision === "offer"
+      ? "Marked offered."
+      : out.incrementsFilled
+        ? "Marked accepted (hired)."
+        : decision === "decline"
+          ? "Marked declined."
+          : decision === "reject"
+            ? "Marked rejected."
+            : "Kept on hold.";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
-  redirect(dest + confirmed((decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.") + dropped, dest));
+  revalidatePath("/calendar");
+  redirect(dest + confirmed(msg + dropped, dest));
 }
 
 /** Add an Ops person, Ops lead, or Admin to the team allow-list (20 Nov, Settings -> Templates and people). */

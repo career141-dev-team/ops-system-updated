@@ -39,6 +39,8 @@ export function seed(now = Date.now()): OpsDatabase {
       // The Scoop mailbox and who sends a Scoop (23 Nov). Empty: no Scoop is read from email until they are set.
       { key: "scoop.mailbox", value: "", updatedBy: null, updatedAt: null },
       { key: "scoop.senders", value: "", updatedBy: null, updatedAt: null },
+      // Leadership interviewers for Scoops & vacancies (26 Nov, Nov 25 ops meeting).
+      { key: "hiring.interviewers", value: "Director of Operations, Ops Lead", updatedBy: null, updatedAt: null },
       // Interviews (15, Phase 5 step 19 and the owner's notice rule).
       { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
       { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },
@@ -520,6 +522,60 @@ Career 141`,
 Invoice {{invoiceNumber}} is {{daysLate}} days past its due date, and {{amount}} is outstanding.
 
 Our agreement adds 5% a month, compounded, to a late invoice (clause 5.5). If anything on it is in question, tell us and nothing is charged while we sort it out.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.details_request",
+        channel: "email",
+        name: "Asking the client for payment details",
+        subject: "{{client}} - payment details for {{candidate}}",
+        body: `Dear {{contact}},
+
+Congratulations on {{candidate}} joining you as {{position}}.
+
+Under clause 2.12 of our agreement, could you please share the confirmed total salary package breakdown and your billing address so we can raise the placement fee invoice?
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.remind",
+        channel: "email",
+        name: "Payment reminder (weeks 1, 2 and 3)",
+        subject: "Reminder {{reminderNumber}}: invoice {{invoiceNumber}} - {{client}}",
+        body: `Dear all,
+
+A quick reminder that invoice {{invoiceNumber}} for {{amount}} is due on {{dueDate}} (clause 5.4 of our agreement).
+
+Please let us know if you need anything further from our side.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "testimonial.ask",
+        channel: "email",
+        name: "Asking for a testimonial",
+        subject: "Thank you - a quick testimonial for Career 141",
+        body: `Dear {{contact}},
+
+We are glad {{candidate}} has started in the {{position}} role at {{client}}.
+
+If you have two minutes, we would really appreciate a short testimonial on {{channel}} about working with us.
 
 Kind regards,
 {{opsPerson}}

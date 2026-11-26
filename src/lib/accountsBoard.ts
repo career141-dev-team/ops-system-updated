@@ -21,6 +21,31 @@ export interface BoardInvoice {
 
 export type Column = "to_send" | "sent" | "late" | "paid";
 
+export type InvoiceFilter = "all" | "paid" | "unpaid" | "late";
+
+/** Which board columns a `?show=` filter displays (26 Nov, Nov 25 ops meeting). */
+export function columnsForFilter(filter: InvoiceFilter): Column[] {
+  if (filter === "paid") return ["paid"];
+  if (filter === "unpaid") return ["to_send", "sent", "late"];
+  if (filter === "late") return ["late"];
+  return ["to_send", "sent", "late", "paid"];
+}
+
+/**
+ * Whether an invoice matches a `?show=` filter.
+ *
+ * When `?show=paid` is explicitly chosen, every paid invoice shows (not only this
+ * month's), so accounts can look back at settled bills.
+ */
+export function matchesFilter(i: BoardInvoice, filter: InvoiceFilter, now: number): boolean {
+  if (i.kind === "credit_note" || i.state === "written_off") return false;
+  if (filter === "paid") return i.state === "paid";
+  const col = columnOf(i, now);
+  if (filter === "late") return col === "late";
+  if (filter === "unpaid") return col === "to_send" || col === "sent" || col === "late";
+  return col !== null;
+}
+
 const owed = (i: BoardInvoice) =>
   Math.round((i.amount + i.lateCharge - i.payments.reduce((s, p) => s + p.amount, 0)) * 100) / 100;
 

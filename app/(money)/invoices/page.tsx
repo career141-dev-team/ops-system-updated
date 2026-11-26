@@ -14,10 +14,10 @@ import {
 } from "@/data/desk";
 import { Card, PageTitle, pillGhost, pillSecondary } from "@/app/ui/figma";
 import { SubmitButton } from "@/app/ui/SubmitButton";
-import { boardSummary, columnOf, type Column } from "@/lib/accountsBoard";
+import { boardSummary, columnOf, columnsForFilter, matchesFilter, type Column, type InvoiceFilter } from "@/lib/accountsBoard";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
-import { WRITE_OFF_DAYS, balanceOf, money, moneyWhole } from "@/lib/money";
+import { WRITE_OFF_DAYS, balanceOf, feeMonthsFor, invoiceBlockers, isExpat, money, moneyWhole } from "@/lib/money";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { AccountsSendModal } from "./AccountsSendModals";
@@ -35,10 +35,17 @@ const short = (at: number) => new Date(at + COLOMBO).toLocaleDateString("en-GB",
 const longDay = (at: number) => new Date(at + COLOMBO).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
 const COLUMNS: { key: Column; title: string; dot: string }[] = [
-  { key: "to_send", title: "To send", dot: "bg-warn" },
+  { key: "to_send", title: "To be sent", dot: "bg-warn" },
   { key: "sent", title: "Sent", dot: "bg-info" },
-  { key: "late", title: "Late", dot: "bg-danger" },
+  { key: "late", title: "Late payment", dot: "bg-danger" },
   { key: "paid", title: "Paid", dot: "bg-brand" },
+];
+
+const SHOW_FILTERS: { key: InvoiceFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "unpaid", label: "Unpaid" },
+  { key: "late", label: "Late payment" },
+  { key: "paid", label: "Paid" },
 ];
 
 const smallBtn = "inline-flex cursor-pointer items-center rounded-full border border-rule bg-surface px-3 py-[7px] t-label text-ink hover:bg-sunk";
@@ -47,12 +54,14 @@ const smallInk = "inline-flex cursor-pointer items-center rounded-full bg-ink px
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string; panel?: string; send?: string; on?: string; more?: string }>;
+  searchParams: Promise<{ msg?: string; panel?: string; send?: string; on?: string; more?: string; show?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
 
   const sp = await searchParams;
+  const show: InvoiceFilter =
+    sp.show === "paid" || sp.show === "unpaid" || sp.show === "late" ? sp.show : "all";
   const canMoney = can(me, "money.manage");
 
   await runClocks();
@@ -65,9 +74,11 @@ export default async function InvoicesPage({
   const placed = (id: string | null) => (id ? placementIn(db, id) : null);
   const byColumn = new Map<Column, typeof all>();
   for (const inv of all) {
-    const col = columnOf(inv, now);
+    if (!matchesFilter(inv, show, now)) continue;
+    const col: Column | null = show === "paid" && inv.state === "paid" ? "paid" : columnOf(inv, now);
     if (col) byColumn.set(col, [...(byColumn.get(col) ?? []), inv]);
   }
+  const visibleColumns = COLUMNS.filter((c) => columnsForFilter(show).includes(c.key));
   // Oldest late first: that is the one to chase.
   byColumn.get("late")?.sort((a, b) => (a.dueAt ?? 0) - (b.dueAt ?? 0));
   const oldestLate = byColumn.get("late")?.[0];
@@ -88,10 +99,10 @@ export default async function InvoicesPage({
   const railMax = Math.max(1, ...rail.map((r) => r.value));
 
   const numbers = [
-    { label: "To send", value: sum.toSend, tone: "text-warn", caption: "drafted, need you" },
+    { label: "To be sent", value: sum.toSend, tone: "text-warn", caption: "drafted, need you" },
     { label: "Sent", value: sum.sent, tone: "text-info", caption: "waiting for payment" },
     { label: "Due this week", value: sum.dueThisWeek, tone: "text-warn", caption: `by ${longDay(now + 7 * 86_400_000)}` },
-    { label: "Late", value: sum.late, tone: "text-danger", caption: sum.late ? `oldest ${sum.oldestLateDays} day${sum.oldestLateDays === 1 ? "" : "s"}` : "none late" },
+    { label: "Late payment", value: sum.late, tone: "text-danger", caption: sum.late ? `oldest ${sum.oldestLateDays} day${sum.oldestLateDays === 1 ? "" : "s"}` : "none late" },
     { label: "Paid this month", value: sum.paidCount, tone: "text-brand", caption: moneyWhole(sum.paidSum, "LKR") },
   ];
 
@@ -166,10 +177,26 @@ export default async function InvoicesPage({
               })}
             </div>}
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pg-xl:grid-cols-4">
-            {COLUMNS.map((col) => {
+          <div className="flex flex-wrap items-center gap-2">
+            {SHOW_FILTERS.map((f) => {
+              const active = show === f.key;
+              const href = f.key === "all" ? PATH : `${PATH}?show=${f.key}`;
+              return (
+                <Link
+                  key={f.key}
+                  href={href}
+                  className={active ? smallInk : smallBtn}
+                >
+                  {f.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className={"grid grid-cols-1 gap-3 " + (visibleColumns.length === 1 ? "" : visibleColumns.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 pg-xl:grid-cols-4")}>
+            {visibleColumns.map((col) => {
               const rows = byColumn.get(col.key) ?? [];
-              const expanded = (sp.more ?? "").split(",").includes(col.key);
+              const expanded = show !== "all" || (sp.more ?? "").split(",").includes(col.key);
               const shown = expanded ? rows : rows.slice(0, SHOWN);
               return (
                 <div key={col.key} className="flex min-w-0 flex-col gap-2.5 rounded-[20px] bg-sunk px-3 py-3.5">
@@ -185,16 +212,34 @@ export default async function InvoicesPage({
                     const who = pl?.candidateName ?? inv.about ?? "";
                     const role = pl?.positionId ? positionIn(db, pl.positionId)?.title : null;
                     const late = inv.dueAt ? Math.floor((now - inv.dueAt) / 86_400_000) : 0;
+                    const blockers = inv.kind === "fee" && col.key === "to_send" ? invoiceBlockers(pl) : [];
                     return (
                       <article key={inv.id} className="flex flex-col gap-1.5 rounded-[16px] bg-surface p-3.5">
                         <Link href={panelHref(PATH, sp, "invoice", inv.id)} scroll={false} className="t-body-m hover:underline">
                           {client?.name ?? "Client"}
                         </Link>
                         <p className="t-small break-words text-ink-3">{inv.number}{who ? " · " + who : ""}{role && !who ? " · " + role : ""}</p>
+                        {pl && (
+                          <p className={"t-small " + (pl.nationalityConfirmedAt && pl.nationality ? (isExpat(pl.nationality) ? "font-medium text-warn" : "text-ink-2") : "text-warn")}>
+                            {pl.nationalityConfirmedAt && pl.nationality
+                              ? `${pl.nationality} · ${isExpat(pl.nationality) ? `Expat (${feeMonthsFor(pl)} mo)` : `Local (${feeMonthsFor(pl)} mo)`}`
+                              : `Nationality not confirmed${pl.nationalityFromCv ? ` (CV: ${pl.nationalityFromCv})` : ""}`}
+                          </p>
+                        )}
                         <p className="text-[16px] font-medium leading-6">{money(balanceOf(inv) > 0 && col.key !== "to_send" ? balanceOf(inv) : inv.amount, inv.currency)}</p>
                         {col.key === "to_send" && <p className="t-small text-ink-3">{pl?.joinedAt ? "Joined " + short(pl.joinedAt) : "Draft, not sent"}</p>}
-                        {col.key === "sent" && <p className="t-small text-info">{inv.disputed ? "Disputed · " : ""}{inv.sentAt ? "Sent " + short(inv.sentAt) : "Sent"}{inv.dueAt ? " · due " + longDay(inv.dueAt) : ""}</p>}
-                        {col.key === "late" && <p className="t-small text-danger">Late · {late} day{late === 1 ? "" : "s"}</p>}
+                        {blockers.length > 0 && (
+                          <p className="t-small text-warn">Waiting: {blockers.join(", ")}</p>
+                        )}
+                        {col.key === "sent" && (
+                          <p className="t-small text-info">
+                            {inv.disputed ? "Disputed · " : ""}
+                            {inv.sentAt ? "Sent " + short(inv.sentAt) : "Sent"}
+                            {inv.dueAt ? " · due " + longDay(inv.dueAt) : ""}
+                            {(inv.remindersSent ?? 0) > 0 ? ` · ${inv.remindersSent}/3 reminders drafted` : ""}
+                          </p>
+                        )}
+                        {col.key === "late" && <p className="t-small text-danger">Late payment · {late} day{late === 1 ? "" : "s"}</p>}
                         {col.key === "paid" && <p className="t-small text-brand">Paid {inv.paidAt ? short(inv.paidAt) : ""}</p>}
                         {canMoney && (
                           <div className="flex flex-wrap gap-2 pt-1">

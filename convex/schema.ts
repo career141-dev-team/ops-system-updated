@@ -189,6 +189,10 @@ export default defineSchema({
 
   /** Meetings with a client: the intro call and the requirement meeting. */
   opsMeetings: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: the position, JD and salary scale talked about.
+    positionId: v.optional(v.string()),
+    jd: v.optional(v.string()),
+    salaryScale: v.optional(v.string()),
     leadId: v.string(),
     kind: v.string(),
     at: v.number(),
@@ -217,6 +221,8 @@ export default defineSchema({
   /** The client agreement, one per client, versioned (15, Phase 2). */
   /** A company we work for (15, Phase 2 step 19). */
   opsClients: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: local or international client.
+    clientType: v.optional(v.union(v.literal("local"), v.literal("international"))),
     leadId: v.union(v.string(), v.null()),
     taClientId: v.union(v.string(), v.null()),
     name: v.string(),
@@ -304,6 +310,11 @@ export default defineSchema({
 
   /** Our side of an opening in the TA System (15, Phase 3). */
   opsPositions: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: main and backup ops per position, a priority, and the salary the client named.
+    backupOwnerId: v.optional(v.string()),
+    priority: v.optional(v.union(v.literal("P1"), v.literal("P2"), v.literal("P3"))),
+    salaryMonthly: v.optional(v.number()),
+    salaryCurrency: v.optional(v.string()),
     requirementId: v.union(v.string(), v.null()),
     clientId: v.union(v.string(), v.null()),
     clientTaId: v.string(),
@@ -481,6 +492,15 @@ export default defineSchema({
 
   /** A placement taken from TA, with the agreement's fee rule on it. */
   opsPlacements: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: expat fee, payment days, nationality (from the CV, then confirmed), payment details, testimonials.
+    expatFeeMonths: v.optional(v.number()),
+    paymentDays: v.optional(v.number()),
+    nationality: v.optional(v.string()),
+    nationalityFromCv: v.optional(v.string()),
+    nationalityConfirmedBy: v.optional(v.string()),
+    nationalityConfirmedAt: v.optional(v.number()),
+    paymentDetails: v.optional(v.object({ offeredSalary: v.number(), receivedAt: v.number(), by: v.string(), note: v.optional(v.string()) })),
+    testimonial: v.optional(v.object({ candidate: v.union(v.literal("pending"), v.literal("done")), client: v.union(v.literal("pending"), v.literal("done")), channel: v.optional(v.string()), doneAt: v.optional(v.number()), by: v.optional(v.string()), candidateChannel: v.optional(v.string()), candidateDoneAt: v.optional(v.number()), candidateBy: v.optional(v.string()), clientChannel: v.optional(v.string()), clientDoneAt: v.optional(v.number()), clientBy: v.optional(v.string()) })),
     placementTaId: v.string(),
     applicationTaId: v.string(),
     openingTaId: v.string(),
@@ -515,6 +535,9 @@ export default defineSchema({
 
   /** One invoice, with its payments on it (15, Phase 6). */
   opsInvoices: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: reminders sent, and when the client's details were asked for.
+    remindersSent: v.optional(v.number()),
+    detailsRequestedAt: v.optional(v.number()),
     number: v.string(),
     kind: v.string(),
     placementId: v.union(v.string(), v.null()),
@@ -626,6 +649,8 @@ export default defineSchema({
     .index("by_created", ["createdAt"]),
 
   opsEsa: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: absent = final.
+    mode: v.optional(v.union(v.literal("draft"), v.literal("final"))),
     leadId: v.string(),
     clientTaId: v.union(v.string(), v.null()),
     state: v.string(),
@@ -787,6 +812,9 @@ export default defineSchema({
 
   /** Career141 internal hiring vacancies (19 Nov). */
   opsVacancies: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: where the vacancy came from.
+    source: v.optional(v.union(v.literal("scoop"), v.literal("job_post"), v.literal("referral"))),
+    sourceDetail: v.optional(v.string()),
     title: v.string(),
     places: v.number(),
     filled: v.number(),
@@ -800,6 +828,12 @@ export default defineSchema({
 
   /** Applicants to Career141 internal vacancies (19 Nov). */
   opsApplicants: defineTable({
+    // 26 Nov: the Nov 25 ops meeting: who called, what they said about pay and availability, why not interested.
+    callerId: v.optional(v.string()),
+    currentSalary: v.optional(v.string()),
+    expectedSalary: v.optional(v.string()),
+    availability: v.optional(v.string()),
+    notInterestedReason: v.optional(v.string()),
     vacancyId: v.string(),
     name: v.string(),
     source: v.string(),

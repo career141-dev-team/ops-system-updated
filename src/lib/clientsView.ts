@@ -5,7 +5,7 @@
  */
 import type { OpsClient, OpsDatabase, OpsEsa, OpsLead, OpsMeeting } from "@/data/types";
 import { agoShort, sourceShort } from "@/lib/clientCards";
-import { clientForLead } from "@/lib/clients";
+import { clientAgreementNotSigned, clientForLead } from "@/lib/clients";
 import {
   type AgreementColumn,
   type EnquiryColumn,
@@ -108,6 +108,8 @@ export interface ClientCard {
   openRoles: { id: string; title: string }[];
   esa: OpsEsa | null;
   needsYou: boolean;
+  /** No signed or countersigned ESA on the client's own lead or any lead its positions came from (26 Nov). */
+  agreementNotSigned: boolean;
 }
 
 const QUIET_AFTER = 3;
@@ -178,6 +180,7 @@ export function clientCards(db: OpsDatabase, now: number): ClientCard[] {
         openRoles: roles.map((p) => ({ id: p.id, title: p.title })),
         esa,
         needsYou,
+        agreementNotSigned: clientAgreementNotSigned(db, client.id),
       };
     });
 }
@@ -222,33 +225,40 @@ export interface EnquiryCard {
   /** A client of ours the name may be: for the check. */
   match: { name: string; since: number; taClientId: string | null } | null;
   contact: Person | null;
+  /** Badges for the checks still open: shown on the card in New (26 Nov, Nov 25 ops meeting: the Checks tab went). */
+  flags: { text: string; panel: "check-enquiry" | "duplicate-check" }[];
 }
 
-/** Every open enquiry placed in its column, newest first. A new one whose name looks like a client of ours waits in Checks. */
+/** Every open enquiry placed in its column, newest first. A new one that is flagged or looks like a client of ours carries a badge. */
 export function enquiryCards(db: OpsDatabase, now: number): EnquiryCard[] {
   const clients = db.clients.map((c) => ({ id: c.id, name: c.name, nameKey: c.nameKey, esaSignedAt: null as number | null, since: c.createdAt, taClientId: c.taClientId }));
   const out: EnquiryCard[] = [];
   for (const lead of db.leads.slice().sort((a, b) => b.createdAt - a.createdAt)) {
     const meetings = db.meetings.filter((m) => m.leadId === lead.id);
     const esa = db.agreements.find((a) => a.leadId === lead.id) ?? null;
-    let column = enquiryColumn(lead, meetings, esa?.state ?? null);
+    const column = enquiryColumn(lead, meetings, esa?.state ?? null);
     if (!column) continue;
     const found = column === "new" && !lead.clientTaId ? duplicateMatch(lead.company, clients) : { exact: null, near: [] as typeof clients };
     const hitLike = found.exact ?? found.near[0] ?? null;
     const hit = hitLike ? (clients.find((c) => c.id === hitLike.id) ?? null) : null;
-    if (column === "new" && hit) column = "checks";
     const intro = meetings.filter((m) => m.kind === "intro");
     const booked = intro.find((m) => m.state === "booked") ?? null;
     const held = intro.filter((m) => m.state === "held").sort((a, b) => (b.heldAt ?? 0) - (a.heldAt ?? 0))[0] ?? null;
     let state: EnquiryCard["state"];
     let tileTone: EnquiryCard["tileTone"] = "neutral";
+    const flagged = lead.industryFlagged && !lead.industryConfirmedBy;
+    const flags: EnquiryCard["flags"] = [];
     if (column === "new") {
-      state = { text: "New, not checked yet", tone: "warn" };
-    } else if (column === "checks") {
-      tileTone = "warn";
-      state = lead.industryFlagged && !lead.industryConfirmedBy
+      if (flagged) flags.push({ text: "Banking/finance check", panel: "check-enquiry" });
+      if (hit) flags.push({ text: "Possible duplicate", panel: "duplicate-check" });
+    }
+    if (column === "new") {
+      if (flagged || hit) tileTone = "warn";
+      state = flagged
         ? { text: "Banking or finance? " + (lead.industryBecause ? "It says “" + lead.industryBecause + "”" : "Check it"), tone: "warn" }
-        : { text: "May be the same as " + hit!.name + ", client since " + new Date(hit!.since).getUTCFullYear(), tone: "warn" };
+        : hit
+          ? { text: "May be the same as " + hit.name + ", client since " + new Date(hit.since).getUTCFullYear(), tone: "warn" }
+          : { text: "New, not checked yet", tone: "warn" };
     } else if (column === "intro") {
       tileTone = booked ? "info" : "neutral";
       state = booked ? { text: "Call booked " + dayWords(booked.at) + ", " + clockWords(booked.at), tone: "info" } : { text: "Call not booked", tone: "warn" };
@@ -268,6 +278,7 @@ export function enquiryCards(db: OpsDatabase, now: number): EnquiryCard[] {
       column,
       meeting: booked,
       match: hit ? { name: hit.name, since: hit.since, taClientId: hit.taClientId } : null,
+      flags,
       contact: lead.contactName || lead.contactEmail || lead.contactPhone ? { name: lead.contactName, email: lead.contactEmail, phone: lead.contactPhone, role: "" } : null,
     });
   }

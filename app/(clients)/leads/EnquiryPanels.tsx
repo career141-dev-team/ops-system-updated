@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   bookIntroCall,
   checkLeadDuplicate,
+  closeLead,
   chooseLeadMatch,
   decideLeadIndustry,
   markMeetingHeld,
@@ -256,9 +257,11 @@ export function IntroCallPanel({
                   <input type="hidden" name="meetingId" value={booked.id} />
                   <span className="t-small text-ink-3">What did they say?</span>
                   <textarea name="brief" rows={3} required placeholder="Brief from the call (required)" className={panelInput} />
-                  <span className="t-small text-ink-3">Package and role</span>
-                  <input name="role" placeholder="Role asked" className={panelInput} />
-                  <input name="packageSaid" placeholder="Package mentioned" className={panelInput} />
+                  <span className="t-small text-ink-3">Position, package, job description and salary scale (26 Nov, Nov 25 ops meeting)</span>
+                  <input name="role" placeholder="Position" className={panelInput} />
+                  <input name="packageSaid" placeholder="Package" className={panelInput} />
+                  <textarea name="jd" rows={3} placeholder="Job description (optional)" className={panelInput} />
+                  <input name="salaryScale" placeholder="Salary scale (optional)" className={panelInput} />
                   <SubmitButton id={"held-" + booked.id} answerAt="call-held" className={pillPrimary + " self-start"}>
                     It was held
                   </SubmitButton>
@@ -305,6 +308,21 @@ export function IntroCallPanel({
           )}
         </PanelSection>
       )}
+      {mayManage && !held && (
+        <PanelSection title="Drop it">
+          <form action={closeLead} className="flex flex-col gap-3">
+            {hidden(lead.id, close)}
+            <select name="state" defaultValue="closed_other" className={panelInput}>
+              <option value="closed_silent">They stopped answering</option>
+              <option value="closed_other">Something else</option>
+            </select>
+            <input name="reason" required placeholder="Why it is dropped (nothing closes without a reason)" className={panelInput} />
+            <SubmitButton id={"drop-" + lead.id} className={pillSecondary + " self-start"}>
+              Drop this enquiry
+            </SubmitButton>
+          </form>
+        </PanelSection>
+      )}
       <PanelSection title="What happens next">
         <p className="t-body text-ink-2">{held ? "The agreement draft is made, ready to send." : "Held: the agreement clock starts, two hours by the settings. Not held: it is rebooked, and the third miss closes the lead."}</p>
       </PanelSection>
@@ -334,8 +352,8 @@ export function SendAgreementPanel({
   const files = esa ? db.files.filter((f) => (f.subjectType === "esa" && f.subjectId === esa.id) || f.id === esa.signedFileId || f.id === esa.countersignedFileId) : [];
   const newest = esa ? (agreementVersions(files)[0] ?? null) : null;
   const wording = db.templates.find((t) => t.key === "esa.cover") ?? null;
-  const cover = esa ? coverEmail(wording, esa.fields) : null;
-  const blanks = esa ? missingFields(esa.fields) : [];
+  const cover = esa ? coverEmail(wording, esa.fields, esa.mode ?? "final") : null;
+  const blanks = esa ? missingFields(esa.fields, esa.mode ?? "final") : [];
   const f = esa?.fields ?? startFields;
   const signer = f.signatoryName || lead.contactName || lead.company;
   const why = [

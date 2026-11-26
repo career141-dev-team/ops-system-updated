@@ -7,11 +7,27 @@
  *
  * `hiringView` is the one place that reads the desk; everything below is pure.
  */
-import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
+import { COLOMBO_OFFSET_MS, DAY, isWorkingDay } from "@/lib/calendar";
 import { dayWord } from "@/lib/calendarBoard";
 import { extensionOf, problemWithUpload } from "@/lib/files";
 
-export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
+export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected"
+  | "non_responsive" | "not_interested" | "shortlisted" | "offered" | "declined";
+
+export type HiringSection = "calling" | "interviews" | "shortlisted_offered";
+
+export const HIRING_SECTIONS: { key: HiringSection; label: string; sub: string }[] = [
+  { key: "calling", label: "Calling", sub: "Ops claims and calls applicants; leadership never makes the first call" },
+  { key: "interviews", label: "Interviews", sub: "Booked with leadership (usually 4 pm) and awaiting results" },
+  { key: "shortlisted_offered", label: "Shortlisted & offered", sub: "Shortlisted candidates, offers made, and accepted or declined" },
+];
+
+export function sectionOfStage(stage: ApplicantStage): HiringSection | null {
+  if (stage === "new" || stage === "call" || stage === "fits") return "calling";
+  if (stage === "interview") return "interviews";
+  if (stage === "shortlisted" || stage === "offered" || stage === "decision") return "shortlisted_offered";
+  return null;
+}
 
 /** The columns of the board, left to right, with the words on them. */
 export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
@@ -21,13 +37,15 @@ export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
   { stage: "decision", label: "Decision" },
 ];
 
-/** The panel a card's button opens, by the column it sits in. */
+/** The panel a card's button opens, by the stage it sits in. */
 export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" | "reject" }>> = {
   new: { label: "Call", panel: "call" },
   call: { label: "Call", panel: "call" },
   fits: { label: "Book an interview", panel: "book-interview" },
   interview: { label: "Add the result", panel: "add-result" },
   decision: { label: "Decide", panel: "decide" },
+  shortlisted: { label: "Make offer / decide", panel: "decide" },
+  offered: { label: "Record offer outcome", panel: "decide" },
 };
 
 export interface Applicant {
@@ -53,9 +71,17 @@ export interface Applicant {
   targetPosition?: string | null;
   packageSaid?: string | null;
   laptop?: string | null;
+  /** Nov 25 meeting (PR 7): caller who claimed this applicant, and call answers. */
+  callerId?: string | null;
+  currentSalary?: string | null;
+  expectedSalary?: string | null;
+  availability?: string | null;
+  notInterestedReason?: string | null;
   /** What the later panels draw their messages from; absent until it is known. */
   draft?: { interviewAt?: number; interviewer?: string; place?: string; startDate?: string; salary?: string; replyBy?: string; interviewers?: string };
 }
+
+export type VacancySource = "scoop" | "job_post" | "referral";
 
 export interface Vacancy {
   id: string;
@@ -64,6 +90,8 @@ export interface Vacancy {
   filled: number;
   postedAt: number;
   status: "open" | "on_hold";
+  source?: VacancySource;
+  sourceDetail?: string;
   /** On hold: since when, who restarts it, and the CVs kept meanwhile. */
   hold?: { since: number; who: string; keptCvs: number };
   applicants: Applicant[];
@@ -106,6 +134,8 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
         filled: v.filled,
         postedAt: v.postedAt,
         status: v.status,
+        ...(v.source ? { source: v.source } : {}),
+        ...(v.sourceDetail ? { sourceDetail: v.sourceDetail } : {}),
         checks: v.checks,
         applicants: mine.map((a) => ({
           id: a.id,
@@ -124,6 +154,11 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           targetPosition: a.targetPosition ?? null,
           packageSaid: a.packageSaid ?? null,
           laptop: a.laptop ?? null,
+          callerId: a.callerId ?? null,
+          currentSalary: a.currentSalary ?? null,
+          expectedSalary: a.expectedSalary ?? null,
+          availability: a.availability ?? null,
+          notInterestedReason: a.notInterestedReason ?? null,
           draft: {
             interviewAt: a.interviewAt ?? undefined,
             interviewer: a.interviewer ?? undefined,
@@ -135,7 +170,7 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
       };
     });
     const slots: InternalSlot[] = apps
-      .filter((a) => a.stage === "interview" && a.interviewAt)
+      .filter((a) => ["interview", "shortlisted", "offered", "decision"].includes(a.stage) && a.interviewAt)
       .map((a) => {
         const v = snap.vacancies!.find((x) => x.id === a.vacancyId);
         return {
@@ -189,10 +224,93 @@ export function problemWithCvBytes(bytes: Uint8Array): string | null {
 /** The call result that closes the applicant without an interview (22 Nov, ops team: "can we reject without an interview?"). */
 export const CALL_NOT_FIT = "Talked - not a fit";
 
-/** Not a fit rejects, so it needs a reason like every other reject. */
-export function problemWithHiringCall(result: string, note: string): string | null {
+export const NOT_INTERESTED_REASONS = ["Too expensive", "Got another offer", "Other"] as const;
+
+/** Leadership never makes the first call; only active ops team members can claim/call applicants (26 Nov). */
+export function isHiringCaller(member: { role: string; active: boolean }): boolean {
+  return member.active && (member.role === "ops_owner" || member.role === "ops_lead" || member.role === "admin");
+}
+
+/** Human-readable vacancy source badge ("Scoop 1", "Job post · TopJobs", "Referral · Asma"). */
+export function vacancySourceLabel(v: { source?: VacancySource; sourceDetail?: string }): string {
+  if (!v.source) return "";
+  const detail = (v.sourceDetail ?? "").trim();
+  if (v.source === "scoop") return detail || "Scoop";
+  if (v.source === "job_post") return detail ? `Job post · ${detail}` : "Job post";
+  return detail ? `Referral · ${detail}` : "Referral";
+}
+
+/** Filter applicants by claimed callerId when "Mine" is active. */
+export function filterByCaller<T extends { callerId?: string | null }>(applicants: T[], callerId: string | null): T[] {
+  if (!callerId) return applicants;
+  return applicants.filter((a) => a.callerId === callerId);
+}
+
+/** Next working day at 16:00 Colombo time (the default leadership interview slot, 26 Nov). */
+export function defaultHiringInterviewAt(now: number, holidays: string[] = []): number {
+  const local = new Date(now + COLOMBO_OFFSET_MS);
+  for (let offset = 1; offset <= 14; offset++) {
+    const dayStartUtc = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + offset) - COLOMBO_OFFSET_MS;
+    if (isWorkingDay(dayStartUtc, holidays)) {
+      return dayStartUtc + 16 * 3_600_000;
+    }
+  }
+  return now + DAY;
+}
+
+/** Format a timestamp as `YYYY-MM-DDTHH:MM` in Colombo time for `<input type="datetime-local">`. */
+export function colomboDateTimeInput(at: number): string {
+  return new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** Leadership interviewers from `hiring.interviewers` setting, falling back to active director_ops / ops_lead members. */
+export function hiringInterviewersFrom(settingValue: string, members: { name: string; role: string; active: boolean }[]): string[] {
+  const fromSetting = settingValue
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromSetting.length > 0) return fromSetting;
+  return members
+    .filter((m) => m.active && (m.role === "director_ops" || m.role === "ops_lead"))
+    .map((m) => m.name);
+}
+
+/** Not a fit rejects, so it needs a reason like every other reject; Not interested needs a reason too (26 Nov). */
+export function problemWithHiringCall(result: string, note: string, notInterestedReason = ""): string | null {
   if (result === CALL_NOT_FIT && note.trim().length < 4) return "Write the reason in the note before marking not a fit.";
+  if (result === "Not interested") {
+    if (!notInterestedReason.trim()) return "Pick why they are not interested.";
+    if (notInterestedReason === "Other" && note.trim().length < 4) return "Write the reason in the note when picking Other.";
+  }
   return null;
+}
+
+/** Pure stage transition for a screening call outcome (26 Nov). */
+export function callOutcomeTransition(input: {
+  result: string;
+  currentTries: number;
+  note: string;
+  notInterestedReason?: string;
+}): { stage: ApplicantStage; tries: number; detail: string; notInterestedReason?: string; rejectReason?: string | null } {
+  const tries = input.currentTries + 1;
+  const note = input.note.trim();
+  if (input.result === CALL_NOT_FIT) {
+    return { stage: "rejected", tries, detail: `Rejected after call: ${note}`, rejectReason: note };
+  }
+  if (input.result === "Not interested") {
+    const why = input.notInterestedReason === "Other" && note ? note : (input.notInterestedReason || note);
+    return { stage: "not_interested", tries, detail: `Not interested · ${why}`, notInterestedReason: why };
+  }
+  if (input.result === "Non-responsive") {
+    return { stage: "non_responsive", tries, detail: `Non-responsive · ${tries} ${tries === 1 ? "try" : "tries"}` };
+  }
+  if (input.result === "Scheduled" || input.result === "Talked" || input.result === "Fits") {
+    return { stage: "fits", tries, detail: `Scheduled / fits${note ? " — " + note : ""}` };
+  }
+  if (tries >= 3) {
+    return { stage: "non_responsive", tries, detail: "Non-responsive · 3 of 3 tries" };
+  }
+  return { stage: "call", tries, detail: `${input.result} · try ${tries} of 3` };
 }
 
 /**
@@ -206,9 +324,55 @@ export function colomboLocalToMs(typed: string): number {
 }
 
 export function problemWithHiringDecision(decision: string, reason: string): string | null {
-  if (!["hire", "hold", "reject"].includes(decision)) return "Pick Hire, Hold, or Reject.";
-  if (decision === "reject" && reason.trim().length < 4) return "Write the reason before rejecting.";
+  if (!["hire", "hold", "reject", "offer", "accept", "decline"].includes(decision)) {
+    return "Pick Offer, Accept, Decline, Hire, Hold, or Reject.";
+  }
+  if ((decision === "reject" || decision === "decline") && reason.trim().length < 4) {
+    return decision === "decline" ? "Write why the offer was declined." : "Write the reason before rejecting.";
+  }
   return null;
+}
+
+/** Pure transition for Shortlisted -> Offered -> Accepted / Declined (26 Nov). */
+export function offerOutcomeTransition(input: {
+  decision: string;
+  startDate: string | null;
+  salary: string | null;
+  reason: string;
+}): { stage: ApplicantStage; incrementsFilled: boolean; detail: string; rejectReason: string | null } {
+  if (input.decision === "offer") {
+    return {
+      stage: "offered",
+      incrementsFilled: false,
+      detail: `Offered${input.salary ? " · " + input.salary : ""}${input.startDate ? " · starts " + input.startDate : ""}`,
+      rejectReason: null,
+    };
+  }
+  if (input.decision === "accept" || input.decision === "hire") {
+    return {
+      stage: "hired",
+      incrementsFilled: true,
+      detail: `Accepted${input.startDate ? " · starts " + input.startDate : ""}`,
+      rejectReason: null,
+    };
+  }
+  if (input.decision === "decline") {
+    return {
+      stage: "declined",
+      incrementsFilled: false,
+      detail: `Declined: ${input.reason}`,
+      rejectReason: input.reason,
+    };
+  }
+  if (input.decision === "reject") {
+    return {
+      stage: "rejected",
+      incrementsFilled: false,
+      detail: `Rejected: ${input.reason}`,
+      rejectReason: input.reason,
+    };
+  }
+  return { stage: "shortlisted", incrementsFilled: false, detail: "Shortlisted · on hold", rejectReason: null };
 }
 
 /**
@@ -314,8 +478,10 @@ export function whyNow(v: Vacancy, a: Applicant, now: number): string[] {
 /** The words on the first line of a vacancy card: "2 places · 28 applicants · posted 3 Nov". */
 export function vacancyLine(v: Vacancy): string {
   const places = `${v.places} ${v.places === 1 ? "place" : "places"}`;
-  if (v.status === "on_hold" && v.hold) return `${places} · ${v.hold.keptCvs} CVs kept · on hold since ${dayWord(v.hold.since).slice(4)}`;
-  return `${places} · ${v.applicants.length} applicants · posted ${dayWord(v.postedAt).slice(4)}`;
+  const src = vacancySourceLabel(v);
+  const head = src ? `${src} · ${places}` : places;
+  if (v.status === "on_hold" && v.hold) return `${head} · ${v.hold.keptCvs} CVs kept · on hold since ${dayWord(v.hold.since).slice(4)}`;
+  return `${head} · ${v.applicants.length} applicants · posted ${dayWord(v.postedAt).slice(4)}`;
 }
 
 /** Drafts the team copies by hand. A draft is only made when every fact in it is known; otherwise null. */

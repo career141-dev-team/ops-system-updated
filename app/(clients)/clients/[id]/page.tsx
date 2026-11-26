@@ -19,6 +19,7 @@ import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitche
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
+import { requirementOrganiser } from "@/lib/meetings";
 import { lastTalkWords } from "@/lib/clientsBoard";
 import { agreementCards, clientCards, dayWords, lastTalkAt, talksOf } from "@/lib/clientsView";
 import { ESA_FIELDS, STATE_MEANINGS as ESA_STATES, agreementVersions, type EsaState } from "@/lib/esa";
@@ -32,7 +33,7 @@ import { currentMember } from "@/lib/session";
 import { byDay, subjectsOfClient, timeline } from "@/lib/timeline";
 import { Msg, RailCard, ReachIcons, StandsCard } from "../../parts";
 
-type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string; send?: string };
+type SP = { msg?: string; tab?: string; view?: string; q?: string; summary?: string; panel?: string; on?: string; send?: string; position?: string };
 type View = "overview" | "agreement" | "contacts" | "history";
 
 /** Old links (?tab=, ?view=openings and so on) land on the nearest of the four views. */
@@ -105,6 +106,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const callKind = callKindFor({ stage: client.stage, hasPosition: db.positions.some((p) => p.clientId === client.id), heldCall: calls.some((m) => m.heldAt !== null) });
   const taSide = (view === "overview" || sp.panel === "requirement-call") && mayManage ? await taPeople() : null;
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
+  // A requirement call opened from a position's tab is that position's call (26 Nov, Nov 25 ops meeting): its TA's calendar is the default.
+  const forPosition = sp.position ? (roles.find((p) => p.id === sp.position) ?? null) : null;
   const whenIn = (at: number) => new Date(at + 5.5 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
 
   const holdForm = (
@@ -158,6 +161,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="t-display">{client.name}</h1>
             <StatusChip label={stageChip.label} tone={stageChip.tone} />
+            {card.agreementNotSigned && <StatusChip label="Agreement not signed" tone="warn" />}
           </div>
           <p className="t-small text-ink-3">{[lead?.industry, "owner " + ownerName.split(" ")[0], "client since " + since].filter(Boolean).join(" · ")}</p>
         </div>
@@ -566,13 +570,13 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {sp.send === "check-in" && <CheckInSendModal card={card} me={me} closeHref={closeSendHref(path, sp)} db={db} now={now} />}
       {sp.panel === "esa-view" && esa && (
         <PopupBox title="Executive Search Agreement" sub={`${client.name} · Version ${esa.version}`} closeHref={closeHref(path, sp)} wide>
-          <EsaDocument doc={esaDocument(esa.fields, { company: client.name, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" })} />
+          <EsaDocument doc={esaDocument(esa.fields, { company: client.name, at: esa.updatedAt, directorName: db.members.find((m) => m.role === "director_ops")?.name ?? "The Director" }, esa.mode ?? "final")} />
         </PopupBox>
       )}
       {sp.panel === "requirement-call" && (
         <PopupBox
           title={callKind === "intro" ? "Intro call" : "Requirement call"}
-          sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : "For a new role: held before the position is made."}
+          sub={callKind === "intro" ? "A first meeting. The requirement is taken in the same call." : forPosition ? "For " + forPosition.title + "." : "For a new role: held before the position is made."}
           closeHref={closeHref(path, sp)}
           right={
             <Link href={"/positions?panel=new-position&on=" + client.id} className={pillPrimary + " !px-3.5 !py-2 !text-[12px]"}>
@@ -601,11 +605,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <MeetingBookingForm
                   action={bookClientCall}
                   leadId=""
-                  hidden={{ clientId: client.id }}
+                  hidden={{ clientId: client.id, ...(forPosition ? { positionId: forPosition.id } : {}) }}
                   contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
                   taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
                   members={db.members}
-                  organiserId={client.ownerId}
+                  organiserId={(forPosition && requirementOrganiser(forPosition, db.members)) || client.ownerId}
                   teamsOn={teamsOn}
                   submitLabel={callKind === "intro" ? "Book the intro call" : "Book the requirement call"}
                   primary

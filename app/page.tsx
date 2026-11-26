@@ -119,6 +119,36 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
               ))
             )}
           </RailCard>
+          {/* 26 Nov (Nov 25 ops meeting): what I own, and what it is worth. */}
+          <Card title="My positions" right={w.myPositionTotals.length ? <span className="t-small text-ink-2">{w.myPositionTotals.map((t) => (t.currency + " " + t.amount.toLocaleString("en-US")).trim()).join(" + ")}</span> : undefined}>
+            {w.myPositions.length === 0 ? (
+              <p className="t-small text-ink-3">No open positions are yours yet.</p>
+            ) : (
+              w.myPositions.map((p) => (
+                <Link key={p.id} href={p.href} className="flex items-center gap-3">
+                  <span className="t-micro w-[52px] shrink-0 rounded-full bg-sunk px-2 py-1 text-center text-ink-2">{p.role}</span>
+                  <span className="t-small min-w-0 flex-1 truncate text-ink">
+                    {p.title}
+                    {p.client && <span className="text-ink-3"> · {p.client}</span>}
+                  </span>
+                  <span className="t-small shrink-0 text-ink-2">{p.value === null ? "—" : (p.currency + " " + p.value.toLocaleString("en-US")).trim()}</span>
+                </Link>
+              ))
+            )}
+          </Card>
+          {w.testimonialsPending.length > 0 && (
+            <Card title="Testimonials to ask for">
+              {w.testimonialsPending.map((t) => (
+                <Link key={t.id} href={t.href} className="flex items-center gap-3">
+                  <span className="t-small min-w-0 flex-1 truncate text-ink">
+                    {t.candidate}
+                    {t.client && <span className="text-ink-3"> · {t.client}</span>}
+                  </span>
+                  <span className="t-small shrink-0 text-ink-3">{t.sides.join(" and ")}</span>
+                </Link>
+              ))}
+            </Card>
+          )}
         </div>
       </div>
     </>
