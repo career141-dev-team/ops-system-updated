@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { openCloseByHand, setOpeningPeople, setPositionTeam } from "@/app/actions";
+import Icon from "@/app/Icon";
 import { Contacts } from "@/app/ui/Contacts";
 import { Avatar, Card, RelatedLinks, figmaField, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { depthInWords } from "@/lib/depth";
@@ -12,12 +13,20 @@ import type { RoleCtx } from "../ctx";
  * contacts, the 100% day, the close list and the other work for this client. One quiet card at the
  * foot of the page, reached from the "..." menu in the head. Every form is the one that was here before.
  */
-export default function OpeningAdmin({ c }: { c: RoleCtx }) {
-  const { position, mayManage, clientName, taPeopleList, primaryTaPerson, taName, checklist, related, waitingOn, whenDate } = c;
+export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open on arrival: the "..." menu link asks for it. */ open?: boolean }) {
+  const { position, opsOwnerName, mayManage, clientName, taPeopleList, primaryTaPerson, taName, checklist, related, waitingOn, whenDate } = c;
   const team = position.team ?? [];
   return (
-    <div id="opening-admin" className="scroll-mt-6">
-      <Card title="People, contacts and closing" sub={position.openingTaId ? `Opening ${position.openingTaId}${position.taStatus ? " · TA says: " + position.taStatus : ""}` : "No opening ID yet: queued for the TA System."}>
+    <details id="opening-admin" open={open} className="group scroll-mt-6">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-[28px] bg-surface px-6 py-[18px] shadow-card [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="t-h3">People, contacts and closing</span>
+          <span className="t-small text-ink-3">{position.openingTaId ? `Opening ${position.openingTaId}${position.taStatus ? " · TA says: " + position.taStatus : ""}` : "No opening ID yet: queued for the TA System."}</span>
+        </span>
+        <Icon name="chevron-right" size={18} className="shrink-0 text-ink-3 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="mt-3">
+      <Card>
         <RelatedLinks items={related} active="opening" />
 
         {waitingOn.length > 0 && (
@@ -35,6 +44,13 @@ export default function OpeningAdmin({ c }: { c: RoleCtx }) {
           <div className="flex flex-col gap-3">
             <span className="t-micro text-ink-3">PEOPLE ON THIS OPENING</span>
             <ul className="flex flex-col divide-y divide-rule">
+              {opsOwnerName && (
+                <li className="flex items-center gap-2 py-2">
+                  <Avatar name={opsOwnerName} size="28" tone="brand" />
+                  <span className="t-body">{opsOwnerName}</span>
+                  <span className="t-small text-ink-3">Ops owner</span>
+                </li>
+              )}
               <li className="flex items-center gap-2 py-2">
                 <Avatar name={primaryTaPerson?.fullName ?? taName} size="28" tone="info" />
                 <span className="t-body">{primaryTaPerson?.fullName ?? (position.primaryTaId || "Not set")}</span>
@@ -157,6 +173,7 @@ export default function OpeningAdmin({ c }: { c: RoleCtx }) {
           )}
         </div>
       </Card>
-    </div>
+      </div>
+    </details>
   );
 }

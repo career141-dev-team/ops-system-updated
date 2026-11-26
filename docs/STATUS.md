@@ -602,3 +602,9 @@ Stage 3 of the ops team's feedback. The decisions are in [09](09-DECISIONS-AND-Q
 | **Teams follows the interview** | `noticeCandidateOut` in `src/data/desk.ts`, `dropApplicantEvent` in `app/actions.ts` | a candidate pulling out, and an internal applicant rejected before their interview, cancel the Outlook event |
 
 Proved by `tests/auratable.test.ts`, `tests/whatsapp.test.ts`, `tests/whatsappintake.test.ts`, `tests/integrationhealth.test.ts` and a case in `tests/interviews.test.ts` (a recorded Meta payload, a computed signature, real PDFs from Stage 2). **Not run against Microsoft, Meta, an Anthropic key (Aura's tools are tested without a model), or the Convex store.** Nothing here is switched on.
+
+## Built: where the sets stand, and the export (26 Nov, branch `rayan/set-tracking`, from the 25 Nov meeting, PR 5)
+
+- **Sets tab, "Where the sets stand".** One line (e.g. "3 shortlisted (set 1) · set 2 awaiting feedback") and a row for each candidate the client has seen: set, stage, last feedback (the newest of the set answer and the interview answers). The rule is `src/lib/setTracking.ts`, with `tests/settracking.test.ts`. Client feedback is still typed in by hand (Record the answer, interview decisions); nothing reads WhatsApp.
+- **Export.** `?panel=export` lists the rows with an × on each; **Copy as table** puts HTML (for an email) and tab-separated text (for a sheet or WhatsApp) on the clipboard; **Download CSV** is `GET /api/positions/<id>/stages` (`?skip=<ids>` leaves out the rows taken off). Signed-in people only, no money permission, like the set zip. The text formats are in `src/lib/stageTable.ts`, apart from the rule, because the screen is a client component.
+- **Position overview.** "People, contacts and closing" is collapsed by default (the "..." menu opens it) and now shows the Ops owner. **Backup ops is not here yet:** the field arrives with PR 1.

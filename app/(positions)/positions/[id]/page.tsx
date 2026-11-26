@@ -238,7 +238,7 @@ export default async function PositionPage({
                   Open {clientName}
                 </Link>
               )}
-              <Link href={`${path}?view=overview#opening-admin`} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
+              <Link href={`${path}?view=overview&open=admin#opening-admin`} className="t-body rounded-[12px] px-3 py-2.5 hover:bg-sunk">
                 People, contacts and closing
               </Link>
               {c.hold && (

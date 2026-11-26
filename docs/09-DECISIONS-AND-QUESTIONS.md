@@ -291,3 +291,10 @@ confirm each one while walking the flow.
 - **One WhatsApp group, made by the Ops number, is read as a CV inbox.** Documents posted in it go into the same Scoop CV intake as the emails ([28](28-WHATSAPP.md)). This is the one group the system reads, because it is one the system created. A group message never goes to the Inbox, matches a phone or stops a chase.
 - **Costs and limits, accepted:** it needs a Cloud API number (not Coexistence on the same number); 8 people at most, our number included; a CV after 17:30 misses that day's summary; a CV sent 1:1 by somebody who is not a client's or an enquiry's contact is read too (decided later the same day, because Meta does not yet allow groups on the Ops number: it is not an Official Business Account); phone-made groups still cannot be joined. Meta publishes no sample of a document inside a group, so a real test comes before anyone relies on it.
 - **Open question: who are these CVs for?** They are filed as applicants to Career 141's own vacancies. If the people posting them are candidates for **clients**, they belong in the TA System, through its API, not in Ops internal hiring. Needs the owner's answer before the group is switched on.
+
+## 26 Nov: set tracking and the export (ops lead, 25 Nov meeting; branch `rayan/set-tracking`)
+
+- **Client feedback stays manual entry.** The tracking reads what a person recorded through "Record the answer" and the interview decisions. A WhatsApp reply is not read into it.
+- **Who is listed.** A candidate appears once they are in a set that has gone to the client, or have gone further (interview, offer, joined, out). Candidates still with the TA or in an unsent set are not shown, because the table is meant for the client.
+- **The export needs no money permission.** It holds names, sets, stages and feedback, no salary or fee, so any signed-in person may take it (as the set zip). The salary is never a column.
+- **Backup ops follows PR 1.** The collapsible block shows the Ops owner only until `backupOwnerId` exists.
