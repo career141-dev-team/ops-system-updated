@@ -236,7 +236,7 @@ export default async function InvoicesPage({
                             {inv.disputed ? "Disputed · " : ""}
                             {inv.sentAt ? "Sent " + short(inv.sentAt) : "Sent"}
                             {inv.dueAt ? " · due " + longDay(inv.dueAt) : ""}
-                            {(inv.remindersSent ?? 0) > 0 ? ` · ${inv.remindersSent}/3 reminders` : ""}
+                            {(inv.remindersSent ?? 0) > 0 ? ` · ${inv.remindersSent}/3 reminders drafted` : ""}
                           </p>
                         )}
                         {col.key === "late" && <p className="t-small text-danger">Late payment · {late} day{late === 1 ? "" : "s"}</p>}

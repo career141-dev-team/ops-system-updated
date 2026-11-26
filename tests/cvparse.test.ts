@@ -75,7 +75,12 @@ test("nationality is read from a labelled line or a known demonym (26 Nov)", () 
   assert.equal(nationalityOf("Name: Raj Kumar\nNationality: Indian\nColombo"), "Indian");
   assert.equal(nationalityOf("Citizenship - SRI LANKAN\nExperience: 5 years"), "Sri Lankan");
   assert.equal(nationalityOf("Nationality: Pakistani | Married"), "Pakistani");
-  assert.equal(nationalityOf("Experienced British chartered accountant based in Dubai."), "British");
+  // 26 Nov (PR 3 review): only a labelled line counts, never a demonym in the body.
+  assert.equal(nationalityOf("Experienced British chartered accountant based in Dubai."), "");
+  assert.equal(nationalityOf("Colombo, Sri Lanka\nBritish Council course\nIndian Ocean cruise"), "");
+  assert.equal(nationalityOf("Nationality: Sri Lankan Male"), "Sri Lankan");
+  assert.equal(nationalityOf("Nationality: Sinhala"), "Sri Lankan");
+  assert.equal(nationalityOf("Nationality: Indian Female"), "Indian");
   assert.equal(nationalityOf("No country or demonym mentioned here."), "");
   assert.equal(nationalityOf(""), "");
 });

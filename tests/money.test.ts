@@ -539,6 +539,10 @@ test("expat nationality sets the expat fee, and blockers gate sending (26 Nov)",
   assert.equal(isExpat(undefined), false);
   assert.equal(isExpat("Indian"), true);
   assert.equal(isExpat("Pakistani"), true);
+  for (const local of ["Sri-Lankan", "Sri Lankan.", "Sinhala", "SL", "sri lankan citizen", "SRI LANKAN"]) {
+    assert.equal(isExpat(local), false, local);
+  }
+  assert.equal(isExpat("Maldivian"), true);
 
   assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Sri Lankan" }), 1);
   assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Indian" }), 2);
@@ -748,4 +752,28 @@ test("join creates testimonial task, uses agreement paymentDays and expat fee, a
   });
   const stopped = await desk.recordReply("invoice", invoice.id, "m_accounts");
   assert(stopped >= 1, "reply stops pending invoice reminders");
+});
+
+test("26 Nov (PR 3 review): the first chase of a late-sent invoice is a week after sending", async () => {
+  const { firstChaseAt, splitFromPaymentDetails } = await import("@/lib/money");
+  const D = 86_400_000;
+  assert.equal(firstChaseAt(1000 * D, 900 * D), 1000 * D);
+  assert.equal(firstChaseAt(800 * D, 900 * D), 907 * D);
+
+  const ok = (r: ReturnType<typeof splitFromPaymentDetails>) => (r.ok ? [r.basicSalary, r.allowances] : r.what);
+  assert.deepEqual(ok(splitFromPaymentDetails(200000, 150000, {}, "basic")), [150000, 50000]);
+  assert.match(String(ok(splitFromPaymentDetails(200000, 250000, {}, "basic"))), /cannot be more/);
+  assert.deepEqual(ok(splitFromPaymentDetails(200000, null, { basicSalary: 150000, allowances: 50000 }, "basic")), [150000, 50000]);
+  assert.match(String(ok(splitFromPaymentDetails(210000, null, { basicSalary: 150000, allowances: 50000 }, "basic"))), /bills on basic salary/);
+  assert.match(String(ok(splitFromPaymentDetails(200000, null, {}, "basic"))), /bills on basic salary/);
+  assert.deepEqual(ok(splitFromPaymentDetails(210000, null, { basicSalary: 150000, allowances: 50000 }, "gross")), [210000, 0]);
+});
+
+test("26 Nov (PR 3 review): the nationality choice is explicit", async () => {
+  const { nationalityFromChoice: f } = await import("@/lib/money");
+  assert.deepEqual(f("local", "whatever"), { ok: true, nationality: "Sri Lankan" });
+  assert.deepEqual(f("expat", " Indian "), { ok: true, nationality: "Indian" });
+  assert.equal(f("expat", "").ok, false);
+  assert.equal(f("expat", "Sri-Lankan").ok, false);
+  assert.equal(f("", "Indian").ok, false);
 });

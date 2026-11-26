@@ -648,3 +648,13 @@ The decisions are in [09](09-DECISIONS-AND-QUESTIONS.md) (26 Nov).
 | **Accounts statuses & filters** | `columnsForFilter` / `matchesFilter` in `src/lib/accountsBoard.ts`, `app/(money)/invoices/page.tsx` | columns read **To be sent → Sent → Late payment → Paid**, with `?show=paid|unpaid|late` filter pills |
 
 Proved by `tests/cvparse.test.ts`, `tests/money.test.ts`, `tests/accountsboard.test.ts`, `tests/wholeflow.test.ts` and `tests/schema.test.ts`. Not run against the Convex store.
+
+**Review fixes (26 Nov, after an independent read of the PR 3 commit):**
+- **The salary split is kept.** Recording the client's payment details no longer sets basic to the offered salary and allowances to 0. `splitFromPaymentDetails` in `src/lib/money.ts` uses a typed basic; otherwise it keeps a split that already adds up; on an agreement billed on basic it refuses without the basic. The audit reason keeps the old values.
+- **A Sri Lankan is never billed as an expat because of spelling.** `isExpat` reads only the letters ("Sri-Lankan.", "Sinhala", "SL" are local), and the confirm form is two explicit choices, Sri Lankan or Not Sri Lankan with the nationality typed (`nationalityFromChoice`).
+- **The CV only suggests from a labelled line.** `nationalityOf` no longer finds "British" in "British Council" or "Indian" in "Indian Ocean"; an ethnicity on the Nationality line reads as Sri Lankan, and "Sri Lankan Male" reads as Sri Lankan.
+- **An invoice sent after its due date is not chased the same minute**: the first late chase is a week after sending (`firstChaseAt`); the late charge still counts from the due date (clause 5.5).
+- **Payment details can be asked for before there is an invoice** (a client with no billing details gets no invoice row), from the Offer tab.
+- **The testimonial request goes to the right side** (the candidate's typed email, or the client's HR contact), each side keeps its own channel and day, and the task is due a week after joining and closes when both are done.
+- **The reminder clock leaves no extra "this clock has run out" task**, and the re-arm pass restores future reminders. The screen says "Reminders drafted", which is what the count is.
+- **The address panel shows the expat fee** for an expat placement.

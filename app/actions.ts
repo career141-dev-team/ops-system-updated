@@ -279,6 +279,9 @@ import {
   feeMonthsFor,
   invoiceBlockers,
   invoiceLines,
+  firstChaseAt,
+  nationalityFromChoice,
+  splitFromPaymentDetails,
   invoiceReminderClocks,
   isExpat,
   money,
@@ -6283,8 +6286,10 @@ export async function confirmNationality(formData: FormData): Promise<void> {
   if (!placement) redirect("/positions?msg=" + encodeURIComponent("That placement is gone."));
   const row = placement as NonNullable<typeof placement>;
 
-  const nationality = String(formData.get("nationality") ?? "").trim();
-  if (!nationality) back("Enter the candidate's nationality before confirming.");
+  // 26 Nov (PR 3 review): two explicit choices; the text box is only for "Not Sri Lankan".
+  const chosen = nationalityFromChoice(String(formData.get("nationalityKind") ?? ""), String(formData.get("nationality") ?? ""));
+  if (!chosen.ok) back(chosen.what);
+  const nationality = chosen.ok ? chosen.nationality : "";
 
   const invoice = row.invoiceId ? invoiceIn(db, row.invoiceId) : null;
   if (invoice && invoice.state !== "draft") {
@@ -6349,15 +6354,26 @@ export async function draftTestimonialAsk(formData: FormData): Promise<void> {
 
   const side = String(formData.get("side") ?? "").trim();
   const channel = String(formData.get("channel") ?? "").trim();
-  const to = String(formData.get("to") ?? "").trim();
   const problem = problemWithTestimonial(side, channel);
   if (problem) back(problem);
-  if (!to || !to.includes("@")) back("Give an email address to draft the testimonial request to.");
 
   const client = row.clientId ? clientIn(db, row.clientId) : null;
+  // 26 Nov (PR 3 review): the recipient follows the side. A blank box means the client's HR contact for the
+  // client side; a placement holds no candidate email, so the candidate side needs one typed.
+  const hr = client?.contacts?.find((k) => /hr/i.test(k.role) && k.email.trim()) ?? client?.contacts?.find((k) => k.email.trim()) ?? null;
+  const typedTo = String(formData.get("to") ?? "").trim();
+  const to = typedTo || (side === "client" ? hr?.email.trim() ?? "" : "");
+  if (!to || !to.includes("@")) {
+    back(
+      side === "candidate"
+        ? "There is no email address for " + row.candidateName + " on file. Type one in the box, or ring them" + (row.candidatePhone ? " on " + row.candidatePhone : "") + "."
+        : "The client has no contact email on file. Type one in the box.",
+    );
+  }
+
   const position = row.positionId ? positionIn(db, row.positionId) : null;
   const wording = templateFor(db, "testimonial.ask");
-  const contact = side === "candidate" ? row.candidateName.split(/\s+/)[0] : client?.contacts?.[0]?.name?.split(/\s+/)[0] ?? "all";
+  const contact = side === "candidate" ? row.candidateName.split(/\s+/)[0] : (hr?.name ?? "").split(/\s+/)[0] || "all";
   const fill = (text: string) =>
     text
       .replace(/\{\{contact\}\}/g, contact)
@@ -6407,12 +6423,13 @@ export async function markTestimonialDone(formData: FormData): Promise<void> {
 
   const now = Date.now();
   const current = row.testimonial ?? { candidate: "pending" as const, client: "pending" as const };
+  // 26 Nov (PR 3 review): each side keeps its own channel, day and person, so the second never overwrites the first.
   const updated = {
     ...current,
     [side]: "done" as const,
-    channel,
-    doneAt: now,
-    by: member.id,
+    [side + "Channel"]: channel,
+    [side + "DoneAt"]: now,
+    [side + "By"]: member.id,
   };
   await patchPlacement(
     placementId,
@@ -6421,6 +6438,12 @@ export async function markTestimonialDone(formData: FormData): Promise<void> {
     "placement.testimonial." + side,
     side + " testimonial done via " + channel,
   );
+  // Both sides done: the task made on join is finished.
+  if (updated.candidate === "done" && updated.client === "done") {
+    for (const t of db.tasks.filter((x) => x.state === "open" && x.subjectType === "placement" && x.subjectId === placementId && /testimonial/i.test(x.title))) {
+      await finishTaskWrite(t.id, member.id, "Both testimonials received.");
+    }
+  }
 
   if (row.positionId) revalidatePath("/positions/" + row.positionId);
   back((side === "candidate" ? "Candidate" : "Client") + " testimonial marked done (" + channel + ").");
@@ -6434,34 +6457,39 @@ export async function requestPaymentDetails(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const invoiceId = String(formData.get("invoiceId") ?? "");
-  const here = "/invoices/" + invoiceId;
+  const placementIdRaw = String(formData.get("placementId") ?? "");
+  const here = invoiceId ? "/invoices/" + invoiceId : "/placements/" + placementIdRaw;
   const back = (msg: string) => redirect(landed(formData, here, msg));
   if (!can(member, "money.manage") && !can(member, "client.manage")) back(refusal("money.manage"));
 
   const db = await desk();
-  const invoice = invoiceIn(db, invoiceId);
-  if (!invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
-  const row = invoice as NonNullable<typeof invoice>;
-  if (row.state !== "draft") back("That invoice has already been sent.");
+  // 26 Nov (PR 3 review): works from the placement when there is no invoice row yet (a client without billing details).
+  const invoice = invoiceId ? invoiceIn(db, invoiceId) : null;
+  if (invoiceId && !invoice) redirect("/invoices?msg=" + encodeURIComponent("That invoice is gone."));
+  if (invoice && invoice.state !== "draft") back("That invoice has already been sent.");
 
-  const client = row.clientId ? clientIn(db, row.clientId) : null;
-  const placement = row.placementId ? placementIn(db, row.placementId) : null;
+  const placement = (invoice?.placementId ? placementIn(db, invoice.placementId) : null) ?? (placementIdRaw ? placementIn(db, placementIdRaw) : null);
+  if (!invoice && !placement) back("That placement is gone.");
+  const clientId = invoice?.clientId ?? placement?.clientId ?? null;
+  const client = clientId ? clientIn(db, clientId) : null;
   const position = placement?.positionId ? positionIn(db, placement.positionId) : null;
 
   const billingOrHr =
     client?.contacts?.find((c) => /billing|finance|account|hr/i.test(c.role) && c.email.trim()) ??
     client?.contacts?.find((c) => c.email.trim()) ??
     null;
-  const toEmail = client?.billingEmail.trim() || billingOrHr?.email.trim() || "";
+  const billingEmail = client?.billingEmail.trim() ?? "";
+  const toEmail = billingEmail || billingOrHr?.email.trim() || "";
   if (!toEmail) back("Add a billing or HR email address on the client record first.");
 
-  const contactName = billingOrHr?.name || client?.billingName || "all";
+  // The greeting names the person the email goes to: the billing contact when the billing address is used.
+  const contactName = (billingEmail ? client?.billingName : billingOrHr?.name) || billingOrHr?.name || "all";
   const wording = templateFor(db, "invoice.details_request");
   const fill = (text: string) =>
     text
       .replace(/\{\{client\}\}/g, client?.name ?? "")
       .replace(/\{\{contact\}\}/g, contactName)
-      .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? row.about ?? "the candidate")
+      .replace(/\{\{candidate\}\}/g, placement?.candidateName ?? invoice?.about ?? "the candidate")
       .replace(/\{\{position\}\}/g, position?.title ?? "the role")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
@@ -6475,13 +6503,19 @@ export async function requestPaymentDetails(formData: FormData): Promise<void> {
         "Dear {{contact}},\n\nUnder clause 2.12 of our agreement, please share the confirmed total salary package breakdown and billing address for {{candidate}} ({{position}}) so we can raise the placement fee invoice.\n\nKind regards,\n{{opsPerson}}\nCareer 141",
     ),
     templateKey: "invoice.details_request",
-    subjectType: "invoice",
-    subjectId: invoiceId,
+    subjectType: invoice ? "invoice" : "placement",
+    subjectId: invoice ? invoice.id : placementIdRaw,
   });
 
-  await patchInvoice(invoiceId, { detailsRequestedAt: now }, member.id, "invoice.detailsRequested", toEmail);
+  if (invoice) {
+    await patchInvoice(invoice.id, { detailsRequestedAt: now }, member.id, "invoice.detailsRequested", toEmail);
+  } else if (placement) {
+    // No invoice yet and no placement field for it (not adding schema): the audit holds the record.
+    await patchPlacement(placement.id, {}, member.id, "placement.detailsRequested", toEmail);
+  }
   revalidatePath(here);
   revalidatePath("/invoices");
+  if (placement?.positionId) revalidatePath("/positions/" + placement.positionId);
   redirect("/messages/" + message.id + "?msg=" + encodeURIComponent("Payment details request drafted. Read it, then approve it."));
 }
 
@@ -6517,11 +6551,17 @@ export async function recordPaymentDetails(formData: FormData): Promise<void> {
     back("Give the client's confirmed offered monthly salary as a number above zero.");
   }
   const basicRaw = String(formData.get("basicSalary") ?? "").replace(/,/g, "").trim();
-  const allowancesRaw = String(formData.get("allowances") ?? "").replace(/,/g, "").trim();
-  const basic = basicRaw ? Number(basicRaw) : offeredSalary;
-  const allowances = allowancesRaw ? Number(allowancesRaw) : 0;
+  const typedBasic = basicRaw ? Number(basicRaw) : null;
+  if (typedBasic !== null && !(typedBasic > 0)) back("Give the basic salary as a number above zero, or leave it blank.");
   const note = String(formData.get("note") ?? "").trim();
-  const reason = "client's payment details";
+  // 26 Nov (PR 3 review): the split is never wiped silently, and the reason carries what it was.
+  const split = splitFromPaymentDetails(offeredSalary, typedBasic, { basicSalary: row.basicSalary, allowances: row.allowances }, row.feeBasis);
+  if (!split.ok) back(split.what);
+  const basic = split.ok ? split.basicSalary : 0;
+  const allowances = split.ok ? split.allowances : 0;
+  const reason =
+    "client's payment details (was basic " + (row.basicSalary ?? 0).toLocaleString("en-US") + " + allowances " + (row.allowances ?? 0).toLocaleString("en-US") +
+    "; TA said " + (row.monthlySalary ?? 0).toLocaleString("en-US") + ")";
 
   const splitProblem = problemWithSalarySplit(basic, allowances, reason);
   if (splitProblem) back(splitProblem);
@@ -6856,14 +6896,15 @@ export async function sendInvoice(formData: FormData): Promise<void> {
       payload: { label: row.number, week: String(rem.week) },
     });
   }
-  // The clock that asks for the money, counted from the due date.
+  // The clock that asks for the money, counted from the due date. 26 Nov (PR 3 review): an invoice sent
+  // after its due date is first chased a week later, not at once; the late charge still counts from dueAt.
   if (row.dueAt) {
     await startTimer({
       kind: "invoice.due",
       subjectType: "invoice",
       subjectId: invoiceId,
       startsAt: now,
-      dueAt: row.dueAt,
+      dueAt: firstChaseAt(row.dueAt, now),
       warnAt: null,
       ownerId: row.ownerId,
       payload: { label: row.number },

@@ -62,12 +62,24 @@ export const EXPAT_FEE_MONTHS = 2;
  * invoice goes out. Any non-empty nationality other than Sri Lankan counts as expat.
  */
 export function isExpat(nationality: string | null | undefined): boolean {
-  const n = (nationality ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  // 26 Nov (PR 3 review): letters only, so "Sri-Lankan." or "SRI LANKAN citizen" is never billed as expat.
+  const n = (nationality ?? "").toLowerCase().replace(/[^a-z]/g, "");
   if (!n) return false;
-  if (n === "sri lankan" || n === "sri lanka" || n === "srilankan" || n === "srilanka" || n === "lankan") {
-    return false;
-  }
+  if (n.includes("srilanka") || ["lankan", "sinhala", "sinhalese", "ceylonese", "sl"].includes(n)) return false;
   return true;
+}
+
+/**
+ * The nationality to store from the confirm form (26 Nov, PR 3 review): an explicit choice, never a guess.
+ * "local" stores "Sri Lankan"; "expat" needs a nationality that does not read as Sri Lankan.
+ */
+export function nationalityFromChoice(kind: string, typed: string): { ok: true; nationality: string } | { ok: false; what: string } {
+  if (kind === "local") return { ok: true, nationality: "Sri Lankan" };
+  if (kind !== "expat") return { ok: false, what: "Pick Sri Lankan or Not Sri Lankan." };
+  const t = typed.trim();
+  if (!t) return { ok: false, what: "Type the nationality for a candidate who is not Sri Lankan." };
+  if (!isExpat(t)) return { ok: false, what: "That reads as Sri Lankan. Pick Sri Lankan, or type their real nationality." };
+  return { ok: true, nationality: t };
 }
 
 /**
@@ -129,6 +141,39 @@ export function invoiceReminderClocks(
   return weeks
     .map((week) => ({ kind: "invoice.remind", week, dueAt: sentAt + week * 7 * DAY }))
     .filter((r) => dueAt === null || r.dueAt < dueAt);
+}
+
+/**
+ * When the first late chase runs (26 Nov, PR 3 review). An invoice sent after its due date is not
+ * chased at once: the first chase is a week after sending. The late charge still counts from dueAt (clause 5.5).
+ */
+export function firstChaseAt(dueAt: number, sentAt: number): number {
+  return dueAt > sentAt ? dueAt : sentAt + 7 * DAY;
+}
+
+/**
+ * The salary split to store when the client sends their payment details (26 Nov, PR 3 review).
+ *
+ * Never overwrites a known split silently: a typed basic wins; a blank basic keeps the existing split when it
+ * still adds up to the offered salary; otherwise an agreement that bills on basic must be given one.
+ */
+export function splitFromPaymentDetails(
+  offered: number,
+  givenBasic: number | null,
+  existing: { basicSalary?: number | null; allowances?: number | null },
+  feeBasis: string,
+): { ok: true; basicSalary: number; allowances: number } | { ok: false; what: string } {
+  if (givenBasic !== null && givenBasic > 0) {
+    if (givenBasic > offered) return { ok: false, what: "The basic salary cannot be more than the offered salary." };
+    return { ok: true, basicSalary: givenBasic, allowances: offered - givenBasic };
+  }
+  const b = existing.basicSalary ?? 0;
+  const a = existing.allowances ?? 0;
+  if (b > 0 && b + a === offered) return { ok: true, basicSalary: b, allowances: a };
+  if (feeBasis === "basic") {
+    return { ok: false, what: "This agreement bills on basic salary. Give the basic as well as the offered salary." };
+  }
+  return { ok: true, basicSalary: offered, allowances: 0 };
 }
 
 /**

@@ -48,7 +48,8 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
 
   if (sp.panel === "record-address" && c.client) {
     const cl = c.client;
-    const fee = placement.monthlySalary ? feeAmount(placement, placement.monthlySalary, placement) : null;
+    const months = feeMonthsFor(placement);
+    const fee = placement.monthlySalary ? feeAmount({ feeMonths: months, feeBasis: placement.feeBasis }, placement.monthlySalary, placement) : null;
     return (
       <ActionPanel
         kicker="Record the address"
@@ -58,7 +59,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
         why={[
           joinWords ? `${first} joins on ${joinWords}` : `${first} has no joining day yet`,
           cl.billingAddress ? "The invoice address on the client record is out of date or incomplete" : "The invoice address is missing on the client record",
-          fee ? `The fee invoice is ${placement.feeMonths} month of salary, ${moneyWhole(fee, placement.currency)}` : "The fee is worked out once the package is recorded",
+          fee ? `The fee invoice is ${months} month${months === 1 ? "" : "s"} of salary, ${moneyWhole(fee, placement.currency)}` : "The fee is worked out once the package is recorded",
         ]}
         people={clientPeople(c)}
         askTitle="What to ask"
@@ -193,18 +194,25 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
         next={`Saves the confirmed nationality on the placement${placement.invoiceId ? " and updates the draft invoice amount if needed" : ""}.`}
         action={confirmNationality}
       >
-        <PanelField label="Nationality">
+        <PanelField label="Is the candidate Sri Lankan?">
+          <ChoiceGroup
+            name="nationalityKind"
+            label="Is the candidate Sri Lankan?"
+            required
+            value={suggested ? (isExpat(suggested) ? "expat" : "local") : undefined}
+            options={[{ value: "local", label: "Sri Lankan" }, { value: "expat", label: "Not Sri Lankan" }]}
+          />
+        </PanelField>
+        <PanelField label="Nationality (needed for Not Sri Lankan)">
           <input
             name="nationality"
             type="text"
-            required
-            defaultValue={suggested}
+            defaultValue={suggested && isExpat(suggested) ? suggested : ""}
             list="nationality-choices"
-            placeholder="e.g. Sri Lankan, Indian, Pakistani, British"
+            placeholder="e.g. Indian, Pakistani, British"
             className={panelInput}
           />
           <datalist id="nationality-choices">
-            <option value="Sri Lankan" />
             <option value="Indian" />
             <option value="Pakistani" />
             <option value="Bangladeshi" />
@@ -215,7 +223,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
         </PanelField>
         {suggested && (
           <p className="t-small text-ink-3">
-            Currently reads as {isExpat(suggested) ? `Expat (${expatMonths} months' salary)` : `Local (${localMonths} month${localMonths === 1 ? "" : "s"}' salary)`}.
+            The CV or earlier entry suggests {suggested}: {isExpat(suggested) ? `Expat (${expatMonths} months' salary)` : `Local (${localMonths} month${localMonths === 1 ? "" : "s"}' salary)`}.
           </p>
         )}
       </ActionPanel>
@@ -240,7 +248,8 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
             <p className="t-body text-ink-2">
               Client: <strong className="font-medium text-ink">{t.client === "done" ? "Done" : "Pending"}</strong>
             </p>
-            {t.channel && <p className="t-small text-ink-3">Last recorded channel: {t.channel}</p>}
+            {(t.candidateChannel ?? (t.candidate === "done" ? t.channel : undefined)) && <p className="t-small text-ink-3">Candidate received on {t.candidateChannel ?? t.channel}</p>}
+            {(t.clientChannel ?? (t.client === "done" ? t.channel : undefined)) && <p className="t-small text-ink-3">Client received on {t.clientChannel ?? t.channel}</p>}
           </div>
         </PanelSection>
 
@@ -263,15 +272,11 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
               value="LinkedIn"
               options={TESTIMONIAL_CHANNELS.map((ch) => ({ value: ch, label: ch }))}
             />
-            <PanelField label="Email address">
-              <input
-                name="to"
-                type="email"
-                required
-                defaultValue={clientContact?.email ?? ""}
-                placeholder="person@company.com"
-                className={panelInput}
-              />
+            <PanelField label="Email address (optional)">
+              <input name="to" type="email" placeholder="person@company.com" className={panelInput} />
+              <p className="t-small text-ink-3">
+                Blank: the client side goes to {clientContact?.email ? `${clientContact.name}, ${clientContact.email}` : "the client's HR contact (none on file yet)"}. The candidate has no email on file, so type one for them.
+              </p>
             </PanelField>
             <div>
               <SubmitButton id="draft-testimonial" className={pillSecondary}>
@@ -297,7 +302,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
             <ChoiceGroup
               name="channel"
               label="Channel received on"
-              value={t.channel ?? "LinkedIn"}
+              value="LinkedIn"
               options={TESTIMONIAL_CHANNELS.map((ch) => ({ value: ch, label: ch }))}
             />
             <div>

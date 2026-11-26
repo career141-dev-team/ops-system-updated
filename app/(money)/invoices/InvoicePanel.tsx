@@ -92,7 +92,7 @@ export default function InvoicePanel({
           ? `Due ${day(inv.dueAt)} (${dueLeft === 0 ? "due today" : `${dueLeft} day${dueLeft === 1 ? "" : "s"} left`})`
           : `Due ${day(inv.dueAt)}`
       : null,
-    (inv.remindersSent ?? 0) > 0 ? `Reminders sent: ${inv.remindersSent} of 3` : null,
+    (inv.remindersSent ?? 0) > 0 ? `Reminders drafted: ${inv.remindersSent} of 3` : null,
     inv.disputed ? "Disputed: no late charge runs while it is" : null,
   ].filter(Boolean) as string[];
 
@@ -207,6 +207,9 @@ export default function InvoicePanel({
                   defaultValue={placement.paymentDetails?.offeredSalary ?? placement.monthlySalary ?? ""}
                   className={panelInput}
                 />
+              </PanelField>
+              <PanelField label="Basic salary (optional: needed when the agreement bills on basic)">
+                <input name="basicSalary" type="number" step="0.01" defaultValue="" placeholder={placement.basicSalary ? `Now ${placement.basicSalary}` : ""} className={panelInput} />
               </PanelField>
               <PanelField label="Note (optional)">
                 <input

@@ -124,6 +124,12 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
     title: "An invoice is due today",
     body: "Thirty days from their first working day. If nothing has come in, the chase is drafted for you.",
   },
+  // 26 Nov (PR 3 review): without this each weekly reminder also left a junk "This clock has run out." task.
+  "invoice.remind": {
+    kind: "approve",
+    title: "An invoice payment reminder is drafted",
+    body: "The client has not paid yet. Read the reminder, then approve it.",
+  },
   "invoice.chase": {
     kind: "approve",
     title: "The invoice is past its due date",

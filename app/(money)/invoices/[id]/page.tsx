@@ -360,7 +360,7 @@ export default async function InvoiceDetailPage({
                     : null,
                 },
                 {
-                  label: "Reminders sent",
+                  label: "Reminders drafted",
                   value: inv.state !== "draft" ? `${inv.remindersSent ?? 0} of 3` : null,
                 },
               ]}
@@ -376,17 +376,20 @@ export default async function InvoiceDetailPage({
                       ? `Confirmed as ${placement.nationality} (${feeMonthsFor(placement)} month${feeMonthsFor(placement) === 1 ? "" : "s"} fee).`
                       : `Confirm nationality before sending${placement.nationalityFromCv ? ` (read from CV: ${placement.nationalityFromCv})` : ""}.`}
                   </p>
-                  <div>
-                    <label className={figmaLabel} htmlFor="nationality">Nationality</label>
-                    <input
-                      id="nationality"
-                      name="nationality"
-                      type="text"
-                      required
-                      defaultValue={placement.nationality || placement.nationalityFromCv || ""}
-                      placeholder="e.g. Sri Lankan, Indian, Pakistani"
-                      className={figmaField}
-                    />
+                  <div role="radiogroup" aria-label="Nationality" className="flex flex-col gap-2">
+                    {placement.nationalityFromCv && <p className="t-small text-ink-3">Hint from the CV: {placement.nationalityFromCv}</p>}
+                    {(() => {
+                      const hint = placement.nationality || placement.nationalityFromCv || "";
+                      const kind = hint ? (isExpat(hint) ? "expat" : "local") : "";
+                      return (
+                        <>
+                          <label className="t-body flex items-center gap-2"><input type="radio" name="nationalityKind" value="local" required defaultChecked={kind === "local"} /> Sri Lankan</label>
+                          <label className="t-body flex items-center gap-2"><input type="radio" name="nationalityKind" value="expat" required defaultChecked={kind === "expat"} /> Not Sri Lankan</label>
+                          <label className={figmaLabel} htmlFor="nationality">Nationality (needed for Not Sri Lankan)</label>
+                          <input id="nationality" name="nationality" type="text" defaultValue={kind === "expat" ? hint : ""} placeholder="e.g. Indian, Pakistani" className={figmaField} />
+                        </>
+                      );
+                    })()}
                   </div>
                   <div>
                     <SubmitButton id="inv-confirm-nat" className={pillSecondary}>
@@ -415,6 +418,19 @@ export default async function InvoiceDetailPage({
                       defaultValue={placement.paymentDetails?.offeredSalary ?? placement.monthlySalary ?? ""}
                       className={figmaField}
                     />
+                  </div>
+                  <div>
+                    <label className={figmaLabel} htmlFor="basicSalary">Basic salary ({inv.currency}, optional)</label>
+                    <input
+                      id="basicSalary"
+                      name="basicSalary"
+                      type="number"
+                      step="0.01"
+                      defaultValue=""
+                      placeholder={placement.basicSalary ? `Now ${placement.basicSalary}` : ""}
+                      className={figmaField}
+                    />
+                    <p className="t-small text-ink-3">Needed when the agreement bills on basic salary. Allowances are worked out as the offered salary minus the basic.</p>
                   </div>
                   <div>
                     <label className={figmaLabel} htmlFor="paymentDetailsNote">Note (optional)</label>

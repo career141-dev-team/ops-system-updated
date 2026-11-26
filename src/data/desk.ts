@@ -98,6 +98,7 @@ import {
   feeAmount,
   feeInWords,
   feeMonthsFor,
+  invoiceReminderClocks,
   invoiceBlockers,
   invoiceNumber,
   joinClocks,
@@ -2232,6 +2233,14 @@ export async function loadOpeningsSample(ownerId: Id, now = Date.now()): Promise
     const dueAt = inv.dueAt > now ? inv.dueAt : now + 30 * 86_400_000 - ((now - inv.dueAt) % (30 * 86_400_000));
     await startTimer({ kind: inv.dueAt > now ? "invoice.due" : "invoice.chase", subjectType: "invoice", subjectId: inv.id, startsAt: inv.sentAt ?? now, dueAt, warnAt: null, ownerId, payload: { label: inv.number } });
   }
+  for (const inv of money.invoices) {
+    if (!["sent", "partly_paid"].includes(inv.state) || inv.kind === "credit_note" || !inv.sentAt) continue;
+    // 26 Nov (PR 3 review): the weekly reminders still ahead, as sendInvoice would have set them.
+    for (const rem of invoiceReminderClocks(inv.sentAt, inv.dueAt ?? null)) {
+      if (rem.dueAt <= now) continue;
+      await startTimer({ kind: rem.kind, subjectType: "invoice", subjectId: inv.id, startsAt: inv.sentAt, dueAt: rem.dueAt, warnAt: null, ownerId, payload: { label: inv.number, week: String(rem.week) } });
+    }
+  }
   for (const g of money.guarantees) {
     if (g.state === "running") {
       await startTimer({ kind: "guarantee.warn", subjectType: "guarantee", subjectId: g.id, startsAt: g.startsAt, dueAt: warnOn(g.startsAt, numberOf(db, "guarantee.warnDay", WARN_DAY)), warnAt: null, ownerId, payload: { label: g.candidateName } });
@@ -2608,7 +2617,8 @@ export async function markPlacementJoined(
     title: "Ask for a testimonial: " + placement.candidateName,
     body: "They joined. Ask both the candidate and the client for a testimonial (LinkedIn, site or Google), and mark each side done once received.",
     assigneeId: placement.ownerId,
-    dueAt: now,
+    // 26 Nov (PR 3 review): a week to ask, so it does not escalate on day 1.
+    dueAt: now + 7 * 86_400_000,
     subjectType: "placement",
     subjectId: placement.id,
     link: placement.positionId

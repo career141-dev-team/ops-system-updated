@@ -821,7 +821,20 @@ export interface OpsPlacement {
   nationalityConfirmedBy?: string;
   nationalityConfirmedAt?: number;
   paymentDetails?: { offeredSalary: number; receivedAt: number; by: string; note?: string };
-  testimonial?: { candidate: "pending" | "done"; client: "pending" | "done"; channel?: string; doneAt?: number; by?: string };
+  // 26 Nov (PR 3 review): each side keeps its own channel, day and person. channel/doneAt/by are the old shared fields, read only.
+  testimonial?: {
+    candidate: "pending" | "done";
+    client: "pending" | "done";
+    channel?: string;
+    doneAt?: number;
+    by?: string;
+    candidateChannel?: string;
+    candidateDoneAt?: number;
+    candidateBy?: string;
+    clientChannel?: string;
+    clientDoneAt?: number;
+    clientBy?: string;
+  };
   placementTaId: string;
   applicationTaId: string;
   openingTaId: string;

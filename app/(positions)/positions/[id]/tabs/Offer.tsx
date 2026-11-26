@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { draftInvoiceForPlacement, markJoined, savePlacementPhone } from "@/app/actions";
+import { draftInvoiceForPlacement, markJoined, requestPaymentDetails, savePlacementPhone } from "@/app/actions";
 import { Avatar, Card, EmptyState, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { colomboDateInWords } from "@/lib/calendar";
 import { feeMonthsFor, isExpat, moneyWhole } from "@/lib/money";
@@ -177,11 +177,19 @@ export default function Offer({ c, sp }: TabProps) {
                             <p className="t-small text-ink-3">A replacement: no new invoice</p>
                           ) : (
                             mayManage && (
-                              <form action={draftInvoiceForPlacement}>
-                                <input type="hidden" name="placementId" value={pl.id} />
-                                <input type="hidden" name="back" value={back} />
-                                <button className={pillSecondary + small}>Draft the invoice</button>
-                              </form>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <form action={draftInvoiceForPlacement}>
+                                  <input type="hidden" name="placementId" value={pl.id} />
+                                  <input type="hidden" name="back" value={back} />
+                                  <button className={pillSecondary + small}>Draft the invoice</button>
+                                </form>
+                                {/* 26 Nov (PR 3 review): a client with no billing details never gets an invoice row, so ask from the placement. */}
+                                <form action={requestPaymentDetails}>
+                                  <input type="hidden" name="placementId" value={pl.id} />
+                                  <input type="hidden" name="back" value={back} />
+                                  <button className={pillSecondary + small}>Ask the client for payment details</button>
+                                </form>
+                              </div>
                             )
                           ))}
                       </div>

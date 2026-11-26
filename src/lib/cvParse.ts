@@ -134,29 +134,27 @@ const KNOWN_DEMONYMS = [
 ] as const;
 
 /**
- * The candidate's nationality from their CV (26 Nov, Nov 25 ops meeting).
+ * The candidate's nationality from a labelled line only (26 Nov, PR 3 review).
  *
- * Looks first for a labelled line ("Nationality: Indian", "Citizenship - Sri Lankan"),
- * then falls back to a known demonym anywhere in the CV. A person still confirms it
- * before the fee invoice can go out, because an expat placement is billed at the expat rate.
+ * "Nationality:" or "Citizenship:". A demonym found anywhere else is not used: "British Council" or
+ * "Indian Ocean" in a Sri Lankan's CV would bill them at the expat rate. A person still confirms it.
  */
 export function nationalityOf(text: string): string {
   if (!text) return "";
   for (const raw of text.split(/\r?\n/)) {
     const m = raw.trim().match(/^(?:nationality|citizenship)\s*[:\-–]\s*([A-Za-z][A-Za-z\s'-]{1,35}?)(?:\s*[|,;.(].*)?$/i);
-    if (m) {
-      const cleaned = m[1].trim().replace(/[.;,]+$/, "");
-      const words = cleaned.split(/\s+/);
-      if (words.length >= 1 && words.length <= 3) {
-        return words
-          .map((w) => (w === w.toUpperCase() && w.length > 1 ? w[0] + w.slice(1).toLowerCase() : w[0].toUpperCase() + w.slice(1)))
-          .join(" ");
-      }
-    }
-  }
-  for (const demonym of KNOWN_DEMONYMS) {
-    const re = new RegExp("\\b" + demonym.replace(/\s+/g, "\\s+") + "\\b", "i");
-    if (re.test(text)) return demonym;
+    if (!m) continue;
+    const cleaned = m[1].trim().replace(/[.;,]+$/, "");
+    if (/lanka|\b(?:sinhala|sinhalese|tamil|moor|muslim|burgher)\b/i.test(cleaned)) return "Sri Lankan";
+    // Known demonym at the start: drops trailing words such as "Male" or "Female".
+    const lc = cleaned.toLowerCase().replace(/\s+/g, " ");
+    const known = KNOWN_DEMONYMS.find((k) => lc === k.toLowerCase() || lc.startsWith(k.toLowerCase() + " "));
+    if (known) return known;
+    return cleaned
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
   }
   return "";
 }

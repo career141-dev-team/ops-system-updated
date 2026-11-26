@@ -1004,7 +1004,7 @@ export const addPlacement = internalMutation({
     nationalityConfirmedBy: v.optional(v.string()),
     nationalityConfirmedAt: v.optional(v.number()),
     paymentDetails: v.optional(v.object({ offeredSalary: v.number(), receivedAt: v.number(), by: v.string(), note: v.optional(v.string()) })),
-    testimonial: v.optional(v.object({ candidate: v.union(v.literal("pending"), v.literal("done")), client: v.union(v.literal("pending"), v.literal("done")), channel: v.optional(v.string()), doneAt: v.optional(v.number()), by: v.optional(v.string()) })),
+    testimonial: v.optional(v.object({ candidate: v.union(v.literal("pending"), v.literal("done")), client: v.union(v.literal("pending"), v.literal("done")), channel: v.optional(v.string()), doneAt: v.optional(v.number()), by: v.optional(v.string()), candidateChannel: v.optional(v.string()), candidateDoneAt: v.optional(v.number()), candidateBy: v.optional(v.string()), clientChannel: v.optional(v.string()), clientDoneAt: v.optional(v.number()), clientBy: v.optional(v.string()) })),
     placementTaId: v.string(),
     applicationTaId: v.string(),
     openingTaId: v.string(),
