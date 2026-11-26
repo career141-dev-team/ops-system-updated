@@ -230,3 +230,15 @@ export function problemWithNewPosition(fields: RequirementFields, clientFound: b
   if (!(fields.salary ?? "").trim()) return "Write the package details: TA and every candidate ask for them first.";
   return null;
 }
+
+/**
+ * The monthly salary typed on "New position" (26 Nov, Ops lead): optional, a plain positive number, so the value
+ * of a position can be worked out later. "350,000" and "350 000" are read; anything else is refused, never guessed.
+ */
+export function parseMonthlySalary(text: string): { ok: true; value: number | undefined } | { ok: false; problem: string } {
+  const t = text.trim().replace(/[,\s]/g, "");
+  if (!t) return { ok: true, value: undefined };
+  const n = Number(t);
+  if (!/^\d+(\.\d+)?$/.test(t) || !Number.isFinite(n) || n <= 0) return { ok: false, problem: "The monthly salary must be a number, like 350000." };
+  return { ok: true, value: n };
+}

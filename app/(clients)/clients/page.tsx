@@ -18,6 +18,7 @@ import {
   standsClients,
 } from "@/lib/clientsView";
 import { entryInWords, gather } from "@/lib/timeline";
+import { safeBack } from "@/lib/back";
 import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref, sendHref } from "@/lib/sendModal";
 import { can, refusal } from "@/lib/roles";
@@ -29,7 +30,7 @@ import { initialsFor } from "@/app/ui/figma";
 import CheckInPanel from "./CheckInPanel";
 import NewClientPanel from "./NewClientPanel";
 
-type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string };
+type SP = { msg?: string; q?: string; f?: string; filter?: string; all?: string; panel?: string; send?: string; on?: string; after?: string };
 
 /** C1 · Clients, all clients (v6 frame 177:122): a card for each client, the rail on the right. */
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -39,7 +40,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   // Old links: the lead and agreement lists have their own pages now.
   if (sp.filter === "leads") redirect("/leads");
   if (sp.filter === "agreements") redirect("/clients/agreements");
-  const { msg, q = "", f = "", all, panel, send, on } = sp;
+  const { msg, q = "", f = "", all, panel, send, on, after } = sp;
   const db = await desk();
   const now = Date.now();
 
@@ -76,9 +77,9 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             {CLIENT_FILTERS.map((x) => (
               <Link
                 key={x.key}
-                href={keep(f === x.key ? {} : { f: x.key })}
-                aria-current={f === x.key ? "true" : undefined}
-                className={"t-label rounded-full px-3.5 py-1.5 " + (f === x.key ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
+                href={x.key === "signed" ? keep({}) : keep(f === x.key ? {} : { f: x.key })}
+                aria-current={f === x.key || (!f && !q && x.key === "signed") ? "true" : undefined}
+                className={"t-label rounded-full px-3.5 py-1.5 " + (f === x.key || (!f && !q && x.key === "signed") ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
               >
                 {x.label}
               </Link>
@@ -91,10 +92,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           ) : (
             <div data-stagger className="grid grid-cols-1 gap-5 md:grid-cols-2 pg-xl:grid-cols-3">
               {visible.map((c) => (
-                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-5 shadow-card transition-shadow hover:[box-shadow:0_0_0_1px_var(--color-card-line),var(--shadow-float)]">
+                <article key={c.id} className="@container relative flex flex-col gap-4 rounded-[24px] bg-surface p-6 shadow-card transition-shadow hover:[box-shadow:0_0_0_1px_var(--color-card-line),var(--shadow-float)]">
                   <div className="flex items-center gap-3">
                     <span className={"flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-medium leading-[26px] " + TILE_TONE[TILE_CYCLE[cards.findIndex((x) => x.id === c.id) % TILE_CYCLE.length]]}>{c.tile}</span>
-                    <Link href={c.href} className="min-w-0 flex-1 truncate text-[17px] font-medium leading-[26px] @min-[400px]:text-[19px] after:absolute after:inset-0 after:rounded-[24px]">
+                    <Link href={c.href} className="min-w-0 flex-1 truncate text-[17px] font-medium leading-[26px] @min-[340px]:text-[19px] after:absolute after:inset-0 after:rounded-[24px]">
                       {c.name}
                     </Link>
                     {/* The owner chip gave way to a menu (owner, 24 Nov). Above the card's link, so it opens instead of following it. */}
@@ -115,27 +116,47 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   <div className="flex items-center gap-3">
                     <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[18px] bg-sunk text-[13px] font-medium tracking-[0.06em] text-ink-2">{initialsFor(c.person?.name)}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[15px] font-medium leading-[24px] @min-[400px]:text-[17px] @min-[400px]:leading-[26px]">{c.person ? c.person.name : "No contact written down"}</span>
-                      {c.person?.role && <span className="text-[13px] leading-[20px] text-ink-3 @min-[400px]:text-[15px] @min-[400px]:leading-[22px]">{c.person.role.length <= 3 ? c.person.role.toUpperCase() : c.person.role}</span>}
+                      <span className="truncate text-[15px] font-medium leading-[24px] @min-[340px]:text-[17px] @min-[340px]:leading-[26px]">{c.person ? c.person.name : "No contact written down"}</span>
+                      {c.person?.role && <span className="text-[13px] leading-[20px] text-ink-3 @min-[340px]:text-[15px] @min-[340px]:leading-[22px]">{c.person.role.length <= 3 ? c.person.role.toUpperCase() : c.person.role}</span>}
                     </span>
-                    <span className="flex shrink-0 items-center gap-1.5 @min-[400px]:gap-2">
+                    <span className="flex shrink-0 items-center gap-1.5 @min-[340px]:gap-2">
                       <ReachIcons phone={c.person?.phone} email={c.person?.email} />
                     </span>
                   </div>
                   <div className="h-px bg-rule" />
-                  <div className="flex min-h-[34px] flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[13px] @min-[400px]:text-[15px]">
+                  {/* Two of the open positions, then a link to the rest on the client's page (Ops lead, 25 Nov). */}
+                  <div className="flex flex-col gap-1.5 text-[13px] @min-[340px]:text-[15px]">
+                    <div className="flex items-center justify-between gap-3 text-ink-3">
+                      <span>{c.openRoles.length ? "Open positions" : "No open positions"}</span>
+                      <span>
+                        {c.positionsGiven} {c.positionsGiven === 1 ? "position" : "positions"} given
+                      </span>
+                    </div>
+                    {c.openRoles.slice(0, 2).map((r) => (
+                      <Link key={r.id} href={"/positions/" + r.id} className="relative z-10 truncate rounded-[10px] bg-sunk px-3 py-1.5 font-medium hover:bg-shell">
+                        {r.title}
+                      </Link>
+                    ))}
+                    {c.openRoles.length > 2 && (
+                      <Link href={c.href + "#positions"} className="relative z-10 w-fit text-ink-2 underline underline-offset-2 hover:text-ink">
+                        Show {c.openRoles.length - 2} more
+                      </Link>
+                    )}
+                  </div>
+                  <div className="h-px bg-rule" />
+                  <div className="flex min-h-[34px] flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[13px] @min-[340px]:text-[15px]">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className={"whitespace-nowrap rounded-full px-3 py-1.5 font-medium leading-5 @min-[400px]:px-3.5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
+                      <span className={"whitespace-nowrap rounded-full px-3 py-1.5 font-medium leading-5 @min-[340px]:px-3.5 " + (PILL_TONE[c.status.tone] ?? PILL_TONE.neutral)}>{c.status.text}</span>
                       {c.agreementNotSigned && <StatusChip label="Agreement not signed" tone="warn" />}
                     </span>
                     {c.copy ? (
                       c.copy.kind === "checkin" ? (
-                        <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 ml-auto shrink-0 rounded-full bg-ink px-3.5 py-1.5 font-medium leading-5 text-ink-inverse @min-[400px]:px-4">
+                        <Link href={panelHref("/clients", sp, "check-in", c.id)} scroll={false} className="relative z-10 ml-auto shrink-0 rounded-full bg-ink px-3.5 py-1.5 font-medium leading-5 text-ink-inverse @min-[340px]:px-4">
                           {c.copy.label}
                         </Link>
                       ) : (
                         <span className="relative z-10 ml-auto shrink-0">
-                          <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-3.5 py-1.5 font-medium @min-[400px]:px-4 leading-5 text-ink-inverse" />
+                          <CopyButton text={c.copy.text} label={c.copy.label} className="inline-flex cursor-pointer items-center rounded-full bg-ink px-3.5 py-1.5 font-medium @min-[340px]:px-4 leading-5 text-ink-inverse" />
                         </span>
                       )
                     ) : (
@@ -175,7 +196,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
       </div>
       {panel === "new-client" && (
         <NewClientPanel
-          closeHref={closeHref("/clients", sp)}
+          closeHref={after ? safeBack(after, "/clients") : closeHref("/clients", sp)}
+          after={safeBack(after, "") || undefined}
           msg={msg}
           mayAdd={can(me, "client.manage")}
           refusal={refusal("client.manage")}

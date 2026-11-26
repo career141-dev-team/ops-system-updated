@@ -146,7 +146,7 @@ import { CHAT_COOKIE, CHAT_COOKIE_LIFE, addChatThread, chatLines, chatName, chat
 import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/calendar";
 import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
-import { safeBack, withMsg } from "@/lib/back";
+import { afterWithOn, safeBack, withMsg } from "@/lib/back";
 import {
   CALL_NOT_FIT,
   callOutcomeTransition,
@@ -207,6 +207,7 @@ import { invoiceSheet, nextInvoiceVersion } from "@/lib/invoiceDoc";
 import { drawInvoicePdf, problemWithBank } from "@/lib/invoicePdf";
 import {
   briefText,
+  parseMonthlySalary,
   problemWithNewPosition,
   missingFields as requirementMissing,
   problemWithEarlyOpening,
@@ -1687,7 +1688,8 @@ export async function createClient(formData: FormData): Promise<void> {
   });
   const lead = await workingLeadFor(client, member, "new");
   revalidatePath("/clients");
-  const page = "/clients/" + client.id;
+  // "+ New client" inside New position asks to come back there with the client chosen (26 Nov).
+  const page = afterWithOn(formData.get("after"), client.id) ?? "/clients/" + client.id;
   if (wantsCall) {
     formData.set("alsoRequirement", "on");
     await bookIntro(formData, member, lead.id, (msg) => redirect(withMsg(page, "Saved. " + company + " is now a client. " + msg)));
@@ -4500,6 +4502,9 @@ export async function createPosition(formData: FormData): Promise<void> {
   };
   const problem = problemWithNewPosition(fields, Boolean(client));
   if (problem) back(problem);
+  const salary = parseMonthlySalary(f("salaryMonthly"));
+  if (!salary.ok) back(salary.problem);
+  const salaryMonthly = salary.ok ? salary.value : undefined;
   const row = client as NonNullable<typeof client>;
 
   const lead = await workingLeadFor(row, member, "requirement");
@@ -4539,6 +4544,7 @@ export async function createPosition(formData: FormData): Promise<void> {
     handedOverAt: now,
     closedAt: null,
     ownerId: row.ownerId,
+    ...(salaryMonthly !== undefined ? { salaryMonthly, salaryCurrency: f("salaryCurrency") || "LKR" } : {}),
   });
   await queueTaWrite(
     "/integrations/v1/openings",

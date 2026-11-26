@@ -84,7 +84,7 @@ export default async function InboxPage({
         href={hrefMail({ t: t.key })}
         scroll={false}
         aria-current={on ? "page" : undefined}
-        className={"flex flex-col gap-1 rounded-[22px] bg-surface px-[22px] py-[18px] " + (on ? "border-2 border-ink shadow-[0_2px_8px_rgb(15_23_31/0.07)]" : "inbox-item hover:bg-sunk/50")}
+        className={"flex flex-col gap-1 rounded-[22px] bg-surface px-[22px] py-[18px] " + (on ? "border-2 border-ink shadow-[0_0_10px_rgb(15_23_31/0.1),0_2px_8px_rgb(15_23_31/0.07)]" : "inbox-item hover:bg-sunk/50")}
       >
         <span className="flex items-baseline gap-2">
           <span className="t-body-m">{t.withName.replace(/@.*/, "") || t.with[0]}</span>

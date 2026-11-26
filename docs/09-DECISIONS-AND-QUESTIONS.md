@@ -313,3 +313,10 @@ The source is the meeting's requirements document; the plan is one PR per area, 
 - **Who is listed.** A candidate appears once they are in a set that has gone to the client, or have gone further (interview, offer, joined, out). Candidates still with the TA or in an unsent set are not shown, because the table is meant for the client.
 - **The export needs no money permission.** It holds names, sets, stages and feedback, no salary or fee, so any signed-in person may take it (as the set zip). The salary is never a column.
 - **Backup ops follows PR 1.** The collapsible block shows the Ops owner only until `backupOwnerId` exists.
+
+## 26 Nov: the clients list and the client page (ops lead, 25 Nov meeting; branch `rayan/clients-positions`)
+
+- **"Signed" on the clients list.** The agreement is signed or countersigned. A client with **no agreement on file counts as signed only when it is already active**: those are clients from before Ops, and their card already says "Agreement signed", so hiding them from the default list would lose most of the real clients. A client with no agreement and not yet active is under Not signed. (The position chip in PR 2 counts "no agreement" as not signed; that is a different question: whether a position can go to CVs.)
+- **Default view and search.** No filter means signed clients; a search with no filter looks across all, so an unsigned client can be found by name.
+- **"Offered" on the client page** counts placements made and not fallen through (the offer was accepted); **"joined"** is those who have joined. A client's numbers are never added into money here.
+- **Salary is optional and numeric.** The package text stays as written and goes to TA as before; the number is only for adding up the value of positions later.

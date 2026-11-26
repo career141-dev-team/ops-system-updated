@@ -110,6 +110,19 @@ export interface ClientCard {
   needsYou: boolean;
   /** No signed or countersigned ESA on the client's own lead or any lead its positions came from (26 Nov). */
   agreementNotSigned: boolean;
+  /** The agreement is signed (or the client is one of ours from before Ops had agreements). */
+  signed: boolean;
+  /** Every position this client has given us, closed ones too. */
+  positionsGiven: number;
+}
+
+/**
+ * Signed means the agreement is signed or countersigned. A client with no agreement on file counts as signed
+ * only when it is already active: those are clients from before Ops, whose card already says "Agreement signed".
+ */
+export function isSigned(esa: { state: string } | null, stage: string): boolean {
+  if (esa) return esa.state === "signed" || esa.state === "countersigned";
+  return stage === "active";
 }
 
 const QUIET_AFTER = 3;
@@ -181,12 +194,16 @@ export function clientCards(db: OpsDatabase, now: number): ClientCard[] {
         esa,
         needsYou,
         agreementNotSigned: clientAgreementNotSigned(db, client.id),
+        signed: isSigned(esa, client.stage),
+        positionsGiven: db.positions.filter((p) => p.clientId === client.id).length,
       };
     });
 }
 
-export type ClientFilter = "active" | "quiet" | "leads" | "dormant" | "mine";
+export type ClientFilter = "signed" | "notsigned" | "active" | "quiet" | "leads" | "dormant" | "mine";
 export const CLIENT_FILTERS: { key: ClientFilter; label: string }[] = [
+  { key: "signed", label: "Signed" },
+  { key: "notsigned", label: "Not signed" },
   { key: "active", label: "Active" },
   { key: "quiet", label: "Quiet" },
   { key: "leads", label: "Leads" },
@@ -194,13 +211,18 @@ export const CLIENT_FILTERS: { key: ClientFilter; label: string }[] = [
   { key: "mine", label: "Mine" },
 ];
 
-/** Narrows the cards to one filter and a search ("Client or contact"). */
+/**
+ * Narrows the cards to one filter and a search ("Client or contact"). With no filter chosen the list is the signed
+ * clients (Ops lead, 25 Nov); a search with no filter looks across everyone, so a client still unsigned can be found by name.
+ */
 export function filterCards(cards: ClientCard[], filter: string, q: string, meId: string): ClientCard[] {
   const s = q.trim().toLowerCase();
   return cards.filter((c) => {
     if (s && ![c.name, c.person?.name, c.person?.email].some((v) => (v ?? "").toLowerCase().includes(s))) return false;
     // A client with an open position is in work, whatever its stage says (23 Nov: a new client's first position
     // used to stay hidden under Leads).
+    if (filter === "signed" || (!filter && !s)) return c.signed;
+    if (filter === "notsigned") return !c.signed;
     if (filter === "active") return c.stage === "active" || c.stage === "onboarding" || c.openRoles.length > 0;
     if (filter === "quiet") return c.quietDays !== null && c.quietDays > QUIET_AFTER;
     if (filter === "leads") return c.stage === "lead" && c.openRoles.length === 0;

@@ -15,3 +15,17 @@ export function withMsg(url: string, msg: string): string {
   const [path, hash] = url.split(/(?=#)/);
   return path + (path.includes("?") ? "&" : "?") + "msg=" + encodeURIComponent(msg) + (hash ?? "");
 }
+
+/**
+ * Where a form that asked for `after` goes once it has made something (26 Nov): that page with `on=<new id>`,
+ * so "+ New client" inside New position comes back to New position with the client chosen. Without a safe
+ * `after` it is null and the caller keeps its own target.
+ */
+export function afterWithOn(raw: unknown, id: string): string | null {
+  const after = safeBack(raw, "");
+  if (!after) return null;
+  const [path, hash] = after.split(/(?=#)/);
+  const url = new URL(path, "http://x");
+  url.searchParams.set("on", id);
+  return url.pathname + url.search + (hash ?? "");
+}
