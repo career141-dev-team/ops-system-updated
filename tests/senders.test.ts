@@ -22,11 +22,14 @@ import {
   outreachInWords,
   outreachLiveInEnv,
   phoneAllowed,
+  replySubjectFor,
   sendEmail,
   sendWhatsApp,
   sendingEnabled,
   subjectWithReference,
+  threadFor,
 } from "@/lib/senders";
+import { seed } from "@/data/seed";
 
 const clearEnv = () => {
   for (const key of ["OPS_SEND", "OPS_OUTBOUND_LOCK", "OPS_OUTBOUND_ALLOW_EMAILS", "OPS_OUTBOUND_ALLOW_PHONES"]) {
@@ -81,6 +84,106 @@ test("our reference goes into the subject once, and only when it names something
   assert.equal(once.match(/\[C141/g)?.length, 1);
   // An internal note is about nothing in particular; it gets no reference.
   assert.equal(subjectWithReference("A note", null, null), "A note");
+});
+
+test("PR 8: second set email threads under the first with one per-client reference", () => {
+  const now = Date.now();
+  const db = seed(now);
+  db.clients = [
+    {
+      id: "cl_1",
+      leadId: "l_1",
+      taClientId: "ta_c1",
+      name: "Acme",
+      nameKey: "acme",
+      stage: "active",
+      billingName: "Acme",
+      billingEmail: "fin@acme.test",
+      billingAddress: "1 Main",
+      groupName: "",
+      notes: "",
+      reason: null,
+      ownerId: "m_owner",
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  db.clientSets = [
+    {
+      id: "cs_1",
+      taRoundId: "r1",
+      openingTaId: "o1",
+      setNumber: 1,
+      clientId: "cl_1",
+      clientTaId: "ta_c1",
+      name: "Acme > Dev > SET 1",
+      role: "Dev",
+      state: "sent",
+      candidates: [],
+      dueAt: null,
+      sentAt: now - 10_000,
+      sentMessageId: "msg_1",
+      sentTo: ["hr@acme.test"],
+      receivedAt: now - 10_000,
+      reason: null,
+      ownerId: "m_owner",
+      createdAt: now - 10_000,
+      updatedAt: now - 10_000,
+    },
+    {
+      id: "cs_2",
+      taRoundId: "r2",
+      openingTaId: "o1",
+      setNumber: 2,
+      clientId: "cl_1",
+      clientTaId: "ta_c1",
+      name: "Acme > Dev > SET 2",
+      role: "Dev",
+      state: "ready",
+      candidates: [],
+      dueAt: null,
+      sentAt: null,
+      sentMessageId: null,
+      sentTo: [],
+      receivedAt: null,
+      reason: null,
+      ownerId: "m_owner",
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  db.messages = [
+    {
+      id: "msg_1",
+      channel: "email",
+      to: ["hr@acme.test"],
+      subject: "Acme > Dev > SET 1 [C141-CLIENT-CL1]",
+      body: "Set 1",
+      templateKey: "set.cover",
+      state: "sent",
+      subjectType: "clientSet",
+      subjectId: "cs_1",
+      approvedBy: "m_owner",
+      approvedAt: now - 10_000,
+      sentAt: now - 10_000,
+      providerMessageId: "<msg-1@graph.test>",
+      inReplyToProviderId: null,
+      note: null,
+      attachmentFileIds: [],
+      createdAt: now - 10_000,
+    },
+  ];
+
+  const thread = threadFor(db, "cl_1");
+  assert.equal(thread.inReplyToProviderId, "<msg-1@graph.test>");
+  assert.equal(replySubjectFor(thread.subject!), "Re: Acme > Dev > SET 1");
+
+  // Second set uses the same per-client reference [C141-CLIENT-CL1], not [C141-CLIENTSET-CS2].
+  const secondSubj = subjectWithReference(replySubjectFor(thread.subject!), "clientSet", "cs_2", {
+    clientId: "cl_1",
+    templateKey: "set.cover",
+  });
+  assert.equal(secondSubj, "Re: Acme > Dev > SET 1 [C141-CLIENT-CL1]");
 });
 
 test("a WhatsApp group is posted by a person, and the system says so plainly", () => {

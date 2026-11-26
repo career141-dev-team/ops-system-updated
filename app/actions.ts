@@ -184,7 +184,7 @@ import {
 import { settingChange } from "@/lib/settingsRules";
 import { askWithTools, problemWithRunning } from "@/lib/ai";
 import { agentSystemPrompt, AGENT_TOOLS, runAgentTool, withTaNames } from "@/lib/agentTools";
-import { answerGroupJoinRequest, createWhatsAppGroup, getGroupInviteLink, graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference } from "@/lib/senders";
+import { answerGroupJoinRequest, clientIdForMessage, createWhatsAppGroup, getGroupInviteLink, graphToken, senderMailbox, groupPostIsManual, outreachLiveInEnv, replySubjectFor, sendEmail, sendWhatsApp, sendingEnabled, subjectWithReference, threadFor } from "@/lib/senders";
 import { problemWith } from "@/lib/templates";
 import { fakeArrival } from "@/lib/graphMail";
 import { putBytes, readBytes } from "@/data/fileStore";
@@ -1137,7 +1137,11 @@ async function approveOne(
   // The gate said yes. Now it actually goes, from the sender's mailbox,
   // and whatever the sender says is recorded as it is - including "we do not
   // know whether it went", which is a real answer and not a failure to hide.
-  const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId);
+  const threadClientId = clientIdForMessage(db, message.subjectType, message.subjectId);
+  const subject = subjectWithReference(message.subject, message.subjectType, message.subjectId, {
+    clientId: threadClientId,
+    templateKey: message.templateKey,
+  });
   const outcome =
     message.channel === "group_post"
       ? groupPostIsManual()
@@ -3532,15 +3536,18 @@ export async function sendClientSet(formData: FormData): Promise<void> {
       .replace(/\{\{contact\}\}/g, (theirs?.contacts ?? []).find((c) => (c.role ?? "") === "hr")?.name ?? "all")
       .replace(/\{\{opsPerson\}\}/g, member.name);
 
+  const thread = theirs ? threadFor(db, theirs.id) : null;
+  const rawSubject = fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}");
   const message = await draftMessage({
     channel: "email",
     to,
-    subject: fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}"),
+    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : rawSubject,
     body: fill(wording?.body ?? "Dear {{contact}},\n\n{{cvCount}} CVs are attached.\n\nKind regards\nCareer 141"),
     templateKey: "set.cover",
     subjectType: "clientSet",
     subjectId: setId,
     attachmentFileIds: row.candidates.map((c) => c.fileId).filter((id): id is string => id !== null),
+    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
   });
 
   const now = Date.now();
