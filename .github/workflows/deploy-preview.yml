@@ -71,16 +71,20 @@ jobs:
       - name: Build the image
         if: ${{ inputs.components != 'backend' }}
         uses: docker/build-push-action@v6
+        # This repository is public, and a build record, summary, attestation or layer cache carries the
+        # build arguments, the server actions key among them (26 Nov). None of them is published.
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
+          provenance: false
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ needs.gate.outputs.sha }}
           build-args: |
             APP_VERSION=${{ needs.gate.outputs.sha }}
             NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.PREVIEW_SERVER_ACTIONS_KEY }}
             NEXT_PUBLIC_ASSETS_URL=${{ vars.NEXT_PUBLIC_ASSETS_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: SSH access
         env:
