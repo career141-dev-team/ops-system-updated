@@ -74,6 +74,8 @@ export interface PlacementIn {
   nationalityConfirmedAt?: number;
   /** The fee invoice has gone to the client, so the nationality can no longer be confirmed (26 Nov, PR 4 review). */
   invoiceSent?: boolean;
+  /** A replacement under the guarantee is never invoiced, so its nationality prices nothing. */
+  isReplacementOf?: string | null;
   testimonial?: { candidate: "pending" | "done"; client: "pending" | "done" };
 }
 
@@ -214,7 +216,7 @@ export function roleRows(input: ListInput): RoleRow[] {
     if (unsettled) need(`Round ${unsettled.round} needs a time`, "warn", "interv", "find-a-time", "Find a time", unsettled.id);
     if (waiting && silent > chaseDays) need(`SET ${waiting.setNumber} · day ${silent} · no answer`, "danger", "sets", "call", contact ? `Call ${contact}` : "Call the client");
     for (const x of joined.filter((j) => j.state === "joined")) {
-      if (!x.nationalityConfirmedAt && !x.invoiceSent) need(`${x.candidateName}: nationality not confirmed`, "warn", "join", "confirm-nationality", "Confirm nationality", x.id);
+      if (!x.nationalityConfirmedAt && !x.invoiceSent && !x.isReplacementOf) need(`${x.candidateName}: nationality not confirmed`, "warn", "join", "confirm-nationality", "Confirm nationality", x.id);
     }
     for (const x of joined.filter((j) => j.state === "joined")) {
       // No testimonial record means they joined before we asked for them: nothing is pending.

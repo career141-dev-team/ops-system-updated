@@ -89,6 +89,7 @@ test("a joined person needs you until the nationality is confirmed and both test
   assert.equal(of({ nationalityConfirmedAt: NOW }).needsYou, false);
   // Once the invoice has gone it cannot be confirmed, so it must not nag forever.
   assert.equal(of({ invoiceSent: true }).needsYou, false);
+  assert.equal(of({ isReplacementOf: "x0" }).needsYou, false);
 });
 
 test("a booked interview hides no reason, and an unapproved JD alone is not one", () => {

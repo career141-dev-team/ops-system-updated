@@ -42,6 +42,12 @@ test("each list holds exactly what its count says, and cancelled counts nowhere"
   assert.equal(countItems(db, "nope", "sets").length, 0);
 });
 
+test("a record with no positionId counts by its opening, and another opening's does not", () => {
+  const loose = (id: string, openingTaId: string) => ({ ...iv(id, 1, "booked"), positionId: null, openingTaId });
+  const withLoose = { ...db, interviews: [loose("g", "o1"), loose("h", "other")] } as unknown as OpsDatabase;
+  assert.deepEqual(countItems(withLoose, "p1", "live").map((i) => i.id), ["g"]);
+});
+
 test("an item names its set and opens the candidate, or the record when they are in no set", () => {
   const [inSet] = countItems(db, "p1", "i1");
   assert.match(inSet.line, /^Set 1 · Round 1/);
