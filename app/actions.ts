@@ -147,7 +147,22 @@ import { DAY, HOUR, colomboDate, colomboDateInWords, nextNineAm } from "@/lib/ca
 import { moveTarget, problemWithMove, problemWithMover } from "@/lib/taskMove";
 import { can, refusal } from "@/lib/roles";
 import { safeBack, withMsg } from "@/lib/back";
-import { CALL_NOT_FIT, colomboLocalToMs, problemWithApplicantDetails, problemWithApplicant, problemWithHiringCall, problemWithCv, problemWithCvBytes, problemWithHiringDecision, problemWithVacancy } from "@/lib/hiring";
+import {
+  CALL_NOT_FIT,
+  callOutcomeTransition,
+  colomboLocalToMs,
+  defaultHiringInterviewAt,
+  hiringInterviewersFrom,
+  isHiringCaller,
+  offerOutcomeTransition,
+  problemWithApplicantDetails,
+  problemWithApplicant,
+  problemWithHiringCall,
+  problemWithCv,
+  problemWithCvBytes,
+  problemWithHiringDecision,
+  problemWithVacancy,
+} from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
   problemWithInviteBack,
@@ -9076,7 +9091,7 @@ export async function deleteTeamNote(formData: FormData): Promise<void> {
   redirect(dest + confirmed("Note deleted.", dest));
 }
 
-/** Internal hiring: create a new Career141 vacancy (H1). */
+/** Scoops & vacancies: create a new Career141 vacancy (H1, source added 26 Nov). */
 export async function createVacancy(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -9086,11 +9101,33 @@ export async function createVacancy(formData: FormData): Promise<void> {
   const places = Number(formData.get("places") ?? 1);
   const checksRaw = String(formData.get("checks") ?? "");
   const checks = checksRaw.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean);
+  const sourceRaw = String(formData.get("source") ?? "").trim();
+  const source = sourceRaw === "scoop" || sourceRaw === "job_post" || sourceRaw === "referral" ? sourceRaw : undefined;
+  const sourceDetail = String(formData.get("sourceDetail") ?? "").trim() || undefined;
   const problem = problemWithVacancy(title, places);
   if (problem) redirect(withMsg(dest, problem));
-  const v = await addVacancy({ title, places, checks, ownerId: member.id });
+  const v = await addVacancy({ title, places, checks, ownerId: member.id, ...(source ? { source } : {}), ...(sourceDetail ? { sourceDetail } : {}) });
   revalidatePath("/hiring");
   redirect(`/hiring/${v.id}?msg=` + encodeURIComponent(`Vacancy "${v.title}" opened.`));
+}
+
+/** Scoops & vacancies: an ops team member claims an applicant to call (26 Nov; leadership never calls). */
+export async function claimApplicant(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const applicantId = String(formData.get("applicantId") ?? "").trim();
+  const vacancyId = String(formData.get("vacancyId") ?? "").trim();
+  const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
+  if (!isHiringCaller(member)) {
+    redirect(withMsg(dest, "Only ops team members claim and call applicants — leadership never makes the first call."));
+  }
+  const db = await desk();
+  const app = db.applicants.find((a) => a.id === applicantId);
+  if (!app) redirect(withMsg(dest, "That applicant is gone."));
+  await patchApplicant(applicantId, { callerId: member.id }, member.id, "applicant.claimed", member.name);
+  revalidatePath("/hiring");
+  revalidatePath(`/hiring/${app.vacancyId}`);
+  redirect(dest + confirmed(`Claimed ${app.name}.`, dest));
 }
 
 /** Internal hiring: add an applicant to a vacancy (H2). */
@@ -9225,7 +9262,7 @@ async function dropApplicantEvent(db: Awaited<ReturnType<typeof desk>>, person: 
   return "";
 }
 
-/** Internal hiring: log screening call result (H2 -> Call panel). */
+/** Scoops & vacancies: log screening call result, salaries, availability, and outcome (26 Nov). */
 export async function recordHiringCall(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -9235,31 +9272,45 @@ export async function recordHiringCall(formData: FormData): Promise<void> {
   if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
   const result = String(formData.get("result") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
+  const notInterestedReason = String(formData.get("notInterestedReason") ?? "").trim();
+  const currentSalary = String(formData.get("currentSalary") ?? "").trim();
+  const expectedSalary = String(formData.get("expectedSalary") ?? "").trim();
+  const availability = String(formData.get("availability") ?? "").trim();
   if (!result) redirect(withMsg(dest, "Pick the call result."));
 
   const db = await desk();
   const app = db.applicants.find((a) => a.id === applicantId);
   if (!app) redirect(withMsg(dest, "That applicant is gone."));
-  const problem = problemWithHiringCall(result, note);
+  const problem = problemWithHiringCall(result, note, notInterestedReason);
   if (problem) redirect(withMsg(dest, problem));
-  const tries = app.tries + 1;
-  if (result === CALL_NOT_FIT) {
-    await patchApplicant(applicantId, { stage: "rejected", rejectedAtStage: app.stage, tries, rejectReason: note, notes: note, detail: `Rejected after call: ${note}` }, member.id, "applicant.called", `Not a fit: ${note}`);
-    const dropped = await dropApplicantEvent(db, app, member);
-    revalidatePath(`/hiring/${vacancyId}`);
-    revalidatePath("/hiring");
-    redirect(dest + confirmed("Marked rejected." + dropped, dest));
-  }
-  const isFits = result === "Talked" || result === "Fits";
-  const nextStage = isFits ? "fits" : "call";
-  const detail = isFits ? `Called · fits${note ? " — " + note : ""}` : `${result} · try ${Math.min(tries, 3)} of 3`;
-  await patchApplicant(applicantId, { stage: nextStage, tries, detail, notes: note || app.notes }, member.id, "applicant.called", detail);
+
+  const next = callOutcomeTransition({ result, currentTries: app.tries, note, notInterestedReason });
+  await patchApplicant(
+    applicantId,
+    {
+      stage: next.stage,
+      tries: next.tries,
+      detail: next.detail,
+      notes: note || app.notes,
+      ...(app.callerId ? {} : isHiringCaller(member) ? { callerId: member.id } : {}),
+      ...(currentSalary ? { currentSalary } : {}),
+      ...(expectedSalary ? { expectedSalary } : {}),
+      ...(availability ? { availability } : {}),
+      ...(next.notInterestedReason ? { notInterestedReason: next.notInterestedReason } : {}),
+      ...(next.rejectReason !== undefined ? { rejectReason: next.rejectReason } : {}),
+      ...(next.stage === "rejected" ? { rejectedAtStage: app.stage } : {}),
+    },
+    member.id,
+    "applicant.called",
+    next.detail,
+  );
+  const dropped = next.stage === "rejected" || next.stage === "not_interested" ? await dropApplicantEvent(db, app, member) : "";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
-  redirect(dest + confirmed("Call result saved.", dest));
+  redirect(dest + confirmed("Call result saved." + dropped, dest));
 }
 
-/** Internal hiring: book an internal interview (H2 -> Book an interview panel). */
+/** Scoops & vacancies: book an internal interview with leadership and draft the candidate email (26 Nov). */
 export async function bookHiringInterview(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -9267,23 +9318,23 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   const vacancyId = String(formData.get("vacancyId") ?? "").trim();
   const dest = backTo(formData, vacancyId ? `/hiring/${vacancyId}` : "/hiring");
   if (!can(member, "client.manage")) redirect(withMsg(dest, refusal("client.manage")));
+  const db = await desk();
   const whenRaw = String(formData.get("interviewAt") ?? "").trim();
   const place = String(formData.get("place") ?? "Office").trim();
-  const interviewer = String(formData.get("interviewer") ?? member.name).trim();
-  const interviewAt = whenRaw ? colomboLocalToMs(whenRaw) : NaN;
+  const leadership = hiringInterviewersFrom(textOf(db, "hiring.interviewers", ""), db.members);
+  const interviewer = String(formData.get("interviewer") ?? "").trim() || leadership[0] || member.name;
+  const holidays = db.holidays.map((h) => h.date);
+  const interviewAt = whenRaw ? colomboLocalToMs(whenRaw) : defaultHiringInterviewAt(Date.now(), holidays);
   if (Number.isNaN(interviewAt)) redirect(withMsg(dest, "Pick a valid interview date and time."));
-  // An online interview gets a Teams link in the booker's calendar, the same way client interviews do (21 Nov).
   let joinUrl: string | null = null;
   let graphEventId: string | null = null;
   let teamsNote = "";
-  const db = await desk();
-  // A booking that is moved, or stops being online, must not leave the old event in the calendar.
   let keepOld = false;
-  const earlier = (db.applicants ?? []).find((a) => a.id === applicantId)?.graphEventId;
+  const applicant = (db.applicants ?? []).find((a) => a.id === applicantId);
+  const earlier = applicant?.graphEventId;
   if (earlier) {
     const gone = await cancelTeamsEvent(member.email, earlier, switchedOn(db, "switch.teamsEnabled"));
     if (gone && !gone.ok) {
-      // The old event is still there: keep its id so it can be found, and make no second one.
       keepOld = true;
       teamsNote = " The earlier Outlook event could not be cancelled, so it was kept as it is: " + gone.reason;
     }
@@ -9292,7 +9343,7 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
     if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
       teamsNote = " Teams is switched off in Settings, so no link was made.";
     } else {
-      const who = (db.applicants ?? []).find((a) => a.id === applicantId)?.name ?? "candidate";
+      const who = applicant?.name ?? "candidate";
       const made = await createTeamsEvent(member.email, {
         company: "Career 141",
         kind: "interview",
@@ -9311,17 +9362,50 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
   }
   await patchApplicant(
     applicantId,
-    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place}`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
+    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
     member.id,
     "applicant.interviewBooked",
     `Booked with ${interviewer} (${place})`,
   );
+
+  let emailNote = "";
+  if (applicant?.email) {
+    const vac = db.vacancies.find((v) => v.id === vacancyId);
+    const whenText = colomboDateInWords(interviewAt) + " at " + new Date(interviewAt + 5.5 * 3_600_000).toISOString().slice(11, 16) + " Colombo time";
+    const msg = await draftMessage({
+      channel: "email",
+      to: [applicant.email],
+      subject: `Interview with Career 141 — ${vac?.title ?? "our team"}`,
+      body: [
+        `Hi ${applicant.name.split(/\s+/)[0]},`,
+        "",
+        `Thank you for speaking with us about the ${vac?.title ?? "role"} at Career 141. We would like to invite you for an interview with ${interviewer} on ${whenText} (${place}).`,
+        ...(joinUrl ? ["", `Meeting link: ${joinUrl}`] : []),
+        "",
+        "Please reply to confirm this time works for you.",
+        "",
+        "Kind regards,",
+        member.name,
+        "Career 141",
+      ].join("\n"),
+      templateKey: "hiring.interview_invite",
+      subjectType: "applicant",
+      subjectId: applicantId,
+    });
+    emailNote = " Interview email drafted for approval.";
+    revalidatePath("/messages");
+    revalidatePath(`/messages/${msg.id}`);
+  } else {
+    emailNote = " No candidate email on file, so no email was drafted.";
+  }
+
   revalidatePath(`/hiring/${vacancyId}`);
+  revalidatePath("/hiring");
   revalidatePath("/calendar");
-  redirect(dest + confirmed("Internal interview booked and added to Calendar." + (joinUrl ? " The Teams link is saved on it." : "") + teamsNote, dest));
+  redirect(dest + confirmed("Internal interview booked and added to Calendar." + (joinUrl ? " The Teams link is saved on it." : "") + teamsNote + emailNote, dest));
 }
 
-/** Internal hiring: record interview result (H2 -> Add the result panel). */
+/** Scoops & vacancies: record interview result — Pass moves to Shortlisted (26 Nov). */
 export async function recordHiringResult(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -9337,7 +9421,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Pass, Hold, or Fail."));
   if (result === "fail" && reason.length < 4) redirect(withMsg(dest, "Write the reason before marking Fail."));
 
-  const nextStage = result === "pass" ? "decision" : result === "fail" ? "rejected" : "interview";
+  const nextStage = result === "pass" ? "shortlisted" : result === "fail" ? "rejected" : "interview";
   await patchApplicant(
     applicantId,
     {
@@ -9346,7 +9430,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
       notes: notes || null,
       rejectReason: result === "fail" ? reason : null,
       ...(result === "fail" ? { rejectedAtStage: "interview" } : {}),
-      detail: result === "pass" ? "Passed interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
+      detail: result === "pass" ? "Shortlisted after interview" : result === "fail" ? `Failed: ${reason}` : "On hold after interview",
     },
     member.id,
     "applicant.resultRecorded",
@@ -9357,7 +9441,7 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   redirect(dest + confirmed("Interview result saved.", dest));
 }
 
-/** Internal hiring: final decision — Hire, Hold, or Reject (H2 -> Decide panel). */
+/** Scoops & vacancies: Shortlisted -> Offered -> Accepted (hired) / Declined / Rejected (26 Nov). */
 export async function decideHiringApplicant(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
@@ -9374,29 +9458,40 @@ export async function decideHiringApplicant(formData: FormData): Promise<void> {
 
   const db = await desk();
   const vac = db.vacancies.find((v) => v.id === vacancyId);
-  const nextStage = decision === "hire" ? "hired" : decision === "reject" ? "rejected" : "decision";
   const before = db.applicants.find((a) => a.id === applicantId);
+  const out = offerOutcomeTransition({ decision, startDate, salary, reason });
   await patchApplicant(
     applicantId,
     {
-      stage: nextStage,
-      ...(decision === "reject" ? { rejectedAtStage: before?.stage ?? null } : {}),
-      startDate,
-      salary,
-      rejectReason: decision === "reject" ? reason : null,
-      detail: decision === "hire" ? `Hired${startDate ? " · starts " + startDate : ""}` : decision === "reject" ? `Rejected: ${reason}` : "Decision on hold",
+      stage: out.stage,
+      ...(decision === "reject" || decision === "decline" ? { rejectedAtStage: before?.stage ?? null } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(salary ? { salary } : {}),
+      rejectReason: out.rejectReason,
+      detail: out.detail,
     },
     member.id,
     "applicant.decided",
     reason || `${decision}${salary ? " (" + salary + ")" : ""}`,
   );
-  if (decision === "hire" && vac) {
-    await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Applicant hired.");
+  if (out.incrementsFilled && vac) {
+    await patchVacancy(vac.id, { filled: vac.filled + 1 }, member.id, "vacancy.filledIncremented", "Offer accepted.");
   }
-  const dropped = decision === "reject" ? await dropApplicantEvent(db, before, member) : "";
+  const dropped = decision === "reject" || decision === "decline" ? await dropApplicantEvent(db, before, member) : "";
+  const msg =
+    decision === "offer"
+      ? "Marked offered."
+      : out.incrementsFilled
+        ? "Marked accepted (hired)."
+        : decision === "decline"
+          ? "Marked declined."
+          : decision === "reject"
+            ? "Marked rejected."
+            : "Kept on hold.";
   revalidatePath(`/hiring/${vacancyId}`);
   revalidatePath("/hiring");
-  redirect(dest + confirmed((decision === "hire" ? "Marked hired." : decision === "reject" ? "Marked rejected." : "Kept on hold.") + dropped, dest));
+  revalidatePath("/calendar");
+  redirect(dest + confirmed(msg + dropped, dest));
 }
 
 /** Add an Ops person, Ops lead, or Admin to the team allow-list (20 Nov, Settings -> Templates and people). */

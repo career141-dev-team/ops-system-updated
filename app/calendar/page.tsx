@@ -130,9 +130,9 @@ export default async function CalendarPage({
       };
     });
 
-  // 4. Internal hiring interviews (H2 booked applicants)
+  // 4. Internal hiring interviews (H2 booked applicants, kept visible once shortlisted or offered)
   const internalItems: CalendarEvent[] = (db.applicants ?? [])
-    .filter((a) => a.stage === "interview" && a.interviewAt !== null)
+    .filter((a) => ["interview", "shortlisted", "offered", "decision"].includes(a.stage) && a.interviewAt !== null)
     .map((a) => {
       const vac = (db.vacancies ?? []).find((v) => v.id === a.vacancyId);
       return {

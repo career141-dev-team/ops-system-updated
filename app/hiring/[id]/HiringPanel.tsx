@@ -7,7 +7,7 @@ import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
-import { CALL_NOT_FIT, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, NOT_INTERESTED_REASONS, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
 export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv" | "details";
 
@@ -102,8 +102,28 @@ function Save({ happens }: { happens: string }) {
 
 const textarea = panelInput + " min-h-[72px]";
 
-/** The four panels of H2, wired to the internal hiring backend actions. */
-export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacancies = [] }: { kind: HiringPanelKind; v: Vacancy; a: Applicant; now: number; closeHref: string; cvHref?: string | null; vacancies?: { id: string; title: string }[] }) {
+/** The panels of Scoops & vacancies, wired to the backend actions. */
+export default function HiringPanel({
+  kind,
+  v,
+  a,
+  now,
+  closeHref,
+  cvHref,
+  vacancies = [],
+  interviewers = [],
+  defaultInterviewAt = "",
+}: {
+  kind: HiringPanelKind;
+  v: Vacancy;
+  a: Applicant;
+  now: number;
+  closeHref: string;
+  cvHref?: string | null;
+  vacancies?: { id: string; title: string }[];
+  interviewers?: string[];
+  defaultInterviewAt?: string;
+}) {
   const name = first(a.name);
   // The details a CV gives and a call adds (23 Nov): NIC, the position applied for, the package they asked for,
   // whether they have a laptop. Every field optional; the vacancy can change, which is how a CV held under "to sort" is placed.
@@ -216,8 +236,35 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
           <input type="hidden" name="applicantId" value={a.id} />
           <input type="hidden" name="back" value={closeHref} />
           <PanelSection title="Log it here">
-            <PanelField label="Call result">
-              <ChoiceGroup name="result" label="Call result" required options={["Talked", CALL_NOT_FIT, `No answer (try ${Math.min(next, 3)} of 3)`, "Call back on..."]} />
+            <PanelField label="Call outcome">
+              <ChoiceGroup
+                name="result"
+                label="Call outcome"
+                required
+                options={[
+                  "Scheduled",
+                  "Not interested",
+                  "Non-responsive",
+                  `No answer (try ${Math.min(next, 3)} of 3)`,
+                  CALL_NOT_FIT,
+                ]}
+              />
+            </PanelField>
+            <PanelField label="If not interested, why">
+              <ChoiceGroup
+                name="notInterestedReason"
+                label="If not interested, why"
+                options={[...NOT_INTERESTED_REASONS]}
+              />
+            </PanelField>
+            <PanelField label="Current salary">
+              <input name="currentSalary" defaultValue={a.currentSalary ?? ""} placeholder="e.g. LKR 120,000" className={panelInput} />
+            </PanelField>
+            <PanelField label="Expected salary">
+              <input name="expectedSalary" defaultValue={a.expectedSalary ?? a.packageSaid ?? ""} placeholder="e.g. LKR 150,000" className={panelInput} />
+            </PanelField>
+            <PanelField label="Availability">
+              <input name="availability" defaultValue={a.availability ?? ""} placeholder="e.g. Immediate / 1 month notice" className={panelInput} />
             </PanelField>
             {v.checks.length > 0 && (
               <PanelField label={`The ${v.checks.length} checks`}>
@@ -240,10 +287,10 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
               </PanelField>
             )}
             <PanelField label="Note">
-              <textarea name="note" className={textarea} placeholder="What you heard (the reason, if not a fit)" />
+              <textarea name="note" className={textarea} placeholder="What you heard (required if Other or Not a fit)" />
             </PanelField>
           </PanelSection>
-          <Save happens={`Talked: ${name} moves to Called · fits so you can book the interview. Not a fit: ${name} moves to Rejected with your note as the reason and no interview is booked, so copy the message below before you save, because this drawer closes. No answer: increments the try counter and keeps them in To call.`} />
+          <Save happens={`Scheduled: ${name} moves to Scheduled so you can book the leadership interview. Not interested: closes with the reason. No answer: increments tries (3 tries automatically marks Non-responsive).`} />
         </form>
         <Draft label={`Message if ${name} is not a fit`} text={rejectMessage(a, v.title, true)} copy="Copy message" missing="" />
       </Panel>
@@ -290,17 +337,27 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
           <input type="hidden" name="applicantId" value={a.id} />
           <input type="hidden" name="back" value={closeHref} />
           <PanelSection title="Log it here">
-            <PanelField label="Date and time">
-              <input type="datetime-local" name="interviewAt" required className={panelInput} />
+            <PanelField label="Date and time (Colombo — defaults to next working day 16:00)">
+              <input type="datetime-local" name="interviewAt" defaultValue={defaultInterviewAt} required className={panelInput} />
             </PanelField>
-            <PanelField label="Interviewer">
-              <input name="interviewer" defaultValue="" placeholder="Who is interviewing?" className={panelInput} />
+            <PanelField label="Interviewer (leadership)">
+              {interviewers.length > 0 ? (
+                <select name="interviewer" defaultValue={interviewers[0]} className={panelInput}>
+                  {interviewers.map((person) => (
+                    <option key={person} value={person}>
+                      {person}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input name="interviewer" defaultValue="" placeholder="Who is interviewing?" className={panelInput} />
+              )}
             </PanelField>
             <PanelField label="Place">
               <ChoiceGroup name="place" label="Place" required options={["Office", "Online"]} value="Office" />
             </PanelField>
           </PanelSection>
-          <Save happens={`The time goes on the Calendar under Internal interviews, and ${name} moves to Interview.`} />
+          <Save happens={`The time goes on the Calendar under Internal interviews, ${name} moves to Interview, and if ${name}'s email is on file, the interview email is drafted for approval.`} />
         </form>
       </Panel>
     );
@@ -334,7 +391,7 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
               <textarea name="notes" className={textarea} placeholder="Key observations from the interview" />
             </PanelField>
           </PanelSection>
-          <Save happens={`Pass: ${name} moves to Decision. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
+          <Save happens={`Pass: ${name} moves to Shortlisted. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
         </form>
         <Draft label={`Message if ${name} fails`} text={rejectMessage(a, v.title)} copy="Copy message" missing="" />
       </Panel>
@@ -342,13 +399,14 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
   }
 
   const offer = offerLetter(a, v.title);
+  const isOffered = a.stage === "offered";
   return (
-    <Panel kicker="Decide" title={`Decide on ${name}`} sub={`Internal hiring > ${v.title} > Decision`} closeHref={closeHref}>
+    <Panel kicker="Shortlisted & offered" title={isOffered ? `Offer outcome for ${name}` : `Decide on ${name}`} sub={`Scoops & vacancies > ${v.title}`} closeHref={closeHref}>
       <Why v={v} a={a} now={now} />
       <Who a={a}>
         <div className="flex flex-col gap-1 pt-1">
           <span className="t-small text-ink-3">Interview notes</span>
-          <p className="t-body text-ink-2">{a.detail || "Passed interview."}</p>
+          <p className="t-body text-ink-2">{a.detail || "Shortlisted after interview."}</p>
         </div>
       </Who>
       <form action={decideHiringApplicant}>
@@ -357,13 +415,18 @@ export default function HiringPanel({ kind, v, a, now, closeHref, cvHref, vacanc
         <input type="hidden" name="back" value={closeHref} />
         <PanelSection title="Log it here">
           <PanelField label="Your decision">
-            <ChoiceGroup name="decision" label="Your decision" required options={["Hire", "Hold", "Reject"]} />
+            <ChoiceGroup
+              name="decision"
+              label="Your decision"
+              required
+              options={isOffered ? ["Accept", "Decline", "Hold"] : ["Offer", "Accept", "Hold", "Reject"]}
+            />
           </PanelField>
-          <input name="start" className={panelInput} placeholder="Start date (e.g. 1 Dec 2026)" aria-label="Start date" />
-          <input name="salary" className={panelInput} placeholder="Salary (e.g. LKR 150,000)" aria-label="Salary" />
-          <textarea name="reason" className={textarea} placeholder="If reject, the reason (required)" aria-label="Reason to reject" />
+          <input name="start" defaultValue={a.draft?.startDate ?? ""} className={panelInput} placeholder="Start date (e.g. 1 Dec 2026)" aria-label="Start date" />
+          <input name="salary" defaultValue={a.draft?.salary ?? a.expectedSalary ?? ""} className={panelInput} placeholder="Salary (e.g. LKR 150,000)" aria-label="Salary" />
+          <textarea name="reason" className={textarea} placeholder="If declined or rejected, the reason (required)" aria-label="Reason to reject or decline" />
         </PanelSection>
-        <Save happens={`Hire: the offer letter is ready to copy, and the vacancy shows ${v.filled + 1} of ${v.places} places filled. Hold keeps ${name} in Decision. Reject asks for the reason first.`} />
+        <Save happens={`Offer: moves ${name} to Offered. Accept: marks ${name} hired and increments filled to ${v.filled + 1} of ${v.places}. Decline or Reject requires a reason.`} />
       </form>
       <div className="pb-2">
         <Link href={`/hiring/${v.id}?send=offer-letter&on=${a.id}`} scroll={false} className={small}>

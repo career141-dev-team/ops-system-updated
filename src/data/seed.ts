@@ -39,6 +39,8 @@ export function seed(now = Date.now()): OpsDatabase {
       // The Scoop mailbox and who sends a Scoop (23 Nov). Empty: no Scoop is read from email until they are set.
       { key: "scoop.mailbox", value: "", updatedBy: null, updatedAt: null },
       { key: "scoop.senders", value: "", updatedBy: null, updatedAt: null },
+      // Leadership interviewers for Scoops & vacancies (26 Nov, Nov 25 ops meeting).
+      { key: "hiring.interviewers", value: "Director of Operations, Ops Lead", updatedBy: null, updatedAt: null },
       // Interviews (15, Phase 5 step 19 and the owner's notice rule).
       { key: "interview.maxSlotLoops", value: 3, updatedBy: null, updatedAt: null },
       { key: "interview.reportReminderDays", value: 2, updatedBy: null, updatedAt: null },

@@ -4268,7 +4268,14 @@ export async function removeTeamNote(noteId: Id, actorId: Id): Promise<void> {
   repo.removeTeamNote(noteId, actorId);
 }
 
-export async function addVacancy(input: { title: string; places: number; checks: string[]; ownerId: Id }): Promise<OpsVacancy> {
+export async function addVacancy(input: {
+  title: string;
+  places: number;
+  checks: string[];
+  ownerId: Id;
+  source?: "scoop" | "job_post" | "referral";
+  sourceDetail?: string;
+}): Promise<OpsVacancy> {
   if (usingConvex()) {
     return (await convexMutation("ops/data:addVacancy", input)) as OpsVacancy;
   }

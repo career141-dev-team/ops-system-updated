@@ -2310,13 +2310,15 @@ export const removeTeamNote = internalMutation({
   },
 });
 
-/** Internal hiring: create a Career141 vacancy (H1, 19 Nov). */
+/** Internal hiring: create a Career141 vacancy (H1, 19 Nov; source added 26 Nov). */
 export const addVacancy = internalMutation({
   args: {
     title: v.string(),
     places: v.number(),
     checks: v.array(v.string()),
     ownerId: v.string(),
+    source: v.optional(v.union(v.literal("scoop"), v.literal("job_post"), v.literal("referral"))),
+    sourceDetail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -2327,6 +2329,8 @@ export const addVacancy = internalMutation({
       status: "open",
       checks: args.checks,
       ownerId: args.ownerId,
+      ...(args.source ? { source: args.source } : {}),
+      ...(args.sourceDetail ? { sourceDetail: args.sourceDetail } : {}),
       postedAt: now,
       createdAt: now,
       updatedAt: now,

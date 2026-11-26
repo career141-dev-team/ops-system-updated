@@ -8,7 +8,7 @@ import { applicantRows, boardColumns, filterApplicants, pageOf } from "@/lib/hir
 import type { Applicant, HiringView, Vacancy } from "@/lib/hiring";
 
 const person = (id: string, stage: Applicant["stage"], since: number, extra: Partial<Applicant> = {}): Applicant => ({ id, name: "Person " + id, source: "Scoop", phone: "077" + id, stage, since, detail: "", ...extra });
-const vac = (id: string, title: string, applicants: Applicant[]): Vacancy => ({ id, title, places: 1, filled: 0, postedAt: 0, status: "open", applicants, checks: [] });
+const vac = (id: string, title: string, applicants: Applicant[]): Vacancy => ({ id, title, places: 1, filled: 0, postedAt: 0, status: "open", source: "scoop", sourceDetail: "Scoop 1", applicants, checks: [] });
 
 const view: HiringView = {
   vacancies: [
@@ -24,6 +24,7 @@ test("everyone is a row, the longest-waiting first, with the vacancy's name", ()
   assert.equal(rows.length, 7);
   assert.deepEqual(rows.slice(0, 3).map((r) => r.id), ["5", "6", "2"]);
   assert.equal(rows.find((r) => r.id === "5")!.vacancy, "Designer");
+  assert.equal(rows.find((r) => r.id === "5")!.vacancySource, "Scoop 1");
   assert.equal(rows.find((r) => r.id === "4")!.hasCv, true);
   assert.equal(rows.find((r) => r.id === "1")!.hasCv, false);
 });

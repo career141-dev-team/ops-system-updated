@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { addScoop, createVacancy } from "@/app/actions";
+import { addScoop, claimApplicant, createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, Card, DataTable, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
@@ -9,7 +9,20 @@ import CvDropZone from "./CvDropZone";
 import { desk, scoopBatches } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
-import { countOf, hiringView, totals, vacancyLine, whereItStands, type Vacancy } from "@/lib/hiring";
+import {
+  HIRING_SECTIONS,
+  countOf,
+  filterByCaller,
+  hiringView,
+  isHiringCaller,
+  sectionOfStage,
+  totals,
+  vacancyLine,
+  vacancySourceLabel,
+  whereItStands,
+  type Applicant,
+  type Vacancy,
+} from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
 import { FUNNEL, STAGE_LABEL, applicantRows, boardColumns, filterApplicants, pageOf, type ApplicantRow } from "@/lib/hiringTable";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -37,17 +50,22 @@ const Chev = () => (
 function VacancyCard({ v, first }: { v: Vacancy; first: boolean }) {
   const n = (s: Parameters<typeof countOf>[1]) => countOf(v, s);
   const toCall = n("call") + n("new");
+  const src = vacancySourceLabel(v);
+  const shortlistedOffered = n("shortlisted") + n("offered") + n("decision");
   const counts: [string, number, string][] = [
-    ["New CVs", n("new"), "text-ink"],
-    ["To call", toCall, toCall ? "text-warn" : "text-ink"],
-    ["Interview", n("interview"), "text-info"],
-    ["Decision", n("decision"), n("decision") ? "text-warn" : "text-ink"],
+    ["Calling", toCall + n("fits"), toCall ? "text-warn" : "text-ink"],
+    ["Interviews", n("interview"), "text-info"],
+    ["Shortlisted & offered", shortlistedOffered, shortlistedOffered ? "text-brand" : "text-ink"],
+    ["Hired", v.filled, "text-brand"],
   ];
   return (
     <Card className="gap-4 pg-lg:!flex-row pg-lg:items-center pg-lg:gap-7">
       <div className="flex w-full flex-col gap-1.5 pg-lg:w-[380px] pg-lg:shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="t-h2">{v.title}</h2>
+          {src && (
+            <span className="t-label rounded-full bg-sunk px-2.5 py-1 text-ink-2">{src}</span>
+          )}
           {v.status === "on_hold" ? (
             <span className="t-label rounded-full bg-sunk px-2.5 py-1 text-ink-2">On hold</span>
           ) : toCall > 0 ? (
@@ -106,15 +124,26 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   });
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
   const todayKey = keyOf(now);
-  // Vacancies (the cards), Board (everyone in the funnel) or Table (everyone, filtered and paged), 23 Nov.
-  const mode = sp.view === "board" || sp.view === "table" || sp.view === "scoops" ? sp.view : "vacancies";
+  // Sections (Calling, Interviews, Shortlisted & offered) is the primary view; Board, Table and Scoops stay as secondary views (26 Nov).
+  const mode = sp.view === "board" || sp.view === "table" || sp.view === "scoops" ? sp.view : "sections";
+  const mineOnly = sp.mine === "1";
+  const canCall = isHiringCaller(me);
+  const memberName = new Map(db.members.map((m) => [m.id, m.name]));
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
+
+  const allItems = view.vacancies.flatMap((v) =>
+    v.applicants.map((a) => ({ v, a })),
+  );
+  const callingAll = allItems.filter((x) => sectionOfStage(x.a.stage) === "calling");
+  const callingItems = mineOnly ? filterByCaller(callingAll.map((x) => ({ ...x, callerId: x.a.callerId })), me.id) : callingAll;
+  const interviewItems = allItems.filter((x) => sectionOfStage(x.a.stage) === "interviews");
+  const shortlistedItems = allItems.filter((x) => sectionOfStage(x.a.stage) === "shortlisted_offered");
 
   return (
     <div className="flex flex-col gap-[22px]">
       <PageTitle
-        title="Internal hiring"
-        sub={`Career141's own vacancies · ${openCount} open`}
+        title="Scoops & vacancies"
+        sub={`Career 141's own hiring · ${openCount} open`}
         right={
           mayManage ? (
             <div className="flex flex-wrap items-center gap-2.5">
@@ -131,12 +160,25 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
         }
       />
       {view.vacancies.length > 0 && (
-        <nav className="flex items-center gap-2" aria-label="Layout">
-          {[{ k: "vacancies", label: "Vacancies" }, { k: "board", label: "Board" }, { k: "table", label: "Table" }, { k: "scoops", label: "Scoops" }].map((x) => (
-            <Link key={x.k} href={x.k === "vacancies" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
+        <nav className="flex flex-wrap items-center gap-2" aria-label="Layout">
+          {[
+            { k: "sections", label: "Calling & pipeline" },
+            { k: "board", label: "Board" },
+            { k: "table", label: "Table" },
+            { k: "scoops", label: "Scoops" },
+          ].map((x) => (
+            <Link key={x.k} href={x.k === "sections" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
               {x.label}
             </Link>
           ))}
+          {mode === "sections" && canCall && (
+            <Link
+              href={mineOnly ? "/hiring" : "/hiring?mine=1"}
+              className={"t-label ml-auto rounded-full px-3.5 py-[7px] " + (mineOnly ? "bg-brand text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")}
+            >
+              {mineOnly ? "Mine (claimed by me)" : "Mine"}
+            </Link>
+          )}
         </nav>
       )}
 
@@ -168,12 +210,81 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }))} />}
           {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
-          {mode === "vacancies" && (
+          {mode === "sections" && (
           <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
-            <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
-              {view.vacancies.map((v, i) => (
-                <VacancyCard key={v.id} v={v} first={i === 0} />
-              ))}
+            <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
+              <section className="flex flex-col gap-3">
+                {view.vacancies.map((v, i) => (
+                  <VacancyCard key={v.id} v={v} first={i === 0} />
+                ))}
+              </section>
+
+              {HIRING_SECTIONS.map((sec) => {
+                const list = sec.key === "calling" ? callingItems : sec.key === "interviews" ? interviewItems : shortlistedItems;
+                return (
+                  <Card key={sec.key} title={`${sec.label} · ${list.length}`} sub={sec.sub}>
+                    {list.length === 0 ? (
+                      <p className="t-small text-ink-3">Nobody in {sec.label.toLowerCase()} right now.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {list.slice(0, 8).map(({ v, a }: { v: Vacancy; a: Applicant }) => {
+                          const caller = a.callerId ? memberName.get(a.callerId) ?? "Ops" : null;
+                          const salaryText = a.expectedSalary || a.packageSaid;
+                          return (
+                            <div key={a.id} className="flex flex-col gap-2 rounded-[16px] border border-rule bg-surface p-3.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <Link href={`/hiring/${v.id}`} className="t-body-m hover:underline">
+                                    {a.name}
+                                  </Link>
+                                  <p className="t-small text-ink-3">
+                                    {v.title} · {a.source}
+                                  </p>
+                                </div>
+                                <span className="t-label shrink-0 rounded-full bg-sunk px-2.5 py-1 text-ink-2">
+                                  {STAGE_LABEL[a.stage] ?? a.stage}
+                                </span>
+                              </div>
+                              <p className="t-small text-ink-2">{a.detail}</p>
+                              {(a.currentSalary || salaryText || a.availability) && (
+                                <p className="t-small text-ink-3">
+                                  {[a.currentSalary ? `Current: ${a.currentSalary}` : "", salaryText ? `Expected: ${salaryText}` : "", a.availability ? `Avail: ${a.availability}` : ""].filter(Boolean).join(" · ")}
+                                </p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                {sec.key === "calling" && canCall && a.callerId !== me.id && (
+                                  <form action={claimApplicant}>
+                                    <input type="hidden" name="applicantId" value={a.id} />
+                                    <input type="hidden" name="vacancyId" value={v.id} />
+                                    <input type="hidden" name="back" value={mineOnly ? "/hiring?mine=1" : "/hiring"} />
+                                    <button type="submit" className={pillSecondary + " !px-3 !py-1.5 !text-[12px]"}>
+                                      {caller ? `Claim (was ${caller})` : "Claim"}
+                                    </button>
+                                  </form>
+                                )}
+                                {caller && a.callerId === me.id && (
+                                  <span className="t-small text-brand">Claimed by you</span>
+                                )}
+                                <Link
+                                  href={`/hiring/${v.id}?panel=${a.stage === "fits" ? "book-interview" : a.stage === "interview" ? "add-result" : sec.key === "shortlisted_offered" ? "decide" : "call"}&on=${a.id}`}
+                                  className="t-label ml-auto rounded-full bg-ink px-3 py-1.5 text-ink-inverse"
+                                >
+                                  {a.stage === "fits" ? "Book interview" : a.stage === "interview" ? "Add result" : sec.key === "shortlisted_offered" ? "Offer / outcome" : "Call"}
+                                </Link>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {list.length > 8 && (
+                      <Link href={`/hiring?view=table`} className="t-label w-fit text-brand hover:underline">
+                        See all {list.length} in table
+                      </Link>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
             <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
               <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
@@ -227,7 +338,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-scoop" && mayManage && (
-        <Panel kicker="Internal hiring" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Scoops & vacancies" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={addScoop} encType="multipart/form-data">
             <input type="hidden" name="back" value="/hiring?view=scoops" />
             <PanelSection title="The CVs">
@@ -246,7 +357,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
               </PanelField>
             </PanelSection>
             <PanelSection title="What happens next">
-              <p className="t-body text-ink-2">Each CV is kept, read, and made an applicant to call, with the package and laptop left for you to fill in after the call. Somebody already on file is not added twice. A CV that is a scan is added with no details, and says so. Nothing is sent to anybody.</p>
+              <p className="t-body text-ink-2">Each CV is kept, read, and made an applicant to call, with current salary, expected salary and availability left for you to fill in on the call. Somebody already on file is not added twice. A CV that is a scan is added with no details, and says so. Nothing is sent to anybody.</p>
               <button type="submit" className={pillPrimary + " self-start"}>Read the CVs</button>
             </PanelSection>
           </form>
@@ -254,12 +365,22 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-vacancy" && mayManage && (
-        <Panel kicker="Internal hiring" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Scoops & vacancies" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={createVacancy}>
             <input type="hidden" name="back" value="/hiring" />
             <PanelSection title="Vacancy details">
               <PanelField label="Role title">
                 <input name="title" required placeholder="e.g. Talent Acquisition Executive" className={panelInput} />
+              </PanelField>
+              <PanelField label="Source">
+                <select name="source" defaultValue="scoop" className={panelInput}>
+                  <option value="scoop">Scoop (e.g. Scoop 1, Scoop 2)</option>
+                  <option value="job_post">Job post (e.g. LinkedIn, TopJobs)</option>
+                  <option value="referral">Referral (named person)</option>
+                </select>
+              </PanelField>
+              <PanelField label="Source detail (optional)">
+                <input name="sourceDetail" placeholder="e.g. Scoop 1, TopJobs, or referrer name" className={panelInput} />
               </PanelField>
               <PanelField label="Places to fill">
                 <input name="places" type="number" min="1" max="20" defaultValue="1" required className={panelInput} />
@@ -369,11 +490,11 @@ function HiringTable({ rows, vacancies, filters, page }: { rows: ApplicantRow[];
         {shown.pages > 1 ? " · page " + shown.page + " of " + shown.pages : ""}
       </p>
       <DataTable
-        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "STAGE" }, { label: "PHONE" }, { label: "NIC" }, { label: "APPLIED FOR" }, { label: "PACKAGE" }, { label: "LAPTOP" }, { label: "CV" }, { label: "SOURCE" }]}
+        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "SOURCE" }, { label: "STAGE" }, { label: "PHONE" }, { label: "NIC" }, { label: "APPLIED FOR" }, { label: "EXPECTED" }, { label: "AVAILABILITY" }, { label: "CV" }, { label: "FROM" }]}
         rows={shown.items.map((r) => ({
           key: r.id,
           href: "/hiring/" + r.vacancyId,
-          cells: [r.name, r.vacancy, STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.nic || "—", r.targetPosition || "—", r.packageSaid || "—", r.laptop || "—", r.hasCv ? "Yes" : "No", r.source],
+          cells: [r.name, r.vacancy, r.vacancySource || "—", STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.nic || "—", r.targetPosition || "—", r.expectedSalary || r.packageSaid || "—", r.availability || "—", r.hasCv ? "Yes" : "No", r.source],
         }))}
         empty={<p className="t-body text-ink-3">Nobody matches. Clear the filters, or change the search.</p>}
       />
