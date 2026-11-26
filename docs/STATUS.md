@@ -602,3 +602,16 @@ Stage 3 of the ops team's feedback. The decisions are in [09](09-DECISIONS-AND-Q
 | **Teams follows the interview** | `noticeCandidateOut` in `src/data/desk.ts`, `dropApplicantEvent` in `app/actions.ts` | a candidate pulling out, and an internal applicant rejected before their interview, cancel the Outlook event |
 
 Proved by `tests/auratable.test.ts`, `tests/whatsapp.test.ts`, `tests/whatsappintake.test.ts`, `tests/integrationhealth.test.ts` and a case in `tests/interviews.test.ts` (a recorded Meta payload, a computed signature, real PDFs from Stage 2). **Not run against Microsoft, Meta, an Anthropic key (Aura's tools are tested without a model), or the Convex store.** Nothing here is switched on.
+
+## Built: the Nov 25 meeting's changes, PR 1 the foundation (26 Nov, on branch `hdbinath/ops-nov25-foundation`, not merged and not live)
+
+The first of eight PRs for the ops team's 25 Nov walkthrough (the plan: one PR per area, in order). This one changes no behaviour a person sees except the three fixes; the rest is room for the later PRs.
+
+| Piece | Where | What it does |
+|---|---|---|
+| **New optional fields** | `src/data/types.ts`, `convex/schema.ts`, the add mutations in `convex/ops/data.ts`, `tests/schema.test.ts` | backup ops, priority and a numeric salary on a position; client type; draft or final on an ESA; position, JD and salary scale on a meeting; expat fee, nationality, payment details and testimonial on a placement; reminders and the details request on an invoice; the source of a vacancy; caller and call answers on an applicant, and five new applicant stages (type only). All optional, so no migration and no backfill: an old row shows "—" |
+| **The owners page lists the ops team** | `app/(clients)/clients/owners/page.tsx` | it filtered on a role called "ops", which does not exist, so it always fell back to everybody; it now uses `ASSIGNABLE_ROLES`, the same people as the positions picker |
+| **"Agreement not signed" counts no agreement at all** | `agreementNotSigned` in `src/lib/clients.ts`, `app/(positions)/positions/page.tsx` | a position whose client had no ESA was not flagged. The requirement's lead and the client's own lead are both looked at, so a position TA opened without a requirement is not flagged when the client has signed |
+| **The calendar's comment** | `src/lib/calendarBoard.ts` | it said internal interviews had no data; they come from booked applicants |
+
+Proved by `tests/agreementnotsigned.test.ts` and `tests/schema.test.ts`; all 138 suites and `tsc` green on the JSON store. Not run against the Convex store; not walked in a browser.

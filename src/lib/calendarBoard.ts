@@ -2,9 +2,10 @@
  * The calendar's week (v6 K1, 19 Nov): which cards each filter keeps, the clock on a card and the
  * words for the week. Pure, so the page only reads the desk and draws.
  *
- * Only client interviews have data behind them today. Internal interviews, team meetings and
- * joining days are kinds the screen already knows, so the day one of them has a source it needs no
- * change here; until then those filters honestly show nothing.
+ * Client interviews come from the interviews table. Internal interviews (26 Nov) come from the
+ * applicants at stage "interview" with a time (app/calendar/page.tsx), booked in app/hiring.
+ * Team meetings have no source yet, so that filter honestly shows nothing; the day one has a source
+ * it needs no change here.
  */
 import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 

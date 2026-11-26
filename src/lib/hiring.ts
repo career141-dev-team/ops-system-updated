@@ -11,7 +11,9 @@ import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { dayWord } from "@/lib/calendarBoard";
 import { extensionOf, problemWithUpload } from "@/lib/files";
 
-export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
+export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected"
+  // 26 Nov: the Nov 25 ops meeting — type only for now, no screen uses these yet.
+  | "non_responsive" | "not_interested" | "shortlisted" | "offered" | "declined";
 
 /** The columns of the board, left to right, with the words on them. */
 export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [

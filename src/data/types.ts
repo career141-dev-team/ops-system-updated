@@ -359,6 +359,10 @@ export interface OpsLead {
  */
 export interface OpsMeeting {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: position, JD, salary scale.
+  positionId?: string;
+  jd?: string;
+  salaryScale?: string;
   leadId: Id;
   kind: string;
   at: number;
@@ -401,6 +405,8 @@ export interface OpsMeeting {
  */
 export interface OpsEsa {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: absent = final.
+  mode?: "draft" | "final";
   leadId: Id;
   clientTaId: Id | null;
   state: string;
@@ -435,6 +441,8 @@ export interface OpsEsa {
  */
 export interface OpsClient {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: local or international.
+  clientType?: "local" | "international";
   /** The lead they came in as, which keeps the whole history reachable. */
   leadId: Id | null;
   /** The same company in the TA System, once we know which one it is. */
@@ -581,6 +589,11 @@ export interface OpsRequirement {
  */
 export interface OpsPosition {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: main and backup ops, priority, salary.
+  backupOwnerId?: string;
+  priority?: "P1" | "P2" | "P3";
+  salaryMonthly?: number;
+  salaryCurrency?: string;
   requirementId: Id | null;
   clientId: Id | null;
   clientTaId: string;
@@ -800,6 +813,14 @@ export interface OpsReferenceRequest {
  */
 export interface OpsPlacement {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: expat fee, nationality, payment details, testimonials.
+  expatFeeMonths?: number;
+  nationality?: string;
+  nationalityFromCv?: string;
+  nationalityConfirmedBy?: string;
+  nationalityConfirmedAt?: number;
+  paymentDetails?: { offeredSalary: number; receivedAt: number; by: string; note?: string };
+  testimonial?: { candidate: "pending" | "done"; client: "pending" | "done"; channel?: string; doneAt?: number; by?: string };
   placementTaId: string;
   applicationTaId: string;
   openingTaId: string;
@@ -852,6 +873,9 @@ export interface OpsPlacement {
  */
 export interface OpsInvoice {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: reminders and details request.
+  remindersSent?: number;
+  detailsRequestedAt?: number;
   number: string;
   /** "fee", "surcharge" or "credit_note". */
   kind: string;
@@ -1056,6 +1080,9 @@ export interface OpsTeamNote {
 /** One internal Career141 vacancy (H1/H2, 19 Nov). */
 export interface OpsVacancy {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: where it came from.
+  source?: "scoop" | "job_post" | "referral";
+  sourceDetail?: string;
   title: string;
   places: number;
   filled: number;
@@ -1070,12 +1097,18 @@ export interface OpsVacancy {
 /** One applicant to an internal Career141 vacancy (H2, 19 Nov). */
 export interface OpsApplicant {
   id: Id;
+  // 26 Nov: the Nov 25 ops meeting: caller and call answers.
+  callerId?: string;
+  currentSalary?: string;
+  expectedSalary?: string;
+  availability?: string;
+  notInterestedReason?: string;
   vacancyId: Id;
   name: string;
   source: string;
   phone: string | null;
   email: string | null;
-  stage: "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected";
+  stage: "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected" | "non_responsive" | "not_interested" | "shortlisted" | "offered" | "declined";
   tries: number;
   detail: string;
   checkResults: Record<string, string>;

@@ -13,6 +13,7 @@ import {
   reportsNewestFirst,
   runClocks,
 } from "@/data/desk";
+import { agreementNotSigned } from "@/lib/clients";
 import { contactsFor } from "@/lib/contacts";
 import { colomboIsoWeek } from "@/lib/weekNumber";
 import { closeHref, panelHref } from "@/lib/panel";
@@ -74,9 +75,13 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     const leadId = p?.requirementId ? (db.requirements.find((r) => r.id === p.requirementId)?.leadId ?? null) : null;
     return leadId ? agreementForLead(db, leadId) : null;
   };
+  // 26 Nov: the client's own first lead counts too, so a position TA opened with no requirement linked is not
+  // flagged as unsigned when the client has signed.
   const unsigned = (positionId: string) => {
-    const esa = esaOf(positionId);
-    return !!esa && esa.state !== "signed" && esa.state !== "countersigned";
+    const p = byId.get(positionId);
+    const clientLeadId = p?.clientId ? (clientIn(db, p.clientId)?.leadId ?? null) : null;
+    const esas = [esaOf(positionId), clientLeadId ? agreementForLead(db, clientLeadId) : null];
+    return agreementNotSigned(esas.filter((e) => e !== null));
   };
   const contactsOf = (positionId: string) => {
     const p = byId.get(positionId);

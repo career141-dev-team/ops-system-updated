@@ -125,6 +125,15 @@ export function callKindFor(c: { stage: string; hasPosition: boolean; heldCall: 
   return c.stage === "lead" && !c.hasPosition && !c.heldCall ? "intro" : "requirement";
 }
 
+/**
+ * "Agreement not signed" (26 Nov): true when there is no ESA at all, or none is signed or countersigned.
+ * The positions page used to flag only an ESA that existed and was unsigned, so a client with no
+ * agreement went unflagged.
+ */
+export function agreementNotSigned(esas: { state: string }[]): boolean {
+  return !esas.some((e) => e.state === "signed" || e.state === "countersigned");
+}
+
 /** Renaming a client (23 Nov): one company, one record, so a name another client already has is refused. */
 export function problemWithClientRename(name: string, clash: boolean): string | null {
   if (name.trim().length < 2) return "Write the client's name.";
