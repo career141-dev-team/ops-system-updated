@@ -325,6 +325,8 @@ export default defineSchema({
     ownerId: v.string(),
     contacts: v.optional(v.array(v.object({ name: v.string(), email: v.string(), phone: v.string(), role: v.string() }))),
     team: v.optional(v.array(v.object({ taId: v.string(), addedBy: v.string(), addedAt: v.number() }))),
+    salaryMonthly: v.optional(v.number()),
+    salaryCurrency: v.optional(v.string()),
     manualCandidates: v.optional(
       v.array(
         v.object({

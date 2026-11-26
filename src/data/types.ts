@@ -618,6 +618,9 @@ export interface OpsPosition {
    * Kept in Ops only and always shown as "added by hand, not in TA".
    */
   manualCandidates?: { id: string; name: string; email: string; phone: string; note: string; cvFileId: string | null; addedBy: Id; at: number }[];
+  /** The monthly salary on offer as a number, and its currency (26 Nov). Optional: older rows show "—". The package text stays as written. */
+  salaryMonthly?: number;
+  salaryCurrency?: string;
   /** TA people on this opening besides the Primary TA (17 Nov). Optional: older rows have none. */
   team?: { taId: string; addedBy: Id; addedAt: number }[];
   /** Extra people to write to about this position only, e.g. the hiring team lead (17 Nov). */

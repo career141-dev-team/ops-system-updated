@@ -17,7 +17,7 @@ type CallSetup = {
  * each part of the form in its own bordered box, like New position. The same action as the old page
  * (`/leads/new`, still there): one form, one record, no enquiry step.
  */
-export default function NewClientPanel({ closeHref, msg, mayAdd, refusal, call }: { closeHref: string; msg?: string; mayAdd: boolean; refusal: string; call: CallSetup }) {
+export default function NewClientPanel({ closeHref, msg, mayAdd, refusal, call, after }: { closeHref: string; /** A page to return to with the new client chosen: New position asks for it. */ after?: string; msg?: string; mayAdd: boolean; refusal: string; call: CallSetup }) {
   return (
     <Panel kicker="Add a client" title="Add a client" sub="A company we work with, or are about to. Only the name is needed to start." closeHref={closeHref} boxed>
       {msg && <p className="t-small mb-3.5 rounded-[14px] bg-warn-soft px-4 py-3">{msg}</p>}
@@ -25,7 +25,8 @@ export default function NewClientPanel({ closeHref, msg, mayAdd, refusal, call }
         <p className="t-small rounded-[14px] bg-sunk px-4 py-3 text-ink-3">{refusal}</p>
       ) : (
         <form action={createClient} className="flex flex-col gap-5">
-          <input type="hidden" name="back" value={"/clients?panel=new-client"} />
+          <input type="hidden" name="back" value={"/clients?panel=new-client" + (after ? "&after=" + encodeURIComponent(after) : "")} />
+          {after && <input type="hidden" name="after" value={after} />}
           <PanelSection title="The company">
             <PanelField label="Company">
               <input name="company" required placeholder="Ceylon Cold Stores" className={panelInput} />

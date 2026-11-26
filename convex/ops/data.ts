@@ -612,6 +612,8 @@ export const addPosition = internalMutation({
     handedOverAt: v.number(),
     closedAt: v.union(v.number(), v.null()),
     ownerId: v.string(),
+    salaryMonthly: v.optional(v.number()),
+    salaryCurrency: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
