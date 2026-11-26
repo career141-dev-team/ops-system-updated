@@ -813,8 +813,9 @@ export interface OpsReferenceRequest {
  */
 export interface OpsPlacement {
   id: Id;
-  // 26 Nov: the Nov 25 ops meeting: expat fee, nationality, payment details, testimonials.
+  // 26 Nov: the Nov 25 ops meeting: expat fee, payment days, nationality, payment details, testimonials.
   expatFeeMonths?: number;
+  paymentDays?: number;
   nationality?: string;
   nationalityFromCv?: string;
   nationalityConfirmedBy?: string;

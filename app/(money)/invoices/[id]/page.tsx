@@ -2,10 +2,13 @@ import { relatedWork } from "@/data/journeyOf";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
+  confirmNationality,
   markInvoiceDisputed,
   previewInvoice,
   raiseCreditNote,
   recordPayment,
+  recordPaymentDetails,
+  requestPaymentDetails,
   sendInvoice,
   writeOffInvoice,
 } from "@/app/actions";
@@ -41,9 +44,13 @@ import { day } from "@/lib/listing";
 import {
   WRITE_OFF_DAYS,
   balanceOf,
+  daysUntilDue,
   feeInWords,
+  feeMonthsFor,
+  invoiceBlockers,
   invoiceInWords,
   invoiceLines,
+  isExpat,
   money,
   paidSoFar,
   problemWithPaymentOn,
@@ -97,6 +104,8 @@ export default async function InvoiceDetailPage({
 
   // The settings, not the code's defaults (18 Nov).
   const writeOffDays = numberOf(db, "invoice.writeOffDays", WRITE_OFF_DAYS);
+  const blockers = inv.kind === "fee" && inv.state === "draft" ? invoiceBlockers(placement) : [];
+  const dueLeft = daysUntilDue(inv.dueAt, now);
   const step = invoiceNextStep(
     inv,
     {
@@ -104,6 +113,7 @@ export default async function InvoiceDetailPage({
       lateChargeSaid: inv.lateCharge > 0 ? money(inv.lateCharge, inv.currency) : null,
       billingEmail: client?.billingEmail ?? "",
       writeOffAfterDays: writeOffDays,
+      blockers,
     },
     now,
   );
@@ -113,7 +123,7 @@ export default async function InvoiceDetailPage({
     candidateName: placement?.candidateName ?? client?.name ?? "Client",
     positionTitle: placementRole ?? inv.about ?? "Placement fee",
     clientName: client?.billingName || client?.name || "Client",
-    feeWords: placement ? feeInWords({ feeMonths: placement.feeMonths, feeBasis: placement.feeBasis }) : "placement fee",
+    feeWords: placement ? feeInWords({ feeMonths: feeMonthsFor(placement), feeBasis: placement.feeBasis }) : "placement fee",
     monthlySalary: placement?.monthlySalary ?? inv.amount,
     amount: inv.amount,
     lateCharge: inv.lateCharge,
@@ -167,17 +177,34 @@ export default async function InvoiceDetailPage({
 
         <StepCard
           tone={overdue ? "danger" : "warn"}
-          chip={inv.dueAt && inv.state !== "paid" && inv.state !== "written_off" ? (overdue ? `Overdue · due ${day(inv.dueAt)}` : `Due ${day(inv.dueAt)}`) : undefined}
+          chip={
+            inv.dueAt && inv.state !== "paid" && inv.state !== "written_off"
+              ? overdue
+                ? `Late payment · ${Math.abs(dueLeft ?? 0)} day${Math.abs(dueLeft ?? 0) === 1 ? "" : "s"} overdue`
+                : dueLeft === 0
+                  ? `Due today (${day(inv.dueAt)})`
+                  : `Due in ${dueLeft} day${dueLeft === 1 ? "" : "s"} (${day(inv.dueAt)})`
+              : undefined
+          }
           title={step.where}
           body={step.waiting}
           actions={
             <div className="flex flex-wrap items-center gap-2.5">
-              {inv.state === "draft" && canMoney && (
+              {inv.state === "draft" && canMoney && blockers.length === 0 && (
                 <form action={sendInvoice}>
                   <input type="hidden" name="invoiceId" value={inv.id} />
                   <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
                   <button type="submit" className={pillPrimary}>
                     Approve and send
+                  </button>
+                </form>
+              )}
+              {inv.state === "draft" && canMoney && placement && (
+                <form action={requestPaymentDetails}>
+                  <input type="hidden" name="invoiceId" value={inv.id} />
+                  <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
+                  <button type="submit" className={pillSecondary}>
+                    {inv.detailsRequestedAt ? `Details requested (${day(inv.detailsRequestedAt)}) · Ask again` : "Request payment details"}
                   </button>
                 </form>
               )}
@@ -296,8 +323,24 @@ export default async function InvoiceDetailPage({
                 { label: "Billing address", value: client?.billingAddress },
                 { label: "Billing email", value: client?.billingEmail },
                 { label: "Candidate", value: placement?.candidateName ?? inv.about },
+                {
+                  label: "Candidate nationality",
+                  value: placement
+                    ? placement.nationalityConfirmedAt && placement.nationality
+                      ? `${placement.nationality} (${isExpat(placement.nationality) ? `Expat — ${feeMonthsFor(placement)} months' salary` : `Local — ${feeMonthsFor(placement)} month${feeMonthsFor(placement) === 1 ? "" : "s"}' salary`})`
+                      : `Not confirmed yet${placement.nationalityFromCv ? ` (CV: ${placement.nationalityFromCv})` : ""}`
+                    : null,
+                },
                 { label: "Position", value: placementRole },
                 { label: "Joined on", value: placement?.joinedAt ? day(placement.joinedAt) : null },
+                {
+                  label: "Offered salary (client payment details)",
+                  value: placement?.paymentDetails
+                    ? `${money(placement.paymentDetails.offeredSalary, inv.currency)} (received ${day(placement.paymentDetails.receivedAt)}${placement.paymentDetails.note ? " · " + placement.paymentDetails.note : ""})`
+                    : placement
+                      ? "Not received yet"
+                      : null,
+                },
                 { label: "Package, as TA gave it", value: placement?.package },
                 {
                   label: "Basic salary / allowances",
@@ -308,11 +351,90 @@ export default async function InvoiceDetailPage({
                 },
                 {
                   label: "Fee rule",
-                  value: placement ? feeInWords({ feeMonths: placement.feeMonths, feeBasis: placement.feeBasis }) : null,
+                  value: placement ? feeInWords({ feeMonths: feeMonthsFor(placement), feeBasis: placement.feeBasis }) : null,
                 },
-                { label: "Due", value: inv.dueAt ? day(inv.dueAt) : null },
+                {
+                  label: "Due",
+                  value: inv.dueAt
+                    ? `${day(inv.dueAt)}${dueLeft !== null && inv.state !== "paid" && inv.state !== "written_off" ? (dueLeft < 0 ? ` (${Math.abs(dueLeft)} day${Math.abs(dueLeft) === 1 ? "" : "s"} overdue)` : dueLeft === 0 ? " (due today)" : ` (${dueLeft} day${dueLeft === 1 ? "" : "s"} left)`) : ""}`
+                    : null,
+                },
+                {
+                  label: "Reminders sent",
+                  value: inv.state !== "draft" ? `${inv.remindersSent ?? 0} of 3` : null,
+                },
               ]}
             />
+            {inv.state === "draft" && placement && (canMoney || can(me, "client.manage")) && (
+              <div className="mt-4 grid grid-cols-1 gap-4 border-t border-rule pt-4 sm:grid-cols-2">
+                <form action={confirmNationality} className="flex flex-col gap-3 rounded-[16px] border border-rule p-4">
+                  <input type="hidden" name="placementId" value={placement.id} />
+                  <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
+                  <p className="t-body-m text-ink">1. Candidate nationality</p>
+                  <p className="t-small text-ink-3">
+                    {placement.nationalityConfirmedAt && placement.nationality
+                      ? `Confirmed as ${placement.nationality} (${feeMonthsFor(placement)} month${feeMonthsFor(placement) === 1 ? "" : "s"} fee).`
+                      : `Confirm nationality before sending${placement.nationalityFromCv ? ` (read from CV: ${placement.nationalityFromCv})` : ""}.`}
+                  </p>
+                  <div>
+                    <label className={figmaLabel} htmlFor="nationality">Nationality</label>
+                    <input
+                      id="nationality"
+                      name="nationality"
+                      type="text"
+                      required
+                      defaultValue={placement.nationality || placement.nationalityFromCv || ""}
+                      placeholder="e.g. Sri Lankan, Indian, Pakistani"
+                      className={figmaField}
+                    />
+                  </div>
+                  <div>
+                    <SubmitButton id="inv-confirm-nat" className={pillSecondary}>
+                      Confirm nationality
+                    </SubmitButton>
+                  </div>
+                </form>
+
+                <form action={recordPaymentDetails} className="flex flex-col gap-3 rounded-[16px] border border-rule p-4">
+                  <input type="hidden" name="invoiceId" value={inv.id} />
+                  <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
+                  <p className="t-body-m text-ink">2. Client payment details (ESA clause 2.12)</p>
+                  <p className="t-small text-ink-3">
+                    {placement.paymentDetails
+                      ? `Recorded ${money(placement.paymentDetails.offeredSalary, inv.currency)} on ${day(placement.paymentDetails.receivedAt)}.`
+                      : "Record the actual offered salary from the client to re-price the invoice."}
+                  </p>
+                  <div>
+                    <label className={figmaLabel} htmlFor="offeredSalary">Offered monthly salary ({inv.currency})</label>
+                    <input
+                      id="offeredSalary"
+                      name="offeredSalary"
+                      type="number"
+                      step="0.01"
+                      required
+                      defaultValue={placement.paymentDetails?.offeredSalary ?? placement.monthlySalary ?? ""}
+                      className={figmaField}
+                    />
+                  </div>
+                  <div>
+                    <label className={figmaLabel} htmlFor="paymentDetailsNote">Note (optional)</label>
+                    <input
+                      id="paymentDetailsNote"
+                      name="note"
+                      type="text"
+                      defaultValue={placement.paymentDetails?.note ?? ""}
+                      placeholder="e.g. Confirmed by client finance"
+                      className={figmaField}
+                    />
+                  </div>
+                  <div>
+                    <SubmitButton id="inv-record-details" className={pillSecondary}>
+                      Save payment details
+                    </SubmitButton>
+                  </div>
+                </form>
+              </div>
+            )}
             {placement && !agreementSigned && (
               <p className="text-[12.5px] text-warn">
                 No signed agreement on record for this client, so the standard fee (one month of gross salary) was used. Check it against what was agreed.

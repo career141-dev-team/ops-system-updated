@@ -52,6 +52,103 @@ export const LATE_PCT_PER_MONTH = 5;
 /** Unpaid this long and somebody has to decide to write it off. */
 export const WRITE_OFF_DAYS = 90;
 
+/** Default expat fee when an agreement did not record one (clause 5.2, 26 Nov). */
+export const EXPAT_FEE_MONTHS = 2;
+
+/**
+ * Whether a candidate's nationality is non-Sri Lankan (26 Nov, Nov 25 ops meeting).
+ *
+ * Blank or unknown is never assumed expat: Ops confirms nationality before the
+ * invoice goes out. Any non-empty nationality other than Sri Lankan counts as expat.
+ */
+export function isExpat(nationality: string | null | undefined): boolean {
+  const n = (nationality ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!n) return false;
+  if (n === "sri lankan" || n === "sri lanka" || n === "srilankan" || n === "srilanka" || n === "lankan") {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The number of months of salary billed for a placement (26 Nov, Nov 25 ops meeting).
+ *
+ * An expat placement gets the agreement's `expatFeeMonths` (default 2, clause 5.2);
+ * a Sri Lankan (or not-yet-confirmed) placement gets `feeMonths` (default 1).
+ */
+export function feeMonthsFor(placement: {
+  feeMonths: number;
+  expatFeeMonths?: number;
+  nationality?: string;
+}): number {
+  if (isExpat(placement.nationality)) {
+    return placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : EXPAT_FEE_MONTHS;
+  }
+  return placement.feeMonths > 0 ? placement.feeMonths : 1;
+}
+
+/**
+ * What still blocks a fee invoice from being sent (26 Nov, Nov 25 ops meeting).
+ *
+ * The draft is created on join so nothing is forgotten, but it cannot go to the
+ * client until Ops confirms nationality (which decides 1 vs 2 months) and the
+ * client sends payment details with the actual offered salary (clause 2.12).
+ */
+export function invoiceBlockers(
+  placement:
+    | {
+        nationality?: string;
+        nationalityConfirmedAt?: number;
+        paymentDetails?: { offeredSalary: number; receivedAt: number; by: string; note?: string };
+      }
+    | null
+    | undefined,
+): string[] {
+  if (!placement) return [];
+  const blockers: string[] = [];
+  if (!placement.nationality?.trim() || !placement.nationalityConfirmedAt) {
+    blockers.push("nationality not confirmed");
+  }
+  if (!placement.paymentDetails || !(placement.paymentDetails.offeredSalary > 0)) {
+    blockers.push("payment details not received");
+  }
+  return blockers;
+}
+
+/**
+ * The three payment reminders after an invoice is sent: weeks 1, 2 and 3 (26 Nov).
+ *
+ * Any reminder that would fall on or after the due date is skipped, because the
+ * late payment chase takes over once the due date arrives.
+ */
+export function invoiceReminderClocks(
+  sentAt: number,
+  dueAt: number | null,
+): { kind: string; week: number; dueAt: number }[] {
+  const weeks = [1, 2, 3];
+  return weeks
+    .map((week) => ({ kind: "invoice.remind", week, dueAt: sentAt + week * 7 * DAY }))
+    .filter((r) => dueAt === null || r.dueAt < dueAt);
+}
+
+/**
+ * Whole days left until the due date (positive = days left, 0 = due today, negative = days late).
+ */
+export function daysUntilDue(dueAt: number | null, now = Date.now()): number | null {
+  if (dueAt === null) return null;
+  const diff = dueAt - now;
+  return diff >= 0 ? Math.ceil(diff / DAY) : -Math.floor((now - dueAt) / DAY);
+}
+
+export const TESTIMONIAL_CHANNELS = ["LinkedIn", "Site", "Google"] as const;
+export type TestimonialChannel = (typeof TESTIMONIAL_CHANNELS)[number];
+
+export function problemWithTestimonial(side: string, channel: string): string | null {
+  if (side !== "candidate" && side !== "client") return "Pick whether this testimonial is from the candidate or the client.";
+  if (!channel.trim()) return "Pick which channel it came through (LinkedIn, Site or Google).";
+  return null;
+}
+
 /**
  * What TA must have sent with a placement.
  *

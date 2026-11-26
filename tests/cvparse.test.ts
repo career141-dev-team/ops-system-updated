@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { checkedAiFields, duplicateOf, findEmail, findNic, findPhone, guessName, guessPosition, matchVacancy, readCv } from "@/lib/cvParse";
+import { checkedAiFields, duplicateOf, findEmail, findNic, findPhone, guessName, guessPosition, matchVacancy, nationalityOf, readCv } from "@/lib/cvParse";
 
 const CV = ["NIMAL PERERA", "Colombo 07", "nimal.perera@example.test", "Mobile: +94 77 123 4567", "NIC: 912345678V", "Applying for: Recruitment Consultant", "Experience: five years in agency recruitment and client handling."].join("\n");
 
@@ -69,4 +69,13 @@ test("the same person is found by email, NIC or number, however it was typed", (
   assert.equal(duplicateOf(f({ nic: "912345678V" }), have)?.id, "a3");
   assert.equal(duplicateOf(f({ email: "other@example.test", phone: "077 000 0000" }), have), null);
   assert.equal(duplicateOf(f({}), have), null, "a CV with nothing to match on is never called a duplicate");
+});
+
+test("nationality is read from a labelled line or a known demonym (26 Nov)", () => {
+  assert.equal(nationalityOf("Name: Raj Kumar\nNationality: Indian\nColombo"), "Indian");
+  assert.equal(nationalityOf("Citizenship - SRI LANKAN\nExperience: 5 years"), "Sri Lankan");
+  assert.equal(nationalityOf("Nationality: Pakistani | Married"), "Pakistani");
+  assert.equal(nationalityOf("Experienced British chartered accountant based in Dubai."), "British");
+  assert.equal(nationalityOf("No country or demonym mentioned here."), "");
+  assert.equal(nationalityOf(""), "");
 });

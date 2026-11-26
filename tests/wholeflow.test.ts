@@ -238,10 +238,24 @@ test("5. TA places them, and accounts hears the same day", async () => {
   assert.equal(notice?.channel, "internal", "the same-day notice is internal, so nobody approves it");
 });
 
-test("6. they join: the fee is invoiced and the guarantee starts", async () => {
+test("6. they join: the fee is invoiced, testimonial task is created, and the guarantee starts", async () => {
   const joinedAt = DAY_ONE + 50 * DAY;
   const joined = await desk.markPlacementJoined(made.placement, OWNER, joinedAt);
   assert.equal(joined.ok, true);
+
+  const placement = repo.placementIn(made.placement)!;
+  assert.deepEqual(placement.testimonial, { candidate: "pending", client: "pending" });
+  assert(
+    repo.all().tasks.some((t) => t.kind === "record" && t.subjectId === made.placement && /testimonial/i.test(t.title)),
+    "joining creates the mandatory testimonial task",
+  );
+
+  const { invoiceBlockers } = await import("@/lib/money");
+  assert.deepEqual(
+    invoiceBlockers(placement),
+    ["nationality not confirmed", "payment details not received"],
+    "sending is blocked until nationality and payment details are recorded",
+  );
 
   const invoice = repo.all().invoices[0];
   assert(invoice, "the fee is drafted the day they join");

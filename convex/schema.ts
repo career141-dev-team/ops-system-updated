@@ -492,8 +492,9 @@ export default defineSchema({
 
   /** A placement taken from TA, with the agreement's fee rule on it. */
   opsPlacements: defineTable({
-    // 26 Nov: the Nov 25 ops meeting: expat fee, nationality (from the CV, then confirmed), payment details, testimonials.
+    // 26 Nov: the Nov 25 ops meeting: expat fee, payment days, nationality (from the CV, then confirmed), payment details, testimonials.
     expatFeeMonths: v.optional(v.number()),
+    paymentDays: v.optional(v.number()),
     nationality: v.optional(v.string()),
     nationalityFromCv: v.optional(v.string()),
     nationalityConfirmedBy: v.optional(v.string()),

@@ -529,6 +529,60 @@ Career 141`,
         updatedAt: null,
       },
       {
+        key: "invoice.details_request",
+        channel: "email",
+        name: "Asking the client for payment details",
+        subject: "{{client}} - payment details for {{candidate}}",
+        body: `Dear {{contact}},
+
+Congratulations on {{candidate}} joining you as {{position}}.
+
+Under clause 2.12 of our agreement, could you please share the confirmed total salary package breakdown and your billing address so we can raise the placement fee invoice?
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "invoice.remind",
+        channel: "email",
+        name: "Payment reminder (weeks 1, 2 and 3)",
+        subject: "Reminder {{reminderNumber}}: invoice {{invoiceNumber}} - {{client}}",
+        body: `Dear all,
+
+A quick reminder that invoice {{invoiceNumber}} for {{amount}} is due on {{dueDate}} (clause 5.4 of our agreement).
+
+Please let us know if you need anything further from our side.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
+        key: "testimonial.ask",
+        channel: "email",
+        name: "Asking for a testimonial",
+        subject: "Thank you - a quick testimonial for Career 141",
+        body: `Dear {{contact}},
+
+We are glad {{candidate}} has started in the {{position}} role at {{client}}.
+
+If you have two minutes, we would really appreciate a short testimonial on {{channel}} about working with us.
+
+Kind regards,
+{{opsPerson}}
+Career 141`,
+        approvedForAuto: false,
+        updatedBy: null,
+        updatedAt: null,
+      },
+      {
         key: "placement.noshow_options",
         channel: "email",
         name: "A candidate who never turned up",

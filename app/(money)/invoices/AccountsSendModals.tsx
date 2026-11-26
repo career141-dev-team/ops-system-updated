@@ -2,7 +2,7 @@ import { sendInvoice, writeNewMessage } from "@/app/actions";
 import PreviewAndSend, { SendLeftSection } from "@/app/ui/PreviewAndSend";
 import { clientIn, placementIn, positionIn } from "@/data/desk";
 import type { OpsDatabase, OpsMember } from "@/data/types";
-import { balanceOf, money } from "@/lib/money";
+import { balanceOf, feeMonthsFor, invoiceBlockers, isExpat, money } from "@/lib/money";
 import { recipientsFrom } from "@/lib/reports";
 
 /**
@@ -41,6 +41,13 @@ export function AccountsSendModal({
 
     const body = `Dear ${client?.billingName || client?.name || "Finance Team"},\n\nPlease find attached invoice ${inv.number} for ${amountText}${pl ? ` for the placement of ${pl.candidateName}` : ""}${role ? ` (${role.title})` : ""}.\n\nPayment is due on ${dueStr}.\n\nKind regards,\n${me.name}\nCareer141 Accounts`;
 
+    const blockers = inv.kind === "fee" ? invoiceBlockers(pl) : [];
+    const disabledReason = !billingEmail
+      ? "Add the client's billing email address before sending."
+      : blockers.length > 0
+        ? "Cannot send yet: " + blockers.join(" and ") + "."
+        : null;
+
     return (
       <PreviewAndSend
         title="Send the invoice"
@@ -52,7 +59,7 @@ export function AccountsSendModal({
           back: closeHref,
         }}
         sendLabel="Send the invoice"
-        disabledReason={billingEmail ? null : "Add the client's billing email address before sending."}
+        disabledReason={disabledReason}
         note="Generates/attaches the invoice PDF and sends through the outbound gate."
         left={
           <>
@@ -60,6 +67,13 @@ export function AccountsSendModal({
               <div className="rounded-[16px] border border-rule bg-surface p-4">
                 <p className="text-[24px] font-medium leading-8 text-ink">{amountText}</p>
                 <p className="t-small text-ink-3">Due {dueStr}</p>
+                {pl && (
+                  <p className={"t-small mt-1 " + (pl.nationalityConfirmedAt && pl.nationality ? "text-ink-2" : "text-warn")}>
+                    {pl.nationalityConfirmedAt && pl.nationality
+                      ? `${pl.nationality} · ${isExpat(pl.nationality) ? `Expat (${feeMonthsFor(pl)} mo)` : `Local (${feeMonthsFor(pl)} mo)`}`
+                      : "Nationality not confirmed"}
+                  </p>
+                )}
               </div>
             </SendLeftSection>
             <SendLeftSection title="To">

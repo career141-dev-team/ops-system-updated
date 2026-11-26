@@ -3,7 +3,7 @@ import Link from "next/link";
 import { draftInvoiceForPlacement, markJoined, savePlacementPhone } from "@/app/actions";
 import { Avatar, Card, EmptyState, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { colomboDateInWords } from "@/lib/calendar";
-import { moneyWhole } from "@/lib/money";
+import { feeMonthsFor, isExpat, moneyWhole } from "@/lib/money";
 import { guaranteeDay, missingInWords, offerColumn, type OfferColumn } from "@/lib/offerBoard";
 import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
@@ -12,7 +12,7 @@ import type { TabProps } from "./ctx";
 import CopyButton from "./offer/CopyButton";
 import OfferPanels, { shortDay } from "./offer/panels";
 
-const PANELS = ["record-address", "move-doj", "offer-declined", "did-not-join"];
+const PANELS = ["record-address", "move-doj", "offer-declined", "did-not-join", "confirm-nationality", "testimonial"];
 const DAY = 86_400_000;
 const small = " !px-3 !py-[7px] !text-[12px] !leading-4";
 
@@ -136,7 +136,40 @@ export default function Offer({ c, sp }: TabProps) {
                           </form>
                         )}
                         {pl.dojHistory.length > 0 && <p className="t-small text-ink-3">Moved {pl.dojHistory.length} time{pl.dojHistory.length === 1 ? "" : "s"}</p>}
+                        {(col.key === "joining" || col.key === "joined") && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {pl.nationalityConfirmedAt && pl.nationality ? (
+                              <p className="t-small text-ink-2">
+                                Nationality: <strong className="font-medium text-ink">{pl.nationality}</strong>{" "}
+                                ({isExpat(pl.nationality) ? `Expat · ${feeMonthsFor(pl)} mo` : `Local · ${feeMonthsFor(pl)} mo`})
+                              </p>
+                            ) : (
+                              <>
+                                <p className="t-small text-warn">
+                                  Nationality not confirmed{pl.nationalityFromCv ? ` (CV: ${pl.nationalityFromCv})` : ""}
+                                </p>
+                                {mayManage && (
+                                  <Link scroll={false} href={open("confirm-nationality", pl.id)} className={pillSecondary + small}>
+                                    Confirm nationality
+                                  </Link>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
                         {guarantee && <p className="t-small text-brand">Guarantee day {guaranteeDay(guarantee, now, total(guarantee))} of {total(guarantee)}</p>}
+                        {pl.state === "joined" && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="t-small text-ink-3">
+                              Testimonial: candidate {pl.testimonial?.candidate ?? "pending"} · client {pl.testimonial?.client ?? "pending"}
+                            </p>
+                            {mayManage && (
+                              <Link scroll={false} href={open("testimonial", pl.id)} className={pillSecondary + small}>
+                                Testimonial
+                              </Link>
+                            )}
+                          </div>
+                        )}
                         {pl.state === "joined" &&
                           (invoice ? (
                             <Link href={`/invoices/${invoice.id}`} className="t-small text-ink-2 hover:text-brand">Invoice {invoice.number} · {invoice.state}</Link>

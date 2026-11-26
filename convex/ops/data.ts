@@ -996,8 +996,9 @@ export const patchChecklist = internalMutation({
 /** A placement taken from TA (15, Phase 6 step 3). */
 export const addPlacement = internalMutation({
   args: {
-    // 26 Nov: the Nov 25 ops meeting: expat fee, nationality (from the CV, then confirmed), payment details, testimonials.
+    // 26 Nov: the Nov 25 ops meeting: expat fee, payment days, nationality (from the CV, then confirmed), payment details, testimonials.
     expatFeeMonths: v.optional(v.number()),
+    paymentDays: v.optional(v.number()),
     nationality: v.optional(v.string()),
     nationalityFromCv: v.optional(v.string()),
     nationalityConfirmedBy: v.optional(v.string()),

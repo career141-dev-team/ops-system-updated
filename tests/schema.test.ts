@@ -38,8 +38,8 @@ const MAY_BE_OPTIONAL = ["inReplyToProviderId", "thread", "ui", "slotAnswers", "
   "rejectedAtStage",
   // A Scoop CV (23 Nov): read from the CV, or asked on the call.
   "nic", "targetPosition", "packageSaid", "laptop", "scoopId", "repliedAt",
-  // 26 Nov: the Nov 25 ops meeting — main/backup ops, priority, salary, client type, ESA mode, expat fee, nationality, payment details, testimonials, reminders, vacancy source, caller notes.
-  "backupOwnerId", "priority", "salaryMonthly", "salaryCurrency", "clientType", "mode", "positionId", "jd", "salaryScale", "expatFeeMonths", "nationality", "nationalityFromCv", "nationalityConfirmedBy", "nationalityConfirmedAt", "paymentDetails", "testimonial", "remindersSent", "detailsRequestedAt", "source", "sourceDetail", "callerId", "currentSalary", "expectedSalary", "availability", "notInterestedReason"];
+  // 26 Nov: the Nov 25 ops meeting — main/backup ops, priority, salary, client type, ESA mode, expat fee, payment days, nationality, payment details, testimonials, reminders, vacancy source, caller notes.
+  "backupOwnerId", "priority", "salaryMonthly", "salaryCurrency", "clientType", "mode", "positionId", "jd", "salaryScale", "expatFeeMonths", "paymentDays", "nationality", "nationalityFromCv", "nationalityConfirmedBy", "nationalityConfirmedAt", "paymentDetails", "testimonial", "remindersSent", "detailsRequestedAt", "source", "sourceDetail", "callerId", "currentSalary", "expectedSalary", "availability", "notInterestedReason"];
 
 test("only the fields we have thought about are optional in the schema", () => {
   const optional = [...schema.matchAll(/^\s+([a-zA-Z][a-zA-Z0-9]*): v\.optional\(/gm)].map((m) => m[1]);
