@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { draftInvoiceForPlacement, markJoined, requestPaymentDetails, savePlacementPhone } from "@/app/actions";
 import { Avatar, Card, EmptyState, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
+import { statusWords } from "@/lib/accountsBoard";
 import { colomboDateInWords } from "@/lib/calendar";
 import { feeMonthsFor, isExpat, moneyWhole } from "@/lib/money";
 import { guaranteeDay, missingInWords, offerColumn, type OfferColumn } from "@/lib/offerBoard";
@@ -172,7 +173,7 @@ export default function Offer({ c, sp }: TabProps) {
                         )}
                         {pl.state === "joined" &&
                           (invoice ? (
-                            <Link href={`/invoices/${invoice.id}`} className="t-small text-ink-2 hover:text-brand">Invoice {invoice.number} · {invoice.state}</Link>
+                            <Link href={`/invoices/${invoice.id}`} className="t-small text-ink-2 hover:text-brand">Invoice {invoice.number} · {statusWords(invoice, now)}</Link>
                           ) : pl.isReplacementOf ? (
                             <p className="t-small text-ink-3">A replacement: no new invoice</p>
                           ) : (

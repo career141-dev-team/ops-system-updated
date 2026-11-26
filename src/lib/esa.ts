@@ -86,7 +86,7 @@ export const ESA_FIELDS: EsaField[] = [
   { key: "taxNo", label: "Tax number (VAT/TIN)", required: false, why: "Not in the document; kept for the invoice." },
   { key: "clientType", label: "Local or international client", required: true, why: "Copied to the client record when the agreement is signed." },
   { key: "feeMonths", label: "Fee: months of salary", required: true, why: "One month is standard." },
-  { key: "expatFeeMonths", label: "Fee for a non-Sri Lankan: months of salary", required: true, why: "Two months is standard (clause 5.2); copied onto each placement." },
+  { key: "expatFeeMonths", label: "Fee for a non-Sri Lankan: months of salary", required: false, why: "Always twice the fee (clause 5.2); blank means exactly that." },
   { key: "feeBasis", label: "Fee on gross or basic", required: true, why: "Basic only for selected clients." },
   { key: "guaranteeDays", label: "Guarantee, in days", required: true, why: "90 days from joining." },
   { key: "paymentDays", label: "Payment, in days", required: true, why: "30 days from the first working day." },
@@ -113,6 +113,11 @@ export function problemWithSigningDraft(mode: EsaMode | undefined | null): strin
   return mode === "draft" ? "This is a draft agreement. Make the final agreement before recording a signature." : null;
 }
 
+/** A draft that is with the client: the one thing to do with it, besides chasing or declining, is make it final. */
+export function isSentDraft(esa: { state: string; mode?: EsaMode | null }): boolean {
+  return esa.mode === "draft" && (esa.state === "sent" || esa.state === "chasing");
+}
+
 /**
  * Which required fields are still blank.
  *
@@ -128,14 +133,31 @@ export function missingFields(fields: EsaFields, mode: EsaMode = "final"): EsaFi
 
 export function problemWithDraft(fields: EsaFields, mode: EsaMode = "final"): string | null {
   const missing = missingFields(fields, mode);
+  if (missing.length) return "Still blank: " + missing.map((f) => f.label.toLowerCase()).join(", ") + ".";
   // shortcut: the owner's Word template hard-codes "{{feeText}} x 2" in clause 5.2, so any other expat fee would
   // show on screen and be invoiced, but not be what the client signed. Lift this once the template has a hole for it.
-  const expat = String(fields.expatFeeMonths ?? "").trim();
-  if (missing.length === 0 && expat && Number(expat) !== 2) {
-    return "The agreement template says a non-Sri Lankan placement is the fee x 2, so the expat fee must be 2 months until the template is changed.";
+  const twice = 2 * (Number(fields.feeMonths) || 1);
+  if (expatMonthsOf(fields) !== twice) {
+    return "The agreement template says a non-Sri Lankan placement is the fee x 2, so the expat fee must be " + twice + " months until the template is changed.";
   }
-  if (missing.length === 0) return null;
-  return "Still blank: " + missing.map((f) => f.label.toLowerCase()).join(", ") + ".";
+  return null;
+}
+
+/** The expat fee an agreement means: its own, or twice the fee when it recorded none. */
+export function expatMonthsOf(fields: EsaFields): number {
+  const own = String(fields.expatFeeMonths ?? "").trim();
+  return own ? Number(own) : 2 * (Number(fields.feeMonths) || 1);
+}
+
+/**
+ * The expat fee follows the fee when the details are saved: a blank one, or one still at twice the old fee,
+ * becomes twice the new fee. Anything else somebody typed is left for `problemWithDraft` to refuse.
+ */
+export function followFee(before: EsaFields, after: EsaFields): EsaFields {
+  const months = Number(after.feeMonths);
+  const typed = String(after.expatFeeMonths ?? "").trim();
+  if (!(months > 0) || (typed && Number(typed) !== 2 * (Number(before.feeMonths) || 1))) return after;
+  return { ...after, expatFeeMonths: String(2 * months) };
 }
 
 const NUMBER_WORDS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
@@ -174,7 +196,7 @@ export function holeValues(fields: EsaFields): EsaFields {
     Number.isInteger(m) && NUMBER_WORDS[m] ? `${NUMBER_WORDS[m]} ${m === 1 ? "Month" : "Months"} ${basis} Salary` : "";
   const feeText = feeIn(months);
   // 26 Nov (Nov 25 ops meeting): clause 5.2 no longer says "fee x 2"; it words its own number of months.
-  const expatFeeText = feeIn(Number(fields.expatFeeMonths));
+  const expatFeeText = feeIn(expatMonthsOf(fields));
   const guaranteeText =
     Number.isInteger(days) && days > 0
       ? `${days} calendar days` + (days % 30 === 0 ? ` (${days / 30} ${days === 30 ? "month" : "months"})` : "")

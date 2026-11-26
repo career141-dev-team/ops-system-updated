@@ -12,7 +12,7 @@
  *
  * Nothing here touches a database or sends anything.
  */
-import type { OpsClient, OpsDatabase, OpsPosition } from "@/data/types";
+import type { OpsClient, OpsDatabase, OpsEsa, OpsPosition } from "@/data/types";
 
 export type ClientStage = "lead" | "onboarding" | "active" | "dormant" | "closed";
 
@@ -128,25 +128,43 @@ export function callKindFor(c: { stage: string; hasPosition: boolean; heldCall: 
 /**
  * "Agreement not signed" (26 Nov): true when there is no ESA at all, or none is signed or countersigned.
  * The positions page used to flag only an ESA that existed and was unsigned, so a client with no
- * agreement went unflagged.
+ * agreement went unflagged. The one exception: an active client with no agreement record at all signed
+ * before Ops, and their agreement is on file.
  */
-export function agreementNotSigned(esas: { state: string }[]): boolean {
+export function agreementNotSigned(esas: { state: string }[], stage?: string): boolean {
+  if (!esas.length) return stage !== "active";
   return !esas.some((e) => e.state === "signed" || e.state === "countersigned");
 }
 
 /**
- * "Agreement not signed" for one position (26 Nov, Nov 25 ops meeting): the ESAs of the lead its requirement came
- * from and of the client's own lead. One signed anywhere settles it, so a role TA opened with no requirement linked
- * is not flagged when the client has signed.
+ * "Agreement not signed" for one position (26 Nov, Nov 25 ops meeting): its client's answer, so a client and its
+ * positions never disagree. A position with no client is read from the lead its requirement came from.
  */
 export function positionAgreementNotSigned(db: OpsDatabase, position: Pick<OpsPosition, "requirementId" | "clientId">): boolean {
-  const reqLead = position.requirementId ? db.requirements.find((r) => r.id === position.requirementId)?.leadId : null;
-  const clientLead = position.clientId ? db.clients.find((c) => c.id === position.clientId)?.leadId : null;
-  const leadIds = [reqLead, clientLead].filter((x): x is string => !!x);
-  return agreementNotSigned(db.agreements.filter((e) => leadIds.includes(e.leadId)));
+  if (position.clientId) return clientAgreementNotSigned(db, position.clientId);
+  const lead = position.requirementId ? db.requirements.find((r) => r.id === position.requirementId)?.leadId : null;
+  return agreementNotSigned(db.agreements.filter((e) => e.leadId === lead));
 }
 
-/** The same for a client: its own lead, and every lead whose requirement has a position for it. */
+/**
+ * The agreement "Chase the agreement" opens: the newest version on the requirement's lead, else on the client's lead,
+ * whichever is still unsigned. Null when neither has one to chase.
+ */
+export function agreementToChase(db: OpsDatabase, position: Pick<OpsPosition, "requirementId" | "clientId">): OpsEsa | null {
+  const reqLead = position.requirementId ? db.requirements.find((r) => r.id === position.requirementId)?.leadId : null;
+  const clientLead = position.clientId ? db.clients.find((c) => c.id === position.clientId)?.leadId : null;
+  for (const leadId of [reqLead, clientLead]) {
+    const latest = db.agreements.filter((e) => e.leadId === leadId).sort((a, b) => b.version - a.version)[0];
+    if (latest && agreementNotSigned([latest])) return latest;
+  }
+  return null;
+}
+
+/**
+ * The one "signed" rule for chips, filters and positions: the ESAs of the client's own lead and of every lead whose
+ * requirement has a position for it. An unsigned record on any other lead of theirs ends the before-Ops exception:
+ * a client with an unsigned agreement is never signed through it.
+ */
 export function clientAgreementNotSigned(db: OpsDatabase, clientId: string): boolean {
   const client = db.clients.find((c) => c.id === clientId);
   const leadIds = new Set<string>(client?.leadId ? [client.leadId] : []);
@@ -155,7 +173,9 @@ export function clientAgreementNotSigned(db: OpsDatabase, clientId: string): boo
     const lead = db.requirements.find((r) => r.id === p.requirementId)?.leadId;
     if (lead) leadIds.add(lead);
   }
-  return agreementNotSigned(db.agreements.filter((e) => leadIds.has(e.leadId)));
+  const esas = db.agreements.filter((e) => leadIds.has(e.leadId));
+  const elsewhere = !esas.length && db.agreements.some((e) => agreementNotSigned([e]) && clientForLead(db, e.leadId)?.id === clientId);
+  return agreementNotSigned(esas, elsewhere ? undefined : client?.stage);
 }
 
 /**

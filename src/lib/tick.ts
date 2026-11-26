@@ -122,7 +122,7 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   "invoice.due": {
     kind: "approve",
     title: "An invoice is due today",
-    body: "Thirty days from their first working day. If nothing has come in, the chase is drafted for you.",
+    body: "The agreement's payment days from their first working day are up. If nothing has come in, the chase is drafted for you.",
   },
   // 26 Nov (PR 3 review): without this each weekly reminder also left a junk "This clock has run out." task.
   "invoice.remind": {
@@ -133,7 +133,7 @@ const WHEN_FIRED: Record<string, { kind: OpsTask["kind"]; title: string; body: s
   "invoice.chase": {
     kind: "approve",
     title: "The invoice is past its due date",
-    body: "The chase is drafted, with the late charge added. Read it and approve it.",
+    body: "The late charge is added up. A chase is drafted unless they have replied since the last one: read it and approve it.",
   },
   "replacement.deadline": {
     kind: "decide",

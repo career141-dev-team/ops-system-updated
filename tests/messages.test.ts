@@ -178,4 +178,5 @@ test("a draft's kind comes from what it is about", () => {
   assert.equal(draftKind({ subjectType: "interview", templateKey: "interview.reminder" }), "candidates");
   assert.equal(draftKind({ subjectType: "interview", templateKey: "interview.client_feedback" }), "chases");
   assert.equal(draftKind({ subjectType: null }), "chases");
+  assert.equal(draftKind({ subjectType: "applicant", templateKey: "hiring.interview_invite" }), "candidates");
 });

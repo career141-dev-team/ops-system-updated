@@ -138,9 +138,9 @@ export function summaryOf(batch: ScoopBatch, applicants: ApplicantLike[]): Scoop
   const rejected = mine.filter((a) => a.stage === "rejected");
   const screeningRejects = rejected.filter((a) => rejectKind(a.rejectedAtStage) === "screening").map((a) => ({ name: a.name, reason: a.rejectReason ?? "No reason written" }));
   // Responded: spoken to on a call, or wrote back to us on WhatsApp. Somebody who wrote back is not "no answer".
-  const reached = (a: ApplicantLike) => ["fits", "interview", "decision", "hired"].includes(a.stage) || (a.stage === "rejected" && a.tries > 0) || !!a.repliedAt;
+  const reached = (a: ApplicantLike) => ["fits", "interview", "shortlisted", "offered", "decision", "hired", "declined", "not_interested"].includes(a.stage) || (a.stage === "rejected" && a.tries > 0) || !!a.repliedAt;
   const responded = mine.filter(reached).length;
-  const noAnswer = mine.filter((a) => a.stage === "call" && a.tries > 0 && !a.repliedAt).length;
+  const noAnswer = mine.filter((a) => ((a.stage === "call" && a.tries > 0) || a.stage === "non_responsive") && !a.repliedAt).length;
   const notCalled = mine.filter((a) => !a.repliedAt && (a.stage === "new" || (a.stage === "call" && a.tries === 0))).length;
   const interviews = mine.filter((a) => a.interviewAt !== null).length;
   const n = (count: number, one: string, many: string) => count + " " + (count === 1 ? one : many);

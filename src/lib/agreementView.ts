@@ -4,7 +4,7 @@
  */
 import { chaseDueAt, dueWords } from "@/lib/clientsBoard";
 import { dayWords } from "@/lib/clientsView";
-import { CHASE_PLAN, type EsaFields } from "@/lib/esa";
+import { CHASE_PLAN, expatMonthsOf, type EsaFields } from "@/lib/esa";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 const first = (name: string) => name.trim().split(/\s+/)[0] ?? "";
@@ -26,8 +26,8 @@ export function termRows(fields: EsaFields): { label: string; value: string }[] 
     { label: "Payment", value: (fields.paymentDays || "30") + " days" },
     // 26 Nov (Nov 25 ops meeting): who the client is and what a non-Sri Lankan costs. Last, because coverNote reads rows 1 and 2 by position.
     { label: "Client", value: fields.clientType === "international" ? "International" : fields.clientType === "local" ? "Local" : "Not chosen" },
-    // An agreement from before the field said "fee x 2", and the placement bills it as 2, so it reads 2 here too.
-    { label: "Expat fee", value: cap(monthsWords(fields.expatFeeMonths || "2")) },
+    // An agreement from before the field said "fee x 2", and the placement bills it so.
+    { label: "Expat fee", value: cap(monthsWords(String(expatMonthsOf(fields)))) },
   ];
 }
 

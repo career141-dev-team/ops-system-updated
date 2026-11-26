@@ -175,7 +175,7 @@ export default function OfferPanels({ c, sp, path }: TabProps & { path: string }
   if (sp.panel === "confirm-nationality" && (placement.state === "placed" || placement.state === "joined")) {
     const suggested = placement.nationality || placement.nationalityFromCv || "";
     const localMonths = placement.feeMonths > 0 ? placement.feeMonths : 1;
-    const expatMonths = placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : 2;
+    const expatMonths = placement.expatFeeMonths && placement.expatFeeMonths > 0 ? placement.expatFeeMonths : 2 * localMonths;
     return (
       <ActionPanel
         kicker="Confirm nationality"

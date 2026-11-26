@@ -99,7 +99,7 @@ export default async function InvoiceDetailPage({
   const bal = balanceOf(inv);
   const paid = paidSoFar(inv);
   const overdue = Boolean(
-    inv.dueAt && inv.dueAt < now && inv.state !== "paid" && inv.state !== "written_off",
+    inv.dueAt && inv.dueAt < now && inv.state !== "draft" && inv.state !== "paid" && inv.state !== "written_off",
   );
 
   // The settings, not the code's defaults (18 Nov).
@@ -181,7 +181,9 @@ export default async function InvoiceDetailPage({
             inv.dueAt && inv.state !== "paid" && inv.state !== "written_off"
               ? overdue
                 ? `Late payment · ${Math.abs(dueLeft ?? 0)} day${Math.abs(dueLeft ?? 0) === 1 ? "" : "s"} overdue`
-                : dueLeft === 0
+                : dueLeft !== null && dueLeft < 0
+                  ? `Due date ${day(inv.dueAt)} has passed · not sent yet`
+                  : dueLeft === 0
                   ? `Due today (${day(inv.dueAt)})`
                   : `Due in ${dueLeft} day${dueLeft === 1 ? "" : "s"} (${day(inv.dueAt)})`
               : undefined
@@ -356,7 +358,7 @@ export default async function InvoiceDetailPage({
                 {
                   label: "Due",
                   value: inv.dueAt
-                    ? `${day(inv.dueAt)}${dueLeft !== null && inv.state !== "paid" && inv.state !== "written_off" ? (dueLeft < 0 ? ` (${Math.abs(dueLeft)} day${Math.abs(dueLeft) === 1 ? "" : "s"} overdue)` : dueLeft === 0 ? " (due today)" : ` (${dueLeft} day${dueLeft === 1 ? "" : "s"} left)`) : ""}`
+                    ? `${day(inv.dueAt)}${dueLeft !== null && inv.state !== "paid" && inv.state !== "written_off" ? (dueLeft < 0 ? (inv.state === "draft" ? " (passed, not sent yet)" : ` (${Math.abs(dueLeft)} day${Math.abs(dueLeft) === 1 ? "" : "s"} overdue)`) : dueLeft === 0 ? " (due today)" : ` (${dueLeft} day${dueLeft === 1 ? "" : "s"} left)`) : ""}`
                     : null,
                 },
                 {

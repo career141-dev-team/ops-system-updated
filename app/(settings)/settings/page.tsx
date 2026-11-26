@@ -5,6 +5,7 @@ import { addOpsMember, changeSetting, saveBankDetails, saveCover, saveTemplateWo
 import Icon from "@/app/Icon";
 import { Avatar, PageTitle, PillTabs, figmaField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { desk, member as memberIn, numberOf, switchedOn, textOf } from "@/data/desk";
+import { hiringInterviewersFrom } from "@/lib/hiring";
 import { ASSIGNABLE_ROLES, ROLE_LABEL, can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 import { LOCKED_SETTINGS } from "@/lib/settingsRules";
@@ -67,11 +68,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     },
     {
       title: "Interviews",
-      keys: ["interview.reconfirmHours", "interview.slotsChaseDays", "interview.feedbackDueHours"],
+      keys: ["interview.reconfirmHours", "interview.slotsChaseDays", "interview.feedbackDueHours", "hiring.interviewers"],
       lines: [
         `Reconfirm the day before (${numberOf(db, "interview.reconfirmHours", 24)} hours before)`,
         `Offered times are chased after ${numberOf(db, "interview.slotsChaseDays", 2)} days`,
         "Candidate feedback goes to the client the next morning",
+        `Our own hiring interviews are with ${hiringInterviewersFrom(textOf(db, "hiring.interviewers", ""), db.members).join(", ") || "nobody yet"}`,
       ],
     },
     {
@@ -166,7 +168,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="grid gap-5 md:grid-cols-2">
               {groups.map((g) => {
                 const groupSettings = g.keys
-                  .map((k) => db.settings.find((s) => s.key === k))
+                  .map((k) => db.settings.find((s) => s.key === k) ?? (k === "hiring.interviewers" ? { key: k, value: "" } : undefined))
                   .filter((s): s is NonNullable<typeof s> => Boolean(s));
                 return (
                   <section key={g.title} className="flex flex-col gap-4 rounded-[28px] bg-surface p-7 shadow-card">
@@ -189,7 +191,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                                     <input
                                       name="value"
                                       defaultValue={String(setting.value)}
-                                      className={figmaField + " w-[100px] bg-surface"}
+                                      aria-label={words.label}
+                                      className={figmaField + (setting.key === "hiring.interviewers" ? " w-full" : " w-[100px]") + " bg-surface"}
                                     />
                                     <input
                                       name="reason"

@@ -3,6 +3,7 @@ import "server-only";
 import { leadIn, liveHoldFor, openChecklistFor, placementIn, positionIn, requirementForLead, requirementIn } from "./desk";
 import type { OpsDatabase, OpsPosition } from "./types";
 import { type LoopSummary, loopSummary, stageOfPosition } from "@/lib/journey";
+import { unanswered } from "@/lib/setsBoard";
 
 /**
  * Where one opening stands after it was opened (18 Nov): the stage the Work board puts it in,
@@ -11,7 +12,7 @@ import { type LoopSummary, loopSummary, stageOfPosition } from "@/lib/journey";
  */
 export function positionStanding(db: OpsDatabase, position: OpsPosition): { stage: string; loop: LoopSummary | null } {
   const sets = db.clientSets.filter((set) => set.openingTaId === position.openingTaId);
-  const waitingSet = sets.filter((set) => set.state === "sent").find((set) => set.candidates.some((who) => !who.decision));
+  const waitingSet = sets.filter((set) => set.state === "sent").find((set) => set.candidates.some(unanswered));
   const hold = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
   const placement = db.placements.find((row) => row.openingTaId === position.openingTaId && row.state !== "cancelled") ?? null;
   const invoiceOwing = placement

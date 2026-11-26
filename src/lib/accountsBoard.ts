@@ -69,6 +69,14 @@ export function columnOf(i: BoardInvoice, now: number): Column | null {
   return "sent";
 }
 
+/** One invoice's status in the board's words, for a line elsewhere. Paid stays "Paid" in every month. */
+export function statusWords(i: BoardInvoice, now: number): string {
+  if (i.state === "written_off") return "Written off";
+  if (i.state === "paid") return "Paid";
+  if (i.state === "draft") return "To be sent";
+  return columnOf(i, now) === "late" ? "Late payment" : "Sent";
+}
+
 export interface BoardSummary {
   toSend: number;
   sent: number;

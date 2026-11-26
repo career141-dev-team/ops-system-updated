@@ -1,4 +1,5 @@
 import { isOff } from "@/lib/interviews";
+import { onPosition } from "@/lib/positionCounts";
 import { pipeline } from "@/lib/ta";
 import type { OpsClientSet, OpsDatabase, OpsPosition } from "@/data/types";
 
@@ -212,8 +213,8 @@ export function candidatesForPosition(
   }
 
   // The level of each, from the sets, the client's answers, interviews, placements and the TA stage.
-  const interviews = db.interviews.filter((i) => i.positionId === position.id && !isOff(i.state));
-  const placements = db.placements.filter((p) => p.positionId === position.id && p.state !== "cancelled");
+  const interviews = db.interviews.filter((i) => onPosition(position, i) && !isOff(i.state));
+  const placements = db.placements.filter((p) => onPosition(position, p) && p.state !== "cancelled" && p.state !== "no_show");
   for (const view of byId.values()) {
     const inSetRow = itsSets.some((set) => set.candidates.some((c) => (c.applicationTaId || "") === view.applicationTaId));
     const placement = placements.find((p) => p.applicationTaId === view.applicationTaId);

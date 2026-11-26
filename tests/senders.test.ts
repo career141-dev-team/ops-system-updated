@@ -22,7 +22,6 @@ import {
   outreachInWords,
   outreachLiveInEnv,
   phoneAllowed,
-  replySubjectFor,
   sendEmail,
   sendWhatsApp,
   sendingEnabled,
@@ -86,7 +85,7 @@ test("our reference goes into the subject once, and only when it names something
   assert.equal(subjectWithReference("A note", null, null), "A note");
 });
 
-test("PR 8: second set email threads under the first with one per-client reference", () => {
+test("PR 8: a second set email threads under the first and keeps its own reference", () => {
   const now = Date.now();
   const db = seed(now);
   db.clients = [
@@ -157,7 +156,7 @@ test("PR 8: second set email threads under the first with one per-client referen
       id: "msg_1",
       channel: "email",
       to: ["hr@acme.test"],
-      subject: "Acme > Dev > SET 1 [C141-CLIENT-CL1]",
+      subject: "Acme > Dev > SET 1 [C141-CLIENTSET-CS1]",
       body: "Set 1",
       templateKey: "set.cover",
       state: "sent",
@@ -174,16 +173,9 @@ test("PR 8: second set email threads under the first with one per-client referen
     },
   ];
 
-  const thread = threadFor(db, "cl_1");
-  assert.equal(thread.inReplyToProviderId, "<msg-1@graph.test>");
-  assert.equal(replySubjectFor(thread.subject!), "Re: Acme > Dev > SET 1");
-
-  // Second set uses the same per-client reference [C141-CLIENT-CL1], not [C141-CLIENTSET-CS2].
-  const secondSubj = subjectWithReference(replySubjectFor(thread.subject!), "clientSet", "cs_2", {
-    clientId: "cl_1",
-    templateKey: "set.cover",
-  });
-  assert.equal(secondSubj, "Re: Acme > Dev > SET 1 [C141-CLIENT-CL1]");
+  assert.equal(threadFor(db, "cl_1", ["hr@acme.test"]), "<msg-1@graph.test>");
+  // The second set keeps its own reference, so a reply to it finds set 2 and not the client.
+  assert.equal(subjectWithReference("Acme > Dev > SET 2", "clientSet", "cs_2"), "Acme > Dev > SET 2 [C141-CLIENTSET-CS2]");
 });
 
 test("a WhatsApp group is posted by a person, and the system says so plainly", () => {

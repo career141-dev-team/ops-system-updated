@@ -7,7 +7,7 @@ import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
-import { CALL_NOT_FIT, NOT_INTERESTED_REASONS, first, inviteMessage, offerLetter, rejectMessage, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, NOT_INTERESTED_REASONS, first, inviteMessage, offerLetter, rejectMessage, triesSoFar, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
 export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv" | "details";
 
@@ -151,7 +151,7 @@ export default function HiringPanel({
           </PanelSection>
           <PanelSection title="From the call">
             <PanelField label="Package they ask for">
-              <input name="packageSaid" defaultValue={a.packageSaid ?? ""} className={panelInput} />
+              <input name="packageSaid" defaultValue={a.expectedSalary || a.packageSaid || ""} className={panelInput} />
             </PanelField>
             <PanelField label="Laptop">
               <select name="laptop" defaultValue={a.laptop ?? ""} className={panelInput}>
@@ -208,7 +208,7 @@ export default function HiringPanel({
     );
   }
   if (kind === "call") {
-    const next = (a.tries ?? 0) + 1;
+    const next = triesSoFar(a.stage, a.tries ?? 0) + 1;
     return (
       <Panel kicker="Call" title={`Call ${a.name}`} sub={`${v.title} > Internal hiring > CV from ${a.source}, ${dayWord(a.since)}`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />

@@ -7,6 +7,7 @@
  */
 
 import { LIVE_INTERVIEW, type CountKind } from "./positionCounts";
+import { unanswered } from "./setsBoard";
 
 const DAY = 86_400_000;
 const COLOMBO = 5.5 * 3_600_000;
@@ -55,7 +56,7 @@ export interface SetIn {
   state: string;
   receivedAt?: number | null;
   sentAt?: number | null;
-  candidates: { decision?: string | null }[];
+  candidates: { decision?: string | null; claimedAt?: number | null }[];
 }
 export interface InterviewIn {
   id: string;
@@ -112,7 +113,7 @@ export interface RoleRow {
   tone: RowTone;
   action: RowAction | null;
   /** Every reason this role needs a person, the one in `statusText` first. Empty: it does not. */
-  reasons: string[];
+  reasons: { text: string; action: RowAction }[];
   needsYou: boolean;
   withClient: boolean;
   /** Days the oldest answer has been waited for. */
@@ -168,7 +169,7 @@ export function roleRows(input: ListInput): RoleRow[] {
     const sent = sets.filter((s) => s.state === "sent");
     const gotAt = (s: SetIn) => s.receivedAt ?? s.sentAt ?? null;
     // The set the client has sat on longest.
-    const waiting = sent.filter((s) => s.candidates.some((c) => !c.decision)).sort((a, b) => (gotAt(a) ?? now) - (gotAt(b) ?? now))[0] ?? null;
+    const waiting = sent.filter((s) => s.candidates.some(unanswered)).sort((a, b) => (gotAt(a) ?? now) - (gotAt(b) ?? now))[0] ?? null;
     const ready = sets.find((s) => s.state !== "sent" && s.state !== "withdrawn") ?? null;
     const live = input.interviews.filter((iv) => iv.openingTaId === p.openingTaId && LIVE_INTERVIEW.includes(iv.state));
     const pl = input.placements.filter((x) => x.openingTaId === p.openingTaId && x.state !== "cancelled" && x.state !== "no_show");
@@ -203,7 +204,7 @@ export function roleRows(input: ListInput): RoleRow[] {
     if (onHold) return row({ statusText: "On hold", tone: "quiet", withClient: false });
 
     // 26 Nov (Nov 25 ops meeting): these, and nothing else, are why a role needs a person. Most urgent first.
-    const needs: Pick<RoleRow, "statusText" | "tone" | "problemStep" | "action">[] = [];
+    const needs: (Pick<RoleRow, "statusText" | "tone" | "problemStep"> & { action: RowAction })[] = [];
     const need = (statusText: string, tone: RowTone, problemStep: StepKey | null, kind: ActionKind, label: string, on: string = p.id) =>
       needs.push({ statusText, tone, problemStep, action: { kind, label, on } });
 
@@ -223,7 +224,7 @@ export function roleRows(input: ListInput): RoleRow[] {
       const sides = (["candidate", "client"] as const).filter((s) => x.testimonial?.[s] === "pending");
       if (sides.length) need(`${x.candidateName}: testimonial pending (${sides.join(" and ")})`, "warn", "join", "testimonial", "Testimonial", x.id);
     }
-    if (needs.length) return row({ ...needs[0], reasons: needs.map((n) => n.statusText), needsYou: true });
+    if (needs.length) return row({ ...needs[0], reasons: needs.map((n) => ({ text: n.statusText, action: n.action })), needsYou: true });
 
     // Nothing below needs a person; a button may still be offered.
     if (!p.jdApprovedAt) {

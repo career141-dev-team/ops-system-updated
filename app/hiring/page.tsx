@@ -16,6 +16,7 @@ import {
   hiringView,
   isHiringCaller,
   sectionOfStage,
+  slotsThisWeek,
   totals,
   vacancyLine,
   vacancySourceLabel,
@@ -113,6 +114,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   const view = hiringView(db, process.env.OPS_DEV_SIGNIN === "on" ? hiringSample(now) : null);
   const t = totals(view, now);
   const stand = whereItStands(view, now);
+  const weekSlots = slotsThisWeek(view.slots, now);
   const openCount = view.vacancies.filter((v) => v.status === "open").length;
   const mayManage = can(me, "client.manage");
   const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -200,7 +202,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
               line={t.toCall ? `${t.newCvs > 0 ? `includes ${t.newCvs} new ${t.newCvs === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${t.oldestDays} ${t.oldestDays === 1 ? "day" : "days"}` : "nobody waits"}
             />
             <Chev />
-            <Figure label="Interview" value={t.interview} tone="text-info" line={`${view.slots.length} this week`} />
+            <Figure label="Interview" value={t.interview} tone="text-info" line={`${weekSlots.length} this week`} />
             <Chev />
             <Figure label="Decision" value={t.decision} tone={t.decision ? "text-warn" : "text-ink"} line="waiting for you" />
             <Chev />
@@ -306,7 +308,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
                 <p className="t-micro text-ink-3">This week · internal interviews</p>
                 <div className="flex gap-1.5">
                   {week.map((d) => {
-                    const has = view.slots.some((s) => keyOf(s.at) === d.key);
+                    const has = weekSlots.some((s) => keyOf(s.at) === d.key);
                     return (
                       <div key={d.key} className={"flex w-[47px] flex-col items-center gap-0.5 rounded-[12px] py-2 " + (has ? "bg-brand-soft" : "border border-rule")}>
                         <span className="t-micro text-ink-3">{d.name}</span>
@@ -317,8 +319,8 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
                     );
                   })}
                 </div>
-                {view.slots.length === 0 && <p className="t-small text-ink-3">No internal interviews this week.</p>}
-                {view.slots.map((s) => (
+                {weekSlots.length === 0 && <p className="t-small text-ink-3">No internal interviews this week.</p>}
+                {weekSlots.map((s) => (
                   <div key={s.at + s.name} className="flex items-start gap-3 rounded-[12px] bg-info-soft px-3 py-2.5">
                     <span className="w-[3px] self-stretch rounded-sm bg-info" />
                     <span className="t-small w-[72px] shrink-0 text-info">
@@ -379,7 +381,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
                   <option value="referral">Referral (named person)</option>
                 </select>
               </PanelField>
-              <PanelField label="Source detail (optional)">
+              <PanelField label="Source detail (a referral needs the name)">
                 <input name="sourceDetail" placeholder="e.g. Scoop 1, TopJobs, or referrer name" className={panelInput} />
               </PanelField>
               <PanelField label="Places to fill">
@@ -404,7 +406,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
 function HiringBoard({ rows }: { rows: ApplicantRow[] }) {
   const cols = boardColumns(rows);
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 pg-2xl:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 pg-2xl:grid-cols-4">
       {cols.map((col) => (
         <div key={col.stage} className="flex flex-col gap-2.5 rounded-[18px] bg-sunk p-2.5">
           <div className="flex items-center gap-2 px-1.5 pt-1">
@@ -490,11 +492,11 @@ function HiringTable({ rows, vacancies, filters, page }: { rows: ApplicantRow[];
         {shown.pages > 1 ? " · page " + shown.page + " of " + shown.pages : ""}
       </p>
       <DataTable
-        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "SOURCE" }, { label: "STAGE" }, { label: "PHONE" }, { label: "NIC" }, { label: "APPLIED FOR" }, { label: "EXPECTED" }, { label: "AVAILABILITY" }, { label: "CV" }, { label: "FROM" }]}
+        columns={[{ label: "NAME" }, { label: "VACANCY" }, { label: "SOURCE" }, { label: "STAGE" }, { label: "PHONE" }, { label: "NIC" }, { label: "APPLIED FOR" }, { label: "EXPECTED" }, { label: "AVAILABILITY" }, { label: "LAPTOP" }, { label: "CV" }, { label: "FROM" }]}
         rows={shown.items.map((r) => ({
           key: r.id,
           href: "/hiring/" + r.vacancyId,
-          cells: [r.name, r.vacancy, r.vacancySource || "—", STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.nic || "—", r.targetPosition || "—", r.expectedSalary || r.packageSaid || "—", r.availability || "—", r.hasCv ? "Yes" : "No", r.source],
+          cells: [r.name, r.vacancy, r.vacancySource || "—", STAGE_LABEL[r.stage] ?? r.stage, r.phone ?? "No number", r.nic || "—", r.targetPosition || "—", r.expectedSalary || r.packageSaid || "—", r.availability || "—", r.laptop || "—", r.hasCv ? "Yes" : "No", r.source],
         }))}
         empty={<p className="t-body text-ink-3">Nobody matches. Clear the filters, or change the search.</p>}
       />

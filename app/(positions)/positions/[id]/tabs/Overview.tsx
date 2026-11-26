@@ -3,6 +3,7 @@ import Link from "next/link";
 import Icon from "@/app/Icon";
 import { Card } from "@/app/ui/figma";
 import { panelHref } from "@/lib/panel";
+import { awaiting, unanswered } from "@/lib/setsBoard";
 
 import type { TabProps } from "./ctx";
 import HoldPanel from "./overview/HoldPanel";
@@ -43,7 +44,7 @@ export default function Overview({ c, sp }: TabProps) {
   }
   if (waitingSet) {
     const day = waitingSet.sentAt ? Math.floor((now - waitingSet.sentAt) / DAY) + 1 : 1;
-    const silent = waitingSet.candidates.filter((x) => !x.decision).length;
+    const silent = awaiting(waitingSet);
     needs.push({
       key: "s" + waitingSet.id,
       tone: "warn",
@@ -91,7 +92,7 @@ export default function Overview({ c, sp }: TabProps) {
           return {
             key: s.id + x.applicationTaId,
             name: x.name,
-            line: `SET ${s.setNumber} · ${x.decision ?? "waiting for an answer"}`,
+            line: `SET ${s.setNumber} · ${unanswered(x) ? "waiting for an answer" : (x.decision ?? "client already had this CV")}`,
             status: iv ? (iv.at ? `Round ${iv.round} booked ${weekdayDayMonth(iv.at)}` : "Needs a time") : undefined,
             statusTone: iv ? (iv.at ? "info" : "warn") : undefined,
           };
@@ -145,7 +146,7 @@ export default function Overview({ c, sp }: TabProps) {
   const standsHead = n.placed.of ? `${n.placed.done} of ${n.placed.of} placed.` : n.placed.done ? `${n.placed.done} placed.` : "Nobody placed yet.";
   const standsBody = [
     n.placed.of && n.placed.done < n.placed.of ? `${n.placed.of - n.placed.done} more to go.` : null,
-    waitingSet ? `SET ${waitingSet.setNumber} is on day ${waitingSet.sentAt ? Math.floor((now - waitingSet.sentAt) / DAY) + 1 : 1} with ${waitingSet.candidates.filter((x) => !x.decision).length} not answered.` : null,
+    waitingSet ? `SET ${waitingSet.setNumber} is on day ${waitingSet.sentAt ? Math.floor((now - waitingSet.sentAt) / DAY) + 1 : 1} with ${awaiting(waitingSet)} not answered.` : null,
     c.step.waiting,
   ]
     .filter(Boolean)

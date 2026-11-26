@@ -13,6 +13,8 @@
  * two places deciding would be two answers.
  */
 
+import { unanswered } from "./setsBoard";
+
 export interface Stage {
   key: string;
   what: string;
@@ -123,7 +125,7 @@ const LIVE_INTERVIEW = ["slots", "agreed", "booked", "reconfirmed"];
  */
 export function loopSummary(input: {
   taStatus: "active" | "on_hold" | "closed";
-  sets: { state: string; candidates: { decision?: string | null }[] }[];
+  sets: { state: string; candidates: { decision?: string | null; claimedAt?: number | null }[] }[];
   interviews: { state: string }[];
 }): LoopSummary {
   const sent = input.sets.filter((set) => set.state === "sent");
@@ -133,7 +135,7 @@ export function loopSummary(input: {
   const toInterview = input.interviews.filter((iv) => LIVE_INTERVIEW.includes(iv.state)).length;
 
   const clientOwes =
-    sent.some((set) => set.candidates.some((c) => !c.decision)) ||
+    sent.some((set) => set.candidates.some(unanswered)) ||
     input.sets.some((set) => set.state === "ready" || set.state === "reviewing");
   const waitingOn = toInterview > 0 ? "interview" : clientOwes ? "client" : "ta";
 

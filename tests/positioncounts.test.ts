@@ -6,7 +6,9 @@ import test from "node:test";
 
 import { COUNT_KINDS, countItems } from "@/lib/positionCounts";
 import { positionRows } from "@/lib/clientPositionTable";
-import type { OpsDatabase } from "@/data/types";
+import { candidatesForPosition } from "@/lib/positionCandidates";
+import { trackingForPosition } from "@/lib/setTracking";
+import type { OpsDatabase, OpsPosition } from "@/data/types";
 
 const iv = (id: string, round: number, state: string) => ({ id, positionId: "p1", applicationTaId: "app-" + id, candidateName: "Cand " + id, round, state, at: 1_700_000_000_000 });
 const db = {
@@ -61,4 +63,19 @@ test("the row counts are the list lengths, with the TAs named", () => {
   assert.equal(row.tas, "Nimal, ta2");
   assert.equal(row.clientType, "local");
   assert.equal(row.value, null);
+});
+
+test("records with no positionId belong by opening, and a no-show is not joining", () => {
+  const desk = {
+    positions: [], clientSets: [], inbound: [],
+    interviews: [{ id: "i1", positionId: null, openingTaId: "o1", applicationTaId: "manual:m1", state: "attended", round: 1, decision: "next", decidedAt: 1 }],
+    placements: [
+      { id: "x1", positionId: null, openingTaId: "o1", applicationTaId: "manual:m2", state: "placed", joinedAt: null },
+      { id: "x2", positionId: "p1", openingTaId: "o1", applicationTaId: "manual:m3", state: "no_show", joinedAt: null },
+    ],
+  } as unknown as OpsDatabase;
+  const position = { id: "p1", openingTaId: "o1", title: "Role", manualCandidates: ["m1", "m2", "m3"].map((id) => ({ id, name: id })) } as unknown as OpsPosition;
+  const list = candidatesForPosition(desk, position, []);
+  assert.deepEqual(list.map((c) => c.level), ["interview", "joining", "found"]);
+  assert.equal(trackingForPosition(desk, position, list).rows[0].feedback, "Interview 1: Next round");
 });

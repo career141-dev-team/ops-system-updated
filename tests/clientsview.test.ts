@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { OpsDatabase } from "@/data/types";
-import { agreementCards, talksOf, chaseLadder, checkInText, clientCards, clientsLine, contactOf, enquiryCards, filterCards, standsClients, weekStrip } from "@/lib/clientsView";
+import { agreementCards, talksOf, chaseLadder, checkInText, chipFilter, clientCards, clientsLine, contactOf, enquiryCards, filterCards, standsClients, weekStrip } from "@/lib/clientsView";
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 10, 19, 4); // Thu 19 Nov, 09:30 in Colombo
@@ -72,11 +72,11 @@ test("the words around the boards", () => {
   assert.equal(chaseLadder().length, 6);
   assert.match(checkInText(null, "Rushda Fernando"), /^Hello, I wanted to check in/);
   assert.equal(standsClients([]).head, "Nothing needs you today.");
-  const week = weekStrip([{ at: NOW + DAY, state: "booked" }, { at: NOW + 2 * DAY, state: "held" }], NOW);
+  const week = weekStrip([{ when: NOW + DAY }, { when: null }], NOW);
   assert.equal(week.length, 6);
   assert.equal(week.find((d) => d.today)?.day, 19);
-  assert.equal(week.find((d) => d.day === 20)?.calls, 1);
-  assert.equal(week.find((d) => d.day === 21)?.calls, 0);
+  assert.equal(week.find((d) => d.day === 20)?.events, 1);
+  assert.equal(week.find((d) => d.day === 21)?.events, 0);
 });
 
 test("the dark card names each client who needs you, five at most, with why", () => {
@@ -105,4 +105,45 @@ test("the talks with a client, newest first, from calls, mail and what we sent",
   assert.equal(talks[0].kind, "chat");
   assert.equal(talks[1].text, "Call with Nimal: monthly update");
   assert.equal(talksOf(db, db.clients[0], 1).length, 1);
+});
+
+test("the list starts with signed clients, Not signed is its own filter, and a search looks at everyone", () => {
+  const base = {
+    leads: [lead({ id: "l2", company: "Hill Country Tea" }), lead({ id: "l3", company: "Ruwan Foods", nameKey: "ruwan foods" })],
+    clients: [client({}), client({ id: "c2", leadId: "l3", name: "Ruwan Foods", nameKey: "ruwan foods", stage: "active" })],
+    agreements: [esa({ state: "signed", chaseStep: 0 }), esa({ id: "e2", leadId: "l3", state: "sent" })],
+  };
+  const cards = clientCards(make(base), NOW);
+  const names = (f: string, q = "") => filterCards(cards, f, q, "m1").map((c) => c.name).sort();
+  assert.deepEqual(names(""), ["Hill Country Tea"]);
+  assert.deepEqual(names("signed"), ["Hill Country Tea"]);
+  assert.deepEqual(names("notsigned"), ["Ruwan Foods"]);
+  assert.deepEqual(names("", "ruwan"), ["Ruwan Foods"]);
+});
+
+test("an active client with an unsigned agreement is not signed anywhere on its card; one with none is", () => {
+  const base = { leads: [lead({ id: "l2" })], clients: [client({ stage: "active" })] };
+  const [draft] = clientCards(make({ ...base, agreements: [esa({ state: "draft", sentAt: null })] }), NOW);
+  assert.equal(draft.agreementNotSigned, true);
+  assert.equal(draft.status.text, "Agreement not sent yet");
+  assert.equal(filterCards([draft], "signed", "", "m1").length, 0);
+  const [onFile] = clientCards(make(base), NOW);
+  assert.equal(onFile.agreementNotSigned, false);
+  assert.equal(onFile.status.text, "Agreement signed");
+});
+
+test("the Signed chip applies itself when a search is on, and a lit chip clears", () => {
+  assert.equal(chipFilter("signed", "", ""), "", "the default view needs no filter");
+  assert.equal(chipFilter("signed", "", "tea"), "signed");
+  assert.equal(chipFilter("signed", "signed", "tea"), "");
+  assert.equal(chipFilter("signed", "notsigned", ""), "");
+  assert.equal(chipFilter("quiet", "", "tea"), "quiet");
+  assert.equal(chipFilter("quiet", "quiet", ""), "");
+});
+
+test("a card counts every position given, closed ones too, and lists the open ones", () => {
+  const pos = (id: string, stage: string) => ({ id, clientId: "c1", title: "Role " + id, stage });
+  const [card] = clientCards(make({ leads: [lead({ id: "l2" })], clients: [client({})], agreements: [esa({})], positions: [pos("p1", "searching"), pos("p2", "closed"), pos("p3", "handed_over"), pos("p4", "searching")] }), NOW);
+  assert.equal(card.positionsGiven, 4);
+  assert.deepEqual(card.openRoles.map((r) => r.id), ["p1", "p3", "p4"]);
 });

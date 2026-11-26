@@ -32,8 +32,10 @@ export function nextState(timer: Pick<OpsTimer, "state" | "warnAt" | "dueAt">, n
  * A client answered, so every clock chasing them stops (15, Phase 1 step 17).
  * Only the chases stop: a clock measuring something real, such as the CV
  * ownership window or the guarantee, keeps running whatever the client says.
+ * `invoice.chase` is not here (26 Nov): the same clock adds the late charge and
+ * asks about writing off, so a reply only skips its next draft (chaseThePayment).
  */
-const CHASE_KINDS = ["esa.chase", "feedback.chase", "invoice.chase", "invoice.remind", "slots.chase", "interview.report"];
+const CHASE_KINDS = ["esa.chase", "feedback.chase", "invoice.remind", "slots.chase", "interview.report"];
 
 export function isChase(kind: string): boolean {
   return CHASE_KINDS.includes(kind);

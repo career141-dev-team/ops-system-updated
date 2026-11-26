@@ -275,9 +275,12 @@ export function NewPositionPanel(p: {
   pickedId: string;
   /** The held call it is written from, so the brief, the role and the package are already filled. */
   call: { id: string; when: string; role: string; packageSaid: string; brief: string } | null;
+  /** What happened on the way here, e.g. "+ New client" saved the client but could not book the call. */
+  msg?: string;
 }) {
   return (
     <Panel kicker="New position" title="New position" sub="Pick the client, then name the position" closeHref={p.closeHref} boxed>
+      {p.msg && <p className="t-small mb-3.5 rounded-[14px] bg-warn-soft px-4 py-3">{p.msg}</p>}
       <form action={createPosition} className="flex flex-col gap-5">
         <input type="hidden" name="back" value={p.closeHref} />
         {p.call && <input type="hidden" name="meetingId" value={p.call.id} />}
@@ -294,7 +297,12 @@ export function NewPositionPanel(p: {
               ))}
             </select>
           </PanelField>
-          <p className="t-small text-ink-3">Picked the wrong one? <Link href="/positions?panel=new-position" className="underline">Start again</Link> to choose another and see its calls.</p>
+          <p className="t-small text-ink-3">
+            Picked the wrong one? <Link href="/positions?panel=new-position" className="underline">Start again</Link> to choose another and see its calls. Not in the list?{" "}
+            <Link href={"/clients?panel=new-client&after=" + encodeURIComponent("/positions?panel=new-position")} className="underline">
+              + New client
+            </Link>
+          </p>
         </PanelSection>
         <PanelSection title="The position">
           <PanelField label="Position name">
@@ -306,6 +314,14 @@ export function NewPositionPanel(p: {
           <PanelField label="Package details">
             <input name="package" required defaultValue={p.call?.packageSaid ?? ""} placeholder="LKR 350,000 + EPF/ETF, car allowance" className={panelInput} />
           </PanelField>
+          <div className="grid grid-cols-[1fr_96px] gap-3">
+            <PanelField label="Monthly salary (optional)" hint="A number, so the value of the position can be added up.">
+              <input name="salaryMonthly" inputMode="decimal" placeholder="350000" className={panelInput} />
+            </PanelField>
+            <PanelField label="Currency">
+              <input name="salaryCurrency" defaultValue="LKR" className={panelInput} />
+            </PanelField>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <PanelField label="Where">
               <input name="locations" placeholder="Colombo" className={panelInput} />

@@ -5,6 +5,8 @@
  * small line says "—".
  */
 
+import { awaiting, unanswered } from "./setsBoard";
+
 const DAY = 86_400_000;
 
 export interface RoleNumbersInput {
@@ -12,7 +14,7 @@ export interface RoleNumbersInput {
   headcount: number | null;
   /** Candidates TA has on the opening, whether or not they are in a set. */
   candidates: { setId: string | null; out: boolean }[];
-  sets: { name: string; state: string; sentAt: number | null; candidates: { decision?: string | null }[] }[];
+  sets: { name: string; state: string; sentAt: number | null; candidates: { decision?: string | null; claimedAt?: number | null }[] }[];
   interviews: { state: string; at: number | null }[];
   placements: { state: string; joinDate: number | null }[];
   guarantees: { state: string; startsAt: number; endsAt: number }[];
@@ -40,8 +42,8 @@ export function roleNumbers(i: RoleNumbersInput): RoleNumbers {
   const ready = i.sets.filter((s) => s.state !== "sent" && s.state !== "withdrawn");
   const readyN = ready.reduce((n, s) => n + s.candidates.length, 0);
 
-  const waiting = i.sets.filter((s) => s.state === "sent" && s.candidates.some((c) => !c.decision));
-  const withClientN = waiting.reduce((n, s) => n + s.candidates.filter((c) => !c.decision).length, 0);
+  const waiting = i.sets.filter((s) => s.state === "sent" && s.candidates.some(unanswered));
+  const withClientN = waiting.reduce((n, s) => n + awaiting(s), 0);
   const withClientLine = waiting
     .map((s) => (s.sentAt ? `${s.name} day ${Math.max(1, Math.floor((i.now - s.sentAt) / DAY) + 1)}` : s.name))
     .join(" · ");
@@ -52,7 +54,9 @@ export function roleNumbers(i: RoleNumbersInput): RoleNumbers {
   const needsTime = live.filter((iv) => iv.at === null).length;
 
   const placed = i.placements.filter((p) => p.state === "placed" || p.state === "joined");
-  const offerN = i.placements.filter((p) => p.state === "placed" && p.joinDate === null).length;
+  // "Offer" means what the cards and their pop-ups count (positionCounts "offered"): every offer made and still standing.
+  const offerN = i.placements.filter((p) => p.state !== "cancelled" && p.state !== "no_show").length;
+  const noStartDay = i.placements.filter((p) => p.state === "placed" && p.joinDate === null).length;
   const joining = i.placements.filter((p) => p.state === "placed" && p.joinDate !== null);
   const soonest = joining.map((p) => p.joinDate as number).sort((a, b) => a - b)[0];
 
@@ -68,7 +72,7 @@ export function roleNumbers(i: RoleNumbersInput): RoleNumbers {
     withClient: { n: withClientN, line: withClientLine || "—" },
     setsSent: { n: setsSent, line: withClientLine || (setsSent ? "all answered" : "—") },
     interviews: { n: live.length, needsTime, line: needsTime ? `${needsTime} needs a time` : live.length ? "all have a time" : "—" },
-    offer: { n: offerN, line: offerN ? "waiting for a start day" : "—" },
+    offer: { n: offerN, line: noStartDay ? `${noStartDay} waiting for a start day` : offerN ? "offer made and taken" : "—" },
     joining: { n: joining.length, line: soonest ? `DOJ ${dayMonth(soonest)}` : "—" },
     guarantee: { n: running.length, line: gLine },
     placed: { done: placed.length, of: i.headcount && i.headcount > 0 ? i.headcount : null },

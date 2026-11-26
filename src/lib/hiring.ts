@@ -46,6 +46,9 @@ export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel
   decision: { label: "Decide", panel: "decide" },
   shortlisted: { label: "Make offer / decide", panel: "decide" },
   offered: { label: "Record offer outcome", panel: "decide" },
+  // Not dead ends (26 Nov): another call reopens them.
+  non_responsive: { label: "Call", panel: "call" },
+  not_interested: { label: "Call", panel: "call" },
 };
 
 export interface Applicant {
@@ -192,8 +195,9 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
   return sample ?? EMPTY_HIRING;
 }
 
-export function problemWithVacancy(title: string, places: number): string | null {
+export function problemWithVacancy(title: string, places: number, source?: VacancySource, sourceDetail = ""): string | null {
   if (title.trim().length < 2) return "Write the vacancy title.";
+  if (source === "referral" && sourceDetail.trim().length < 2) return "Write who referred it.";
   if (!Number.isInteger(places) || places < 1 || places > 50) return "Places must be a whole number from 1 to 50.";
   return null;
 }
@@ -268,7 +272,8 @@ export function hiringInterviewersFrom(settingValue: string, members: { name: st
   const fromSetting = settingValue
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
+    // Desks seeded before 26 Nov hold job titles here, which were written into candidate email as names.
+    .filter((s) => s && s !== "Director of Operations" && s !== "Ops Lead");
   if (fromSetting.length > 0) return fromSetting;
   return members
     .filter((m) => m.active && (m.role === "director_ops" || m.role === "ops_lead"))
@@ -283,6 +288,16 @@ export function problemWithHiringCall(result: string, note: string, notIntereste
     if (notInterestedReason === "Other" && note.trim().length < 4) return "Write the reason in the note when picking Other.";
   }
   return null;
+}
+
+/** Calling somebody who was closed as non-responsive or not interested reopens them, with three fresh tries. */
+export function triesSoFar(stage: string, tries: number): number {
+  return stage === "non_responsive" || stage === "not_interested" ? 0 : tries;
+}
+
+/** Interview invite drafts for this applicant that must not be approved once the booking changes or they are closed. */
+export function staleInvites<M extends { state: string; templateKey?: string | null; subjectType: string | null; subjectId: string | null }>(messages: M[], applicantId: string): M[] {
+  return messages.filter((m) => m.state === "draft" && m.templateKey === "hiring.interview_invite" && m.subjectType === "applicant" && m.subjectId === applicantId);
 }
 
 /** Pure stage transition for a screening call outcome (26 Nov). */
@@ -310,7 +325,8 @@ export function callOutcomeTransition(input: {
   if (tries >= 3) {
     return { stage: "non_responsive", tries, detail: "Non-responsive · 3 of 3 tries" };
   }
-  return { stage: "call", tries, detail: `${input.result} · try ${tries} of 3` };
+  // The choice on the form already says "(try 1 of 3)"; it is said once.
+  return { stage: "call", tries, detail: `${input.result.replace(/\s*\(try [^)]*\)/, "")} · try ${tries} of 3` };
 }
 
 /**
@@ -333,12 +349,20 @@ export function problemWithHiringDecision(decision: string, reason: string): str
   return null;
 }
 
+/** A closed applicant takes no further decision (a second Accept would fill a second place); offers only after the interview. */
+export function problemWithDecisionStage(decision: string, stage: ApplicantStage): string | null {
+  if (stage === "hired" || stage === "rejected" || stage === "declined") return "That applicant is already closed.";
+  if (decision !== "reject" && stage !== "shortlisted" && stage !== "offered" && stage !== "decision") return "Only a shortlisted or offered applicant can take that decision.";
+  return null;
+}
+
 /** Pure transition for Shortlisted -> Offered -> Accepted / Declined (26 Nov). */
 export function offerOutcomeTransition(input: {
   decision: string;
   startDate: string | null;
   salary: string | null;
   reason: string;
+  currentStage?: ApplicantStage;
 }): { stage: ApplicantStage; incrementsFilled: boolean; detail: string; rejectReason: string | null } {
   if (input.decision === "offer") {
     return {
@@ -372,7 +396,10 @@ export function offerOutcomeTransition(input: {
       rejectReason: input.reason,
     };
   }
-  return { stage: "shortlisted", incrementsFilled: false, detail: "Shortlisted · on hold", rejectReason: null };
+  // Hold leaves them where they are: an offer already made stays made.
+  const stage = input.currentStage ?? "shortlisted";
+  const detail = stage === "offered" ? "Offered · on hold" : stage === "decision" ? "Decision · on hold" : "Shortlisted · on hold";
+  return { stage, incrementsFilled: false, detail, rejectReason: null };
 }
 
 /**
@@ -384,7 +411,7 @@ export type RejectKind = "screening" | "final";
 export const REJECT_KIND_LABEL: Record<RejectKind, string> = { screening: "Screening reject", final: "Final reject" };
 
 export function rejectKind(atStage: string | null | undefined): RejectKind {
-  return atStage === "interview" || atStage === "decision" ? "final" : "screening";
+  return atStage === "interview" || atStage === "decision" || atStage === "shortlisted" || atStage === "offered" ? "final" : "screening";
 }
 
 /** The rejected people of a vacancy, split by kind, newest first. */
@@ -419,7 +446,8 @@ export function totals(view: HiringView, now: number) {
     toCall: toCallList.length,
     oldestDays: oldest,
     interview: interviews.length,
-    decision: all.filter((a) => a.stage === "decision").length,
+    // Waiting for us: shortlisted waits for an offer. Offered waits for the candidate.
+    decision: all.filter((a) => a.stage === "decision" || a.stage === "shortlisted").length,
     hiredThisMonth: hired.length,
     lastHire: hired[0] ?? null,
   };
@@ -429,6 +457,13 @@ export function totals(view: HiringView, now: number) {
 export function daysSince(from: number, to: number): number {
   const day = (t: number) => Math.floor((t + COLOMBO_OFFSET_MS) / DAY);
   return Math.max(0, day(to) - day(from));
+}
+
+/** The interviews of this Colombo week, Monday to Sunday. The view holds every week's. */
+export function slotsThisWeek(slots: InternalSlot[], now: number): InternalSlot[] {
+  const d = new Date(now + COLOMBO_OFFSET_MS);
+  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)) - COLOMBO_OFFSET_MS;
+  return slots.filter((s) => s.at >= monday && s.at < monday + 7 * DAY);
 }
 
 function startOfMonth(now: number): number {

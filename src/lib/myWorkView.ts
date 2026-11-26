@@ -9,6 +9,7 @@ import type { OpsCallLog, OpsClient, OpsClientSet, OpsDatabase, OpsInterview, Op
 import { telLink, tidyPhone } from "./calls";
 import { DRAFT_KINDS, draftKind, isRoutine, messageInWords, messageTitle } from "./messages";
 import { positionValue } from "./clients";
+import { unanswered } from "./setsBoard";
 import { lateInWords } from "./myWork";
 
 const DAY_MS = 86_400_000;
@@ -376,7 +377,7 @@ export function callContext(db: OpsDatabase, t: OpsTask, now: number) {
     c.clientRow?.contacts?.[0] ??
     (lead ? { name: lead.contactName, email: lead.contactEmail, phone: lead.contactPhone, role: "" } : null) ??
     (c.clientRow ? { name: c.clientRow.name, email: "", phone: "", role: "" } : null);
-  const open = c.set ? c.set.candidates.filter((x) => !x.decision) : [];
+  const open = c.set ? c.set.candidates.filter(unanswered) : [];
   const setName = c.set?.name.split(">").pop()?.trim() ?? "";
   const why: string[] = [];
   if (c.set?.sentAt) why.push("Day " + (Math.floor((now - c.set.sentAt) / DAY_MS) + 1) + ": the client has had " + (setName || "the set") + " since " + dayShort(c.set.sentAt));

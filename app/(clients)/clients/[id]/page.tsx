@@ -11,6 +11,7 @@ import { teamsFake } from "@/lib/graphCalendar";
 import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
+import { positionSummary } from "@/lib/clientPositionSummary";
 import { esaDocument } from "@/lib/esaDocument";
 import EsaDocument from "./EsaDocument";
 import AgreementView from "./AgreementView";
@@ -85,6 +86,14 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const person = card.person;
   const talk = lastTalkAt(db, client);
   const roles = db.positions.filter((p) => p.clientId === client.id && p.stage !== "closed");
+  // Every position, open first and then the closed ones newest first, each with where it stands (Ops lead, 25 Nov).
+  const allPositions = db.positions
+    .filter((p) => p.clientId === client.id)
+    .sort((a, b) => Number(a.stage === "closed") - Number(b.stage === "closed") || b.handedOverAt - a.handedOverAt)
+    .map((p) => ({
+      p,
+      sum: positionSummary(db, p),
+    }));
   const summary: Summary | null = summaryJson ? (JSON.parse(summaryJson) as Summary) : null;
   const aiOn = anyKeySet() && aiSwitches(db).on;
   const since = new Date(client.createdAt + 5.5 * 3_600_000).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
@@ -240,7 +249,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                       </Link>
                     </>
                   ) : (
-                    <p className="t-body text-ink-2">Standard Career 141 terms, signed before Ops or through the TA System ({client.taClientId || "not linked yet"}).</p>
+                    <p className="t-body text-ink-2">{card.agreementNotSigned ? "No signed agreement yet." : "Standard Career 141 terms, signed before Ops or through the TA System (" + (client.taClientId || "not linked yet") + ")."}</p>
                   )}
                 </Card>
                 <Card title="Contacts" sub="Who gets what">
@@ -294,28 +303,49 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   </ul>
                 )}
               </Card>
-              <Card title="Roles at this client" sub={roles.length + (roles.length === 1 ? " open role" : " open roles")}>
-                {roles.length === 0 ? (
-                  <EmptyState icon="briefcase" title="No open role">
-                    A role appears here once a requirement meeting is held and the opening is made.
-                  </EmptyState>
-                ) : (
-                  <ul className="flex flex-col">
-                    {roles.map((p) => {
-                      const sets = db.clientSets.filter((s) => s.openingTaId === p.openingTaId);
-                      return (
-                        <li key={p.id} className="border-t border-rule first:border-t-0">
-                          <Link href={"/positions/" + p.id} className="flex items-center gap-3 py-4 hover:text-brand">
-                            <span className="t-body-m">{p.title}</span>
-                            <span className="t-small flex-1 text-ink-3">· {sets.length ? "SET " + sets.length + " with the client" : p.stage.replace(/_/g, " ")}</span>
-                            <Icon name="chevron-right" size={16} className="text-ink-3" />
-                          </Link>
+              <div id="positions" className="scroll-mt-6">
+                <Card title="Positions" sub={`${allPositions.length} ${allPositions.length === 1 ? "position" : "positions"} given · ${roles.length} open`}>
+                  {allPositions.length === 0 ? (
+                    <EmptyState icon="briefcase" title="No position yet">
+                      A position appears here once a requirement meeting is held and the opening is made.
+                    </EmptyState>
+                  ) : (
+                    <ul className="flex flex-col">
+                      {allPositions.map(({ p, sum }) => (
+                        <li key={p.id} className="flex flex-col gap-2 border-t border-rule py-4 first:border-t-0">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <Link href={"/positions/" + p.id} className="t-body-m hover:text-brand">
+                              {p.title}
+                            </Link>
+                            <StatusChip label={p.stage === "closed" ? "Closed" : p.stage.replace(/_/g, " ")} tone={p.stage === "closed" ? "neutral" : "info"} />
+                            {p.salaryMonthly ? <span className="t-small text-ink-3">{(p.salaryCurrency ?? "LKR") + " " + p.salaryMonthly.toLocaleString("en-GB") + " a month"}</span> : null}
+                            <span className="flex-1" />
+                            <Link href={"/positions/" + p.id + "?view=sets&panel=export"} className="t-small text-brand hover:underline">
+                              Export
+                            </Link>
+                          </div>
+                          <div className="grid grid-cols-5 gap-2 text-center">
+                            {(
+                              [
+                                ["Sets", sum.setsSent],
+                                ["Shortlisted", sum.shortlisted],
+                                ["Interviews", sum.interviews],
+                                ["Offered", sum.offered],
+                                ["Joined", sum.joined],
+                              ] as const
+                            ).map(([label, n]) => (
+                              <span key={label} className="flex flex-col rounded-[12px] bg-sunk px-1 py-2">
+                                <span className="t-body-m">{n}</span>
+                                <span className="t-micro text-ink-3">{label.toUpperCase()}</span>
+                              </span>
+                            ))}
+                          </div>
                         </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </Card>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </div>
             </>
           )}
 
@@ -363,7 +393,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             ) : (
               <Card title="Agreement">
                 <EmptyState icon="file" title="No agreement file here">
-                  Standard Career 141 terms, signed before Ops or through the TA System.
+                  {card.agreementNotSigned ? "No signed agreement yet." : "Standard Career 141 terms, signed before Ops or through the TA System."}
                 </EmptyState>
               </Card>
             ))}
@@ -608,6 +638,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   hidden={{ clientId: client.id, ...(forPosition ? { positionId: forPosition.id } : {}) }}
                   contact={{ name: person?.name ?? "", email: person?.email ?? "" }}
                   taPeople={taSide?.ok ? taSide.data.filter((p) => p.isActive) : []}
+                  taLeadId={forPosition?.primaryTaId ?? undefined}
                   members={db.members}
                   organiserId={(forPosition && requirementOrganiser(forPosition, db.members)) || client.ownerId}
                   teamsOn={teamsOn}

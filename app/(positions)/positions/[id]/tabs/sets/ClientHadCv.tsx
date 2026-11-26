@@ -6,7 +6,7 @@ import { recordCvClaim } from "@/app/actions";
 import { OWNERSHIP_WORKING_DAYS, claimVerdict, ownershipWindow } from "@/lib/clientFeedback";
 import { closeHref, panelHref } from "@/lib/panel";
 import { numberOf } from "@/data/desk";
-import { shortDay } from "@/lib/setsBoard";
+import { shortDay, unanswered } from "@/lib/setsBoard";
 
 import type { TabProps } from "../ctx";
 import { WhatNext, WhoAndHow, WhyNow, rolePath, trail } from "./shared";
@@ -19,7 +19,7 @@ export default function ClientHadCv({ c, sp }: TabProps) {
   const hit = sent.flatMap((s) => s.candidates.map((x) => ({ s, x }))).find(({ x }) => x.applicationTaId === sp.on);
 
   if (!hit) {
-    const rows = sent.flatMap((s) => s.candidates.filter((x) => !x.decision && !x.claimedAt).map((x) => ({ s, x })));
+    const rows = sent.flatMap((s) => s.candidates.filter(unanswered).map((x) => ({ s, x })));
     return (
       <Panel kicker="Client already had this CV" title="Who did the client already have?" sub={trail(c)} closeHref={close}>
         {rows.length === 0 ? (

@@ -50,6 +50,17 @@ export function isCountKind(k: string): k is CountKind {
   return (COUNT_KINDS as readonly string[]).includes(k);
 }
 
+/**
+ * Whether an interview or placement is this position's. A record TA sent before its position was known has no
+ * positionId; it belongs by its opening (26 Nov, PR 4 review).
+ */
+export function onPosition(
+  position: { id: string; openingTaId?: string | null },
+  x: { positionId?: string | null; openingTaId?: string | null },
+): boolean {
+  return x.positionId === position.id || (!x.positionId && !!position.openingTaId && x.openingTaId === position.openingTaId);
+}
+
 export function countItems(db: OpsDatabase, positionId: string, k: CountKind): CountItem[] {
   const position = db.positions.find((p) => p.id === positionId);
   if (!position) return [];
@@ -66,10 +77,6 @@ export function countItems(db: OpsDatabase, positionId: string, k: CountKind): C
       }));
   }
 
-  // A record TA sent before its position was known has no positionId; it belongs by its opening (26 Nov, PR 4 review).
-  const mine = (x: { positionId: string | null; openingTaId?: string }) =>
-    x.positionId === positionId || (!x.positionId && !!position.openingTaId && x.openingTaId === position.openingTaId);
-
   // The candidate's own page exists once they are in a set on this opening; until then, the record's page.
   const about = (applicationTaId: string, record: string) => {
     const set = db.clientSets.filter((s) => s.openingTaId === position.openingTaId && s.candidates.some((c) => c.applicationTaId === applicationTaId)).sort((a, b) => Number(b.state === "sent") - Number(a.state === "sent"))[0];
@@ -79,7 +86,7 @@ export function countItems(db: OpsDatabase, positionId: string, k: CountKind): C
 
   if (k === "offered" || k === "joined") {
     return db.placements
-      .filter((x) => mine(x) && (k === "joined" ? x.state === "joined" : x.state !== "cancelled" && x.state !== "no_show"))
+      .filter((x) => onPosition(position, x) &&(k === "joined" ? x.state === "joined" : x.state !== "cancelled" && x.state !== "no_show"))
       .map((x) => ({
         id: x.id,
         title: x.candidateName,
@@ -90,7 +97,7 @@ export function countItems(db: OpsDatabase, positionId: string, k: CountKind): C
 
   return db.interviews
     .filter((iv) => {
-      if (!mine(iv)) return false;
+      if (!onPosition(position, iv)) return false;
       if (k === "live") return LIVE_INTERVIEW.includes(iv.state);
       if (k === "dropout") return iv.state === "withdrew" || iv.state === "no_show";
       if (iv.state === "cancelled" || iv.state === "withdrew" || iv.state === "no_show") return false;

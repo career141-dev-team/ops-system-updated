@@ -4,7 +4,7 @@ import { logManualChase } from "@/app/actions";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { EmptyState, panelInput, pillSecondary } from "@/app/ui/figma";
 import { closeHref } from "@/lib/panel";
-import { awaiting, dayOfWindow, shortDay } from "@/lib/setsBoard";
+import { awaiting, dayOfWindow, shortDay, unanswered } from "@/lib/setsBoard";
 import { OWNERSHIP_WORKING_DAYS } from "@/lib/clientFeedback";
 import { numberOf } from "@/data/desk";
 
@@ -25,7 +25,7 @@ export default function ChaseClient({ c, sp }: TabProps) {
   }
   const windowDays = numberOf(c.db, "set.ownershipWorkingDays", OWNERSHIP_WORKING_DAYS);
   const holidays = c.db.holidays.map((h) => h.date);
-  const open = set.candidates.filter((x) => !x.decision && !x.claimedAt);
+  const open = set.candidates.filter(unanswered);
   const drafts = c.db.messages.filter((m) => m.subjectId === set.id && m.templateKey === "feedback.chase");
   const latest = drafts[drafts.length - 1] ?? null;
   const calls = c.db.timers.filter((t) => t.subjectId === set.id && t.kind === "feedback.call" && (t.state === "running" || t.state === "warned"));

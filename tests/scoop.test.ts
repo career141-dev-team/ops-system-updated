@@ -65,3 +65,9 @@ test("the summary counts who responded, who did not, who was turned away and why
   assert.match(s.lines[2], /Person 5 \(Not our sector\)/);
   assert.match(summaryOf(newBatch({ id: "e", at: MORNING, source: "upload", found: 0 }), []).lines[2], /Nobody was turned away/);
 });
+
+test("later stages count as reached, and non-responsive as no answer (26 Nov)", () => {
+  const b = { ...newBatch({ id: "l", at: MORNING, source: "upload", found: 5 }), applicantIds: ["1", "2", "3", "4", "5"] };
+  const s = summaryOf(b, [app("1", "shortlisted"), app("2", "offered"), app("3", "declined"), app("4", "not_interested"), app("5", "non_responsive", { tries: 3 })]);
+  assert.deepEqual([s.responded, s.noAnswer, s.notCalled], [4, 1, 0]);
+});

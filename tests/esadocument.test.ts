@@ -36,7 +36,7 @@ test("clause 5.2 words the expat fee from its own months, not fee x 2", () => {
   assert.match(d.sections[4].items[1], /non-Sri Lankan is: Three Months Gross Salary of the placed candidate/);
   assert.doesNotMatch(d.sections[4].items[1], /x 2/);
   const none = esaDocument({ ...base, expatFeeMonths: "" }, { company: "Valtrix", at, directorName: "D" });
-  assert.match(none.sections[4].items[1], /\[fee for a non-Sri Lankan\]/);
+  assert.match(none.sections[4].items[1], /non-Sri Lankan is: Two Months Gross Salary/, "none recorded reads twice the fee");
 });
 
 test("a draft marks the signatory, the title and the address as to be confirmed, with the note above the parties", () => {

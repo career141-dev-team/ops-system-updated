@@ -168,6 +168,16 @@ export function missingFromHeld(notes: HeldNotes): string[] {
   return missing;
 }
 
+/**
+ * What marking a call held or not held does, by its kind. Only an intro call starts the agreement clock and moves
+ * the lead to "waiting on the agreement"; a requirement call leaves both alone (26 Nov, Nov 25 ops meeting).
+ */
+export function callEffects(kind: string): { step: "intro" | "requirement"; name: string; startsAgreement: boolean } {
+  return kind === "requirement"
+    ? { step: "requirement", name: "requirement call", startsAgreement: false }
+    : { step: "intro", name: "intro call", startsAgreement: true };
+}
+
 /** When the agreement has to be out by, from the settings' hours. */
 export function agreementDueAt(heldAt: number, hours: number): number {
   return heldAt + hours * HOUR;

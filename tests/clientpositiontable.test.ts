@@ -73,3 +73,12 @@ test("a backup must be an active Ops person other than the main one", () => {
   assert.match(problemWithNewBackup("m4", "m1", m) ?? "", /Ops person/);
   assert.match(problemWithNewBackup("zz", "m1", m) ?? "", /Ops person/);
 });
+
+test("the value range is in one currency: LKR unless another is picked", () => {
+  const usd = { ...db, positions: [...db.positions, { id: "p5", clientId: "c2", clientTaId: "t2", title: "CFO", requirementId: null, ownerId: "m1", stage: "searching", salaryMonthly: 5000, salaryCurrency: "USD" }] } as unknown as OpsDatabase;
+  const rows = positionRows(usd);
+  const ids = (f: object) => filterPositionRows(rows, "", "", f).map((r) => r.positionId).sort();
+  assert.deepEqual(ids({ min: "50" }), ["p1", "p3"], "p3 has no currency written, read as LKR");
+  assert.deepEqual(ids({ min: "50", currency: "USD" }), ["p5"]);
+  assert.equal(ids({ currency: "USD" }).length, 5, "a currency alone filters nothing");
+});

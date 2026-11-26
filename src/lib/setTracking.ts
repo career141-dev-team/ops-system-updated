@@ -6,6 +6,7 @@
 import type { TrackRow } from "@/lib/stageTable";
 import type { OpsDatabase, OpsPosition } from "@/data/types";
 import { LEVEL_LABELS, type CandidateLevel } from "@/lib/positionCandidates";
+import { onPosition } from "@/lib/positionCounts";
 import { awaiting } from "@/lib/setsBoard";
 
 export interface TrackSet {
@@ -52,7 +53,7 @@ export function setCounts(sets: TrackSet[]): SetCount[] {
       sent: s.candidates.length,
       shortlisted: s.candidates.filter((c) => c.decision === "shortlisted").length,
       rejected: s.candidates.filter((c) => c.decision === "rejected").length,
-      awaiting: awaiting({ setNumber: s.setNumber, state: s.state, sentAt: null, receivedAt: null, candidates: s.candidates }),
+      awaiting: awaiting(s),
     }));
 }
 
@@ -72,7 +73,7 @@ export function summaryLine(counts: SetCount[]): string {
   return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
-const WORD: Record<string, string> = { shortlisted: "Shortlisted", rejected: "Rejected" };
+const WORD: Record<string, string> = { shortlisted: "Shortlisted", rejected: "Rejected", next: "Next round", selected: "Selected" };
 const say = (decision: string, reason?: string | null) => (WORD[decision] ?? decision) + (reason ? ": " + reason : "");
 
 /**
@@ -88,6 +89,10 @@ export function trackingRows(candidates: TrackCandidate[], sets: TrackSet[], int
     const inSet = set?.candidates.find((c) => c.applicationTaId === cand.applicationTaId) ?? null;
     const answers: { at: number; text: string }[] = [];
     if (inSet?.decision && inSet.decidedAt) answers.push({ at: inSet.decidedAt, text: say(inSet.decision, inSet.decisionReason) });
+    // "We already had this CV" is the client's answer too: it sets claimedAt, never a decision.
+    if (inSet?.claimedAt && !inSet.decision) {
+      answers.push({ at: inSet.claimedAt, text: inSet.claimVerdict === "refused" ? "Client says they already had this CV: refused" : "Client already had this CV" });
+    }
     for (const iv of interviews) {
       if (iv.applicationTaId === cand.applicationTaId && iv.decision && iv.decidedAt) {
         answers.push({ at: iv.decidedAt, text: `Interview ${iv.round}: ${say(iv.decision, iv.decisionReason)}` });
@@ -111,7 +116,7 @@ export function trackingRows(candidates: TrackCandidate[], sets: TrackSet[], int
 /** Everything the Sets tab and the CSV need for one position, from the desk as it stands and its candidate list. */
 export function trackingForPosition(db: OpsDatabase, position: OpsPosition, candidates: TrackCandidate[]) {
   const sets = db.clientSets.filter((s) => s.openingTaId === position.openingTaId).sort((a, b) => a.setNumber - b.setNumber);
-  const interviews = db.interviews.filter((i) => i.positionId === position.id);
+  const interviews = db.interviews.filter((i) => onPosition(position, i));
   const counts = setCounts(sets);
   return { counts, summary: summaryLine(counts), rows: trackingRows(candidates, sets, interviews) };
 }

@@ -1,4 +1,6 @@
 import { roleNumbers } from "@/lib/roleNumbers";
+import { onPosition } from "@/lib/positionCounts";
+import { unanswered } from "@/lib/setsBoard";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -81,6 +83,8 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
   const taName = primaryTaPerson?.fullName.split(" ")[0] ?? (position.primaryTaId || "TA");
   const opsOwner = memberIn(db, position.ownerId);
   const opsOwnerName = opsOwner?.name.split(" ")[0] ?? "Ops";
+  // "" is how a removed backup is stored.
+  const backupName = position.backupOwnerId ? (memberIn(db, position.backupOwnerId)?.name.split(" ")[0] ?? null) : null;
 
   const ad = position.openingTaId ? liveAdFor(db, position.openingTaId) : null;
   const hold = position.openingTaId ? liveHoldFor(db, position.openingTaId) : null;
@@ -90,7 +94,7 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
     .filter((row) => row.openingTaId === position.openingTaId)
     .sort((a, b) => a.setNumber - b.setNumber);
   const sentSets = itsSets.filter((s) => s.state === "sent");
-  const waitingSet = sentSets.find((s) => s.candidates.some((c) => !c.decision)) ?? null;
+  const waitingSet = sentSets.find((s) => s.candidates.some(unanswered)) ?? null;
   const readySet = itsSets.find((s) => s.state !== "sent" && s.state !== "withdrawn") ?? null;
 
   const itsInterviews = db.interviews
@@ -155,14 +159,14 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
     candidates: allCandidates.map((cand) => ({ setId: cand.setId ?? null, out: cand.level === "out" })),
     sets: itsSets.map((s) => ({ ...s, name: "SET " + s.setNumber })),
     interviews: itsInterviews,
-    placements: itsPlacements,
+    placements: db.placements.filter((pl) => onPosition(position, pl)),
     guarantees: db.guarantees.filter((g) => itsPlacements.some((pl) => pl.id === g.placementId)),
   });
 
 
   const addressMissing = Boolean(client) && !(client?.billingAddress ?? "").trim();
   const daysOpen = Math.max(1, Math.floor((now - (position.handedOverAt ?? position.createdAt)) / 86_400_000));
-  return { stage, me, db, position, now, mayManage, mayAdvert, client, clientName, requirement, queued, taSide, taPeopleList, primaryTaPerson, taName, opsOwner, opsOwnerName, ad, hold, checklist, itsSets, sentSets, waitingSet, readySet, itsInterviews, liveIv, placement, guarantee, itsPlacements, step, allCandidates, related, whenDateOf, waitingOn, history, whenLocal, whenDate, itsThreads, daysOpen, numbers, addressMissing };
+  return { stage, me, db, position, now, mayManage, mayAdvert, client, clientName, requirement, queued, taSide, taPeopleList, primaryTaPerson, taName, opsOwner, opsOwnerName, backupName, ad, hold, checklist, itsSets, sentSets, waitingSet, readySet, itsInterviews, liveIv, placement, guarantee, itsPlacements, step, allCandidates, related, whenDateOf, waitingOn, history, whenLocal, whenDate, itsThreads, daysOpen, numbers, addressMissing };
 }
 
 export type RoleCtx = NonNullable<Awaited<ReturnType<typeof buildRoleCtx>>>;

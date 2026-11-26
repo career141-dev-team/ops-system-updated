@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { boardSummary, columnOf, columnsForFilter, matchesFilter, reminderText, type BoardInvoice } from "@/lib/accountsBoard";
+import { boardSummary, columnOf, columnsForFilter, matchesFilter, reminderText, statusWords, type BoardInvoice } from "@/lib/accountsBoard";
 
 const DAY = 86_400_000;
 const now = Date.parse("2026-11-19T10:00:00+05:30");
@@ -21,6 +21,14 @@ test("late, sent, disputed and closed ones land where they stand", () => {
   assert.equal(columnOf(inv({}), now), "sent");
   assert.equal(columnOf(inv({ kind: "credit_note" }), now), null);
   assert.equal(columnOf(inv({ state: "written_off" }), now), null);
+});
+
+test("one invoice's status reads in the board's words", () => {
+  assert.equal(statusWords(inv({ state: "draft", dueAt: now - DAY }), now), "To be sent");
+  assert.equal(statusWords(inv({}), now), "Sent");
+  assert.equal(statusWords(inv({ dueAt: now - DAY }), now), "Late payment");
+  assert.equal(statusWords(inv({ state: "paid", paidAt: now - 40 * DAY }), now), "Paid");
+  assert.equal(statusWords(inv({ state: "written_off" }), now), "Written off");
 });
 
 test("paid shows only for the month it was paid", () => {

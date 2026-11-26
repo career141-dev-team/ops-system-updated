@@ -547,7 +547,9 @@ test("expat nationality sets the expat fee, and blockers gate sending (26 Nov)",
   assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Sri Lankan" }), 1);
   assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 2, nationality: "Indian" }), 2);
   assert.equal(feeMonthsFor({ feeMonths: 1, expatFeeMonths: 3, nationality: "British" }), 3);
-  assert.equal(feeMonthsFor({ feeMonths: 1, nationality: "Indian" }), 2, "defaults to 2 when agreement predates expatFeeMonths");
+  assert.equal(feeMonthsFor({ feeMonths: 1, nationality: "Indian" }), 2, "defaults to twice the fee when agreement predates expatFeeMonths");
+  assert.equal(feeMonthsFor({ feeMonths: 2, nationality: "Indian" }), 4);
+  assert.equal(feeMonthsFor({ feeMonths: 2, expatFeeMonths: 2, nationality: "Indian" }), 2, "a stored value is kept");
 
   assert.deepEqual(invoiceBlockers(null), []);
   assert.deepEqual(invoiceBlockers({}), ["nationality not confirmed", "payment details not received"]);
@@ -776,4 +778,67 @@ test("26 Nov (PR 3 review): the nationality choice is explicit", async () => {
   assert.equal(f("expat", "").ok, false);
   assert.equal(f("expat", "Sri-Lankan").ok, false);
   assert.equal(f("", "Indian").ok, false);
+});
+
+test("a reply skips one monthly chase, but the late charge and the write-off go on (26 Nov)", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  process.env.OPS_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ops-money-reply-"));
+  process.env.OPS_STORE = "json";
+  process.env.OPS_TA_FAKE = "on";
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  const { referenceFor } = await import("@/lib/mailMatch");
+  repo.reset();
+
+  const now = Date.now();
+  const client = repo.addClient({
+    leadId: null, taClientId: "ta_c1", name: "SAMPLE CLIENT", nameKey: "sample client", stage: "active", billingName: "SAMPLE CLIENT",
+    billingEmail: "finance@example.test", billingAddress: "1 Test Road", groupName: "", notes: "", reason: null, ownerId: "m_owner",
+  });
+  const invoice = repo.addInvoice({
+    number: "C141-2026-0008", kind: "fee", about: null, setId: null, againstInvoiceId: null, placementId: null, clientId: client.id,
+    state: "sent", amount: 450_000, currency: "LKR", lateCharge: 0, lateMonths: 0, disputed: false, disputedReason: null, payments: [],
+    sentAt: now - 95 * DAY, sentMessageId: null, dueAt: now - 65 * DAY, paidAt: null, writtenOffAt: null, reason: null, ownerId: "m_accounts",
+  });
+  const drafts = () => repo.all().messages.filter((m) => m.templateKey === "invoice.chase").length;
+
+  await desk.chaseThePayment(invoice.id, now);
+  assert.equal(drafts(), 1);
+  await desk.takeInbound(
+    [{ providerId: "<paying@client>", from: "finance@example.test", fromName: "Finance", subject: "RE: Invoice " + referenceFor("invoice", invoice.id), body: "Next week.", receivedAt: now + DAY, inReplyTo: null, mailbox: "ops@career141.test" }],
+    "m_owner",
+    now + DAY,
+  );
+  assert.equal(repo.liveTimers().filter((t) => t.kind === "invoice.chase").length, 1, "the monthly clock keeps running");
+
+  await desk.chaseThePayment(invoice.id, now + 30 * DAY);
+  assert.equal(drafts(), 1, "nothing is drafted to a client who has just replied");
+  assert.equal(repo.invoiceIn(invoice.id)?.lateMonths, 3, "the charge is still recomputed");
+  assert.ok(repo.all().tasks.some((t) => t.title.startsWith("Write off")), "the write-off is still raised");
+  assert.ok(repo.liveTimers().some((t) => t.kind === "invoice.chase" && t.dueAt === now + 60 * DAY));
+
+  await desk.chaseThePayment(invoice.id, now + 60 * DAY);
+  assert.equal(drafts(), 2, "one run is skipped, then the chasing resumes");
+});
+
+test("a reply before the due date does not hold back the first overdue chase (26 Nov)", async () => {
+  const { repo } = await import("@/data/store");
+  const desk = await import("@/data/desk");
+  const { referenceFor } = await import("@/lib/mailMatch");
+  repo.reset();
+  const now = Date.now();
+  const invoice = repo.addInvoice({
+    number: "C141-2026-0009", kind: "fee", about: null, setId: null, againstInvoiceId: null, placementId: null, clientId: null,
+    state: "sent", amount: 100_000, currency: "LKR", lateCharge: 0, lateMonths: 0, disputed: false, disputedReason: null, payments: [],
+    sentAt: now - 31 * DAY, sentMessageId: null, dueAt: now - DAY, paidAt: null, writtenOffAt: null, reason: null, ownerId: "m_accounts",
+  });
+  await desk.takeInbound(
+    [{ providerId: "<early@client>", from: "finance@example.test", fromName: "Finance", subject: "RE: Invoice " + referenceFor("invoice", invoice.id), body: "Noted.", receivedAt: now - 10 * DAY, inReplyTo: null, mailbox: "ops@career141.test" }],
+    "m_owner",
+    now - 10 * DAY,
+  );
+  await desk.chaseThePayment(invoice.id, now);
+  assert.equal(repo.all().messages.filter((m) => m.templateKey === "invoice.chase" && m.subjectId === invoice.id).length, 1);
 });

@@ -3,6 +3,7 @@ import PreviewAndSend, { SendLeftSection } from "@/app/ui/PreviewAndSend";
 import { switchedOn } from "@/data/desk";
 import { problemWithSending } from "@/lib/clientSets";
 import { contactsFor } from "@/lib/contacts";
+import { unanswered } from "@/lib/setsBoard";
 
 import type { RoleCtx } from "./ctx";
 import { clock, weekdayDayMonth } from "./shared/fmt";
@@ -347,7 +348,7 @@ export function RoleSendModal({
   if (send === "chase-set") {
     const set = (on ? c.itsSets.find((s) => s.id === on) : null) ?? c.itsSets[0];
     if (!set) return null;
-    const waiting = set.candidates.filter((x) => !x.decision);
+    const waiting = set.candidates.filter(unanswered);
     const body = `Hi ${hrName},\n\nFollowing up on SET ${set.setNumber} for ${position.title}. We are still waiting on your decision for ${waiting.length} ${waiting.length === 1 ? "candidate" : "candidates"}:\n\n${waiting.map((w) => `• ${w.name}`).join("\n")}\n\nCould you let us know who you would like to shortlist for interviews?\n\nKind regards,\n${me.name}`;
 
     return (
@@ -363,13 +364,13 @@ export function RoleSendModal({
           sendNow: "1",
         }}
         sendLabel="Send chase"
-        disabledReason={hrEmail ? null : "Add a client HR email (or copy the WhatsApp chase)."}
+        disabledReason={waiting.length === 0 ? "The client has answered about everyone, so there is nothing to chase." : hrEmail ? null : "Add a client HR email (or copy the WhatsApp chase)."}
         note="Goes through the outbound gate."
         left={
           <SendLeftSection title={`Without an answer (${waiting.length})`}>
             <div className="flex flex-col gap-2">
               {waiting.length === 0 ? (
-                <p className="t-small text-ink-3">Everyone in SET {set.setNumber} has a decision.</p>
+                <p className="t-small text-ink-3">Everyone in SET {set.setNumber} has an answer.</p>
               ) : (
                 waiting.map((w) => (
                   <div key={w.applicationTaId} className="rounded-[14px] border border-rule bg-surface px-3.5 py-2.5">
