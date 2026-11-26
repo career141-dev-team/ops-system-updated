@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel } from "@/lib/calendarBoard";
+import {
+  CALENDAR_CATEGORY_FILTERS,
+  CALENDAR_FILTERS,
+  calendarItems,
+  clockOf,
+  dayWord,
+  filterCalendarCards,
+  filterCards,
+  filterFrom,
+  kindFrom,
+  saturdayAfter,
+  weekLabel,
+  whoFrom,
+} from "@/lib/calendarBoard";
 import { DAY } from "@/lib/calendar";
+import { seed } from "@/data/seed";
 
 const mon = Date.UTC(2026, 10, 15, 18, 30); // Mon 16 Nov 00:00 in Colombo
 
@@ -31,4 +45,78 @@ test("Saturday follows Friday and is today only on that day", () => {
   assert.equal(sat.dayNum, 21);
   assert.equal(sat.isToday, true);
   assert.equal(saturdayAfter(mon + 5 * DAY, mon).isToday, false);
+});
+
+test("PR 8: Client meetings label, combined Mine/Team + category filters, organiser ownership, and calendarItems", () => {
+  assert.equal(CALENDAR_FILTERS.find((f) => f.key === "meetings")?.label, "Client meetings");
+  assert.equal(CALENDAR_CATEGORY_FILTERS.find((f) => f.key === "meetings")?.label, "Client meetings");
+
+  assert.equal(whoFrom("mine"), "mine");
+  assert.equal(whoFrom(undefined, "mine"), "mine");
+  assert.equal(whoFrom(undefined, "client"), "team");
+  assert.equal(kindFrom("meetings"), "meetings");
+  assert.equal(kindFrom(undefined, "meetings"), "meetings");
+  assert.equal(kindFrom(undefined, "mine"), "all");
+
+  const cards = [
+    { kind: "meeting" as const, ownerId: "m_org" },
+    { kind: "meeting" as const, ownerId: "m_other" },
+    { kind: "client" as const, ownerId: "m_org" },
+  ];
+  assert.equal(filterCalendarCards(cards, { who: "mine", kind: "meetings" }, "m_org").length, 1);
+  assert.equal(filterCalendarCards(cards, { who: "team", kind: "meetings" }, "m_org").length, 2);
+  assert.equal(filterCalendarCards(cards, { who: "mine", kind: "all" }, "m_org").length, 2);
+
+  // "Mine" for a meeting uses its organiserId rather than lead.ownerId.
+  const db = seed(mon);
+  db.leads = [
+    {
+      id: "l1",
+      company: "Acme",
+      nameKey: "acme",
+      contactName: "A",
+      contactEmail: "a@acme.test",
+      contactPhone: "",
+      source: "website",
+      industry: "Tech",
+      website: "",
+      notes: "",
+      industryFlagged: false,
+      industryBecause: null,
+      industryConfirmedBy: null,
+      state: "intro",
+      reason: null,
+      doNotInvite: false,
+      clientTaId: null,
+      ownerId: "m_owner",
+      createdBy: "m_owner",
+      createdAt: mon,
+      updatedAt: mon,
+    },
+  ];
+  db.meetings = [
+    {
+      id: "mtg1",
+      leadId: "l1",
+      kind: "requirement",
+      at: mon + DAY,
+      state: "booked",
+      taLeadId: "ta1",
+      rebookCount: 0,
+      brief: "",
+      role: "Dev",
+      packageSaid: "",
+      reason: null,
+      bookedBy: "m_owner",
+      organiserId: "m_lead",
+      heldAt: null,
+      createdAt: mon,
+      updatedAt: mon,
+    },
+  ];
+  const items = calendarItems(db);
+  const mtg = items.find((i) => i.id === "mtg_mtg1");
+  assert(mtg);
+  assert.equal(mtg.kind, "meeting");
+  assert.equal(mtg.ownerId, "m_lead");
 });

@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
 import { EmptyState } from "@/app/ui/figma";
-import { agreementForLead, desk, meetingsForLead, member as memberIn, numberOf, switchedOn } from "@/data/desk";
+import { agreementForLead, desk, meetingsForLead, numberOf, switchedOn } from "@/data/desk";
+import { calendarItems } from "@/lib/calendarBoard";
 import {
   type EnquiryCard,
   clientTotals,
@@ -53,11 +54,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const monthAgo = now - 30 * 86_400_000;
   const closed = db.leads.filter((l) => (l.state.startsWith("closed") || l.state === "declined_industry") && l.updatedAt > monthAgo);
 
-  // The week: the booked intro calls, and the ones with no time yet.
+  // The week: calendar items (client meetings, interviews, joining days) plus unbooked intro calls.
   const booked = db.meetings.filter((m) => m.kind === "intro" && m.state === "booked");
   const week = weekStrip(booked, now);
   const weekEnd = now + 7 * 86_400_000;
   const slots = booked.filter((m) => m.at >= now - 3_600_000 && m.at < weekEnd).sort((a, b) => a.at - b.at);
+  const weekEvents = calendarItems(db)
+    .filter((ev) => ev.when !== null && ev.when >= now - 3_600_000 && ev.when < weekEnd)
+    .sort((a, b) => (a.when as number) - (b.when as number));
   const unbooked = all.filter((c) => c.column === "intro" && !c.meeting);
   const toCheck = all.filter((c) => c.column === "new" && c.flags.length > 0);
   const stands = {
@@ -182,25 +186,20 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 </div>
               ))}
             </div>
-            {slots.map((m) => {
-              const l = db.leads.find((x) => x.id === m.leadId);
-              return (
-                <div key={m.id} className="flex items-start gap-3 rounded-[12px] bg-info-soft px-3 py-2.5">
-                  <span aria-hidden="true" className="w-[3px] self-stretch rounded-[2px] bg-info" />
-                  <span className="t-small w-[72px] shrink-0 text-info">
-                    {dayWords(m.at).split(" ")[0]} {clockWords(m.at)}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <Link href={"/leads/" + m.leadId} className="t-body-m truncate hover:underline">
-                      {l?.company ?? "Lead"}
-                    </Link>
-                    <span className="t-small text-ink-3">
-                      Intro call · {m.joinUrl ? "Teams" : "phone"} · {memberIn(db, m.bookedBy)?.name.split(" ")[0] ?? ""}
-                    </span>
-                  </div>
+            {weekEvents.map((ev) => (
+              <div key={ev.id} className="flex items-start gap-3 rounded-[12px] bg-info-soft px-3 py-2.5">
+                <span aria-hidden="true" className="w-[3px] self-stretch rounded-[2px] bg-info" />
+                <span className="t-small w-[72px] shrink-0 text-info">
+                  {dayWords(ev.when!).split(" ")[0]} {clockWords(ev.when!)}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <Link href={ev.href} className="t-body-m truncate hover:underline">
+                    {ev.title}
+                  </Link>
+                  <span className="t-small text-ink-3">{ev.sub}</span>
                 </div>
-              );
-            })}
+              </div>
+            ))}
             {unbooked.map((c) => (
               <div key={c.id} className="flex items-start gap-3 rounded-[12px] bg-warn-soft px-3 py-2.5">
                 <span aria-hidden="true" className="w-[3px] self-stretch rounded-[2px] bg-warn" />
@@ -213,7 +212,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 </div>
               </div>
             ))}
-            {slots.length === 0 && unbooked.length === 0 && <p className="t-small text-ink-3">No intro call is booked this week.</p>}
+            {weekEvents.length === 0 && unbooked.length === 0 && <p className="t-small text-ink-3">Nothing is on the calendar this week.</p>}
           </RailCard>
         </aside>
       </div>

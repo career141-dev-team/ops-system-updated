@@ -13,7 +13,7 @@ import { duplicateOf, matchVacancy, nationalityOf, readCv, type CvFields } from 
 import { cvFieldsPrompt, type CvFieldsSaid } from "@/lib/aiTasks";
 import { keyFor, mimeFor, safeName, sha256 } from "@/lib/files";
 import { problemWithCv, problemWithCvBytes } from "@/lib/hiring";
-import { fetchWhatsAppMedia } from "@/lib/senders";
+import { fetchWhatsAppMedia, replySubjectFor, threadFor } from "@/lib/senders";
 import { MAX_PER_BATCH, PER_PASS, WA_BATCH_TITLE, WA_KEEPS_MS, WA_QUEUE, WA_RETRY_GAP_MS, isDirectCv, isGroupCv, parseWaRow, waBatchId, waQueueKey, waRowOf, type WaCvRow, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
 import { matchPhone, type GroupEvent, type WaMessage } from "@/lib/whatsapp";
@@ -505,14 +505,17 @@ export async function chaseTheAgreement(
   );
   if ("problem" in draft) return { ok: false, what: draft.problem, messageId: null };
 
+  const clientForEsa = clientForLead(db, esa.leadId);
+  const thread = plan.channel === "email" && clientForEsa ? threadFor(db, clientForEsa.id) : null;
   const message = await draftMessage({
     channel: plan.channel,
     to: [draft.to],
-    subject: draft.subject,
+    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : draft.subject,
     body: draft.body,
     templateKey: plan.templateKey,
     subjectType: "esa",
     subjectId: esaId,
+    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
   });
 
   await patchAgreement(esaId, { state: "chasing", chaseStep: plan.step }, by, "esa.chaseDrafted", plan.what);
@@ -896,14 +899,17 @@ export async function chaseTheFeedback(
       .replace(/\{\{contact\}\}/g, "all")
       .replace(/\{\{opsPerson\}\}/g, member(db, set.ownerId)?.name ?? "Career 141");
 
+  const thread = client ? threadFor(db, client.id) : null;
+  const rawSubject = fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}");
   const message = await draftMessage({
     channel: "email",
     to,
-    subject: fill(wording?.subject ?? "{{client}} > {{position}} > SET {{setNumber}}"),
+    subject: thread?.inReplyToProviderId && thread.subject ? replySubjectFor(thread.subject) : rawSubject,
     body: fill(wording?.body ?? ["Dear all,", "", "Any feedback on the CVs we sent?", "", "Career 141"].join("\n")),
     templateKey: "feedback.chase",
     subjectType: "clientSet",
     subjectId: setId,
+    ...(thread?.inReplyToProviderId ? { inReplyToProviderId: thread.inReplyToProviderId } : {}),
   });
   await createTask({
     kind: "approve",

@@ -28,6 +28,7 @@ import "server-only";
  * copied so the thread is not hers alone. The reader reads both.
  */
 
+import type { OpsDatabase } from "@/data/types";
 import { referenceFor } from "./mailMatch";
 
 export interface SendOutcome {
@@ -114,13 +115,108 @@ export function phoneAllowed(to: string): boolean {
 }
 
 /**
+ * Templates that stay on one per-client email thread (26 Nov, PR 8):
+ * set.cover, feedback.chase, check-in, and ESA chases.
+ */
+export function isClientThreadedTemplate(templateKey: string | null | undefined): boolean {
+  if (!templateKey) return false;
+  return (
+    templateKey === "set.cover" ||
+    templateKey === "feedback.chase" ||
+    templateKey === "checkin" ||
+    templateKey === "client.checkin" ||
+    templateKey.startsWith("esa.chase")
+  );
+}
+
+/** Format a reply subject without stacking "Re:" or stale reference tags. */
+export function replySubjectFor(firstSubject: string): string {
+  const clean = firstSubject
+    .replace(/\[C141-[^\]]*\]/gi, " ")
+    .replace(/^(?:\s*re\s*:\s*)+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean ? `Re: ${clean}` : "Re:";
+}
+
+type ThreadDb = Pick<OpsDatabase, "messages" | "clientSets" | "agreements" | "clients" | "leads" | "positions" | "placements" | "interviews">;
+
+/** Resolve the Ops client id for a message's subject, if it belongs to one. */
+export function clientIdForMessage(
+  db: Pick<OpsDatabase, "clientSets" | "agreements" | "clients" | "leads" | "positions" | "placements" | "interviews">,
+  subjectType: string | null,
+  subjectId: string | null,
+): string | null {
+  if (!subjectType || !subjectId) return null;
+  if (subjectType === "client") return subjectId;
+  if (subjectType === "clientSet") {
+    const set = db.clientSets.find((s) => s.id === subjectId);
+    if (set?.clientId) return set.clientId;
+    if (set?.clientTaId) return db.clients.find((c) => c.taClientId === set.clientTaId)?.id ?? null;
+    return null;
+  }
+  if (subjectType === "esa") {
+    const esa = db.agreements.find((a) => a.id === subjectId);
+    if (!esa) return null;
+    return (
+      db.clients.find((c) => c.leadId === esa.leadId || (esa.clientTaId && c.taClientId === esa.clientTaId))?.id ??
+      null
+    );
+  }
+  if (subjectType === "lead") {
+    const lead = db.leads.find((l) => l.id === subjectId);
+    return db.clients.find((c) => c.leadId === subjectId || (lead?.clientTaId && c.taClientId === lead.clientTaId))?.id ?? null;
+  }
+  if (subjectType === "position") return db.positions.find((p) => p.id === subjectId)?.clientId ?? null;
+  if (subjectType === "placement") return db.placements.find((p) => p.id === subjectId)?.clientId ?? null;
+  if (subjectType === "interview") return db.interviews.find((i) => i.id === subjectId)?.clientId ?? null;
+  return null;
+}
+
+/**
+ * One email thread per client (26 Nov, PR 8): returns the last `providerMessageId` sent to that
+ * client and the thread's first subject, so later set covers, feedback chases, check-ins and
+ * ESA chases thread under the first email.
+ */
+export function threadFor(
+  db: ThreadDb,
+  clientId: string,
+): { inReplyToProviderId: string | null; subject: string | null } {
+  const sent = db.messages
+    .filter(
+      (m) =>
+        m.channel === "email" &&
+        m.state === "sent" &&
+        Boolean(m.providerMessageId) &&
+        clientIdForMessage(db, m.subjectType, m.subjectId) === clientId,
+    )
+    .sort((a, b) => (a.sentAt ?? a.createdAt) - (b.sentAt ?? b.createdAt));
+  if (sent.length === 0) return { inReplyToProviderId: null, subject: null };
+  return {
+    inReplyToProviderId: sent[sent.length - 1]!.providerMessageId,
+    subject: sent[0]!.subject,
+  };
+}
+
+/**
  * Our reference goes in every subject we send, because it is the one thing that
  * matches a reply back with certainty. Added here rather than at drafting time
  * so it cannot be edited out of a draft by accident.
+ *
+ * For per-client threaded kinds (`set.cover`, `feedback.chase`, check-in, `esa.chase*`),
+ * uses one `[C141-CLIENT-…]` reference per client so set numbers don't split the thread.
  */
-export function subjectWithReference(subject: string, subjectType: string | null, subjectId: string | null): string {
+export function subjectWithReference(
+  subject: string,
+  subjectType: string | null,
+  subjectId: string | null,
+  options?: { clientId?: string | null; templateKey?: string | null },
+): string {
   if (!subjectType || !subjectId) return subject;
   if (/\[C141-[^\]]*\]/i.test(subject)) return subject;
+  if (options?.clientId && isClientThreadedTemplate(options.templateKey)) {
+    return (subject + " " + referenceFor("client", options.clientId)).trim();
+  }
   return (subject + " " + referenceFor(subjectType, subjectId)).trim();
 }
 

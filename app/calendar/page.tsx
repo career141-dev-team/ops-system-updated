@@ -5,9 +5,24 @@ import { startInterview } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Card, ChoiceGroup, DataTable, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
-import { clientForLead, clientIn, desk, interviewsNewestFirst, positionIn } from "@/data/desk";
-import { CALENDAR_FILTERS, clockOf, dayWord, filterCards, filterFrom, saturdayAfter, weekLabel, type CalendarKind } from "@/lib/calendarBoard";
-import { FORMAT_MEANINGS, boardStatus, isOff, weekDays, type InterviewFormat } from "@/lib/interviews";
+import { clientIn, desk } from "@/data/desk";
+import {
+  CALENDAR_CATEGORY_FILTERS,
+  CALENDAR_WHO_FILTERS,
+  calendarItems,
+  clockOf,
+  dayWord,
+  filterCalendarCards,
+  kindFrom,
+  saturdayAfter,
+  weekLabel,
+  whoFrom,
+  type CalendarEventItem,
+  type CalendarKind,
+  type CalendarKindFilter,
+  type CalendarWho,
+} from "@/lib/calendarBoard";
+import { FORMAT_MEANINGS, weekDays, type InterviewFormat } from "@/lib/interviews";
 import { SUMMARY_MODES, SUMMARY_STATUSES, filterSummary, summaryRows } from "@/lib/interviewSummary";
 import { closeHref, panelHref } from "@/lib/panel";
 import { can } from "@/lib/roles";
@@ -18,51 +33,40 @@ const KIND_STYLE: Record<CalendarKind, { box: string; clock: string; dot: string
   client: { box: "bg-info-soft", clock: "text-info", dot: "bg-info", legend: "Client interview" },
   internal: { box: "bg-violet-soft", clock: "text-violet", dot: "bg-violet", legend: "Internal interview" },
   joining: { box: "bg-brand-soft", clock: "text-brand", dot: "bg-brand", legend: "Joining day" },
-  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Meeting" },
+  meeting: { box: "bg-sunk", clock: "text-ink-2", dot: "bg-ink-2", legend: "Client meeting" },
 };
 
-interface CalendarEvent {
-  id: string;
-  kind: CalendarKind;
-  ownerId: string | null;
-  when: number | null;
-  title: string;
-  sub: string;
-  href: string;
-  /** Present for client interviews so the right-hand Selected & Not-booked cards work identically. */
-  iv?: ReturnType<typeof interviewsNewestFirst>[number];
-  status?: ReturnType<typeof boardStatus>;
-  clientName?: string;
-  roleTitle?: string;
-  positionId?: string | null;
-}
+type CalendarEvent = CalendarEventItem;
 
 /**
  * K1 · Calendar. The week of client interviews, intro/requirement meetings, and joining days,
  * Monday to Saturday, with the selected item on the right, unbooked interviews below it, and a
  * 680px `?panel=start-interview` drawer to start a new interview right from the calendar.
- * Internal interviews are the booked applicants of the internal hiring vacancies.
+ * Internal interviews are the booked applicants of Scoops & vacancies.
  */
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ weekOffset?: string; msg?: string; show?: string; on?: string; panel?: string; view?: string; client?: string; mode?: string; status?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ weekOffset?: string; msg?: string; show?: string; who?: string; kind?: string; on?: string; panel?: string; view?: string; client?: string; mode?: string; status?: string; from?: string; to?: string }>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const sp = await searchParams;
   const { weekOffset: raw = "0", msg, show, on, panel } = sp;
   const offset = Number.parseInt(raw, 10) || 0;
-  const filter = filterFrom(show);
+  const who = whoFrom(sp.who, show);
+  const kind = kindFrom(sp.kind, show);
   const mayManage = can(me, "client.manage");
   const table = sp.view === "table";
 
-  const here = (o: { weekOffset?: number; show?: string; on?: string }) => {
+  const here = (o: { weekOffset?: number; who?: CalendarWho; kind?: CalendarKindFilter; on?: string }) => {
     const q = new URLSearchParams();
     const w = o.weekOffset ?? offset;
     if (w) q.set("weekOffset", String(w));
-    const f = o.show ?? filter;
-    if (f !== "team") q.set("show", f);
+    const nextWho = o.who ?? who;
+    if (nextWho !== "team") q.set("who", nextWho);
+    const nextKind = o.kind ?? kind;
+    if (nextKind !== "all") q.set("kind", nextKind);
     if (o.on) q.set("on", o.on);
     const s = q.toString();
     return "/calendar" + (s ? "?" + s : "");
@@ -73,81 +77,11 @@ export default async function CalendarPage({
   const week = weekDays(now, offset);
   const days = [...week.days, saturdayAfter(week.days[4].endMs, now)];
 
-  // 1. Client interviews
-  const interviewItems: CalendarEvent[] = interviewsNewestFirst(db).map((iv) => {
-    const position = iv.positionId ? positionIn(db, iv.positionId) : (db.positions.find((p) => p.openingTaId === iv.openingTaId) ?? null);
-    const client = iv.clientId ? clientIn(db, iv.clientId) : position?.clientId ? clientIn(db, position.clientId) : null;
-    const clientName = client?.name ?? "Client";
-    return {
-      id: iv.id,
-      kind: "client",
-      ownerId: iv.ownerId,
-      when: isOff(iv.state) ? null : iv.at,
-      title: iv.candidateName,
-      sub: `Round ${iv.round} · client interview`,
-      href: here({ on: iv.id }),
-      iv,
-      status: boardStatus(iv),
-      clientName,
-      roleTitle: position?.title ?? iv.openingTaId,
-      positionId: position?.id ?? iv.positionId,
-    };
-  });
-
-  // 2. Booked meetings (intro calls & requirement meetings)
-  const meetingItems: CalendarEvent[] = db.meetings
-    .filter((m) => m.state === "booked" && m.at)
-    .map((m) => {
-      const lead = db.leads.find((l) => l.id === m.leadId);
-      const client = clientForLead(db, m.leadId);
-      const who = client?.name ?? lead?.company ?? "Client";
-      const label = m.kind === "requirement" ? "Requirement meeting" : "Intro call";
-      return {
-        id: "mtg_" + m.id,
-        kind: "meeting",
-        ownerId: lead?.ownerId ?? client?.ownerId ?? null,
-        when: m.at,
-        title: who,
-        sub: label,
-        href: lead ? `/leads/${lead.id}?step=${m.kind === "requirement" ? "requirement" : "intro"}` : client ? `/clients/${client.id}` : "/leads",
-      };
-    });
-
-  // 3. Joining days (placements with a scheduled or completed joinDate)
-  const joiningItems: CalendarEvent[] = db.placements
-    .filter((pl) => pl.joinDate && pl.state !== "cancelled" && pl.state !== "no_show")
-    .map((pl) => {
-      const client = pl.clientId ? clientIn(db, pl.clientId) : null;
-      const pos = pl.positionId ? positionIn(db, pl.positionId) : null;
-      return {
-        id: "pl_" + pl.id,
-        kind: "joining",
-        ownerId: pl.ownerId,
-        when: pl.joinDate,
-        title: "Joining day",
-        sub: [pl.candidateName, client?.name].filter(Boolean).join(" · "),
-        href: pos ? `/positions/${pos.id}?view=offer` : `/placements/${pl.id}`,
-      };
-    });
-
-  // 4. Internal hiring interviews (H2 booked applicants, kept visible once shortlisted or offered)
-  const internalItems: CalendarEvent[] = (db.applicants ?? [])
-    .filter((a) => ["interview", "shortlisted", "offered", "decision"].includes(a.stage) && a.interviewAt !== null)
-    .map((a) => {
-      const vac = (db.vacancies ?? []).find((v) => v.id === a.vacancyId);
-      return {
-        id: "ih_" + a.id,
-        kind: "internal",
-        ownerId: vac?.ownerId ?? null,
-        when: a.interviewAt,
-        title: a.name,
-        sub: [vac?.title ?? "Internal hiring", a.place].filter(Boolean).join(" · "),
-        href: `/hiring/${a.vacancyId}`,
-      };
-    });
-
-  const all: CalendarEvent[] = [...interviewItems, ...meetingItems, ...joiningItems, ...internalItems];
-  const cards = filterCards(all, filter, me.id);
+  const all: CalendarEvent[] = calendarItems(db).map((ev) => ({
+    ...ev,
+    href: ev.kind === "client" ? here({ on: ev.id }) : ev.href,
+  }));
+  const cards = filterCalendarCards(all, { who, kind }, me.id);
   const booked = cards.filter((c) => c.when !== null).sort((a, b) => (a.when as number) - (b.when as number));
   const notBooked = cards.filter((c) => c.iv && c.status?.needsTime && c.when === null);
 
@@ -193,17 +127,32 @@ export default async function CalendarPage({
       )}
 
       {table && <InterviewTable db={db} now={now} sp={sp} />}
-      <nav className={"flex flex-wrap items-center gap-2" + (table ? " hidden" : "")} aria-label="Show">
-        {CALENDAR_FILTERS.map((f) => (
-          <Link
-            key={f.key}
-            href={here({ show: f.key })}
-            aria-current={f.key === filter ? "page" : undefined}
-            className={"t-label rounded-full px-3.5 py-[7px] " + (f.key === filter ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
-          >
-            {f.label}
-          </Link>
-        ))}
+      <nav className={"flex flex-wrap items-center gap-3" + (table ? " hidden" : "")} aria-label="Show">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {CALENDAR_WHO_FILTERS.map((f) => (
+            <Link
+              key={f.key}
+              href={here({ who: f.key })}
+              aria-current={f.key === who ? "page" : undefined}
+              className={"t-label whitespace-nowrap rounded-full px-3.5 py-[7px] " + (f.key === who ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
+            >
+              {f.label}
+            </Link>
+          ))}
+        </div>
+        <span className="h-4 w-px bg-rule" aria-hidden="true" />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {CALENDAR_CATEGORY_FILTERS.map((f) => (
+            <Link
+              key={f.key}
+              href={here({ kind: f.key })}
+              aria-current={f.key === kind ? "page" : undefined}
+              className={"t-label whitespace-nowrap rounded-full px-3.5 py-[7px] " + (f.key === kind ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}
+            >
+              {f.label}
+            </Link>
+          ))}
+        </div>
       </nav>
 
       <div className={"flex flex-col items-start gap-[22px] pg-xl:flex-row" + (table ? " hidden" : "")}>
@@ -243,7 +192,7 @@ export default async function CalendarPage({
             </div>
             {booked.length === 0 && (
               <p className="t-small text-ink-3">
-                {filter === "internal"
+                {kind === "internal"
                   ? "No internal interviews are booked yet."
                   : "Nothing is booked for this filter yet."}
               </p>
