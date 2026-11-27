@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { openCloseByHand, setOpeningPeople, setPositionBackup, setPositionOwner, setPositionTeam } from "@/app/actions";
+import { openCloseByHand, setOpeningPeople, setPositionBackup, setPositionOwner, setPositionPriority, setPositionSalary, setPositionTeam } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Contacts } from "@/app/ui/Contacts";
 import { Avatar, Card, RelatedLinks, figmaField, pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -127,6 +127,41 @@ export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open
                   Record it
                 </button>
               </form>
+            )}
+            {mayManage && (
+              <div className="flex flex-col gap-3 border-t border-rule pt-4">
+                <form action={setPositionSalary} className="flex flex-wrap items-end gap-2.5">
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <input type="hidden" name="back" value={`/positions/${position.id}?view=overview`} />
+                  <label className="t-small flex min-w-[170px] flex-1 flex-col gap-1 text-ink-3">
+                    Monthly salary (gives the value)
+                    <input name="salaryMonthly" inputMode="decimal" defaultValue={position.salaryMonthly || ""} className={figmaField} />
+                  </label>
+                  <label className="t-small flex w-24 flex-col gap-1 text-ink-3">
+                    Currency
+                    <input name="currency" defaultValue={position.salaryCurrency ?? ""} placeholder="LKR" className={figmaField} />
+                  </label>
+                  <button type="submit" className={pillSecondary}>
+                    Save salary
+                  </button>
+                </form>
+                <form action={setPositionPriority} className="flex flex-wrap items-end gap-2.5">
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <input type="hidden" name="back" value={`/positions/${position.id}?view=overview`} />
+                  <label className="t-small flex min-w-[170px] flex-1 flex-col gap-1 text-ink-3">
+                    Priority
+                    <select name="priority" defaultValue={position.priority ?? ""} className={figmaField}>
+                      <option value="">None</option>
+                      <option value="P1">P1</option>
+                      <option value="P2">P2</option>
+                      <option value="P3">P3</option>
+                    </select>
+                  </label>
+                  <button type="submit" className={pillSecondary}>
+                    Save priority
+                  </button>
+                </form>
+              </div>
             )}
             {can(c.me, "task.reassign") && (
               <div className="flex flex-col gap-3 border-t border-rule pt-4">

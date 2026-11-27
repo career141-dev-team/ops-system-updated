@@ -64,6 +64,8 @@ test("agreements land in their column with a due chase", () => {
   assert.equal(cards[0].column, "chasing");
   assert.equal(cards[0].extra, "chase 3 of 6");
   assert.equal(cards[0].due?.tone, "warn");
+  const withContact = agreementCards(make({ leads: [lead({ id: "l2", contactName: "Nimal Perera" })], agreements: [esa({ leadId: "l2" })] }), NOW);
+  assert.ok(withContact[0].find.includes("nimal"), "the search finds an agreement by its contact");
 });
 
 test("the words around the boards", () => {

@@ -307,6 +307,11 @@ The source is the meeting's requirements document; the plan is one PR per area, 
 - **A role "needs you" only for:** a joining day passed; no primary TA; the agreement not signed; an interview with no time; a set sent and unanswered past `feedback.chaseDays`; a joined placement whose nationality is not confirmed; or a testimonial pending from the candidate or the client. Searching with no CV set yet, and a JD waiting for approval, no longer count (their buttons stay). Closed and held roles never count.
 - **Open, for the owner:** the ESA text's refund default is 25%, but [STATUS](STATUS.md) phase 7 says the agreement's refund is 50% of what was paid. Not changed.
 
+## 27 Nov: the Clients > Positions tab is removed (owner)
+
+- `/positions` shows the same work, so Clients has three tabs: Clients, Enquiries, Agreements. `/clients/positions` redirects to `/positions`.
+- Main and backup Ops, salary and priority are changed on the position page, under **People, contacts and closing**.
+
 ## 27 Nov: charging twice for a job abroad - to build later (owner)
 
 - **Not built; the fee rule is unchanged for now:** twice the fee when the candidate is not Sri Lankan (`feeMonthsFor`, `src/lib/money.ts`).
