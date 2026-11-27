@@ -48,6 +48,11 @@ export interface PositionIn {
   handedOverAt: number;
   closedAt: number | null;
   ownerId: string;
+  backupOwnerId?: string;
+  clientType?: "local" | "international" | "";
+  value?: number | null;
+  currency?: string;
+  priority?: "P1" | "P2" | "P3" | "";
   createdAt: number;
 }
 export interface SetIn {
@@ -104,6 +109,11 @@ export interface RoleRow {
   clientName: string;
   title: string;
   ownerId: string;
+  backupOwnerId: string;
+  clientType: "local" | "international" | "";
+  value: number | null;
+  currency: string;
+  priority: "P1" | "P2" | "P3" | "";
   placed: number;
   /** null: not read from the TA System. */
   counts: Record<StepKey, number | null>;
@@ -186,9 +196,22 @@ export function roleRows(input: ListInput): RoleRow[] {
 
     const since = waiting ? gotAt(waiting) : null;
     const silent = since ? days(since, now) : 0;
-    const ta = p.primaryTaId ? input.taFirstNameOf(p.primaryTaId) : null;
     const contact = input.contactFirstNameOf(p);
-    const base = { id: p.id, clientName: input.clientNameOf(p), title: p.title, ownerId: p.ownerId, placed: pl.length, counts, closed, onHold };
+    const base = {
+      id: p.id,
+      clientName: input.clientNameOf(p),
+      title: p.title,
+      ownerId: p.ownerId,
+      backupOwnerId: p.backupOwnerId ?? "",
+      clientType: p.clientType ?? "",
+      value: p.value ?? null,
+      currency: p.currency ?? "",
+      priority: p.priority ?? "",
+      placed: pl.length,
+      counts,
+      closed,
+      onHold,
+    };
     const row = (r: Partial<RoleRow> & Pick<RoleRow, "statusText" | "tone">): RoleRow => ({
       ...base,
       problemStep: null,
@@ -239,12 +262,10 @@ export function roleRows(input: ListInput): RoleRow[] {
       return row({ statusText: next ? `Joins ${dayMonth(next.joinDate!)}` : "Offer made", tone: "ok" });
     }
     if (joined.length) return row({ statusText: `Placed ${joined.length}, guarantee running`, tone: "ok" });
-    // Searching, with nothing yet at the client: the TA can be asked for CVs.
+    // Searching, with nothing yet at the client: do not flag every active search with "Ask TA for CVs".
     return row({
-      statusText: `Open ${Math.max(1, days(p.handedOverAt || p.createdAt, now))} days · no CV set yet`,
-      tone: "warn",
-      problemStep: "ta",
-      action: { kind: "ask-ta", label: ta ? `Ask ${ta} for CVs` : "Ask the TA for CVs", on: p.id },
+      statusText: `Searching · open ${Math.max(1, days(p.handedOverAt || p.createdAt, now))} days`,
+      tone: "info",
     });
   });
 }
@@ -293,14 +314,78 @@ export function groupByClient(rows: RoleRow[], needsYouFirst: boolean): ClientGr
 
 export type ListFilter = "all" | "mine" | "needs" | "client" | "hold";
 
-export function filterRows(rows: RoleRow[], filter: ListFilter, query: string, meId: string): RoleRow[] {
+export interface RoleFilterOptions {
+  opsId?: string;
+  clientType?: string;
+  priority?: string;
+  min?: string;
+  max?: string;
+  currency?: string;
+  reason?: string;
+}
+
+const REASON_LABELS: Partial<Record<ActionKind, string>> = {
+  "choose-ta": "Needs a TA",
+  "chase-agreement": "Agreement not signed",
+  "find-a-time": "Needs a time",
+  call: "Client feedback overdue",
+  "chase-hr": "Joining day passed",
+  "confirm-nationality": "Nationality not confirmed",
+  testimonial: "Testimonial pending",
+};
+
+/** Counts open roles per "Needs your attention" reason so each count can be clicked to filter. */
+export function reasonCounts(rows: RoleRow[]): { kind: ActionKind; label: string; count: number }[] {
+  const counts = new Map<ActionKind, number>();
+  for (const r of rows) {
+    if (r.closed || r.onHold || !r.needsYou) continue;
+    const seen = new Set<ActionKind>();
+    for (const why of r.reasons) {
+      if (seen.has(why.action.kind)) continue;
+      seen.add(why.action.kind);
+      counts.set(why.action.kind, (counts.get(why.action.kind) ?? 0) + 1);
+    }
+  }
+  const order: ActionKind[] = ["chase-hr", "choose-ta", "chase-agreement", "find-a-time", "call", "confirm-nationality", "testimonial"];
+  return order
+    .filter((k) => (counts.get(k) ?? 0) > 0)
+    .map((kind) => ({ kind, label: REASON_LABELS[kind] ?? kind, count: counts.get(kind)! }));
+}
+
+export function filterRoleRows(
+  rows: RoleRow[],
+  filter: ListFilter,
+  query: string,
+  meId: string,
+  opts: RoleFilterOptions = {},
+): RoleRow[] {
   const q = query.trim().toLowerCase();
+  const min = opts.min?.trim() ? Number(opts.min) : null;
+  const max = opts.max?.trim() ? Number(opts.max) : null;
   return rows.filter((r) => {
     if (q && !(r.title + " " + r.clientName).toLowerCase().includes(q)) return false;
-    if (filter === "hold") return r.onHold;
-    if (r.closed) return false;
-    if (filter === "client") return r.withClient;
-    if (filter === "mine" && r.ownerId !== meId) return false;
-    return filter !== "needs" || r.needsYou;
+    if (filter === "hold") {
+      if (!r.onHold) return false;
+    } else if (r.closed) {
+      return false;
+    }
+    if (filter === "client" && !r.withClient) return false;
+    if (filter === "mine" && r.ownerId !== meId && r.backupOwnerId !== meId) return false;
+    if (filter === "needs" && !r.needsYou) return false;
+    if (opts.opsId && r.ownerId !== opts.opsId && r.backupOwnerId !== opts.opsId) return false;
+    if (opts.clientType && r.clientType !== opts.clientType) return false;
+    if (opts.priority && r.priority !== opts.priority) return false;
+    if (opts.reason && !r.reasons.some((why) => why.action.kind === opts.reason)) return false;
+    if ((min !== null && Number.isFinite(min)) || (max !== null && Number.isFinite(max))) {
+      if (r.value === null) return false;
+      if ((r.currency || "LKR") !== (opts.currency || "LKR")) return false;
+      if (min !== null && Number.isFinite(min) && r.value < min) return false;
+      if (max !== null && Number.isFinite(max) && r.value > max) return false;
+    }
+    return true;
   });
+}
+
+export function filterRows(rows: RoleRow[], filter: ListFilter, query: string, meId: string): RoleRow[] {
+  return filterRoleRows(rows, filter, query, meId);
 }

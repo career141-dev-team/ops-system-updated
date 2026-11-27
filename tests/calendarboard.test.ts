@@ -50,6 +50,9 @@ test("Saturday follows Friday and is today only on that day", () => {
 test("PR 8: Client meetings label, combined Mine/Team + category filters, organiser ownership, and calendarItems", () => {
   assert.equal(CALENDAR_FILTERS.find((f) => f.key === "meetings")?.label, "Client meetings");
   assert.equal(CALENDAR_CATEGORY_FILTERS.find((f) => f.key === "meetings")?.label, "Client meetings");
+  assert.equal(CALENDAR_FILTERS.some((f) => f.label === "Joining days"), false);
+  assert.equal(CALENDAR_CATEGORY_FILTERS.some((f) => f.label === "Joining days"), false);
+  assert.equal(kindFrom("joining"), "all");
 
   assert.equal(whoFrom("mine"), "mine");
   assert.equal(whoFrom(undefined, "mine"), "mine");

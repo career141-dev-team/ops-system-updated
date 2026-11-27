@@ -4,17 +4,18 @@ import { redirect } from "next/navigation";
 import { savePositionRequirement, setPositionBackup, setPositionOwner, setPositionPriority, setPositionSalary } from "@/app/actions";
 import { Card, DataTable, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import PopupBox from "@/app/ui/PopupBox";
-import { desk } from "@/data/desk";
+import { desk, taRosterPeople } from "@/data/desk";
 import { filterPositionRows, moneyText, positionRows } from "@/lib/clientPositionTable";
 import { clientTotals, clientsLine } from "@/lib/clientsView";
 import { closeHref, panelHref } from "@/lib/panel";
 import { COUNT_TITLES, countItems, isCountKind, type CountKind } from "@/lib/positionCounts";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { people as taPeople } from "@/lib/ta";
 import { ClientsHead, Msg } from "../../parts";
 
-type SP = { msg?: string; q?: string; handler?: string; type?: string; min?: string; max?: string; currency?: string; priority?: string; backup?: string; panel?: string; on?: string; k?: string };
+export const dynamic = "force-dynamic";
+
+type SP = { msg?: string; q?: string; ops?: string; handler?: string; type?: string; min?: string; max?: string; currency?: string; priority?: string; backup?: string; panel?: string; on?: string; k?: string };
 
 /**
  * Clients, positions (23 Nov, the ops team's feedback): every client's positions with the package and the
@@ -27,21 +28,22 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
   const me = await currentMember();
   if (!me) redirect("/sign-in");
   const sp = await searchParams;
-  const { msg, q = "", handler = "", type = "", min = "", max = "", currency = "", priority = "", backup = "" } = sp;
+  const { msg, q = "", ops = "", handler = "", type = "", min = "", max = "", currency = "", priority = "", backup = "" } = sp;
   const db = await desk();
   const totals = clientTotals(db, Date.now());
-  const ta = await taPeople();
+  const ta = await taRosterPeople(db);
   const taList = ta.ok ? ta.data : [];
   const all = positionRows(db, (id) => taList.find((p) => p.id === id)?.fullName ?? null);
   const currencies = [...new Set(all.filter((r) => r.value !== null).map((r) => r.currency || "LKR"))].sort();
   // With only one currency there is nothing to choose, and the range is in that one.
   const inCurrency = currency || (currencies.length === 1 ? currencies[0] : "LKR");
-  const rows = filterPositionRows(all, q, handler, { type, min, max, currency: inCurrency, priority, backup });
+  const rows = filterPositionRows(all, q, handler, { ops, type, min, max, currency: inCurrency, priority, backup });
   const popupRow = sp.panel === "count" && sp.on && sp.k && isCountKind(sp.k) ? (all.find((r) => r.positionId === sp.on) ?? null) : null;
+  const editRow = sp.panel === "edit" && sp.on ? (all.find((r) => r.positionId === sp.on) ?? null) : null;
   const mayEdit = can(me, "client.manage");
   const mayMove = can(me, "task.reassign");
   const team = db.members.filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"));
-  const filters: Record<string, string> = { ...(q ? { q } : {}), ...(handler ? { handler } : {}), ...(type ? { type } : {}), ...(min ? { min } : {}), ...(max ? { max } : {}), ...(currency ? { currency } : {}), ...(priority ? { priority } : {}), ...(backup ? { backup } : {}) };
+  const filters: Record<string, string> = { ...(q ? { q } : {}), ...(ops ? { ops } : {}), ...(handler ? { handler } : {}), ...(type ? { type } : {}), ...(min ? { min } : {}), ...(max ? { max } : {}), ...(currency ? { currency } : {}), ...(priority ? { priority } : {}), ...(backup ? { backup } : {}) };
   const anyFilter = Object.keys(filters).length > 0;
   const here = "/clients/positions" + (anyFilter ? "?" + new URLSearchParams(filters).toString() : "");
   // A count is a link that opens the list behind it; a zero is plain text.
@@ -65,11 +67,18 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
 
   return (
     <div className="flex flex-col gap-[22px]">
-      <ClientsHead tab="positions" line={clientsLine(totals)} counts={totals} q={q} filter={undefined} />
+      <ClientsHead tab="positions" line={clientsLine(totals)} counts={{ ...totals, positions: all.length }} q={q} filter={undefined} />
       <Msg msg={msg} />
       <Card className="gap-4 !p-6">
         <form method="get" action="/clients/positions" className="flex flex-wrap items-end gap-3">
           {q && <input type="hidden" name="q" value={q} />}
+          <label className="flex flex-col gap-1">
+            <span className="t-small text-ink-3">Ops person</span>
+            <select name="ops" defaultValue={ops} className={sel}>
+              <option value="">Anyone</option>
+              {teamOptions()}
+            </select>
+          </label>
           <label className="flex flex-col gap-1">
             <span className="t-small text-ink-3">Ops (main)</span>
             <select name="handler" defaultValue={handler} className={sel}>
@@ -164,85 +173,9 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
               </span>,
               r.priority,
               mayEdit ? (
-                <details key="e" className="relative">
-                  <summary className="t-label cursor-pointer list-none text-brand hover:underline [&::-webkit-details-marker]:hidden">Edit</summary>
-                  <div className="mt-2 flex min-w-[280px] flex-col gap-4 rounded-[14px] border border-rule bg-surface p-4">
-                    <form action={savePositionRequirement} className="flex flex-col gap-2">
-                      <input type="hidden" name="positionId" value={r.positionId} />
-                      <input type="hidden" name="back" value={here} />
-                      <span className="t-small text-ink-3">Package</span>
-                      {r.hasRequirement && !r.packLocked ? (
-                        <>
-                          <input name="field.salary" defaultValue={r.pack} required className={panelInput} />
-                          <button type="submit" className={pillPrimary + " w-fit"}>
-                            Save the package
-                          </button>
-                        </>
-                      ) : (
-                        <p className="t-small text-ink-3">
-                          {r.packLocked ? "The requirement is complete and locked, so a change goes through the client." : "There is no requirement to change yet. It is written on the position's Requirement tab."}
-                        </p>
-                      )}
-                    </form>
-                    <form action={setPositionSalary} className="flex flex-col gap-2">
-                      <input type="hidden" name="positionId" value={r.positionId} />
-                      <input type="hidden" name="back" value={here} />
-                      <span className="t-small text-ink-3">Monthly salary (gives the value)</span>
-                      <div className="flex gap-2">
-                        <input name="salaryMonthly" inputMode="decimal" defaultValue={r.salaryMonthly || ""} placeholder="Monthly" className={panelInput} />
-                        <input name="currency" defaultValue={r.currency} placeholder="LKR" className={panelInput + " !w-24"} />
-                      </div>
-                      <button type="submit" className={pillSecondary + " w-fit"}>
-                        Save the salary
-                      </button>
-                    </form>
-                    <form action={setPositionPriority} className="flex flex-col gap-2">
-                      <input type="hidden" name="positionId" value={r.positionId} />
-                      <input type="hidden" name="back" value={here} />
-                      <span className="t-small text-ink-3">Priority</span>
-                      <select name="priority" defaultValue={r.priority} className={panelInput}>
-                        <option value="">None</option>
-                        <option value="P1">P1</option>
-                        <option value="P2">P2</option>
-                        <option value="P3">P3</option>
-                      </select>
-                      <button type="submit" className={pillSecondary + " w-fit"}>
-                        Save the priority
-                      </button>
-                    </form>
-                    {mayMove ? (
-                      <>
-                        <form action={setPositionOwner} className="flex flex-col gap-2">
-                          <input type="hidden" name="positionId" value={r.positionId} />
-                          <input type="hidden" name="back" value={here} />
-                          <span className="t-small text-ink-3">Ops (main)</span>
-                          <select name="handlerId" defaultValue={r.handlerId} className={panelInput}>
-                            {teamOptions()}
-                          </select>
-                          <input name="reason" required placeholder="Why it is moving" className={panelInput} />
-                          <button type="submit" className={pillSecondary + " w-fit"}>
-                            Change the main Ops
-                          </button>
-                        </form>
-                        <form action={setPositionBackup} className="flex flex-col gap-2">
-                          <input type="hidden" name="positionId" value={r.positionId} />
-                          <input type="hidden" name="back" value={here} />
-                          <span className="t-small text-ink-3">Backup ops</span>
-                          <select name="backupId" defaultValue={r.backupId} className={panelInput}>
-                            <option value="">No backup</option>
-                            {teamOptions(r.handlerId)}
-                          </select>
-                          <input name="reason" required placeholder="Why it is changing" className={panelInput} />
-                          <button type="submit" className={pillSecondary + " w-fit"}>
-                            Change the backup
-                          </button>
-                        </form>
-                      </>
-                    ) : (
-                      <p className="t-small text-ink-3">The Ops lead changes who handles a position.</p>
-                    )}
-                  </div>
-                </details>
+                <Link key="e" href={panelHref("/clients/positions", filters, "edit", r.positionId)} scroll={false} className="t-label text-brand hover:underline">
+                  Edit
+                </Link>
               ) : (
                 ""
               ),
@@ -263,6 +196,90 @@ export default async function ClientPositionsPage({ searchParams }: { searchPara
               </li>
             ))}
           </ul>
+        </PopupBox>
+      )}
+      {editRow && mayEdit && (
+        <PopupBox
+          title="Edit position"
+          sub={editRow.client + " · " + editRow.position}
+          closeHref={closeHref("/clients/positions", filters)}
+        >
+          <div className="flex flex-col gap-5">
+            <form action={savePositionRequirement} className="flex flex-col gap-2">
+              <input type="hidden" name="positionId" value={editRow.positionId} />
+              <input type="hidden" name="back" value={here} />
+              <span className="t-small text-ink-3">Package</span>
+              {editRow.hasRequirement && !editRow.packLocked ? (
+                <>
+                  <input name="field.salary" defaultValue={editRow.pack} required className={panelInput} />
+                  <button type="submit" className={pillPrimary + " w-fit"}>
+                    Save the package
+                  </button>
+                </>
+              ) : (
+                <p className="t-small text-ink-3">
+                  {editRow.packLocked ? "The requirement is complete and locked, so a change goes through the client." : "There is no requirement to change yet. It is written on the position's Requirement tab."}
+                </p>
+              )}
+            </form>
+            <form action={setPositionSalary} className="flex flex-col gap-2 border-t border-rule pt-4">
+              <input type="hidden" name="positionId" value={editRow.positionId} />
+              <input type="hidden" name="back" value={here} />
+              <span className="t-small text-ink-3">Monthly salary (gives the value)</span>
+              <div className="flex gap-2">
+                <input name="salaryMonthly" inputMode="decimal" defaultValue={editRow.salaryMonthly || ""} placeholder="Monthly" className={panelInput} />
+                <input name="currency" defaultValue={editRow.currency} placeholder="LKR" className={panelInput + " !w-24"} />
+              </div>
+              <button type="submit" className={pillSecondary + " w-fit"}>
+                Save the salary
+              </button>
+            </form>
+            <form action={setPositionPriority} className="flex flex-col gap-2 border-t border-rule pt-4">
+              <input type="hidden" name="positionId" value={editRow.positionId} />
+              <input type="hidden" name="back" value={here} />
+              <span className="t-small text-ink-3">Priority</span>
+              <select name="priority" defaultValue={editRow.priority} className={panelInput}>
+                <option value="">None</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+              </select>
+              <button type="submit" className={pillSecondary + " w-fit"}>
+                Save the priority
+              </button>
+            </form>
+            {mayMove ? (
+              <>
+                <form action={setPositionOwner} className="flex flex-col gap-2 border-t border-rule pt-4">
+                  <input type="hidden" name="positionId" value={editRow.positionId} />
+                  <input type="hidden" name="back" value={here} />
+                  <span className="t-small text-ink-3">Ops (main)</span>
+                  <select name="handlerId" defaultValue={editRow.handlerId} className={panelInput}>
+                    {teamOptions()}
+                  </select>
+                  <input name="reason" required placeholder="Why it is moving" className={panelInput} />
+                  <button type="submit" className={pillSecondary + " w-fit"}>
+                    Change the main Ops
+                  </button>
+                </form>
+                <form action={setPositionBackup} className="flex flex-col gap-2 border-t border-rule pt-4">
+                  <input type="hidden" name="positionId" value={editRow.positionId} />
+                  <input type="hidden" name="back" value={here} />
+                  <span className="t-small text-ink-3">Backup ops</span>
+                  <select name="backupId" defaultValue={editRow.backupId} className={panelInput}>
+                    <option value="">No backup</option>
+                    {teamOptions(editRow.handlerId)}
+                  </select>
+                  <input name="reason" required placeholder="Why it is changing" className={panelInput} />
+                  <button type="submit" className={pillSecondary + " w-fit"}>
+                    Change the backup
+                  </button>
+                </form>
+              </>
+            ) : (
+              <p className="t-small border-t border-rule pt-4 text-ink-3">The Ops lead changes who handles a position.</p>
+            )}
+          </div>
         </PopupBox>
       )}
     </div>

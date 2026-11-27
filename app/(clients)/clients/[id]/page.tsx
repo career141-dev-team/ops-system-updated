@@ -8,7 +8,6 @@ import AiOffer from "@/app/AiOffer";
 import Icon from "@/app/Icon";
 import { MeetingBookingForm } from "@/app/(clients)/leads/[id]/MeetingBookingForm";
 import { teamsFake } from "@/lib/graphCalendar";
-import { people as taPeople } from "@/lib/ta";
 import { AgreementVersions, DraftDocument } from "@/app/ui/AgreementVersions";
 import { Contacts } from "@/app/ui/Contacts";
 import { positionSummary } from "@/lib/clientPositionSummary";
@@ -16,7 +15,7 @@ import { esaDocument } from "@/lib/esaDocument";
 import EsaDocument from "./EsaDocument";
 import AgreementView from "./AgreementView";
 import { Avatar, Card, EmptyState, PillTabs, StatusChip, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn } from "@/data/desk";
+import { meetingsForLead, switchedOn, activeMembers, agreementForLead, aiSwitches, clientIn, desk, leadIn, member as memberIn, taRosterPeople } from "@/data/desk";
 import { aiOffReason, anyKeySet } from "@/lib/ai";
 import { notSaidInWords, type Summary } from "@/lib/aiTasks";
 import { STAGE_MEANINGS, type ClientStage, callKindFor, canMoveStage } from "@/lib/clients";
@@ -113,7 +112,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   // The one call this client's page offers: intro for a new client, requirement for a new role (23 Nov).
   const calls = client.leadId ? meetingsForLead(db, client.leadId) : [];
   const callKind = callKindFor({ stage: client.stage, hasPosition: db.positions.some((p) => p.clientId === client.id), heldCall: calls.some((m) => m.heldAt !== null) });
-  const taSide = (view === "overview" || sp.panel === "requirement-call") && mayManage ? await taPeople() : null;
+  const taSide = (view === "overview" || sp.panel === "requirement-call") && mayManage ? await taRosterPeople(db) : null;
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
   // A requirement call opened from a position's tab is that position's call (26 Nov, Nov 25 ops meeting): its TA's calendar is the default.
   const forPosition = sp.position ? (roles.find((p) => p.id === sp.position) ?? null) : null;

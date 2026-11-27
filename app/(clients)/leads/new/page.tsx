@@ -2,9 +2,8 @@ import { redirect } from "next/navigation";
 
 import ClientAddForm from "@/app/(clients)/leads/new/ClientAddForm";
 import { BackBar, Card, PageTitle } from "@/app/ui/figma";
-import { desk, switchedOn } from "@/data/desk";
+import { desk, switchedOn, taRosterPeople } from "@/data/desk";
 import { teamsFake } from "@/lib/graphCalendar";
-import { people as taPeople } from "@/lib/ta";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
@@ -18,7 +17,7 @@ export default async function NewClientPage({
   if (!me) redirect("/sign-in");
   const { msg } = await searchParams;
   const db = await desk();
-  const taSide = await taPeople();
+  const taSide = await taRosterPeople(db);
   const call = {
     taPeople: taSide.ok ? taSide.data.filter((p) => p.isActive) : [],
     members: db.members,

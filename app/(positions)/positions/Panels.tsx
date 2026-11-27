@@ -273,6 +273,8 @@ export function NewPositionPanel(p: {
   closeHref: string;
   clients: { id: string; name: string }[];
   pickedId: string;
+  opsMembers: { id: string; name: string }[];
+  defaultOwnerId: string;
   /** The held call it is written from, so the brief, the role and the package are already filled. */
   call: { id: string; when: string; role: string; packageSaid: string; brief: string } | null;
   /** What happened on the way here, e.g. "+ New client" saved the client but could not book the call. */
@@ -336,6 +338,29 @@ export function NewPositionPanel(p: {
           <PanelField label="Incumbent / reference profile (optional)" hint="Who did the job before, or who they have in mind.">
             <textarea name="incumbentNote" rows={2} className={panelInput} />
           </PanelField>
+          {p.opsMembers.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <PanelField label="Main Ops">
+                <select name="ownerId" defaultValue={p.defaultOwnerId} className={panelInput}>
+                  {p.opsMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </PanelField>
+              <PanelField label="Backup Ops (optional)">
+                <select name="backupOwnerId" defaultValue="" className={panelInput}>
+                  <option value="">None yet</option>
+                  {p.opsMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </PanelField>
+            </div>
+          )}
         </PanelSection>
         <button type="submit" className={pillPrimary + " self-start"}>
           Create the position

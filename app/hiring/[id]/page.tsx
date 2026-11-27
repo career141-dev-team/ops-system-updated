@@ -218,27 +218,34 @@ export default async function VacancyPage({
       <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
         <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
           {v.applicants.length === 0 ? (
-            <Card title="Pipeline" sub="Three sections: Calling, Interviews, and Shortlisted & offered.">
+            <Card title="Pipeline" sub="Calling, Interview, Shortlisted, and Offered.">
               <EmptyState icon="user" title="No applicants here">
                 {v.status === "on_hold" ? "This vacancy is on hold, so nothing moves." : "Nobody has applied yet."}
               </EmptyState>
             </Card>
           ) : (
-            HIRING_SECTIONS.map((sec) => {
-              const raw = v.applicants.filter((a) => sectionOfStage(a.stage) === sec.key);
-              const here = sec.key === "calling" && mineOnly ? filterByCaller(raw, me.id) : raw;
-              return (
-                <Card key={sec.key} title={`${sec.label} · ${here.length}`} sub={sec.sub}>
-                  {here.length === 0 ? (
-                    <p className="t-small text-ink-3">Nobody in {sec.label.toLowerCase()}.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {here.map(card)}
+            <Card title="Pipeline Kanban" sub="Calling, Interview, Shortlisted, and Offered — scroll sideways for all stages.">
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {[
+                  { key: "calling", label: "Calling", items: mineOnly ? filterByCaller(v.applicants.filter((a) => sectionOfStage(a.stage) === "calling"), me.id) : v.applicants.filter((a) => sectionOfStage(a.stage) === "calling") },
+                  { key: "interview", label: "Interview", items: v.applicants.filter((a) => sectionOfStage(a.stage) === "interviews") },
+                  { key: "shortlisted", label: "Shortlisted", items: v.applicants.filter((a) => a.stage === "shortlisted" || a.stage === "decision") },
+                  { key: "offered", label: "Offered", items: v.applicants.filter((a) => a.stage === "offered") },
+                ].map((col) => (
+                  <div key={col.key} className="flex w-[270px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-2.5">
+                    <div className="flex items-center gap-2 px-1.5 pt-1">
+                      <span className="t-micro text-ink-3">{col.label.toUpperCase()}</span>
+                      <span className="t-label text-ink-3">{col.items.length}</span>
                     </div>
-                  )}
-                </Card>
-              );
-            })
+                    {col.items.length === 0 ? (
+                      <p className="t-small px-1.5 text-ink-3">Nobody here.</p>
+                    ) : (
+                      col.items.map(card)
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
           )}
           {v.applicants.some((a) => ["hired", "non_responsive", "not_interested", "declined", "rejected"].includes(a.stage)) && (
             <Card title="Outcomes" sub="Hired, non-responsive, not interested, declined, or rejected.">

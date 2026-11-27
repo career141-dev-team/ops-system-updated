@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { filterRows, groupByClient, listView, roleRows, type ListInput, type PositionIn } from "@/lib/positionsList";
+import { filterRoleRows, filterRows, groupByClient, listView, reasonCounts, roleRows, type ListInput, type PositionIn } from "@/lib/positionsList";
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 10, 19, 4, 30);
@@ -49,13 +49,14 @@ test("no TA asks to choose one; an interview with no time asks to find one", () 
   assert.equal(rows[1].action?.on, "iv1");
 });
 
-test("a searching role with nothing at the client asks the TA for CVs; closed and held roles ask nothing", () => {
+test("a searching role with nothing at the client stays quiet instead of nagging with Ask TA for CVs; closed and held roles ask nothing", () => {
   const rows = roleRows(input({
     positions: [pos("a"), pos("b", { stage: "closed" }), pos("c")],
     holds: ["o_c"],
   }));
-  assert.equal(rows[0].action?.label, "Ask Kavindi for CVs");
-  assert.equal(rows[0].needsYou, false); // the button is offered, but a plain searching role does not need you
+  assert.equal(rows[0].action, null);
+  assert.equal(rows[0].tone, "info");
+  assert.equal(rows[0].needsYou, false);
   assert.equal(rows[1].action, null);
   assert.equal(rows[2].onHold, true);
   assert.equal(rows[2].action, null);
@@ -101,6 +102,22 @@ test("a joined person needs you until the nationality is confirmed and both test
   // Once the invoice has gone it cannot be confirmed, so it must not nag forever.
   assert.equal(of({ invoiceSent: true }).needsYou, false);
   assert.equal(of({ isReplacementOf: "x0" }).needsYou, false);
+});
+
+test("filterRoleRows filters by client type, priority, value range, Ops person (main or backup), and reason", () => {
+  const rows = roleRows(input({
+    positions: [
+      pos("a", { ownerId: "m1", backupOwnerId: "m2", clientType: "local", priority: "P1", value: 500000, currency: "LKR", primaryTaId: null }),
+      pos("b", { ownerId: "m2", clientType: "international", priority: "P2", value: 2000, currency: "USD" }),
+      pos("c", { ownerId: "m3", clientType: "local", priority: "P3", value: null }),
+    ],
+  }));
+  assert.deepEqual(filterRoleRows(rows, "all", "", "m1", { opsId: "m2" }).map((r) => r.id), ["a", "b"]);
+  assert.deepEqual(filterRoleRows(rows, "all", "", "m1", { clientType: "international" }).map((r) => r.id), ["b"]);
+  assert.deepEqual(filterRoleRows(rows, "all", "", "m1", { priority: "P1" }).map((r) => r.id), ["a"]);
+  assert.deepEqual(filterRoleRows(rows, "all", "", "m1", { min: "100000", currency: "LKR" }).map((r) => r.id), ["a"]);
+  assert.deepEqual(filterRoleRows(rows, "all", "", "m1", { reason: "choose-ta" }).map((r) => r.id), ["a"]);
+  assert.deepEqual(reasonCounts(rows).map((x) => [x.kind, x.count]), [["choose-ta", 1]]);
 });
 
 test("a booked interview hides no reason, and an unapproved JD alone is not one", () => {

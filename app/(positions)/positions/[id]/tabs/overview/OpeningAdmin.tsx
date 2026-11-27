@@ -1,10 +1,11 @@
 import Link from "next/link";
 
-import { openCloseByHand, setOpeningPeople, setPositionTeam } from "@/app/actions";
+import { openCloseByHand, setOpeningPeople, setPositionBackup, setPositionOwner, setPositionTeam } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Contacts } from "@/app/ui/Contacts";
 import { Avatar, Card, RelatedLinks, figmaField, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { depthInWords } from "@/lib/depth";
+import { can } from "@/lib/roles";
 
 import type { RoleCtx } from "../ctx";
 
@@ -64,7 +65,7 @@ export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open
                 <span className="t-small text-ink-3">Primary TA</span>
               </li>
               {team.map((t) => {
-                const person = taPeopleList.find((p) => p.id === t.taId);
+                const person = (c.taSide.ok ? c.taSide.data : []).find((p) => p.id === t.taId);
                 return (
                   <li key={t.taId} className="flex items-center gap-2 py-2">
                     <Avatar name={person?.fullName ?? t.taId} size="28" tone="neutral" />
@@ -126,6 +127,57 @@ export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open
                   Record it
                 </button>
               </form>
+            )}
+            {can(c.me, "task.reassign") && (
+              <div className="flex flex-col gap-3 border-t border-rule pt-4">
+                <form action={setPositionOwner} className="flex flex-wrap items-end gap-2.5">
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <input type="hidden" name="back" value={`/positions/${position.id}?view=overview`} />
+                  <label className="t-small flex min-w-[170px] flex-1 flex-col gap-1 text-ink-3">
+                    Main Ops
+                    <select name="handlerId" defaultValue={position.ownerId} className={figmaField}>
+                      {c.db.members
+                        .filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="t-small flex min-w-[160px] flex-1 flex-col gap-1 text-ink-3">
+                    Reason
+                    <input name="reason" required placeholder="Why changing Main Ops" className={figmaField} />
+                  </label>
+                  <button type="submit" className={pillSecondary}>
+                    Save Main Ops
+                  </button>
+                </form>
+                <form action={setPositionBackup} className="flex flex-wrap items-end gap-2.5">
+                  <input type="hidden" name="positionId" value={position.id} />
+                  <input type="hidden" name="back" value={`/positions/${position.id}?view=overview`} />
+                  <label className="t-small flex min-w-[170px] flex-1 flex-col gap-1 text-ink-3">
+                    Backup Ops
+                    <select name="backupId" defaultValue={position.backupOwnerId ?? ""} className={figmaField}>
+                      <option value="">None</option>
+                      {c.db.members
+                        .filter((m) => m.active && m.id !== position.ownerId && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="t-small flex min-w-[160px] flex-1 flex-col gap-1 text-ink-3">
+                    Reason
+                    <input name="reason" required placeholder="Why changing Backup Ops" className={figmaField} />
+                  </label>
+                  <button type="submit" className={pillSecondary}>
+                    Save Backup Ops
+                  </button>
+                </form>
+              </div>
             )}
           </div>
 

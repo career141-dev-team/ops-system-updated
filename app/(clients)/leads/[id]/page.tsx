@@ -54,6 +54,7 @@ import {
   positionIn,
   requirementForLead,
   switchedOn,
+  taRosterPeople,
   templateFor,
 } from "@/data/desk";
 import { currentTemplate, safeName } from "@/lib/files";
@@ -115,7 +116,7 @@ import { actionInWords } from "@/lib/auditWords";
 import { REQUIREMENT_FIELDS, briefText, handoverChecklist, missingFields as requirementBlanksOf, requirementLocked } from "@/lib/requirements";
 import { can, refusal } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { fakeTa, people as taPeople } from "@/lib/ta";
+import { fakeTa } from "@/lib/ta";
 
 /**
  * Unified Lead Record & Sub-views:
@@ -189,7 +190,7 @@ export default async function LeadPage({
   const askedPosition = asked && db.requirements.find((r) => r.id === asked.requirementId)?.leadId === lead.id ? asked : null;
 
   const teamsOn = teamsFake() || switchedOn(db, "switch.teamsEnabled");
-  const taSide = await taPeople();
+  const taSide = await taRosterPeople(db);
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
 
   const now = Date.now();
@@ -360,6 +361,12 @@ export default async function LeadPage({
         }
         right={
           <div className="flex items-center gap-2.5">
+            {activeView === "agreement" && esa && (
+              <StatusChip
+                label={esa.mode === "draft" ? "Draft ESA" : "Final ESA"}
+                tone={esa.mode === "draft" ? "warn" : "brand"}
+              />
+            )}
             {activeView === "agreement" && esa && (
               <StatusChip
                 label={
@@ -589,7 +596,11 @@ export default async function LeadPage({
             </NextStepCard>
           ) : esa.state === "sent" || esa.state === "chasing" ? (
             <NextStepCard
-              title={`Follow up on the agreement — ${nextChase ? nextChase.what : "chase due"}`}
+              title={
+                isSentDraft(esa)
+                  ? `Draft ESA sent (v${esa.version}) — ${nextChase ? nextChase.what : "chase due"}`
+                  : `Follow up on the agreement — ${nextChase ? nextChase.what : "chase due"}`
+              }
               clock={{
                 label: esa.sentAt
                   ? `Day ${Math.max(1, Math.round((now - esa.sentAt) / 86_400_000))} of 14`
@@ -597,22 +608,20 @@ export default async function LeadPage({
                 tone: "warn",
                 icon: "clock",
               }}
-              body={whereItStands({ ...esa, state: esa.state as EsaState }, now)}
+              body={
+                (isSentDraft(esa)
+                  ? "Sent as a Draft ESA (blank signatory, designation and address print as highlighted “To be confirmed” with the draft note). A Draft cannot be marked signed — make it final to create a new version. "
+                  : "") + whereItStands({ ...esa, state: esa.state as EsaState }, now)
+              }
               byItself="Stopped automatically if they reply. Closes after 14 days if unsigned."
             >
               {mayManage && (
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                  <form action={draftNextChase}>
-                    <input type="hidden" name="esaId" value={esa.id} />
-                    <button type="submit" className={pillPrimary}>
-                      Approve &amp; send
-                    </button>
-                  </form>
                   {/* 26 Nov (Nov 25 ops meeting): a draft cannot be signed; it is made final first. */}
                   {isSentDraft(esa) ? (
                     <form action={makeFinalAgreement}>
                       <input type="hidden" name="esaId" value={esa.id} />
-                      <SubmitButton id="make-final" className={pillSecondary}>
+                      <SubmitButton id="make-final" className={pillPrimary}>
                         Make the final agreement
                       </SubmitButton>
                     </form>
@@ -621,6 +630,12 @@ export default async function LeadPage({
                       Record signed copy
                     </a>
                   )}
+                  <form action={draftNextChase}>
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <button type="submit" className={isSentDraft(esa) ? pillSecondary : pillPrimary}>
+                      Approve &amp; send
+                    </button>
+                  </form>
                   <a href="#versions-card" className="px-3 py-2 text-[14px] font-medium text-brand hover:underline">
                     They want changes
                   </a>
@@ -629,13 +644,29 @@ export default async function LeadPage({
             </NextStepCard>
           ) : esa.state === "draft" ? (
             <NextStepCard
-              title="The ESA has not been sent yet"
+              title={esa.mode === "draft" ? `Draft ESA ready to review (v${esa.version})` : `Final ESA ready to review (v${esa.version})`}
               clock={{ label: "Within 2h of intro call", tone: "warn", icon: "clock" }}
-              body="It goes at the end of the intro call: the details from the call, the ESA as the client will get it, and its email, then Send. This step is for what comes back: the signed copy, or changes they want."
+              body={
+                esa.mode === "draft"
+                  ? "Draft mode: signatory name, designation and address may stay blank (printed as highlighted “To be confirmed” with the draft note). A Draft cannot be marked signed. Review the details below, check the PDF, and send when ready."
+                  : esaMissing.length > 0
+                    ? `Final mode: still blank — ${esaMissing.map((f) => f.label.toLowerCase()).join(", ")}. Fill in the details below before sending.`
+                    : "Final mode: every required detail is filled. Save to generate the Finalized ESA document, check the cover email, and send to the client."
+              }
+              byItself="Sending starts the 5-step chase and the 14-day close timer."
             >
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                <Link href={stepHref("intro") + "#esa-document"} className={pillPrimary}>
-                  Go to the intro call to send it
+                {mayManage && (
+                  <form action={sendAgreement}>
+                    <input type="hidden" name="esaId" value={esa.id} />
+                    <input type="hidden" name="returnTo" value="agreement" />
+                    <SubmitButton id="send-esa-agreement" className={pillPrimary}>
+                      Send the ESA
+                    </SubmitButton>
+                  </form>
+                )}
+                <Link href={stepHref("intro") + "#esa-document"} className={pillSecondary}>
+                  Open on intro call
                 </Link>
               </div>
             </NextStepCard>
@@ -646,7 +677,7 @@ export default async function LeadPage({
               body={
                 esaMissing.length > 0
                   ? `Still blank: ${esaMissing.map((f) => f.label.toLowerCase()).join(", ")}. Fill the terms below before sending — a draft never goes out with placeholders.`
-                  : "Change the details below, look at the new draft and its email, then send the next version."
+                  : "Update the Draft / Final choice and fields below, review the new version and cover email, then send the next version."
               }
               byItself="Sending starts the 5-step chase and the 14-day close timer again."
             >
@@ -661,7 +692,52 @@ export default async function LeadPage({
             </NextStepCard>
           )}
 
-          {mayManage && esa && esa.state === "negotiating" && (
+          {esa && mayManage && !agreementDone && (esa.state === "draft" || esa.state === "negotiating") && (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-sunk px-6 py-[22px]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className={figmaLabel}>AGREEMENT DETAILS &amp; DRAFT / FINAL</span>
+                  <p className="text-[13px] text-ink-soft">
+                    Choose Draft or Final, update the company, signatory and terms, then save to generate the next version.
+                  </p>
+                </div>
+                <Link
+                  href={panelHref("/leads/" + lead.id, { view, step: stepParam }, "esa-view")}
+                  scroll={false}
+                  className={pillSecondary}
+                >
+                  View filled agreement
+                </Link>
+              </div>
+              <AgreementFieldsForm leadId={lead.id} esa={esa} returnTo="agreement" />
+              <div className="flex flex-col gap-2.5 border-t border-rule pt-3">
+                {!esaTemplate ? (
+                  <p className="text-[12.5px] text-ink-soft">
+                    Note: Upload the master Word template on{" "}
+                    <Link href="/files" className="text-brand underline">
+                      Files
+                    </Link>{" "}
+                    as &ldquo;Agreement, drafted&rdquo; before generating the PDF.
+                  </p>
+                ) : (
+                  <>
+                    {newestDraft && <DraftDocument file={newestDraft.file} version={newestDraft.version} />}
+                    <form action={previewAgreement} className="flex flex-wrap items-center gap-3">
+                      <input type="hidden" name="esaId" value={esa.id} />
+                      <button type="submit" className={pillSecondary + " self-start"}>
+                        Make a filled draft to look at
+                      </button>
+                      <span className="text-[12.5px] text-ink-soft">
+                        Fills the template with the saved fields, the way the send would. Nothing is sent.
+                      </span>
+                    </form>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mayManage && esa && (esa.state === "draft" || esa.state === "negotiating") && (
             <CoverEmailPreview
               esaId={esa.id}
               to={String(esa.fields.signatoryEmail ?? "").trim()}
@@ -713,40 +789,6 @@ export default async function LeadPage({
                   <FieldList items={ESA_FIELDS.map((f) => ({ label: f.label, value: f.key === "expatFeeMonths" ? String(expatMonthsOf(esa.fields)) : esa.fields[f.key] }))} />
                 </div>
               )}
-
-              {esa && mayManage && !agreementDone && !isSentDraft(esa) && (
-                <details
-                  open={esa.state === "negotiating"}
-                  className="border-t border-rule pt-3"
-                >
-                  <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
-                    Edit agreement fields
-                  </summary>
-                  <div className="mt-3">
-                    <AgreementFieldsForm leadId={lead.id} esa={esa} returnTo="agreement" />
-                  </div>
-                  {!esaTemplate && (
-                    <p className="mt-2 text-[12.5px] text-ink-soft">
-                      Note: Upload the master Word template on{" "}
-                      <Link href="/files" className="text-brand underline">
-                        Files
-                      </Link>{" "}
-                      as &ldquo;Agreement, drafted&rdquo; before generating the PDF.
-                    </p>
-                  )}
-                  {esaTemplate && (
-                    <form action={previewAgreement} className="mt-3 flex flex-col gap-2">
-                      <input type="hidden" name="esaId" value={esa.id} />
-                      <button type="submit" className={pillSecondary + " self-start"}>
-                        Make a filled draft to look at
-                      </button>
-                      <p className="text-[12.5px] text-ink-soft">
-                        Fills the template with the saved fields, the way the send would. Nothing is sent.
-                      </p>
-                    </form>
-                  )}
-                </details>
-              )}
             </div>
 
             {/* Right card: VERSIONS (Figma 1:719) */}
@@ -773,36 +815,42 @@ export default async function LeadPage({
                 (esa.state === "sent" || esa.state === "chasing") &&
                 mayManage && (
                   <div className="flex flex-col gap-3 border-t border-rule pt-3">
-                    <details open hidden={isSentDraft(esa)}>
-                      <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
-                        Record signed copy from client
-                      </summary>
-                      <form
-                        action={recordAgreementSigned}
-                        className="mt-2.5 flex flex-col gap-2.5"
-                      >
-                        <input type="hidden" name="esaId" value={esa.id} />
-                        <select
-                          name="fileId"
-                          defaultValue={signedFiles[0]?.id ?? ""}
-                          className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                    {isSentDraft(esa) ? (
+                      <p className="rounded-[12px] bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn">
+                        This version was sent as a Draft ESA and cannot be marked signed. Use &ldquo;Make the final agreement&rdquo; above to create a new Final version.
+                      </p>
+                    ) : (
+                      <details open>
+                        <summary className="cursor-pointer text-[13px] font-medium text-brand hover:underline">
+                          Record signed copy from client
+                        </summary>
+                        <form
+                          action={recordAgreementSigned}
+                          className="mt-2.5 flex flex-col gap-2.5"
                         >
-                          <option value="">— pick the uploaded signed file —</option>
-                          {signedFiles.map((file) => (
-                            <option key={file.id} value={file.id}>
-                              {file.name}
-                            </option>
-                          ))}
-                        </select>
-                        <label className="flex items-start gap-2 text-[13px] text-ink">
-                          <input type="checkbox" name="checked" className="mt-1" />
-                          <span>I have looked at it: signed, dated and sealed</span>
-                        </label>
-                        <button type="submit" className={pillPrimary + " self-start"}>
-                          It is signed
-                        </button>
-                      </form>
-                    </details>
+                          <input type="hidden" name="esaId" value={esa.id} />
+                          <select
+                            name="fileId"
+                            defaultValue={signedFiles[0]?.id ?? ""}
+                            className="rounded-[10px] bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+                          >
+                            <option value="">— pick the uploaded signed file —</option>
+                            {signedFiles.map((file) => (
+                              <option key={file.id} value={file.id}>
+                                {file.name}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="flex items-start gap-2 text-[13px] text-ink">
+                            <input type="checkbox" name="checked" className="mt-1" />
+                            <span>I have looked at it: signed, dated and sealed</span>
+                          </label>
+                          <button type="submit" className={pillPrimary + " self-start"}>
+                            It is signed
+                          </button>
+                        </form>
+                      </details>
+                    )}
 
                     <details>
                       <summary className="cursor-pointer text-[13px] font-medium text-ink-soft hover:text-ink">

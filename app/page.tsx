@@ -136,9 +136,11 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
               ))
             )}
           </Card>
-          {w.testimonialsPending.length > 0 && (
-            <Card title="Testimonials to ask for">
-              {w.testimonialsPending.map((t) => (
+          <Card title="Testimonials to ask for">
+            {w.testimonialsPending.length === 0 ? (
+              <p className="t-small text-ink-3">No testimonials pending right now.</p>
+            ) : (
+              w.testimonialsPending.map((t) => (
                 <Link key={t.id} href={t.href} className="flex items-center gap-3">
                   <span className="t-small min-w-0 flex-1 truncate text-ink">
                     {t.candidate}
@@ -146,9 +148,9 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
                   </span>
                   <span className="t-small shrink-0 text-ink-3">{t.sides.join(" and ")}</span>
                 </Link>
-              ))}
-            </Card>
-          )}
+              ))
+            )}
+          </Card>
         </div>
       </div>
     </>

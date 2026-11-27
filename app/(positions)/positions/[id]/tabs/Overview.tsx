@@ -21,7 +21,7 @@ type Person = { key: string; name: string; line: string; status?: string; status
 
 /** R0, the role's overview (frame 124:89): what needs you, where each person is, the week, the latest. */
 export default function Overview({ c, sp }: TabProps) {
-  const { db, position, now, client, itsInterviews, itsSets, waitingSet, itsPlacements, numbers: n, history } = c;
+  const { db, position, now, client, itsInterviews, itsSets, waitingSet, itsPlacements, numbers: n, history, allCandidates } = c;
   const path = `/positions/${position.id}`;
   const open = (view: string, panel: string, on?: string) => panelHref(path, { view }, panel, on);
   const live = itsInterviews.filter((iv) => ["slots", "agreed", "booked", "reconfirmed"].includes(iv.state));
@@ -81,6 +81,16 @@ export default function Overview({ c, sp }: TabProps) {
   }
 
   // Where each person is now.
+  const sentSetIds = new Set(itsSets.filter((s) => s.state === "sent").map((s) => s.id));
+  const taShortlist: Person[] = allCandidates
+    .filter((cand) => (cand.level === "found" || cand.level === "internal") && (!cand.setId || !sentSetIds.has(cand.setId)))
+    .map((cand) => ({
+      key: "ta-" + cand.id,
+      name: cand.name,
+      line: cand.setName ? `${cand.setName} · ready for Ops` : cand.statusLabel || "TA shortlisted",
+      status: cand.setName ? "Ready to send" : "TA shortlist",
+      statusTone: cand.setName ? "warn" : "info",
+    }));
   const ivOf = (name: string) => live.find((iv) => iv.candidateName.toLowerCase() === name.toLowerCase());
   const withClient: Person[] = itsSets
     .filter((s) => s.state === "sent")
@@ -98,13 +108,16 @@ export default function Overview({ c, sp }: TabProps) {
           };
         }),
     );
-  const interviews: Person[] = live.map((iv) => ({
+  const toIvPerson = (iv: (typeof live)[number]): Person => ({
     key: iv.id,
     name: iv.candidateName,
     line: `Round ${iv.round}${iv.at ? " · " + weekdayDayMonth(iv.at) : ""}`,
     status: iv.at === null ? "Needs a time" : dayKey(iv.at) === today && iv.state === "booked" ? "Reconfirm today" : `Booked ${clock(iv.at)}`,
     statusTone: iv.at === null || iv.state === "booked" ? "warn" : "info",
-  }));
+  });
+  const interview1: Person[] = live.filter((iv) => iv.round === 1).map(toIvPerson);
+  const interview2: Person[] = live.filter((iv) => iv.round === 2).map(toIvPerson);
+  const interview3: Person[] = live.filter((iv) => iv.round >= 3).map(toIvPerson);
   const offer: Person[] = itsPlacements.filter((p) => p.state === "placed" && p.joinDate === null).map((p) => ({ key: p.id, name: p.candidateName, line: "Offer made" }));
   const joining: Person[] = itsPlacements
     .filter((p) => p.state === "placed" && p.joinDate !== null)
@@ -125,8 +138,11 @@ export default function Overview({ c, sp }: TabProps) {
       statusTone: "ok",
     }));
   const columns = [
-    { label: "With the client", dot: "bg-info", people: withClient, href: `${path}?view=sets` },
-    { label: "Interviews", dot: "bg-warn", people: interviews, href: `${path}?view=interviews` },
+    { label: "TA", dot: "bg-ink-3", people: taShortlist, href: `${path}?view=sets` },
+    { label: "Sets", dot: "bg-info", people: withClient, href: `${path}?view=sets` },
+    { label: "Interview 1", dot: "bg-warn", people: interview1, href: `${path}?view=interviews` },
+    { label: "Interview 2", dot: "bg-warn", people: interview2, href: `${path}?view=interviews` },
+    { label: "Interview 3", dot: "bg-warn", people: interview3, href: `${path}?view=interviews` },
     { label: "Offer", dot: "bg-brand", people: offer, href: `${path}?view=offer` },
     { label: "Joining", dot: "bg-info", people: joining, href: `${path}?view=offer` },
     { label: "Guarantee", dot: "bg-brand", people: guarantee, href: `${path}?view=guarantee` },
@@ -181,9 +197,9 @@ export default function Overview({ c, sp }: TabProps) {
           </Card>
 
           <div className="max-md:hidden"><Card title="Where each person is now">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pg-xl:grid-cols-5">
+            <div className="flex gap-3 overflow-x-auto pb-2">
               {columns.map((col) => (
-                <div key={col.label} className="flex flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-3">
+                <div key={col.label} className="flex w-[220px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-3">
                   <Link href={col.href} className="flex items-center gap-2 px-1 py-0.5">
                     <span aria-hidden className={"size-2 rounded-full " + col.dot} />
                     <span className="t-body-m flex-1">{col.label}</span>

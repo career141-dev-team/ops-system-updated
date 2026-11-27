@@ -9,9 +9,9 @@ import { COLOMBO_OFFSET_MS, DAY } from "@/lib/calendar";
 import { boardStatus, isOff } from "@/lib/interviews";
 
 export type CalendarKind = "client" | "internal" | "meeting" | "joining";
-export type CalendarFilter = "mine" | "team" | "client" | "internal" | "meetings" | "joining";
+export type CalendarFilter = "mine" | "team" | "client" | "internal" | "meetings";
 export type CalendarWho = "mine" | "team";
-export type CalendarKindFilter = "all" | "client" | "internal" | "meetings" | "joining";
+export type CalendarKindFilter = "all" | "client" | "internal" | "meetings";
 
 export const CALENDAR_FILTERS: { key: CalendarFilter; label: string }[] = [
   { key: "mine", label: "Mine" },
@@ -19,7 +19,6 @@ export const CALENDAR_FILTERS: { key: CalendarFilter; label: string }[] = [
   { key: "client", label: "Client interviews" },
   { key: "internal", label: "Internal interviews" },
   { key: "meetings", label: "Client meetings" },
-  { key: "joining", label: "Joining days" },
 ];
 
 export const CALENDAR_WHO_FILTERS: { key: CalendarWho; label: string }[] = [
@@ -32,14 +31,12 @@ export const CALENDAR_CATEGORY_FILTERS: { key: CalendarKindFilter; label: string
   { key: "client", label: "Client interviews" },
   { key: "internal", label: "Internal interviews" },
   { key: "meetings", label: "Client meetings" },
-  { key: "joining", label: "Joining days" },
 ];
 
 const KIND_OF: Partial<Record<CalendarKindFilter, CalendarKind>> = {
   client: "client",
   internal: "internal",
   meetings: "meeting",
-  joining: "joining",
 };
 
 /** The filter named in the address; anything else is the whole team. */
@@ -55,7 +52,7 @@ export function whoFrom(rawWho: string | undefined, rawShow?: string | undefined
 
 export function kindFrom(rawKind: string | undefined, rawShow?: string | undefined): CalendarKindFilter {
   if (CALENDAR_CATEGORY_FILTERS.some((f) => f.key === rawKind)) return rawKind as CalendarKindFilter;
-  if (rawShow === "client" || rawShow === "internal" || rawShow === "meetings" || rawShow === "joining") {
+  if (rawShow === "client" || rawShow === "internal" || rawShow === "meetings") {
     return rawShow;
   }
   return "all";

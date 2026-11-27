@@ -13,6 +13,7 @@ import {
   positionsNewestFirst,
   reportsNewestFirst,
   runClocks,
+  taRosterPeople,
 } from "@/data/desk";
 import { moneyText } from "@/lib/clientPositionTable";
 import { agreementToChase, positionAgreementNotSigned, positionValue } from "@/lib/clients";
@@ -25,23 +26,23 @@ import {
   STEPS,
   dayMonth,
   dayTime,
-  filterRows,
+  filterRoleRows,
   groupByClient,
   listView,
+  reasonCounts,
   type ListFilter,
   type RoleRow,
   type StepKey,
 } from "@/lib/positionsList";
 import { recipientsFrom } from "@/lib/reports";
 import { currentMember } from "@/lib/session";
-import { people as taPeople } from "@/lib/ta";
 
 import { AskTaPanel, ChaseHrPanel, ChooseTaPanel, WeeklyReportPanel, NewPositionPanel } from "./Panels";
 import { PositionSendModal } from "./PositionSendModals";
 
 export const dynamic = "force-dynamic";
 
-type Sp = { msg?: string; q?: string; filter?: string; panel?: string; send?: string; on?: string; all?: string; k?: string };
+type Sp = { msg?: string; q?: string; filter?: string; ops?: string; type?: string; min?: string; max?: string; currency?: string; priority?: string; reason?: string; panel?: string; send?: string; on?: string; all?: string; k?: string };
 
 const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -64,13 +65,15 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const filter = (FILTERS.some((f) => f.key === sp.filter) ? sp.filter : "all") as ListFilter;
   const q = sp.q ?? "";
+  const { ops = "", type = "", min = "", max = "", currency = "", priority = "", reason = "" } = sp;
 
   await runClocks();
   const now = Date.now();
   const db = await desk();
-  const ta = await taPeople();
+  const ta = await taRosterPeople(db);
   const taList = ta.ok ? ta.data.filter((p) => p.isActive) : [];
-  const taName = (id: string) => taList.find((p) => p.id === id)?.fullName ?? null;
+  // Names come from everyone, active or not, so a position keeps its TA's name after they leave the list.
+  const taName = (id: string) => (ta.ok ? ta.data : []).find((p) => p.id === id)?.fullName ?? null;
 
   const positions = positionsNewestFirst(db);
   const byId = new Map(positions.map((p) => [p.id, p]));
@@ -88,10 +91,22 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     return (p.clientId ? clientIn(db, p.clientId)?.name : null) ?? (p.clientTaId || "Client");
   };
 
+  const enriched = positions.map((p) => {
+    const ct = p.clientId ? clientIn(db, p.clientId)?.clientType : undefined;
+    const pr = p.priority;
+    return {
+      ...p,
+      clientType: (ct === "local" || ct === "international" ? ct : "") as "" | "local" | "international",
+      value: positionValue(db, p),
+      currency: p.salaryCurrency ?? "",
+      priority: (pr === "P1" || pr === "P2" || pr === "P3" ? pr : "") as "" | "P1" | "P2" | "P3",
+    };
+  });
+
   const view = listView({
     now,
     chaseDays: numberOf(db, "feedback.chaseDays", 1),
-    positions,
+    positions: enriched,
     sets: db.clientSets,
     interviews: db.interviews,
     placements: db.placements.map((x) => ({
@@ -112,16 +127,29 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
     countOf: (p, k) => countItems(db, p.id, k).length,
   });
 
-  const shown = filterRows(view.rows, filter, q, me.id);
+  const currencies = [...new Set(enriched.filter((r) => r.value !== null).map((r) => r.currency || "LKR"))].sort();
+  const inCurrency = currency || (currencies.length === 1 ? currencies[0] : "LKR");
+  const shown = filterRoleRows(view.rows, filter, q, me.id, {
+    opsId: ops,
+    clientType: type,
+    priority,
+    min,
+    max,
+    currency: inCurrency,
+    reason,
+  });
   const groups = groupByClient(shown, true);
   const visible = sp.all ? groups : groups.slice(0, SHOWN_CLIENTS);
   const openRows = view.rows.filter((r) => !r.closed);
-  const mine = openRows.filter((r) => r.ownerId === me.id).length;
+  const reasonsList = reasonCounts(openRows);
+  const opsMembers = db.members.filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin"));
+  const anyExtraFilter = Boolean(ops || type || min || max || currency || priority || reason);
+  const mine = openRows.filter((r) => r.ownerId === me.id || r.backupOwnerId === me.id).length;
   const week = colomboIsoWeek(now);
 
   const href = (over: Record<string, string>) => {
     const p = new URLSearchParams();
-    const merged: Record<string, string> = { filter, q, ...over };
+    const merged: Record<string, string> = { filter, q, ops, type, min, max, currency, priority, reason, ...over };
     for (const [k, v] of Object.entries(merged)) if (v && !(k === "filter" && v === "all")) p.set(k, v);
     const text = p.toString();
     return "/positions" + (text ? "?" + text : "");
@@ -230,6 +258,8 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
         msg={sp.msg}
         clients={db.clients.filter((c) => c.stage !== "closed").map((c) => ({ id: c.id, name: c.name }))}
         pickedId={picked?.id ?? ""}
+        opsMembers={db.members.filter((m) => m.active && (m.role === "ops_owner" || m.role === "ops_lead" || m.role === "admin")).map((m) => ({ id: m.id, name: m.name }))}
+        defaultOwnerId={picked?.ownerId ?? me.id}
         call={held ? { id: held.id, when: new Date(held.heldAt! + 5.5 * 3_600_000).toISOString().slice(0, 10), role: held.role, packageSaid: held.packageSaid, brief: held.brief } : null}
       />
     );
@@ -356,25 +386,111 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
       <div className="grid items-start gap-6 pg-xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex flex-col gap-6">
           <Card className="!py-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <form action="/positions" method="get" className="flex h-11 w-full max-w-[320px] items-center gap-2.5 rounded-full bg-sunk px-4 md:w-[320px]">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <form action="/positions" method="get" className="flex h-11 w-full max-w-[320px] items-center gap-2.5 rounded-full bg-sunk px-4 md:w-[320px]">
+                  {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
+                  {ops && <input type="hidden" name="ops" value={ops} />}
+                  {type && <input type="hidden" name="type" value={type} />}
+                  {priority && <input type="hidden" name="priority" value={priority} />}
+                  {min && <input type="hidden" name="min" value={min} />}
+                  {max && <input type="hidden" name="max" value={max} />}
+                  {currency && <input type="hidden" name="currency" value={currency} />}
+                  {reason && <input type="hidden" name="reason" value={reason} />}
+                  <Icon name="find" size={18} className="shrink-0 text-ink-faint" />
+                  <input type="search" name="q" autoComplete="off" defaultValue={q} placeholder="Role, client or TA" className="t-body w-full bg-transparent placeholder:text-ink-faint focus:outline-none" />
+                </form>
+                <nav className="flex flex-wrap gap-2">
+                  {FILTERS.map((f) => (
+                    <Link
+                      key={f.key}
+                      href={href({ filter: f.key, reason: f.key === "needs" ? reason : "" })}
+                      aria-current={f.key === filter ? "page" : undefined}
+                      className={"t-label rounded-full px-4 py-2 " + (f.key === filter ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell")}
+                    >
+                      {f.label}
+                    </Link>
+                  ))}
+                </nav>
+                <span className="t-small ml-auto text-ink-3">Needs you first</span>
+              </div>
+
+              <form method="get" action="/positions" className="flex flex-wrap items-end gap-2.5 border-t border-rule pt-3">
                 {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
-                <Icon name="find" size={18} className="shrink-0 text-ink-faint" />
-                <input type="search" name="q" autoComplete="off" defaultValue={q} placeholder="Role, client or TA" className="t-body w-full bg-transparent placeholder:text-ink-faint focus:outline-none" />
-              </form>
-              <nav className="flex flex-wrap gap-2">
-                {FILTERS.map((f) => (
-                  <Link
-                    key={f.key}
-                    href={href({ filter: f.key })}
-                    aria-current={f.key === filter ? "page" : undefined}
-                    className={"t-label rounded-full px-4 py-2 " + (f.key === filter ? "bg-ink text-ink-inverse" : "bg-sunk text-ink hover:bg-shell")}
-                  >
-                    {f.label}
+                {q && <input type="hidden" name="q" value={q} />}
+                {reason && <input type="hidden" name="reason" value={reason} />}
+                <label className="flex flex-col gap-1">
+                  <span className="t-small text-ink-3">Ops person</span>
+                  <select name="ops" defaultValue={ops} className="rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none">
+                    <option value="">Anyone</option>
+                    {opsMembers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="t-small text-ink-3">Client</span>
+                  <select name="type" defaultValue={type} className="rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none">
+                    <option value="">Local and international</option>
+                    <option value="local">Local</option>
+                    <option value="international">International</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="t-small text-ink-3">Priority</span>
+                  <select name="priority" defaultValue={priority} className="rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none">
+                    <option value="">Any</option>
+                    <option value="P1">P1</option>
+                    <option value="P2">P2</option>
+                    <option value="P3">P3</option>
+                  </select>
+                </label>
+                {currencies.length > 1 && (
+                  <label className="flex flex-col gap-1">
+                    <span className="t-small text-ink-3">Currency</span>
+                    <select name="currency" defaultValue={inCurrency} className="rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none">
+                      {[...new Set(["LKR", ...currencies])].map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="flex flex-col gap-1">
+                  <span className="t-small text-ink-3">Value from ({inCurrency})</span>
+                  <input name="min" type="number" min="0" defaultValue={min} className="w-24 rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="t-small text-ink-3">to</span>
+                  <input name="max" type="number" min="0" defaultValue={max} className="w-24 rounded-[10px] bg-sunk px-3 py-2 text-[13px] text-ink outline-none" />
+                </label>
+                <button type="submit" className={pillSecondary + " !px-4 !py-2 !text-[13px]"}>
+                  Filter
+                </button>
+                {anyExtraFilter && (
+                  <Link href="/positions" className="t-small pb-2 text-ink-3 hover:underline">
+                    Clear
                   </Link>
-                ))}
-              </nav>
-              <span className="t-small ml-auto text-ink-3">Needs you first</span>
+                )}
+              </form>
+
+              {reasonsList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-3">
+                  <span className="t-micro text-ink-3">NEEDS YOUR ATTENTION</span>
+                  {reasonsList.map((r) => {
+                    const active = reason === r.kind;
+                    return (
+                      <Link
+                        key={r.kind}
+                        href={href({ filter: active ? "all" : "needs", reason: active ? "" : r.kind, all: "1" })}
+                        className={"t-small inline-flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors " + (active ? "bg-warn text-ink-inverse" : "bg-warn-soft text-warn hover:opacity-90")}
+                      >
+                        <span>{r.label}</span>
+                        <strong>{r.count}</strong>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </Card>
 
@@ -395,7 +511,14 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                     </span>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {g.rows.map((r) => (
+                    {g.rows.map((r) => {
+                      const pos = byId.get(r.id)!;
+                      const mainOps = memberIn(db, pos.ownerId)?.name ?? "Unassigned";
+                      const backupOps = pos.backupOwnerId ? (memberIn(db, pos.backupOwnerId)?.name ?? "Unassigned") : "Unassigned";
+                      const posTas = [...new Set([pos.primaryTaId, ...(pos.team ?? []).map((t) => t.taId)].filter((x): x is string => !!x))]
+                        .map((id) => taName(id) ?? id)
+                        .join(", ") || "Unassigned";
+                      return (
                       <article key={r.id} className="flex flex-col gap-4 rounded-[24px] bg-surface p-[22px] shadow-card">
                         <div className="flex items-baseline justify-between gap-3">
                           <Link href={`/positions/${r.id}?view=overview`} className="text-[17px] font-medium leading-[26px] hover:underline">
@@ -411,6 +534,11 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                               <span className="t-small text-ink-3">placed 0</span>
                             )}
                           </span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-3">
+                          <span>Main Ops <strong className="font-medium text-ink">{mainOps}</strong></span>
+                          <span>Backup Ops <strong className="font-medium text-ink">{backupOps}</strong></span>
+                          <span>TA <strong className="font-medium text-ink">{posTas}</strong></span>
                         </div>
                         <div className="grid grid-cols-5 gap-2.5">
                           {STEPS.map((s) => {
@@ -430,7 +558,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                             );
                           })}
                         </div>
-                        <p className="t-small text-ink-3">Value {moneyText(positionValue(db, byId.get(r.id)!), byId.get(r.id)!.salaryCurrency ?? "")}</p>
+                        <p className="t-small text-ink-3">Value {moneyText(positionValue(db, pos), pos.salaryCurrency ?? "")}</p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <span className="t-small flex min-w-0 flex-1 items-center gap-2 text-ink-2">
                             <span className={"size-[7px] shrink-0 rounded-full " + BAR[r.tone]} aria-hidden="true" />
@@ -462,7 +590,8 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
                           )}
                         </div>
                       </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               );

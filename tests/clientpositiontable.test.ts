@@ -61,6 +61,7 @@ test("filters: client type, value range (no value drops out), priority, backup",
   assert.deepEqual(ids({ min: "50", max: "600000" }), ["p1", "p3"]);
   assert.deepEqual(ids({ priority: "P2" }), ["p3"]);
   assert.deepEqual(ids({ backup: "m2" }), ["p1"]);
+  assert.deepEqual(ids({ ops: "m2" }), ["p1", "p2"], "ops matches main or backup");
   assert.equal(rows.find((r) => r.positionId === "p1")!.backup, "Haifa");
   assert.equal(rows.find((r) => r.positionId === "p2")!.backup, "—");
 });
