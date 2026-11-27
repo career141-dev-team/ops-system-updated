@@ -47,6 +47,7 @@ import {
   outboxWaiting,
   positionIn,
   requirementIn,
+  taRosterPeople,
 } from "@/data/desk";
 import { weekOf } from "@/lib/adverts";
 import { OWNERSHIP_WORKING_DAYS, ownershipWindow } from "@/lib/clientFeedback";
@@ -59,7 +60,6 @@ import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel, candidatesForPosit
 import { REQUIREMENT_FIELDS, briefText, handoverInWords, requirementLocked } from "@/lib/requirements";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { people as taPeople } from "@/lib/ta";
 import { TA_STRATEGIES, resolveStrategyOwner, taOwnerId } from "@/lib/strategies";
 import { byDay, subjectsOfPosition, timeline } from "@/lib/timeline";
 
@@ -77,7 +77,7 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
   const clientName = client?.name ?? (position.clientTaId || "Client");
   const requirement = position.requirementId ? requirementIn(db, position.requirementId) : null;
   const queued = outboxWaiting(db).some((o) => o.subjectType === "position" && o.subjectId === position.id);
-  const taSide = await taPeople();
+  const taSide = await taRosterPeople(db);
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
   const primaryTaPerson = taPeopleList.find((p) => p.id === position.primaryTaId) ?? null;
   const taName = primaryTaPerson?.fullName.split(" ")[0] ?? (position.primaryTaId || "TA");

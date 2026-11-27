@@ -83,6 +83,8 @@ export interface PositionFilters {
   currency?: string;
   priority?: string;
   backup?: string;
+  /** Matches either main Ops (`handlerId`) or backup Ops (`backupId`). */
+  ops?: string;
 }
 
 /** Every word of the search must appear in the client, the position, the package or the handler's name. */
@@ -92,6 +94,7 @@ export function filterPositionRows(rows: PositionRow[], q: string, handlerId: st
   const max = f.max?.trim() ? Number(f.max) : null;
   return rows.filter((r) => {
     if (handlerId && r.handlerId !== handlerId) return false;
+    if (f.ops && r.handlerId !== f.ops && r.backupId !== f.ops) return false;
     if (f.type && r.clientType !== f.type) return false;
     if (f.priority && r.priority !== f.priority) return false;
     if (f.backup && r.backupId !== f.backup) return false;

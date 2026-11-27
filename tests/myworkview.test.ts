@@ -98,17 +98,19 @@ test("my positions: main and backup, open only, value and one total per currency
 
 test("testimonials pending: only joined, mine, and a side still pending", () => {
   const w = workView(
-    dbPos([pos({})], [
+    dbPos([pos({}), pos({ id: "p2", ownerId: "m2", backupOwnerId: "m1" })], [
       pl({}),
       pl({ id: "x2", testimonial: { candidate: "done", client: "done" } }),
       pl({ id: "x3", state: "offered", joinedAt: null }),
       pl({ id: "x4", ownerId: "m2" }),
       pl({ id: "x5", testimonial: { candidate: "pending", client: "pending" } }),
+      pl({ id: "x6", positionId: "p2", ownerId: "m2" }),
     ]),
     "m1", NOW, panel,
   );
-  assert.equal(w.testimonialsPending.length, 3); // x4 is m2's placement but m1 owns the position
+  assert.equal(w.testimonialsPending.length, 4); // x4 is m2's placement on main position, x6 is on backup position
   assert.deepEqual(w.testimonialsPending[0].sides, ["candidate"]);
-  assert.deepEqual(w.testimonialsPending.at(-1)!.sides, ["candidate", "client"]);
+  assert.deepEqual(w.testimonialsPending.find((t) => t.id === "x5")!.sides, ["candidate", "client"]);
+  assert.ok(w.testimonialsPending.some((t) => t.id === "x6"));
   assert.equal(w.testimonialsPending[0].href, "/positions/p1?view=offer");
 });

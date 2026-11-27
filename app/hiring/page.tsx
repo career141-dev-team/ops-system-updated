@@ -126,8 +126,8 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   });
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
   const todayKey = keyOf(now);
-  // Sections (Calling, Interviews, Shortlisted & offered) is the primary view; Board, Table and Scoops stay as secondary views (26 Nov).
-  const mode = sp.view === "board" || sp.view === "table" || sp.view === "scoops" ? sp.view : "sections";
+  // Kanban board (horizontal columns across stages) is the primary view; Sections, Table and Scoops stay as secondary views.
+  const mode = sp.view === "sections" || sp.view === "table" || sp.view === "scoops" ? sp.view : "board";
   const mineOnly = sp.mine === "1";
   const canCall = isHiringCaller(me);
   const memberName = new Map(db.members.map((m) => [m.id, m.name]));
@@ -144,7 +144,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   return (
     <div className="flex flex-col gap-[22px]">
       <PageTitle
-        title="Scoops & vacancies"
+        title="Internal interview"
         sub={`Career 141's own hiring · ${openCount} open`}
         right={
           mayManage ? (
@@ -164,18 +164,18 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       {view.vacancies.length > 0 && (
         <nav className="flex flex-wrap items-center gap-2" aria-label="Layout">
           {[
+            { k: "board", label: "Kanban" },
             { k: "sections", label: "Calling & pipeline" },
-            { k: "board", label: "Board" },
             { k: "table", label: "Table" },
             { k: "scoops", label: "Scoops" },
           ].map((x) => (
-            <Link key={x.k} href={x.k === "sections" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
+            <Link key={x.k} href={x.k === "board" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
               {x.label}
             </Link>
           ))}
-          {mode === "sections" && canCall && (
+          {(mode === "board" || mode === "sections") && canCall && (
             <Link
-              href={mineOnly ? "/hiring" : "/hiring?mine=1"}
+              href={mineOnly ? (mode === "board" ? "/hiring" : "/hiring?view=sections") : (mode === "board" ? "/hiring?mine=1" : "/hiring?view=sections&mine=1")}
               className={"t-label ml-auto rounded-full px-3.5 py-[7px] " + (mineOnly ? "bg-brand text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")}
             >
               {mineOnly ? "Mine (claimed by me)" : "Mine"}
@@ -210,7 +210,21 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           </Card>
 
           {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }))} />}
-          {mode === "board" && <HiringBoard rows={applicantRows(view)} />}
+          {mode === "board" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {view.vacancies.map((v, i) => (
+                  <div key={v.id} className="w-[320px] shrink-0">
+                    <VacancyCard v={v} first={i === 0} />
+                  </div>
+                ))}
+              </div>
+              <HiringBoard
+                rows={mineOnly ? filterByCaller(applicantRows(view), me.id) : applicantRows(view)}
+                memberName={memberName}
+              />
+            </div>
+          )}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
           {mode === "sections" && (
           <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
@@ -340,7 +354,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-scoop" && mayManage && (
-        <Panel kicker="Scoops & vacancies" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Internal interview" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={addScoop} encType="multipart/form-data">
             <input type="hidden" name="back" value="/hiring?view=scoops" />
             <PanelSection title="The CVs">
@@ -367,7 +381,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-vacancy" && mayManage && (
-        <Panel kicker="Scoops & vacancies" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Internal interview" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={createVacancy}>
             <input type="hidden" name="back" value="/hiring" />
             <PanelSection title="Vacancy details">
@@ -402,27 +416,33 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   );
 }
 
-/** Everyone in the funnel, a column a stage. Each column shows its first few and says how many more there are. */
-function HiringBoard({ rows }: { rows: ApplicantRow[] }) {
+/** Everyone in the funnel, a horizontally scrolling Kanban column per stage. Each column shows its first few and links to the full list. */
+function HiringBoard({ rows, memberName }: { rows: ApplicantRow[]; memberName: Map<string, string> }) {
   const cols = boardColumns(rows);
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3 pg-2xl:grid-cols-4">
+    <div className="flex gap-3 overflow-x-auto pb-2">
       {cols.map((col) => (
-        <div key={col.stage} className="flex flex-col gap-2.5 rounded-[18px] bg-sunk p-2.5">
+        <div key={col.stage} className="flex w-[260px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-2.5">
           <div className="flex items-center gap-2 px-1.5 pt-1">
             <span className="t-micro text-ink-3">{col.label.toUpperCase()}</span>
             <span className="t-label text-ink-3">{col.total}</span>
           </div>
-          {col.shown.map((a) => (
-            <Link key={a.id} href={"/hiring/" + a.vacancyId} className="flex flex-col gap-1.5 rounded-[14px] border border-rule bg-surface p-3 hover:shadow-card">
-              <span className="flex items-center gap-2">
-                <Avatar name={a.name} size="32" />
-                <span className="t-body-m min-w-0 flex-1 truncate">{a.name}</span>
-              </span>
-              <span className="t-small truncate text-ink-3">{a.vacancy}</span>
-              {a.detail && <span className="t-small text-ink-3">{a.detail}</span>}
-            </Link>
-          ))}
+          {col.shown.map((a) => {
+            const caller = a.callerId ? memberName.get(a.callerId) : null;
+            return (
+              <Link key={a.id} href={"/hiring/" + a.vacancyId} className="flex flex-col gap-1.5 rounded-[14px] border border-rule bg-surface p-3 hover:shadow-card">
+                <span className="flex items-center gap-2">
+                  <Avatar name={a.name} size="32" />
+                  <span className="t-body-m min-w-0 flex-1 truncate">{a.name}</span>
+                </span>
+                <span className="t-small truncate text-ink-2">{a.vacancy}</span>
+                <span className="t-small text-ink-3">
+                  {[STAGE_LABEL[a.stage] ?? a.stage, a.source, caller ? `Caller: ${caller}` : null].filter(Boolean).join(" · ")}
+                </span>
+                {a.detail && <span className="t-small text-ink-3">{a.detail}</span>}
+              </Link>
+            );
+          })}
           {col.total > col.shown.length && (
             <Link href={"/hiring?view=table&stage=" + col.stage} className="t-label px-1.5 text-brand hover:underline">
               See all {col.total}

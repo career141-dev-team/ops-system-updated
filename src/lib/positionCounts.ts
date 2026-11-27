@@ -69,12 +69,18 @@ export function countItems(db: OpsDatabase, positionId: string, k: CountKind): C
     if (!position.openingTaId) return [];
     return db.clientSets
       .filter((s) => s.openingTaId === position.openingTaId && s.state === "sent")
-      .map((s) => ({
-        id: s.id,
-        title: "Set " + s.setNumber,
-        line: "Sent " + day(s.sentAt) + " · " + s.candidates.length + (s.candidates.length === 1 ? " candidate" : " candidates"),
-        href: "/sets/" + s.id,
-      }));
+      .map((s) => {
+        const names = s.candidates.map((c) => (c.name ?? "").trim()).filter(Boolean);
+        const preview = names.length
+          ? " — " + names.slice(0, 4).join(", ") + (names.length > 4 ? ` +${names.length - 4} more` : "")
+          : "";
+        return {
+          id: s.id,
+          title: "Set " + s.setNumber,
+          line: "Sent " + day(s.sentAt) + " · " + s.candidates.length + (s.candidates.length === 1 ? " candidate" : " candidates") + preview,
+          href: "/positions/" + positionId + "?view=sets",
+        };
+      });
   }
 
   // The candidate's own page exists once they are in a set on this opening; until then, the record's page.

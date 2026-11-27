@@ -67,13 +67,19 @@ export default async function PositionPage({
     panel ? panelHref(path, { view: key }, panel, on) : `${path}?view=${key}`;
 
   const word = stageWord(c);
+  const posTas =
+    [...new Set([position.primaryTaId, ...(position.team ?? []).map((t) => t.taId)].filter((x): x is string => !!x))]
+      .map((taId) => c.taPeopleList.find((p) => p.id === taId)?.fullName ?? taId)
+      .join(", ") || taName;
   const sub = [
     clientName,
     requirement?.fields.locations,
     `open ${c.daysOpen} ${c.daysOpen === 1 ? "day" : "days"}`,
     requirement?.fields.salary,
     client?.contacts?.[0]?.name ? `client HR ${client.contacts[0].name}` : null,
-    `TA ${taName}`,
+    `Main Ops ${c.opsOwnerName}`,
+    `Backup Ops ${c.backupName ?? "Unassigned"}`,
+    `TA ${posTas}`,
   ]
     .filter(Boolean)
     .join(" · ");

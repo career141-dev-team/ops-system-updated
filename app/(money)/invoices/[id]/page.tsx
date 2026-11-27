@@ -192,11 +192,15 @@ export default async function InvoiceDetailPage({
           body={step.waiting}
           actions={
             <div className="flex flex-wrap items-center gap-2.5">
-              {inv.state === "draft" && canMoney && blockers.length === 0 && (
+              {inv.state === "draft" && canMoney && (
                 <form action={sendInvoice}>
                   <input type="hidden" name="invoiceId" value={inv.id} />
                   <input type="hidden" name="back" value={`/invoices/${inv.id}`} />
-                  <button type="submit" className={pillPrimary}>
+                  <button
+                    type="submit"
+                    disabled={blockers.length > 0}
+                    className={pillPrimary + " disabled:cursor-not-allowed disabled:opacity-50"}
+                  >
                     Approve and send
                   </button>
                 </form>

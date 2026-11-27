@@ -401,7 +401,7 @@ export default function HiringPanel({
   const offer = offerLetter(a, v.title);
   const isOffered = a.stage === "offered";
   return (
-    <Panel kicker="Shortlisted & offered" title={isOffered ? `Offer outcome for ${name}` : `Decide on ${name}`} sub={`Scoops & vacancies > ${v.title}`} closeHref={closeHref}>
+    <Panel kicker="Shortlisted & offered" title={isOffered ? `Offer outcome for ${name}` : `Decide on ${name}`} sub={`Internal interview > ${v.title}`} closeHref={closeHref}>
       <Why v={v} a={a} now={now} />
       <Who a={a}>
         <div className="flex flex-col gap-1 pt-1">

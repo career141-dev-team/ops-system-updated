@@ -132,6 +132,8 @@ import {
   setCvGroupByHand,
   setCvGroupLink,
   setSetting,
+  saveTaRoster,
+  taRosterPeople,
   saveTemplate,
   settleMessage,
   templateFor,
@@ -357,6 +359,13 @@ import {
   routeLead,
 } from "@/lib/leads";
 import { clients as taClients, fakeTa, people as taPeople, preparedCv } from "@/lib/ta";
+import {
+  TA_ROSTER_KEY,
+  addTaPersonToRoster,
+  mergeLiveTaIntoRoster,
+  parseTaRoster,
+  removeTaPersonFromRoster,
+} from "@/lib/taRoster";
 import { cancelTeamsEvent, createTeamsEvent, fetchTranscript, listEvents, moveTeamsEvent, teamsFake } from "@/lib/graphCalendar";
 import { clashWith } from "@/lib/outlook";
 import { trimForAi, vttToText } from "@/lib/transcript";
@@ -1943,7 +1952,7 @@ async function teamsPartOf(
   if (!teamsFake() && !switchedOn(db, "switch.teamsEnabled")) {
     return { ...none, problem: "Teams is switched off in Settings (switch.teamsEnabled), so paste a link." };
   }
-  const people = await taPeople();
+  const people = await taRosterPeople(db);
   const taLead = people.ok ? people.data.find((p) => p.id === taLeadId) : null;
   const made = await createTeamsEvent(organiser.email, {
     company: lead.company,
@@ -4564,6 +4573,16 @@ export async function createPosition(formData: FormData): Promise<void> {
   const salaryMonthly = salary.ok ? salary.value : undefined;
   const row = client as NonNullable<typeof client>;
 
+  const ownerPick = f("ownerId");
+  const backupPick = f("backupOwnerId");
+  const teamRoles = new Set(["ops_owner", "ops_lead", "admin"]);
+  const validOwner = ownerPick ? db.members.find((m) => m.id === ownerPick && m.active && teamRoles.has(m.role)) : null;
+  if (ownerPick && !validOwner) back("Pick an active Ops person for Main Ops.");
+  const ownerId = validOwner ? validOwner.id : row.ownerId;
+  const validBackup = backupPick ? db.members.find((m) => m.id === backupPick && m.active && teamRoles.has(m.role)) : null;
+  if (backupPick && !validBackup) back("Pick an active Ops person for Backup Ops.");
+  if (validBackup && validBackup.id === ownerId) back("Main Ops and Backup Ops cannot be the same person.");
+
   const lead = await workingLeadFor(row, member, "requirement");
   const meetingId = f("meetingId") || null;
   const version = (requirementForLead(db, lead.id)?.version ?? 0) + 1;
@@ -4578,7 +4597,7 @@ export async function createPosition(formData: FormData): Promise<void> {
     reason: null,
     inviteBackAt: null,
     openedAt: Date.now(),
-    ownerId: row.ownerId,
+    ownerId,
   });
   const now = Date.now();
   const position = await addPosition({
@@ -4600,7 +4619,8 @@ export async function createPosition(formData: FormData): Promise<void> {
     depthCheckedAt: null,
     handedOverAt: now,
     closedAt: null,
-    ownerId: row.ownerId,
+    ownerId,
+    ...(validBackup ? { backupOwnerId: validBackup.id } : {}),
     ...(salaryMonthly !== undefined ? { salaryMonthly, salaryCurrency: currencyCode(f("salaryCurrency")) || "LKR" } : {}),
   });
   await queueTaWrite(
@@ -4725,7 +4745,7 @@ export async function addStrategy(formData: FormData): Promise<void> {
             : [];
         })();
 
-  const taSide = await taPeople();
+  const taSide = await taRosterPeople(db);
   const validTaIds = taSide.ok ? taSide.data.filter((p) => p.isActive).map((p) => p.id) : [];
 
   const result = tryBuildStrategyAdditions(
@@ -8614,7 +8634,7 @@ export async function chatSay(formData: FormData): Promise<void> {
             member,
             now,
             findTaLead: async (query) => {
-              const found = await taPeople();
+              const found = await taRosterPeople(db);
               if (!found.ok) return "The TA System could not be read: " + found.reason;
               const q = query.trim().toLowerCase();
               const hits = found.data.filter((p) => p.isActive && (!q || p.fullName.toLowerCase().includes(q)));
@@ -8722,7 +8742,7 @@ async function sayResolved(memberId: string, thread: string, resolved: Exclude<R
   if (resolved.kind === "proposal") {
     // A TA lead is shown by name on every card, however the proposal arrived (first ask, edit, or answer).
     if (resolved.buttons.some((b) => b.fields.taLeadId || b.fields.primaryTaId)) {
-      const people = await taPeople();
+      const people = await taRosterPeople(await desk());
       if (people.ok) resolved = withTaNames(resolved, people.data);
     }
     await addChatRow({ thread, memberId, who: "desk", text: resolved.said, buttons: resolved.buttons, state: "proposed", actionName: planMark(resolved.intent), runId, at });
@@ -9774,4 +9794,94 @@ export async function answerCvJoinRequest(formData: FormData): Promise<void> {
   const r = await answerGroupJoinRequest(cvGroupState(await desk()).groupId, String(formData.get("requestId") ?? ""), approve);
   revalidatePath("/settings");
   back(r.ok ? (approve ? "Let in." : "Turned away.") : r.reason);
+}
+
+/* ── Self-profile & editable TA roster on Account & help (27 Nov) ────────────────── */
+
+/** Any signed-in Ops member can update their own display name from Account & help. */
+export async function updateMyProfile(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account");
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2) redirect(withMsg(dest, "Write your full name."));
+
+  await patchMember(member.id, { name }, member.id, "member.profileUpdated", "Updated own name from Account & help.");
+  revalidatePath("/account");
+  revalidatePath("/positions");
+  revalidatePath("/clients/positions");
+  revalidatePath("/settings");
+  redirect(dest + confirmed("Your details are saved.", dest));
+}
+
+function revalidateTaScreens() {
+  revalidatePath("/account");
+  revalidatePath("/positions");
+  revalidatePath("/clients");
+  revalidatePath("/clients/positions");
+  revalidatePath("/leads");
+  revalidatePath("/settings");
+}
+
+/** Add a TA person to Ops's editable TA roster (`ta.roster`). */
+export async function addTaPerson(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account?panel=ta-list");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const db = await desk();
+  const read = await taRosterPeople(db);
+  const current = read.ok ? read.data : [];
+
+  const result = addTaPersonToRoster(current, {
+    fullName: String(formData.get("fullName") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    taRole: String(formData.get("taRole") ?? "ta"),
+  });
+  if (!result.ok) redirect(withMsg(dest, result.reason));
+
+  await saveTaRoster(result.next, member.id, `Added TA ${result.added.fullName} (${result.added.email}).`);
+  revalidateTaScreens();
+  redirect(dest + confirmed(`${result.added.fullName} added to the TA list.`, dest));
+}
+
+/** Remove a TA person from Ops's editable TA roster (`ta.roster`). */
+export async function removeTaPerson(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account?panel=ta-list");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const db = await desk();
+  const taId = String(formData.get("taId") ?? "").trim();
+  const currentRes = await taRosterPeople(db);
+  const current = currentRes.ok ? currentRes.data : [];
+
+  const result = removeTaPersonFromRoster(current, taId);
+  if (!result.ok) redirect(withMsg(dest, result.reason));
+
+  await saveTaRoster(result.next, member.id, `Removed TA ${result.removed.fullName} (${result.removed.email}).`);
+  revalidateTaScreens();
+  redirect(dest + confirmed(`${result.removed.fullName} removed from the TA list.`, dest));
+}
+
+/** Merge people returned by the live TA System API into `ta.roster`. */
+export async function syncTaRosterFromApi(formData: FormData): Promise<void> {
+  const member = await currentMember();
+  if (!member) redirect("/sign-in");
+  const dest = backTo(formData, "/account?panel=ta-list");
+  if (!can(member, "settings.manage")) redirect(withMsg(dest, refusal("settings.manage")));
+
+  const live = await taPeople();
+  if (!live.ok) redirect(withMsg(dest, live.reason));
+
+  const db = await desk();
+  const raw = db.settings.find((s) => s.key === TA_ROSTER_KEY)?.value;
+  const saved = parseTaRoster(raw !== undefined ? String(raw) : null) ?? [];
+  const next = mergeLiveTaIntoRoster(saved, live.data);
+
+  await saveTaRoster(next, member.id, `Synced TA list from the TA System (${next.length} people).`);
+  revalidateTaScreens();
+  redirect(dest + confirmed(`Synced ${next.length} TA people from the TA System.`, dest));
 }

@@ -282,10 +282,19 @@ export default function InvoicePanel({
               : `Due ${inv.dueAt ? day(inv.dueAt) : "on its date"}. A late charge of ${latePct}% a month applies after it. Reminders are copied and sent by a person.`}
         </p>
         {inv.state === "draft" && canMoney && (
-          <form action={sendInvoice}>
+          <form action={sendInvoice} className="flex flex-col gap-2">
             <input type="hidden" name="invoiceId" value={inv.id} />
             <input type="hidden" name="back" value={closeHref} />
-            <SubmitButton id="panel-send" className={pillPrimary}>Approve and send</SubmitButton>
+            <div>
+              <SubmitButton id="panel-send" disabled={blockers.length > 0} className={pillPrimary}>
+                Approve and send
+              </SubmitButton>
+            </div>
+            {blockers.length > 0 && (
+              <p className="t-small text-warn">
+                Disabled until completed: {blockers.join(" and ")}.
+              </p>
+            )}
           </form>
         )}
         {inv.state !== "draft" && <div><Link href={`/invoices/${inv.id}`} className={pillSecondary}>Open the full invoice</Link></div>}

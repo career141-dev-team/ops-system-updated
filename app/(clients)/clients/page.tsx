@@ -4,9 +4,8 @@ import { redirect } from "next/navigation";
 import Icon from "@/app/Icon";
 import { StatusChip, pillSecondary } from "@/app/ui/figma";
 import { EmptyState } from "@/app/ui/figma";
-import { desk, member as memberIn, switchedOn } from "@/data/desk";
+import { desk, member as memberIn, switchedOn, taRosterPeople } from "@/data/desk";
 import { teamsFake } from "@/lib/graphCalendar";
-import { people as taPeople } from "@/lib/ta";
 import { agoShort } from "@/lib/clientCards";
 import {
   CLIENT_FILTERS,
@@ -45,7 +44,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const db = await desk();
   const now = Date.now();
 
-  const taSide = panel === "new-client" ? await taPeople() : { ok: false as const, reason: "", data: [] as { id: string; fullName: string; isActive: boolean }[] };
+  const taSide = panel === "new-client" ? await taRosterPeople(db) : { ok: false as const, reason: "", data: [] as { id: string; fullName: string; isActive: boolean }[] };
   const cards = clientCards(db, now);
   const shown = filterCards(cards, f, q, me.id);
   const visible = all ? shown : shown.slice(0, 9);

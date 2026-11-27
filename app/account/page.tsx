@@ -2,19 +2,24 @@ import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { addOpsMember, inviteOpsMember, signOutAction, updateOpsMember } from "@/app/actions";
+import { addOpsMember, addTaPerson, inviteOpsMember, removeTaPerson, signOutAction, syncTaRosterFromApi, updateMyProfile, updateOpsMember } from "@/app/actions";
 import Icon from "@/app/Icon";
+import PopupBox from "@/app/ui/PopupBox";
 import { Avatar, PageTitle, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { activeMembers, desk } from "@/data/desk";
+import { activeMembers, desk, settingValue, taRosterPeople } from "@/data/desk";
 import { ASSIGNABLE_ROLES, ROLE_LABEL, can } from "@/lib/roles";
 import { clerkSignInConfigured, currentMember } from "@/lib/session";
+import { fakeTa, readsEnabled } from "@/lib/ta";
+import { TA_ROLES, TA_ROSTER_KEY, parseTaRoster, taRoleLabel } from "@/lib/taRoster";
 
 export const dynamic = "force-dynamic";
+
+type Sp = { msg?: string; panel?: string };
 
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<Sp>;
 }) {
   const me = await currentMember();
   if (!me) redirect("/sign-in");
@@ -22,10 +27,18 @@ export default async function AccountPage({
 
   const db = await desk();
   const myClients = db.clients.filter((c) => c.ownerId === me.id);
+  const myPositions = db.positions.filter((p) => p.stage !== "closed" && (p.ownerId === me.id || p.backupOwnerId === me.id));
   const members = activeMembers(db).filter((m) => m.id !== me.id);
   const coverMember = members[0] ?? null;
   const mayManagePeople = can(me, "settings.manage");
   const clerkOn = clerkSignInConfigured();
+  const taRead = await taRosterPeople(db);
+  const tas = taRead.ok ? taRead.data : [];
+  const activeTas = tas.filter((p) => p.isActive);
+  const hasCustomTaRoster = parseTaRoster(settingValue(db, TA_ROSTER_KEY)) !== null;
+  const canSyncLiveTa = readsEnabled() && !fakeTa();
+  const clientNameOf = (clientId: string | null, fallback: string) =>
+    (clientId ? db.clients.find((c) => c.id === clientId)?.name : null) ?? (fallback || "Client");
 
   // Hide legacy dummy @example.test rows from the real management list unless active.
   const teamMembers = db.members
@@ -49,11 +62,62 @@ export default async function AccountPage({
         }
       />
 
-      {sp.msg && (
+      {sp.msg && !sp.panel && (
         <div className="rounded-[18px] border border-brand/25 bg-brand-tint px-5 py-3 text-[13px] font-medium text-ink">
           {sp.msg}
         </div>
       )}
+
+      {/* Logged-in Ops member's own details & assigned positions */}
+      <section className={cardShell}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className={caption}>YOUR DETAILS</div>
+            <h2 className="t-h2 text-ink">{me.name}</h2>
+            <p className="t-small text-ink-3">
+              {me.email} · {ROLE_LABEL[me.role]} · {me.active ? "Active" : "Inactive"}
+            </p>
+          </div>
+          <form action={updateMyProfile} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="back" value="/account" />
+            <input
+              name="name"
+              defaultValue={me.name}
+              required
+              aria-label="Your display name"
+              className={panelInput + " !w-56"}
+            />
+            <button type="submit" className={pillSecondary}>
+              Save name
+            </button>
+          </form>
+        </div>
+
+        <div className="flex flex-col gap-2.5 border-t border-rule pt-4">
+          <div className={caption}>ASSIGNED POSITIONS ({myPositions.length})</div>
+          {myPositions.length === 0 ? (
+            <p className="t-small text-ink-3">You are not assigned as Main Ops or Backup Ops on any open position yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+              {myPositions.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/positions/${p.id}?view=overview`}
+                  className={helpRow}
+                >
+                  <div className="min-w-0">
+                    <p className="t-body-m truncate text-ink">{p.title}</p>
+                    <p className="t-small truncate text-ink-3">
+                      {clientNameOf(p.clientId, p.clientTaId)} · {p.ownerId === me.id ? "Main Ops" : "Backup Ops"}
+                    </p>
+                  </div>
+                  <Icon name="chevron-right" size={16} className="shrink-0 text-ink-faint" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className={cardShell}>
@@ -94,7 +158,7 @@ export default async function AccountPage({
       </div>
 
       {/* Admin & Ops lead people management (20 Nov) */}
-      {mayManagePeople && (
+      {mayManagePeople ? (
         <section className={cardShell}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
@@ -229,7 +293,67 @@ export default async function AccountPage({
             })}
           </div>
         </section>
+      ) : (
+        <section className={cardShell}>
+          <div className="flex flex-col gap-1">
+            <div className={caption}>OPS TEAM</div>
+            <h2 className="t-h2 text-ink">People on Ops</h2>
+            <p className="t-small text-ink-3">Active Ops members who can log in and be assigned to positions.</p>
+          </div>
+          <div className="flex flex-col divide-y divide-rule border-t border-rule">
+            {teamMembers.filter((m) => m.active).map((person) => (
+              <div key={person.id} className="flex flex-wrap items-center justify-between gap-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={person.name} size="36" tone="brand" />
+                  <div className="min-w-0">
+                    <p className="t-body-m truncate text-ink">
+                      {person.name}
+                      {person.id === me.id && <span className="t-small ml-2 rounded-full bg-sunk px-2 py-0.5 text-ink-3">You</span>}
+                    </p>
+                    <p className="t-small truncate text-ink-3">{person.email}</p>
+                  </div>
+                </div>
+                <span className="t-label rounded-full bg-sunk px-3 py-1 text-ink-2">
+                  {ROLE_LABEL[person.role]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
+
+      {/* TA list section + Change pop-up (27 Nov) */}
+      <section className={cardShell}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className={caption}>TALENT ACQUISITION TEAM</div>
+            <h2 className="t-h2 text-ink">TA list</h2>
+            <p className="t-small text-ink-3">
+              {activeTas.length} active TA {activeTas.length === 1 ? "person" : "people"} available for position assignment ·{" "}
+              {hasCustomTaRoster ? "Editable Ops TA list" : canSyncLiveTa ? "From the TA System" : "Stand-in TA list"}
+            </p>
+          </div>
+          <Link href="/account?panel=ta-list" scroll={false} className={pillSecondary}>
+            Change
+          </Link>
+        </div>
+
+        {activeTas.length === 0 ? (
+          <p className="t-body text-ink-2">No TAs in the list yet. Click Change to add TAs.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {activeTas.map((p) => (
+              <span
+                key={p.id}
+                className="t-small inline-flex items-center gap-1.5 rounded-full border border-rule bg-sunk px-3 py-1.5 text-ink"
+              >
+                <span className="font-medium">{p.fullName}</span>
+                <span className="text-ink-3">· {taRoleLabel(p.taRole)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className={cardShell}>
         <div className={caption}>HELP</div>
@@ -294,6 +418,90 @@ export default async function AccountPage({
           </form>
         )}
       </div>
+
+      {sp.panel === "ta-list" && (
+        <PopupBox
+          title="TA list"
+          sub="Talent Acquisition people assignable to positions and calls. Add or remove people here; syncs with the TA System when connected."
+          closeHref="/account"
+          wide
+        >
+          {sp.msg && (
+            <div className="rounded-[14px] border border-brand/25 bg-brand-tint px-4 py-2.5 text-[13px] font-medium text-ink">
+              {sp.msg}
+            </div>
+          )}
+
+          {mayManagePeople && (
+            <div className="flex flex-col gap-3 rounded-[20px] border border-rule bg-sunk p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="t-body-m text-ink">Add a TA person</p>
+                {canSyncLiveTa && (
+                  <form action={syncTaRosterFromApi}>
+                    <input type="hidden" name="back" value="/account?panel=ta-list" />
+                    <button type="submit" className={pillSecondary + " !px-3.5 !py-1.5 !text-[12px]"}>
+                      Sync from TA System
+                    </button>
+                  </form>
+                )}
+              </div>
+              <form action={addTaPerson} className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_1fr_170px_auto]">
+                <input type="hidden" name="back" value="/account?panel=ta-list" />
+                <input name="fullName" required placeholder="Full name" className={panelInput} />
+                <input name="email" type="email" required placeholder="name@career141.com" className={panelInput} />
+                <select name="taRole" defaultValue="ta" className={panelInput}>
+                  {TA_ROLES.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className={pillPrimary}>
+                  Add TA
+                </button>
+              </form>
+            </div>
+          )}
+
+          <div className="flex flex-col divide-y divide-rule">
+            {tas.length === 0 ? (
+              <p className="t-body py-4 text-ink-3">No TA people in the list yet.</p>
+            ) : (
+              tas.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar name={p.fullName} size="36" tone={p.isActive ? "info" : "neutral"} />
+                    <div className="min-w-0">
+                      <p className="t-body-m flex items-center gap-2 truncate text-ink">
+                        <span className="truncate">{p.fullName}</span>
+                        {!p.isActive && <span className="t-small rounded-full bg-warn-soft px-2 py-0.5 text-warn">Inactive</span>}
+                      </p>
+                      <p className="t-small truncate text-ink-3">{p.email || "No email"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="t-label rounded-full bg-sunk px-3 py-1 text-ink-2">
+                      {taRoleLabel(p.taRole)}
+                    </span>
+                    {mayManagePeople && p.isActive && (
+                      <form action={removeTaPerson}>
+                        <input type="hidden" name="back" value="/account?panel=ta-list" />
+                        <input type="hidden" name="taId" value={p.id} />
+                        <button
+                          type="submit"
+                          className="rounded-full border border-rule bg-surface px-3.5 py-1.5 text-[12px] font-medium text-ink-2 transition-colors hover:border-danger hover:text-danger"
+                        >
+                          Remove
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </PopupBox>
+      )}
     </div>
   );
 }

@@ -62,7 +62,7 @@ export default async function VacancyPage({
       return (
         <div className="flex flex-col gap-[22px]">
           <Link href="/hiring" className="t-body-m inline-flex items-center gap-2 text-ink-2 hover:underline">
-            <Icon name="chevron-left" size={18} /> Scoops &amp; vacancies
+            <Icon name="chevron-left" size={18} /> Internal interview
           </Link>
           <Card>
             <EmptyState icon="briefcase" title="This vacancy is not here">
@@ -175,7 +175,7 @@ export default async function VacancyPage({
   return (
     <div className="flex flex-col gap-[22px]">
       <div className="flex items-center gap-4 p-1">
-        <Link href="/hiring" aria-label="Back to Scoops & vacancies" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
+        <Link href="/hiring" aria-label="Back to Internal interview" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
           <Icon name="chevron-left" size={18} />
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -218,27 +218,34 @@ export default async function VacancyPage({
       <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
         <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
           {v.applicants.length === 0 ? (
-            <Card title="Pipeline" sub="Three sections: Calling, Interviews, and Shortlisted & offered.">
+            <Card title="Pipeline" sub="Calling, Interview, Shortlisted, and Offered.">
               <EmptyState icon="user" title="No applicants here">
                 {v.status === "on_hold" ? "This vacancy is on hold, so nothing moves." : "Nobody has applied yet."}
               </EmptyState>
             </Card>
           ) : (
-            HIRING_SECTIONS.map((sec) => {
-              const raw = v.applicants.filter((a) => sectionOfStage(a.stage) === sec.key);
-              const here = sec.key === "calling" && mineOnly ? filterByCaller(raw, me.id) : raw;
-              return (
-                <Card key={sec.key} title={`${sec.label} · ${here.length}`} sub={sec.sub}>
-                  {here.length === 0 ? (
-                    <p className="t-small text-ink-3">Nobody in {sec.label.toLowerCase()}.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {here.map(card)}
+            <Card title="Pipeline Kanban" sub="Calling, Interview, Shortlisted, and Offered — scroll sideways for all stages.">
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {[
+                  { key: "calling", label: "Calling", items: mineOnly ? filterByCaller(v.applicants.filter((a) => sectionOfStage(a.stage) === "calling"), me.id) : v.applicants.filter((a) => sectionOfStage(a.stage) === "calling") },
+                  { key: "interview", label: "Interview", items: v.applicants.filter((a) => sectionOfStage(a.stage) === "interviews") },
+                  { key: "shortlisted", label: "Shortlisted", items: v.applicants.filter((a) => a.stage === "shortlisted") },
+                  { key: "offered", label: "Offered", items: v.applicants.filter((a) => a.stage === "offered" || a.stage === "decision") },
+                ].map((col) => (
+                  <div key={col.key} className="flex w-[270px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-2.5">
+                    <div className="flex items-center gap-2 px-1.5 pt-1">
+                      <span className="t-micro text-ink-3">{col.label.toUpperCase()}</span>
+                      <span className="t-label text-ink-3">{col.items.length}</span>
                     </div>
-                  )}
-                </Card>
-              );
-            })
+                    {col.items.length === 0 ? (
+                      <p className="t-small px-1.5 text-ink-3">Nobody here.</p>
+                    ) : (
+                      col.items.map(card)
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
           )}
           {v.applicants.some((a) => ["hired", "non_responsive", "not_interested", "declined", "rejected"].includes(a.stage)) && (
             <Card title="Outcomes" sub="Hired, non-responsive, not interested, declined, or rejected.">
@@ -348,7 +355,7 @@ export default async function VacancyPage({
         />
       )}
       {sp.panel === "add-applicant" && can(me, "client.manage") && (
-        <Panel kicker="Scoops & vacancies" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
+        <Panel kicker="Internal interview" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
           <form action={addHiringApplicant} encType="multipart/form-data">
             <input type="hidden" name="vacancyId" value={v.id} />
             <input type="hidden" name="back" value={path} />

@@ -324,7 +324,7 @@ export function workView(
   for (const x of db.placements) {
     if (!(x.state === "joined" || x.joinedAt) || !x.testimonial) continue;
     const pos = db.positions.find((p) => p.id === x.positionId);
-    if (x.ownerId !== memberId && pos?.ownerId !== memberId) continue;
+    if (x.ownerId !== memberId && pos?.ownerId !== memberId && pos?.backupOwnerId !== memberId) continue;
     const sides = (["candidate", "client"] as const).filter((s) => x.testimonial![s] === "pending");
     if (sides.length === 0) continue;
     testimonialsPending.push({ id: x.id, candidate: x.candidateName, client: clientName(x.clientId ?? pos?.clientId ?? null), sides, href: pos ? "/positions/" + pos.id + "?view=offer" : "/positions" });

@@ -55,6 +55,14 @@ test("an item names its set and opens the candidate, or the record when they are
   assert.match(inSet.line, /^Set 1 · Round 1/);
   assert.equal(inSet.href, "/positions/p1/candidates/app-a");
   assert.equal(countItems(db, "p1", "i2")[0].href, "/interviews/b");
+
+  const withNames = {
+    ...db,
+    clientSets: [{ id: "s1", openingTaId: "o1", state: "sent", setNumber: 1, sentAt: 1_700_000_000_000, candidates: [{ applicationTaId: "app-a", name: "Alice" }, { name: "Bob" }] }],
+  } as unknown as OpsDatabase;
+  const [setItem] = countItems(withNames, "p1", "sets");
+  assert.equal(setItem.href, "/positions/p1?view=sets");
+  assert.match(setItem.line, /Alice, Bob/);
 });
 
 test("the row counts are the list lengths, with the TAs named", () => {

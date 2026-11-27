@@ -21,6 +21,7 @@ export function SubmitButton({
   value,
   formNoValidate,
   answerAt,
+  disabled = false,
   "aria-label": ariaLabel,
 }: {
   id: string;
@@ -31,6 +32,7 @@ export function SubmitButton({
   name?: string;
   value?: string;
   formNoValidate?: boolean;
+  disabled?: boolean;
   "aria-label"?: string;
 }) {
   const { pending, data } = useFormStatus();
@@ -52,10 +54,10 @@ export function SubmitButton({
         name={name ?? "at"}
         value={name ? value : at}
         formNoValidate={formNoValidate}
-        disabled={pending}
+        disabled={pending || disabled}
         aria-label={ariaLabel}
         aria-busy={pending && mine}
-        className={className + " inline-flex items-center gap-2 disabled:opacity-60"}
+        className={className + " inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"}
         onClick={(e) => {
           // A named button (makeDraft, reset) also has to say which button it was.
           if (!name) return;

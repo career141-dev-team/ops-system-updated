@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 import { figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import { KeepFields } from "@/app/ui/KeepFields";
 import { DEFAULT_LENGTH, MEETING_LENGTHS } from "@/lib/teams";
@@ -67,6 +71,11 @@ export function MeetingFields({
   offerAlsoRequirement = false,
   timeOptional = false,
 }: MeetingFieldsProps) {
+  const [attendees, setAttendees] = useState<{ key: number; name: string; email: string }[]>(() =>
+    contact.name || contact.email ? [{ key: 0, name: contact.name, email: contact.email }] : [],
+  );
+  const [nextKey, setNextKey] = useState(1);
+
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -115,24 +124,45 @@ export function MeetingFields({
 
       {!timeOptional && (
       <fieldset className="flex flex-col gap-2">
-        <legend className={figmaLabel}>Who from the client gets the link (leave a row empty to skip it)</legend>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <legend className={figmaLabel}>Who from the client gets the link</legend>
+        {attendees.map((row, idx) => (
+          <div key={row.key} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
             <input
               name="attendeeName"
               placeholder="Name"
-              defaultValue={i === 0 ? contact.name : ""}
+              defaultValue={row.name}
               className={field}
             />
             <input
               type="email"
               name="attendeeEmail"
               placeholder="email@client.com"
-              defaultValue={i === 0 ? contact.email : ""}
+              defaultValue={row.email}
               className={field}
             />
+            {(attendees.length > 1 || !(idx === 0 && (contact.name || contact.email))) && (
+              <button
+                type="button"
+                onClick={() => setAttendees((prev) => prev.filter((item) => item.key !== row.key))}
+                aria-label="Remove member"
+                className="rounded-[10px] border border-rule bg-surface px-3 py-2 text-[13px] text-ink-soft hover:text-ink"
+              >
+                Remove
+              </button>
+            )}
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            const key = nextKey;
+            setNextKey((k) => k + 1);
+            setAttendees((prev) => [...prev, { key, name: "", email: "" }]);
+          }}
+          className={pillSecondary + " self-start"}
+        >
+          Add member
+        </button>
       </fieldset>
       )}
 

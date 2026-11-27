@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 import { saveAgreementFields } from "@/app/actions";
 import { ESA_FIELDS, expatMonthsOf } from "@/lib/esa";
 import { figmaLabel, pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -29,6 +33,8 @@ export function AgreementFieldsForm({
   esa: { id: string; fields: Record<string, string>; mode?: "draft" | "final" } | null;
   returnTo: "intro" | "agreement";
 }) {
+  const [mode, setMode] = useState<"draft" | "final">(esa?.mode ?? "final");
+  const [clientType, setClientType] = useState<string>(String(esa?.fields.clientType ?? ""));
   // An agreement with no expat fee opens at twice its fee; saving a new fee carries it along (`followFee`).
   const value = (key: string) => (key === "expatFeeMonths" ? String(expatMonthsOf(esa?.fields ?? {})) : (esa?.fields[key] ?? ""));
   return (
@@ -38,18 +44,31 @@ export function AgreementFieldsForm({
       <input type="hidden" name="esaId" value={esa?.id ?? ""} />
       <input type="hidden" name="returnTo" value={returnTo} />
       {/* 26 Nov (Nov 25 ops meeting): a Draft may leave the signatory and the address to be confirmed; it can never be marked signed. */}
-      <label className="flex flex-col gap-1">
-        <span className="text-[13px] text-ink-soft">Agreement type</span>
-        <select name="mode" defaultValue={esa?.mode ?? "final"} className={input}>
-          <option value="final">Final: every detail filled in</option>
-          <option value="draft">Draft: signatory, title and address may say &ldquo;To be confirmed&rdquo;</option>
-        </select>
-      </label>
+      <div className="flex flex-col gap-1">
+        <label className="flex flex-col gap-1">
+          <span className="text-[13px] text-ink-soft">Agreement type</span>
+          <select
+            name="mode"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "draft" | "final")}
+            className={input}
+          >
+            <option value="final">Final: every detail filled in</option>
+            <option value="draft">Draft: signatory, title and address may say &ldquo;To be confirmed&rdquo;</option>
+          </select>
+        </label>
+        {mode === "draft" && (
+          <p className="text-[12.5px] text-ink-soft">
+            In Draft, signatory name, designation and address may stay blank — they print as highlighted &ldquo;To be confirmed&rdquo; with the draft note, and a Draft cannot be marked signed.
+          </p>
+        )}
+      </div>
       {GROUPS.map((group) => (
         <div key={group.title} className="flex flex-col gap-2">
           <span className={figmaLabel}>{group.title}</span>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {group.keys.map((key) => {
+              if (key === "expatFeeMonths" && clientType !== "international") return null;
               const field = ESA_FIELDS.find((f) => f.key === key);
               if (!field) return null;
               return (
@@ -59,7 +78,12 @@ export function AgreementFieldsForm({
                     {field.required ? " *" : " (optional)"}
                   </span>
                   {key === "clientType" ? (
-                    <select name="field.clientType" defaultValue={value(key)} className={input}>
+                    <select
+                      name="field.clientType"
+                      value={clientType}
+                      onChange={(e) => setClientType(e.target.value)}
+                      className={input}
+                    >
                       <option value="">Choose…</option>
                       <option value="local">Local</option>
                       <option value="international">International</option>
@@ -83,7 +107,7 @@ export function AgreementFieldsForm({
           Save the agreement details
         </SubmitButton>
         <SubmitButton id={"make-draft-" + returnTo} name="makeDraft" value="1" className={pillPrimary}>
-          Save and make the draft
+          {mode === "final" ? "Save and Finalized ESA" : "Save and make the draft"}
         </SubmitButton>
         <span className="text-[12.5px] text-ink-soft">Each draft is a new version. The earlier ones stay.</span>
       </div>

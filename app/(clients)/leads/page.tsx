@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import Icon from "@/app/Icon";
 import { EmptyState } from "@/app/ui/figma";
-import { agreementForLead, desk, meetingsForLead, numberOf, switchedOn } from "@/data/desk";
+import { agreementForLead, desk, meetingsForLead, numberOf, switchedOn, taRosterPeople } from "@/data/desk";
 import { calendarItems } from "@/lib/calendarBoard";
 import {
   type EnquiryCard,
@@ -22,7 +22,6 @@ import { closeHref, panelHref } from "@/lib/panel";
 import { closeSendHref } from "@/lib/sendModal";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
-import { people as taPeople } from "@/lib/ta";
 import { SendAgreementModal } from "../ClientSendModals";
 import { ClientsHead, FlowStrip, Msg, RailCard, StandsCard, TILE_TONE, TONE_TEXT } from "../parts";
 import { CheckEnquiryPanel, DuplicatePanel, IntroCallPanel, SendAgreementPanel } from "./EnquiryPanels";
@@ -90,7 +89,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         lead,
       )
     : {};
-  const ta = panel === "intro-call" ? await taPeople() : null;
+  const ta = panel === "intro-call" ? await taRosterPeople(db) : null;
 
   return (
     <div className="flex flex-col gap-[22px]">

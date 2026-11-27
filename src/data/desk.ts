@@ -17,6 +17,8 @@ import { fetchWhatsAppMedia, threadFor } from "@/lib/senders";
 import { unanswered } from "@/lib/setsBoard";
 import { MAX_PER_BATCH, PER_PASS, WA_BATCH_TITLE, WA_KEEPS_MS, WA_QUEUE, WA_RETRY_GAP_MS, isDirectCv, isGroupCv, parseWaRow, waBatchId, waQueueKey, waRowOf, type WaCvRow, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
+import { people as fetchTaPeople, type TaPerson, type TaResult } from "@/lib/ta";
+import { TA_ROSTER_KEY, parseTaRoster, withLiveIds } from "@/lib/taRoster";
 import { matchPhone, type GroupEvent, type WaMessage } from "@/lib/whatsapp";
 import { cancelTeamsEvent } from "@/lib/graphCalendar";
 import type {
@@ -4219,6 +4221,22 @@ export function member(db: OpsDatabase, memberId: Id) {
 
 export function activeMembers(db: OpsDatabase) {
   return db.members.filter((m) => m.active);
+}
+
+/**
+ * The TA list Ops chooses from: uses Ops's editable `ta.roster` when saved,
+ * otherwise reads the TA System API (or `fakeTa` stand-in).
+ */
+export async function taRosterPeople(db: OpsDatabase): Promise<TaResult<TaPerson[]>> {
+  const saved = parseTaRoster(settingValue(db, TA_ROSTER_KEY));
+  const live = await fetchTaPeople();
+  if (saved === null) return live;
+  // The roster says who is on the list; TA's ids are what is stored and written back to TA.
+  return { ok: true, data: live.ok ? withLiveIds(saved, live.data) : saved, ms: live.ok ? live.ms : 0 };
+}
+
+export async function saveTaRoster(roster: TaPerson[], by: Id, reason: string): Promise<void> {
+  await setSetting(TA_ROSTER_KEY, JSON.stringify(roster), by, reason);
 }
 
 export function draftsWaiting(db: OpsDatabase): OpsMessage[] {
