@@ -36,7 +36,7 @@ export default async function AgreementsPage({ searchParams }: { searchParams: P
   const totals = clientTotals(db, now);
   const search = q.trim().toLowerCase();
   const all = agreementCards(db, now);
-  const cards = all.filter((c) => !search || c.company.toLowerCase().includes(search));
+  const cards = all.filter((c) => !search || c.find.includes(search));
   const inColumn = (k: AgreementColumn, list: AgreementCard[] = cards) => list.filter((c) => c.column === k);
   const chasing = inColumn("chasing", all);
   const changes = inColumn("changes", all);

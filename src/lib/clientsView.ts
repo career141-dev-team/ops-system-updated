@@ -319,6 +319,8 @@ export interface AgreementCard {
   copy: (Copyable & { step: number }) | null;
   due: { step: number; at: number; tone: Tone } | null;
   clientId: string | null;
+  /** What the "Client or contact" search looks in, lower case. */
+  find: string;
 }
 
 /** Every agreement on the board in its column, the ones that need a person first. */
@@ -355,7 +357,9 @@ export function agreementCards(db: OpsDatabase, now: number): AgreementCard[] {
       state = { text: "Countersigned " + (esa.countersignedAt ? dayWords(esa.countersignedAt).replace(/^\w+ /, "") : ""), tone: "brand" };
     }
     const when = esa.sentAt ?? esa.createdAt;
+    const contact = contactOf({ contacts: client?.contacts }, lead);
     out.push({
+      find: [company, contact?.name, contact?.email].filter(Boolean).join(" ").toLowerCase(),
       id: esa.id,
       leadId: esa.leadId,
       company,

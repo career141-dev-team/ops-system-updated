@@ -167,6 +167,8 @@ import {
   problemWithDecisionStage,
   staleInvites,
   triesSoFar,
+  problemWithNextRound,
+  roundOf,
 } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
@@ -3230,7 +3232,7 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = backTo(formData, "/clients/positions");
+  const here = backTo(formData, "/positions");
   const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "task.reassign")) back(refusal("task.reassign"));
   const db = await desk();
@@ -3255,7 +3257,6 @@ export async function setPositionOwner(formData: FormData): Promise<void> {
     subjectId: positionId,
     link: "/positions/" + positionId,
   });
-  revalidatePath("/clients/positions");
   revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
   redirect(here + confirmed("Now handled by " + (db.members.find((m) => m.id === newId)?.name ?? "them") + "." + (wasBackup ? " They were the backup, so there is no backup now." : ""), here));
@@ -3269,7 +3270,7 @@ export async function setPositionBackup(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = backTo(formData, "/clients/positions");
+  const here = backTo(formData, "/positions");
   const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "task.reassign")) back(refusal("task.reassign"));
   const db = await desk();
@@ -3312,7 +3313,7 @@ export async function setPositionBackup(formData: FormData): Promise<void> {
       link: "/positions/" + positionId,
     });
   }
-  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
   redirect(here + confirmed(newId ? "Backup is now "+ nameOf(newId) + "." : "Backup removed.", here));
 }
@@ -3322,7 +3323,7 @@ export async function setPositionPriority(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = backTo(formData, "/clients/positions");
+  const here = backTo(formData, "/positions");
   const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
@@ -3330,7 +3331,7 @@ export async function setPositionPriority(formData: FormData): Promise<void> {
   const to = String(formData.get("priority") ?? "");
   if (to && !["P1", "P2", "P3"].includes(to)) back("Priority is P1, P2 or P3.");
   await patchPosition(positionId, { priority: to as "P1" | "P2" | "P3" }, member.id, "position.priority", to || "none");
-  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
   redirect(here + confirmed(to ? "Priority " + to + "." : "Priority cleared.", here));
 }
@@ -3340,7 +3341,7 @@ export async function setPositionSalary(formData: FormData): Promise<void> {
   const member = await currentMember();
   if (!member) redirect("/sign-in");
   const positionId = String(formData.get("positionId") ?? "");
-  const here = backTo(formData, "/clients/positions");
+  const here = backTo(formData, "/positions");
   const back = (msg: string) => redirect(withMsg(here, msg));
   if (!can(member, "client.manage")) back(refusal("client.manage"));
   const db = await desk();
@@ -3351,7 +3352,7 @@ export async function setPositionSalary(formData: FormData): Promise<void> {
   const salary = read.ok ? read.value : undefined;
   if (salary !== undefined && !currency) back("Say which currency, like LKR or USD.");
   await patchPosition(positionId, { salaryMonthly: salary ?? 0, salaryCurrency: salary === undefined ? "" : currency }, member.id, "position.salary", salary === undefined ? "removed" : currency + " " + salary);
-  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
   revalidatePath("/positions/" + positionId);
   redirect(here + confirmed(salary === undefined ? "Salary removed." : "Salary saved.", here));
 }
@@ -9464,9 +9465,10 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
       }
     }
   }
+  const round = applicant?.stage === "interview" ? roundOf(applicant) : 1;
   await patchApplicant(
     applicantId,
-    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
+    { stage: "interview", interviewRound: round, interviewAt, place, interviewer, detail: `Interview ${round} · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
     member.id,
     "applicant.interviewBooked",
     `Booked with ${interviewer} (${place})`,
@@ -9523,7 +9525,27 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   const notes = String(formData.get("notes") ?? "").trim();
   const scoreRaw = Number(formData.get("score") ?? 0);
   const score = scoreRaw >= 1 && scoreRaw <= 5 ? scoreRaw : null;
-  if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Pass, Hold, or Fail."));
+  if (result === "next round") {
+    const db = await desk();
+    const before = db.applicants.find((a) => a.id === applicantId);
+    if (!before) redirect(withMsg(dest, "That applicant is gone."));
+    const shown = Number(formData.get("round") ?? 0);
+    const problem = problemWithNextRound(before, shown);
+    if (problem) redirect(withMsg(dest, problem));
+    // The finished round's Outlook event stays where it is, so booking the next one must not cancel it.
+    await patchApplicant(
+      applicantId,
+      { interviewRound: shown + 1, interviewer: null, joinUrl: null, graphEventId: null, score, notes: notes || null, detail: `Passed interview ${shown} · book interview ${shown + 1}` },
+      member.id,
+      "applicant.roundPassed",
+      notes || `Passed interview ${shown}`,
+    );
+    await voidInvites(db, applicantId, member.id, "Not sent: that interview round is over.");
+    revalidatePath(`/hiring/${vacancyId}`);
+    revalidatePath("/hiring");
+    redirect(dest + confirmed(`Moved to interview ${shown + 1}. Book it next.`, dest));
+  }
+  if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Next round, Pass, Hold, or Fail."));
   if (result === "fail" && reason.length < 4) redirect(withMsg(dest, "Write the reason before marking Fail."));
 
   const nextStage = result === "pass" ? "shortlisted" : result === "fail" ? "rejected" : "interview";
@@ -9814,7 +9836,6 @@ export async function updateMyProfile(formData: FormData): Promise<void> {
   await patchMember(member.id, { name }, member.id, "member.profileUpdated", "Updated own name from Account & help.");
   revalidatePath("/account");
   revalidatePath("/positions");
-  revalidatePath("/clients/positions");
   revalidatePath("/settings");
   redirect(dest + confirmed("Your details are saved.", dest));
 }
@@ -9823,7 +9844,7 @@ function revalidateTaScreens() {
   revalidatePath("/account");
   revalidatePath("/positions");
   revalidatePath("/clients");
-  revalidatePath("/clients/positions");
+  revalidatePath("/positions");
   revalidatePath("/leads");
   revalidatePath("/settings");
 }

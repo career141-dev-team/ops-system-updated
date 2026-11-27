@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { addScoop, claimApplicant, createVacancy } from "@/app/actions";
+import { addScoop, createVacancy } from "@/app/actions";
 import Icon from "@/app/Icon";
 import { Avatar, Card, DataTable, EmptyState, PageTitle, PanelField, panelInput, pillPrimary, pillSecondary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
@@ -10,53 +10,30 @@ import { desk, scoopBatches } from "@/data/desk";
 import { COLOMBO_OFFSET_MS } from "@/lib/calendar";
 import { clockOf, dayWord } from "@/lib/calendarBoard";
 import {
-  HIRING_SECTIONS,
   countOf,
-  filterByCaller,
   hiringView,
-  isHiringCaller,
-  sectionOfStage,
   slotsThisWeek,
-  totals,
   vacancyLine,
   vacancySourceLabel,
   whereItStands,
-  type Applicant,
   type Vacancy,
 } from "@/lib/hiring";
 import { hiringSample } from "@/lib/hiringSample";
-import { FUNNEL, STAGE_LABEL, applicantRows, boardColumns, filterApplicants, pageOf, type ApplicantRow } from "@/lib/hiringTable";
+import { FUNNEL, STAGE_LABEL, applicantRows, filterApplicants, pageOf, type ApplicantRow } from "@/lib/hiringTable";
 import { closeHref, panelHref } from "@/lib/panel";
 import { summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { can } from "@/lib/roles";
 import { currentMember } from "@/lib/session";
 
-/** One number of the strip: small capital label, the figure, one line under it. */
-function Figure({ label, value, line, tone = "text-ink" }: { label: string; value: number; line: string; tone?: string }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <p className="t-micro text-ink-3">{label}</p>
-      <p className={"t-num " + tone}>{value}</p>
-      <p className="t-small text-ink-3">{line}</p>
-    </div>
-  );
-}
-
-const Chev = () => (
-  <span className="flex w-7 shrink-0 items-center justify-center text-ink-3" aria-hidden="true">
-    <Icon name="chevron-right" size={14} />
-  </span>
-);
-
 function VacancyCard({ v, first }: { v: Vacancy; first: boolean }) {
   const n = (s: Parameters<typeof countOf>[1]) => countOf(v, s);
   const toCall = n("call") + n("new");
   const src = vacancySourceLabel(v);
-  const shortlistedOffered = n("shortlisted") + n("offered") + n("decision");
   const counts: [string, number, string][] = [
-    ["Calling", toCall + n("fits"), toCall ? "text-warn" : "text-ink"],
-    ["Interviews", n("interview"), "text-info"],
-    ["Shortlisted & offered", shortlistedOffered, shortlistedOffered ? "text-brand" : "text-ink"],
+    ["Call", toCall + n("fits"), toCall ? "text-warn" : "text-ink"],
+    ["Interview", n("interview"), "text-info"],
+    ["Shortlisted", n("shortlisted") + n("decision"), "text-brand"],
+    ["Offered", n("offered"), "text-brand"],
     ["Hired", v.filled, "text-brand"],
   ];
   return (
@@ -112,7 +89,6 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   const db = await desk();
   const now = Date.now();
   const view = hiringView(db, process.env.OPS_DEV_SIGNIN === "on" ? hiringSample(now) : null);
-  const t = totals(view, now);
   const stand = whereItStands(view, now);
   const weekSlots = slotsThisWeek(view.slots, now);
   const openCount = view.vacancies.filter((v) => v.status === "open").length;
@@ -126,20 +102,9 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   });
   const keyOf = (at: number) => new Date(at + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
   const todayKey = keyOf(now);
-  // Kanban board (horizontal columns across stages) is the primary view; Sections, Table and Scoops stay as secondary views.
-  const mode = sp.view === "sections" || sp.view === "table" || sp.view === "scoops" ? sp.view : "board";
-  const mineOnly = sp.mine === "1";
-  const canCall = isHiringCaller(me);
-  const memberName = new Map(db.members.map((m) => [m.id, m.name]));
+  // The page lists our vacancies; each one's pipeline is on its own page (owner, 27 Nov).
+  const mode = sp.view === "table" || sp.view === "scoops" ? sp.view : "vacancies";
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
-
-  const allItems = view.vacancies.flatMap((v) =>
-    v.applicants.map((a) => ({ v, a })),
-  );
-  const callingAll = allItems.filter((x) => sectionOfStage(x.a.stage) === "calling");
-  const callingItems = mineOnly ? filterByCaller(callingAll.map((x) => ({ ...x, callerId: x.a.callerId })), me.id) : callingAll;
-  const interviewItems = allItems.filter((x) => sectionOfStage(x.a.stage) === "interviews");
-  const shortlistedItems = allItems.filter((x) => sectionOfStage(x.a.stage) === "shortlisted_offered");
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -164,23 +129,14 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       {view.vacancies.length > 0 && (
         <nav className="flex flex-wrap items-center gap-2" aria-label="Layout">
           {[
-            { k: "board", label: "Kanban" },
-            { k: "sections", label: "Calling & pipeline" },
+            { k: "vacancies", label: "Vacancies" },
             { k: "table", label: "Table" },
             { k: "scoops", label: "Scoops" },
           ].map((x) => (
-            <Link key={x.k} href={x.k === "board" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
+            <Link key={x.k} href={x.k === "vacancies" ? "/hiring" : "/hiring?view=" + x.k} aria-current={x.k === mode ? "page" : undefined} className={"t-label rounded-full px-3.5 py-[7px] " + (x.k === mode ? "bg-ink text-ink-inverse" : "bg-sunk text-ink-2 hover:bg-shell")}>
               {x.label}
             </Link>
           ))}
-          {(mode === "board" || mode === "sections") && canCall && (
-            <Link
-              href={mineOnly ? (mode === "board" ? "/hiring" : "/hiring?view=sections") : (mode === "board" ? "/hiring?mine=1" : "/hiring?view=sections&mine=1")}
-              className={"t-label ml-auto rounded-full px-3.5 py-[7px] " + (mineOnly ? "bg-brand text-ink-inverse" : "border border-rule bg-surface text-ink hover:bg-sunk")}
-            >
-              {mineOnly ? "Mine (claimed by me)" : "Mine"}
-            </Link>
-          )}
         </nav>
       )}
 
@@ -192,41 +148,9 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
         </Card>
       ) : (
         <>
-          <Card className="!flex-row items-center">
-            <Figure label="New CVs" value={t.newCvs} line={`across ${t.newCvVacancies} ${t.newCvVacancies === 1 ? "vacancy" : "vacancies"}`} />
-            <Chev />
-            <Figure
-              label="To call"
-              value={t.toCall}
-              tone="text-warn"
-              line={t.toCall ? `${t.newCvs > 0 ? `includes ${t.newCvs} new ${t.newCvs === 1 ? "CV" : "CVs"} · ` : ""}oldest waits ${t.oldestDays} ${t.oldestDays === 1 ? "day" : "days"}` : "nobody waits"}
-            />
-            <Chev />
-            <Figure label="Interview" value={t.interview} tone="text-info" line={`${weekSlots.length} this week`} />
-            <Chev />
-            <Figure label="Decision" value={t.decision} tone={t.decision ? "text-warn" : "text-ink"} line="waiting for you" />
-            <Chev />
-            <Figure label="Hired this month" value={t.hiredThisMonth} tone="text-brand" line={t.lastHire ? `${t.lastHire.title} · ${dayWord(t.lastHire.at).slice(4)}` : "nobody yet"} />
-          </Card>
-
           {mode === "scoops" && <ScoopsList batches={scoopBatches(db)} people={db.applicants.map((a) => ({ id: a.id, name: a.name, stage: a.stage, tries: a.tries, interviewAt: a.interviewAt, rejectReason: a.rejectReason, rejectedAtStage: a.rejectedAtStage ?? null, repliedAt: a.repliedAt ?? null }))} />}
-          {mode === "board" && (
-            <div className="flex flex-col gap-4">
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                {view.vacancies.map((v, i) => (
-                  <div key={v.id} className="w-[320px] shrink-0">
-                    <VacancyCard v={v} first={i === 0} />
-                  </div>
-                ))}
-              </div>
-              <HiringBoard
-                rows={mineOnly ? filterByCaller(applicantRows(view), me.id) : applicantRows(view)}
-                memberName={memberName}
-              />
-            </div>
-          )}
           {mode === "table" && <HiringTable rows={applicantRows(view)} vacancies={view.vacancies.map((v) => ({ id: v.id, title: v.title }))} filters={{ vacancyId: one("vacancy"), stage: one("stage"), q: one("q") }} page={Number(one("page")) || 1} />}
-          {mode === "sections" && (
+          {mode === "vacancies" && (
           <div className="flex flex-col items-start gap-[22px] pg-xl:flex-row">
             <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
               <section className="flex flex-col gap-3">
@@ -235,72 +159,6 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
                 ))}
               </section>
 
-              {HIRING_SECTIONS.map((sec) => {
-                const list = sec.key === "calling" ? callingItems : sec.key === "interviews" ? interviewItems : shortlistedItems;
-                return (
-                  <Card key={sec.key} title={`${sec.label} · ${list.length}`} sub={sec.sub}>
-                    {list.length === 0 ? (
-                      <p className="t-small text-ink-3">Nobody in {sec.label.toLowerCase()} right now.</p>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        {list.slice(0, 8).map(({ v, a }: { v: Vacancy; a: Applicant }) => {
-                          const caller = a.callerId ? memberName.get(a.callerId) ?? "Ops" : null;
-                          const salaryText = a.expectedSalary || a.packageSaid;
-                          return (
-                            <div key={a.id} className="flex flex-col gap-2 rounded-[16px] border border-rule bg-surface p-3.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <Link href={`/hiring/${v.id}`} className="t-body-m hover:underline">
-                                    {a.name}
-                                  </Link>
-                                  <p className="t-small text-ink-3">
-                                    {v.title} · {a.source}
-                                  </p>
-                                </div>
-                                <span className="t-label shrink-0 rounded-full bg-sunk px-2.5 py-1 text-ink-2">
-                                  {STAGE_LABEL[a.stage] ?? a.stage}
-                                </span>
-                              </div>
-                              <p className="t-small text-ink-2">{a.detail}</p>
-                              {(a.currentSalary || salaryText || a.availability) && (
-                                <p className="t-small text-ink-3">
-                                  {[a.currentSalary ? `Current: ${a.currentSalary}` : "", salaryText ? `Expected: ${salaryText}` : "", a.availability ? `Avail: ${a.availability}` : ""].filter(Boolean).join(" · ")}
-                                </p>
-                              )}
-                              <div className="flex flex-wrap items-center gap-2 pt-1">
-                                {sec.key === "calling" && canCall && a.callerId !== me.id && (
-                                  <form action={claimApplicant}>
-                                    <input type="hidden" name="applicantId" value={a.id} />
-                                    <input type="hidden" name="vacancyId" value={v.id} />
-                                    <input type="hidden" name="back" value={mineOnly ? "/hiring?mine=1" : "/hiring"} />
-                                    <button type="submit" className={pillSecondary + " !px-3 !py-1.5 !text-[12px]"}>
-                                      {caller ? `Claim (was ${caller})` : "Claim"}
-                                    </button>
-                                  </form>
-                                )}
-                                {caller && a.callerId === me.id && (
-                                  <span className="t-small text-brand">Claimed by you</span>
-                                )}
-                                <Link
-                                  href={`/hiring/${v.id}?panel=${a.stage === "fits" ? "book-interview" : a.stage === "interview" ? "add-result" : sec.key === "shortlisted_offered" ? "decide" : "call"}&on=${a.id}`}
-                                  className="t-label ml-auto rounded-full bg-ink px-3 py-1.5 text-ink-inverse"
-                                >
-                                  {a.stage === "fits" ? "Book interview" : a.stage === "interview" ? "Add result" : sec.key === "shortlisted_offered" ? "Offer / outcome" : "Call"}
-                                </Link>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {list.length > 8 && (
-                      <Link href={`/hiring?view=table`} className="t-label w-fit text-brand hover:underline">
-                        See all {list.length} in table
-                      </Link>
-                    )}
-                  </Card>
-                );
-              })}
             </div>
             <aside className="flex w-full shrink-0 flex-col gap-5 pg-xl:w-[360px]">
               <section className="flex flex-col gap-3 rounded-[28px] bg-ink p-6">
@@ -412,45 +270,6 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
           </form>
         </Panel>
       )}
-    </div>
-  );
-}
-
-/** Everyone in the funnel, a horizontally scrolling Kanban column per stage. Each column shows its first few and links to the full list. */
-function HiringBoard({ rows, memberName }: { rows: ApplicantRow[]; memberName: Map<string, string> }) {
-  const cols = boardColumns(rows);
-  return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
-      {cols.map((col) => (
-        <div key={col.stage} className="flex w-[260px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-2.5">
-          <div className="flex items-center gap-2 px-1.5 pt-1">
-            <span className="t-micro text-ink-3">{col.label.toUpperCase()}</span>
-            <span className="t-label text-ink-3">{col.total}</span>
-          </div>
-          {col.shown.map((a) => {
-            const caller = a.callerId ? memberName.get(a.callerId) : null;
-            return (
-              <Link key={a.id} href={"/hiring/" + a.vacancyId} className="flex flex-col gap-1.5 rounded-[14px] border border-rule bg-surface p-3 hover:shadow-card">
-                <span className="flex items-center gap-2">
-                  <Avatar name={a.name} size="32" />
-                  <span className="t-body-m min-w-0 flex-1 truncate">{a.name}</span>
-                </span>
-                <span className="t-small truncate text-ink-2">{a.vacancy}</span>
-                <span className="t-small text-ink-3">
-                  {[STAGE_LABEL[a.stage] ?? a.stage, a.source, caller ? `Caller: ${caller}` : null].filter(Boolean).join(" · ")}
-                </span>
-                {a.detail && <span className="t-small text-ink-3">{a.detail}</span>}
-              </Link>
-            );
-          })}
-          {col.total > col.shown.length && (
-            <Link href={"/hiring?view=table&stage=" + col.stage} className="t-label px-1.5 text-brand hover:underline">
-              See all {col.total}
-            </Link>
-          )}
-          {col.total === 0 && <p className="t-small px-1.5 text-ink-3">Nobody here.</p>}
-        </div>
-      ))}
     </div>
   );
 }

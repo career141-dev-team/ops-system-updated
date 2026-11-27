@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applicantRows, boardColumns, filterApplicants, pageOf } from "@/lib/hiringTable";
+import { applicantRows, filterApplicants, pageOf } from "@/lib/hiringTable";
+import { needsBooking, pipelineColumns, problemWithNextRound } from "@/lib/hiring";
 import type { Applicant, HiringView, Vacancy } from "@/lib/hiring";
 
 const person = (id: string, stage: Applicant["stage"], since: number, extra: Partial<Applicant> = {}): Applicant => ({ id, name: "Person " + id, source: "Scoop", phone: "077" + id, stage, since, detail: "", ...extra });
@@ -38,19 +39,6 @@ test("the filters narrow by vacancy, stage and every word, and To call holds the
   assert.equal(filterApplicants(rows, {}).length, 7);
 });
 
-test("the board shows a few cards a column and counts all of them", () => {
-  const cols = boardColumns(applicantRows(view), 2);
-  const to = cols.find((c) => c.stage === "call")!;
-  assert.deepEqual([to.total, to.shown.length], [3, 2]);
-  assert.deepEqual(cols.map((c) => c.stage), ["call", "fits", "interview", "shortlisted", "offered", "decision", "hired", "rejected"]);
-  assert.equal(cols.find((c) => c.stage === "decision")!.total, 0);
-});
-
-test("shortlisted and offered have their own board columns", () => {
-  const cols = boardColumns(applicantRows({ ...view, vacancies: [vac("v3", "Analyst", [person("8", "shortlisted", 1), person("9", "offered", 2)])] }));
-  assert.deepEqual(cols.filter((c) => c.total).map((c) => c.stage), ["shortlisted", "offered"]);
-});
-
 test("a long list is paged, and a page out of range lands on a real one", () => {
   const many = Array.from({ length: 120 }, (_, i) => i);
   assert.deepEqual([pageOf(many, 1).items.length, pageOf(many, 1).pages], [50, 3]);
@@ -58,4 +46,25 @@ test("a long list is paged, and a page out of range lands on a real one", () => 
   assert.equal(pageOf(many, 99).page, 3);
   assert.equal(pageOf(many, -4).page, 1);
   assert.equal(pageOf([], 1).pages, 1);
+});
+
+test("the vacancy pipeline is Call, three interview rounds, Shortlisted and Offered", () => {
+  const people = [
+    { stage: "new" as const }, { stage: "fits" as const },
+    { stage: "interview" as const }, { stage: "interview" as const, interviewRound: 3 },
+    { stage: "decision" as const }, { stage: "offered" as const }, { stage: "hired" as const },
+  ];
+  const cols = pipelineColumns(people);
+  assert.deepEqual(cols.map((c) => c.label), ["Call", "Interview 1", "Interview 2", "Interview 3", "Shortlisted", "Offered"]);
+  assert.deepEqual(cols.map((c) => c.items.length), [2, 1, 0, 1, 1, 1]);
+});
+
+test("the next round: only from interview, never twice from one form, never past the third", () => {
+  assert.equal(problemWithNextRound({ stage: "interview" }, 1), null);
+  assert.match(problemWithNextRound({ stage: "interview", interviewRound: 2 }, 1) ?? "", /already/);
+  assert.match(problemWithNextRound({ stage: "interview", interviewRound: 3 }, 3) ?? "", /last/);
+  assert.match(problemWithNextRound({ stage: "call" }, 1) ?? "", /interview round/);
+  assert.equal(needsBooking({ stage: "interview", interviewRound: 2 }), true);
+  assert.equal(needsBooking({ stage: "interview", interviewRound: 2, draft: { interviewer: "A" } }), false);
+  assert.equal(needsBooking({ stage: "interview" }), false, "round 1 is booked on the way in");
 });

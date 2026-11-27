@@ -16,12 +16,6 @@ export type ApplicantStage = "new" | "call" | "fits" | "interview" | "decision" 
 
 export type HiringSection = "calling" | "interviews" | "shortlisted_offered";
 
-export const HIRING_SECTIONS: { key: HiringSection; label: string; sub: string }[] = [
-  { key: "calling", label: "Calling", sub: "Ops claims and calls applicants; leadership never makes the first call" },
-  { key: "interviews", label: "Interviews", sub: "Booked with leadership (usually 4 pm) and awaiting results" },
-  { key: "shortlisted_offered", label: "Shortlisted & offered", sub: "Shortlisted candidates, offers made, and accepted or declined" },
-];
-
 export function sectionOfStage(stage: ApplicantStage): HiringSection | null {
   if (stage === "new" || stage === "call" || stage === "fits") return "calling";
   if (stage === "interview") return "interviews";
@@ -29,13 +23,35 @@ export function sectionOfStage(stage: ApplicantStage): HiringSection | null {
   return null;
 }
 
-/** The columns of the board, left to right, with the words on them. */
-export const BOARD_COLUMNS: { stage: ApplicantStage; label: string }[] = [
-  { stage: "call", label: "To call" },
-  { stage: "fits", label: "Called · fits" },
-  { stage: "interview", label: "Interview" },
-  { stage: "decision", label: "Decision" },
-];
+/** Internal interviews run in up to three rounds (owner, 27 Nov). A row with none recorded is on the first. */
+export const LAST_ROUND = 3;
+export function roundOf(a: { interviewRound?: number | null }): number {
+  return Math.min(LAST_ROUND, Math.max(1, a.interviewRound ?? 1));
+}
+
+/** The vacancy board, left to right. Hired and closed people are listed under it. */
+export function pipelineColumns<T extends { stage: ApplicantStage; interviewRound?: number | null }>(applicants: T[]): { key: string; label: string; items: T[] }[] {
+  const inStage = (...stages: ApplicantStage[]) => applicants.filter((a) => stages.includes(a.stage));
+  return [
+    { key: "call", label: "Call", items: inStage("new", "call", "fits") },
+    ...[1, 2, 3].map((n) => ({ key: "interview" + n, label: "Interview " + n, items: inStage("interview").filter((a) => roundOf(a) === n) })),
+    { key: "shortlisted", label: "Shortlisted", items: inStage("shortlisted", "decision") },
+    { key: "offered", label: "Offered", items: inStage("offered") },
+  ];
+}
+
+/** A later round starts with nobody to see them: passing clears the interviewer, and booking writes one. */
+export function needsBooking(a: { stage: ApplicantStage; interviewRound?: number | null; draft?: { interviewer?: string } }): boolean {
+  return a.stage === "interview" && roundOf(a) > 1 && !a.draft?.interviewer;
+}
+
+/** Why "Next round" is refused, or null. `shownRound` is the round the form was drawn for, so a second submit cannot skip one. */
+export function problemWithNextRound(a: { stage: string; interviewRound?: number | null }, shownRound: number): string | null {
+  if (a.stage !== "interview") return "Only somebody in an interview round can move to the next one.";
+  if (roundOf(a) !== shownRound) return "That round is already recorded.";
+  if (roundOf(a) >= LAST_ROUND) return "That was the last round. Pick Pass to shortlist them.";
+  return null;
+}
 
 /** The panel a card's button opens, by the stage it sits in. */
 export const STAGE_ACTION: Partial<Record<ApplicantStage, { label: string; panel: "call" | "book-interview" | "add-result" | "decide" | "reject" }>> = {
@@ -63,6 +79,7 @@ export interface Applicant {
   detail: string;
   /** Called and tried so far, of 3. */
   tries?: number;
+  interviewRound?: number | null;
   /** The kept CV file (22 Nov: hiring had nowhere to put one); null until someone adds it. */
   cvFileId?: string | null;
   /** Why they were rejected and the stage they were in then (23 Nov), so the rejected list can say which kind. */
@@ -149,6 +166,7 @@ export function hiringView(db: unknown, sample: HiringView | null): HiringView {
           since: a.updatedAt,
           detail: a.detail,
           tries: a.tries,
+          interviewRound: a.interviewRound ?? null,
           cvFileId: a.cvFileId,
           rejectReason: a.rejectReason,
           rejectedAtStage: a.rejectedAtStage ?? null,

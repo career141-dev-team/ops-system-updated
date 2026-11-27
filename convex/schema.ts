@@ -841,6 +841,7 @@ export default defineSchema({
     email: v.union(v.string(), v.null()),
     stage: v.string(),
     tries: v.number(),
+    interviewRound: v.optional(v.number()),
     detail: v.string(),
     checkResults: v.any(),
     interviewAt: v.union(v.number(), v.null()),

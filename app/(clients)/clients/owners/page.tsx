@@ -82,8 +82,8 @@ export default async function ClientOwnersPage({
         <p className="rounded-[18px] bg-sunk px-4 py-3 t-small">{msg}</p>
       )}
 
-      <Link href="/clients/positions" className="t-label w-fit text-brand hover:underline">
-        Assign ops to positions
+      <Link href="/positions" className="t-label w-fit text-brand hover:underline">
+        Positions (open one to change its Ops)
       </Link>
 
       {/* Section 1: WAITING FOR AN OWNER (Figma 1:3786) */}

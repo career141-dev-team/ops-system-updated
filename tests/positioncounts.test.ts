@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { COUNT_KINDS, countItems } from "@/lib/positionCounts";
-import { positionRows } from "@/lib/clientPositionTable";
 import { candidatesForPosition } from "@/lib/positionCandidates";
 import { trackingForPosition } from "@/lib/setTracking";
 import type { OpsDatabase, OpsPosition } from "@/data/types";
@@ -63,14 +62,6 @@ test("an item names its set and opens the candidate, or the record when they are
   const [setItem] = countItems(withNames, "p1", "sets");
   assert.equal(setItem.href, "/positions/p1?view=sets");
   assert.match(setItem.line, /Alice, Bob/);
-});
-
-test("the row counts are the list lengths, with the TAs named", () => {
-  const [row] = positionRows(db, (id) => (id === "ta1" ? "Nimal" : null));
-  for (const k of COUNT_KINDS) assert.equal(row.counts[k], countItems(db, "p1", k).length);
-  assert.equal(row.tas, "Nimal, ta2");
-  assert.equal(row.clientType, "local");
-  assert.equal(row.value, null);
 });
 
 test("records with no positionId belong by opening, and a no-show is not joining", () => {
