@@ -102,15 +102,3 @@ export function pageOf<T>(rows: T[], page: number, size = PAGE_SIZE): { items: T
   const at = Math.min(Math.max(1, Math.floor(page) || 1), pages);
   return { items: rows.slice((at - 1) * size, at * size), page: at, pages };
 }
-
-export const BOARD_CARDS = 8;
-
-const PRIMARY_BOARD_STAGES = new Set<ApplicantStage>(["call", "fits", "interview", "shortlisted", "offered", "decision", "hired", "rejected"]);
-
-/** The board: each stage with its first few cards and the count of all of them. "New" folds into "To call". */
-export function boardColumns(rows: ApplicantRow[], cards = BOARD_CARDS): { stage: ApplicantStage; label: string; total: number; shown: ApplicantRow[] }[] {
-  return FUNNEL.filter((f) => PRIMARY_BOARD_STAGES.has(f.stage)).map((f) => {
-    const here = rows.filter((r) => (f.stage === "call" ? r.stage === "call" || r.stage === "new" : r.stage === f.stage));
-    return { stage: f.stage, label: f.stage === "call" ? "To call" : f.label, total: here.length, shown: here.slice(0, cards) };
-  });
-}

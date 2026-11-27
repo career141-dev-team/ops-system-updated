@@ -167,6 +167,8 @@ import {
   problemWithDecisionStage,
   staleInvites,
   triesSoFar,
+  problemWithNextRound,
+  roundOf,
 } from "@/lib/hiring";
 import {
   problemWithHistoryCorrection,
@@ -9463,9 +9465,10 @@ export async function bookHiringInterview(formData: FormData): Promise<void> {
       }
     }
   }
+  const round = applicant?.stage === "interview" ? roundOf(applicant) : 1;
   await patchApplicant(
     applicantId,
-    { stage: "interview", interviewAt, place, interviewer, detail: `Interview · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
+    { stage: "interview", interviewRound: round, interviewAt, place, interviewer, detail: `Interview ${round} · ${place} (${interviewer})`, ...(keepOld ? {} : { joinUrl, graphEventId }) },
     member.id,
     "applicant.interviewBooked",
     `Booked with ${interviewer} (${place})`,
@@ -9522,7 +9525,27 @@ export async function recordHiringResult(formData: FormData): Promise<void> {
   const notes = String(formData.get("notes") ?? "").trim();
   const scoreRaw = Number(formData.get("score") ?? 0);
   const score = scoreRaw >= 1 && scoreRaw <= 5 ? scoreRaw : null;
-  if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Pass, Hold, or Fail."));
+  if (result === "next round") {
+    const db = await desk();
+    const before = db.applicants.find((a) => a.id === applicantId);
+    if (!before) redirect(withMsg(dest, "That applicant is gone."));
+    const shown = Number(formData.get("round") ?? 0);
+    const problem = problemWithNextRound(before, shown);
+    if (problem) redirect(withMsg(dest, problem));
+    // The finished round's Outlook event stays where it is, so booking the next one must not cancel it.
+    await patchApplicant(
+      applicantId,
+      { interviewRound: shown + 1, interviewer: null, joinUrl: null, graphEventId: null, score, notes: notes || null, detail: `Passed interview ${shown} · book interview ${shown + 1}` },
+      member.id,
+      "applicant.roundPassed",
+      notes || `Passed interview ${shown}`,
+    );
+    await voidInvites(db, applicantId, member.id, "Not sent: that interview round is over.");
+    revalidatePath(`/hiring/${vacancyId}`);
+    revalidatePath("/hiring");
+    redirect(dest + confirmed(`Moved to interview ${shown + 1}. Book it next.`, dest));
+  }
+  if (!["pass", "hold", "fail"].includes(result)) redirect(withMsg(dest, "Pick Next round, Pass, Hold, or Fail."));
   if (result === "fail" && reason.length < 4) redirect(withMsg(dest, "Write the reason before marking Fail."));
 
   const nextStage = result === "pass" ? "shortlisted" : result === "fail" ? "rejected" : "interview";

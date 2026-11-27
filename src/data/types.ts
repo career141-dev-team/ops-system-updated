@@ -1124,6 +1124,8 @@ export interface OpsApplicant {
   email: string | null;
   stage: "new" | "call" | "fits" | "interview" | "decision" | "hired" | "rejected" | "non_responsive" | "not_interested" | "shortlisted" | "offered" | "declined";
   tries: number;
+  /** Which interview round they are in, 1 to 3 (27 Nov). Optional: older rows are on the first. */
+  interviewRound?: number;
   detail: string;
   checkResults: Record<string, string>;
   interviewAt: number | null;

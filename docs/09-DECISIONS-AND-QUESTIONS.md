@@ -312,6 +312,12 @@ The source is the meeting's requirements document; the plan is one PR per area, 
 - `/positions` shows the same work, so Clients has three tabs: Clients, Enquiries, Agreements. `/clients/positions` redirects to `/positions`.
 - Main and backup Ops, salary and priority are changed on the position page, under **People, contacts and closing**.
 
+## 27 Nov: internal hiring is by vacancy, with three interview rounds (owner)
+
+- The Internal Hiring page lists our vacancies. The all-candidate board and the calling and pipeline lists are gone; the Table and Scoops views stay.
+- A vacancy's pipeline is Call, Interview 1, Interview 2, Interview 3, Shortlisted, Offered.
+- After an interview the result is **Next round**, **Pass** (shortlisted, from any round), Hold or Fail. A new round is booked again before its result is added.
+
 ## 27 Nov: charging twice for a job abroad - to build later (owner)
 
 - **Not built; the fee rule is unchanged for now:** twice the fee when the candidate is not Sri Lankan (`feeMonthsFor`, `src/lib/money.ts`).

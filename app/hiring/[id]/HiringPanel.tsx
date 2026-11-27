@@ -7,7 +7,7 @@ import CopyButton from "@/app/hiring/CopyButton";
 import { Avatar, ChoiceGroup, PanelField, panelInput, pillPrimary } from "@/app/ui/figma";
 import Panel, { PanelSection } from "@/app/ui/Panel";
 import { dayWord } from "@/lib/calendarBoard";
-import { CALL_NOT_FIT, NOT_INTERESTED_REASONS, first, inviteMessage, offerLetter, rejectMessage, triesSoFar, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
+import { CALL_NOT_FIT, LAST_ROUND, NOT_INTERESTED_REASONS, first, inviteMessage, offerLetter, rejectMessage, roundOf, triesSoFar, whyNow, type Applicant, type Vacancy } from "@/lib/hiring";
 
 export type HiringPanelKind = "call" | "book-interview" | "add-result" | "decide" | "reject" | "cv" | "details";
 
@@ -365,7 +365,7 @@ export default function HiringPanel({
 
   if (kind === "add-result") {
     return (
-      <Panel kicker="Add the result" title={`Result for ${a.name}`} sub={`Internal Hiring > ${v.title} > Interview`} closeHref={closeHref}>
+      <Panel kicker="Add the result" title={`Result for ${a.name}`} sub={`Internal Hiring > ${v.title} > Interview ${roundOf(a)}`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a}>
           <div className="flex flex-col gap-1 pt-1">
@@ -379,7 +379,7 @@ export default function HiringPanel({
           <input type="hidden" name="back" value={closeHref} />
           <PanelSection title="Log it here">
             <PanelField label="Result">
-              <ChoiceGroup name="result" label="Result" required options={["Pass", "Hold", "Fail"]} />
+              <ChoiceGroup name="result" label="Result" required options={roundOf(a) < LAST_ROUND ? ["Next round", "Pass", "Hold", "Fail"] : ["Pass", "Hold", "Fail"]} />
             </PanelField>
             <PanelField label="If fail, the reason">
               <textarea name="reason" className={textarea} placeholder="Required if Fail" />
@@ -391,7 +391,8 @@ export default function HiringPanel({
               <textarea name="notes" className={textarea} placeholder="Key observations from the interview" />
             </PanelField>
           </PanelSection>
-          <Save happens={`Pass: ${name} moves to Shortlisted. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
+          <input type="hidden" name="round" value={roundOf(a)} />
+          <Save happens={`${roundOf(a) < LAST_ROUND ? `Next round: ${name} moves to Interview ${roundOf(a) + 1}. ` : ""}Pass: ${name} moves to Shortlisted. Fail: ${name} moves to Rejected with the reason, and the message below is ready to copy.`} />
         </form>
         <Draft label={`Message if ${name} fails`} text={rejectMessage(a, v.title)} copy="Copy message" missing="" />
       </Panel>
