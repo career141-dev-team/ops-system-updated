@@ -62,7 +62,7 @@ export default async function VacancyPage({
       return (
         <div className="flex flex-col gap-[22px]">
           <Link href="/hiring" className="t-body-m inline-flex items-center gap-2 text-ink-2 hover:underline">
-            <Icon name="chevron-left" size={18} /> Scoops &amp; vacancies
+            <Icon name="chevron-left" size={18} /> Internal Hiring
           </Link>
           <Card>
             <EmptyState icon="briefcase" title="This vacancy is not here">
@@ -175,7 +175,7 @@ export default async function VacancyPage({
   return (
     <div className="flex flex-col gap-[22px]">
       <div className="flex items-center gap-4 p-1">
-        <Link href="/hiring" aria-label="Back to Scoops & vacancies" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
+        <Link href="/hiring" aria-label="Back to Internal Hiring" className="flex size-10 items-center justify-center rounded-full border border-rule bg-surface hover:bg-sunk">
           <Icon name="chevron-left" size={18} />
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -348,7 +348,7 @@ export default async function VacancyPage({
         />
       )}
       {sp.panel === "add-applicant" && can(me, "client.manage") && (
-        <Panel kicker="Scoops & vacancies" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
+        <Panel kicker="Internal Hiring" title="Add an applicant" sub={v.title} closeHref={closeHref(path, sp)}>
           <form action={addHiringApplicant} encType="multipart/form-data">
             <input type="hidden" name="vacancyId" value={v.id} />
             <input type="hidden" name="back" value={path} />

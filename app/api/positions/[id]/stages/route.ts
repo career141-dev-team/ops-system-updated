@@ -1,7 +1,7 @@
 import { desk, positionIn } from "@/data/desk";
 import { candidatesForPosition, taApplicationsFor } from "@/lib/positionCandidates";
 import { currentMember } from "@/lib/session";
-import { stageRowsCsv, trackingForPosition } from "@/lib/setTracking";
+import { stageRowsCsv, stageRowsWithout, trackingForPosition } from "@/lib/setTracking";
 
 /**
  * Where each candidate stands on one position, as a CSV (Ops lead, 25 Nov). `?skip=id,id` leaves out the rows
@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const candidates = candidatesForPosition(db, position, sets, await taApplicationsFor(position.openingTaId));
   const { rows } = trackingForPosition(db, position, candidates);
   const name = (position.title.replace(/[^A-Za-z0-9]+/g, "_") || "Position") + "_candidates.csv";
-  return new Response(stageRowsCsv(rows.filter((r) => !skip.has(r.id))), {
+  return new Response(stageRowsCsv(stageRowsWithout(rows, skip)), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${name}"`,

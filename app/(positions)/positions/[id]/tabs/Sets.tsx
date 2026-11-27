@@ -8,7 +8,7 @@ import { OWNERSHIP_WORKING_DAYS } from "@/lib/clientFeedback";
 import { CANDIDATE_LEVELS, LEVEL_LABELS, type CandidateLevel } from "@/lib/positionCandidates";
 import { panelHref } from "@/lib/panel";
 import { sendHref } from "@/lib/sendModal";
-import { trackingForPosition } from "@/lib/setTracking";
+import { stageRowsWithout, trackingForPosition } from "@/lib/setTracking";
 import { answerLine, awaiting, columnOf, dayOfWindow, sentLine, shortDay } from "@/lib/setsBoard";
 
 import type { TabProps } from "./ctx";
@@ -51,6 +51,7 @@ export default function Sets({ c, sp }: TabProps) {
       : { title: "No set is waiting on anyone.", body: itsSets.length ? "Every set sent has an answer." : "A set appears when the TA System says its CVs are ready.", label: "", href: "" };
 
   const tracking = trackingForPosition(db, position, allCandidates);
+  const visibleTrackingRows = stageRowsWithout(tracking.rows, (sp.skip ?? "").split(",").filter(Boolean));
   const levelCount = (level: CandidateLevel) => allCandidates.filter((x) => x.level === level).length;
   const shown = allCandidates.filter((x) => stage === "all" || x.level === stage);
   const levelHref = (key: string) => `${path}?view=sets&stage=${key}`;
@@ -143,6 +144,8 @@ export default function Sets({ c, sp }: TabProps) {
           >
             {tracking.rows.length === 0 ? (
               <p className="t-small text-ink-3">Nobody has been shown to the client yet.</p>
+            ) : visibleTrackingRows.length === 0 ? (
+              <p className="t-small text-ink-3">No candidates remain in this view. Open Export to restore them.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[520px] text-left">
@@ -155,7 +158,7 @@ export default function Sets({ c, sp }: TabProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rule">
-                    {tracking.rows.map((r) => (
+                    {visibleTrackingRows.map((r) => (
                       <tr key={r.id} className="t-small align-top">
                         <td className="t-body-m py-2.5 pr-3">{r.name}</td>
                         <td className="py-2.5 pr-3 text-ink-3">{r.setNumber === null ? "—" : r.setNumber}</td>

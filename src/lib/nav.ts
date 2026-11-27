@@ -38,7 +38,7 @@ export const NAV: NavSection[] = [
       { href: "/calendar", what: "Calendar", about: "Interviews and meetings by the week, and who still has to confirm" },
       { href: "/clients", what: "Clients", about: "The companies we work for, their agreements, and the enquiries that are not one yet" },
       { href: "/positions", what: "Positions", about: "What each client asked for, and everything the search does for it" },
-      { href: "/hiring", what: "Scoops & vacancies", about: "Career 141's own hiring" },
+      { href: "/hiring", what: "Internal Hiring", about: "Career 141's own hiring" },
       { href: "/invoices", what: "Accounts", about: "The fee invoiced, the money in, the late ones, and closing a position", needs: "money.manage" },
       { href: "/settings", what: "Settings", about: "The switches, the wording, the people, the files and the links", needs: "settings.manage" },
     ],
