@@ -423,6 +423,7 @@ Small things still open, each with its reason:
 | The invoice and credit-note **template files** | the filling, PDF and attaching are built (16 Nov, `src/lib/invoiceDoc.ts`, `sendInvoice`); what waits is the owner's Word template. Until it is uploaded on the Files screen an invoice goes as lines in the body of an email, and the invoice page says so |
 | Teams for **interviews**, and the reschedule / not-held emails | built on `hdbinath/motion-teams-aura` (see the 21 Nov table); like every Teams piece they wait on `Calendars.ReadWrite` consent and `switch.teamsEnabled`, and the system is not hosted yet |
 | The WhatsApp conversation view, and the WhatsApp CV group (25 Nov, built on `hdbinath/whatsapp-group-cvs`, see [28](28-WHATSAPP.md)) | wait on the Ops WhatsApp number existing; the CV group also needs a Cloud API number (not Coexistence) and a real test, as Meta publishes no sample of a document in a group |
+| Charging twice for a job abroad (27 Nov) | the fee is still decided by nationality; the open questions are in [09](09-DECISIONS-AND-QUESTIONS.md) |
 | Phase 7's analytics (step 16) | no screen; kept weekly as numbers |
 | The desk assistant: what stays a screen | [31](31-AGENT.md) names them: anything that takes a file, settings and wording, a reply inside a thread, the ten-field forms, the team on a position. All four parts of 31 are built (8 Nov) |
 | Reading the client's offered interview times; the ICS export | phase 9, and small |

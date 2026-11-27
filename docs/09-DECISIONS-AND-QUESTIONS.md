@@ -307,6 +307,12 @@ The source is the meeting's requirements document; the plan is one PR per area, 
 - **A role "needs you" only for:** a joining day passed; no primary TA; the agreement not signed; an interview with no time; a set sent and unanswered past `feedback.chaseDays`; a joined placement whose nationality is not confirmed; or a testimonial pending from the candidate or the client. Searching with no CV set yet, and a JD waiting for approval, no longer count (their buttons stay). Closed and held roles never count.
 - **Open, for the owner:** the ESA text's refund default is 25%, but [STATUS](STATUS.md) phase 7 says the agreement's refund is 50% of what was paid. Not changed.
 
+## 27 Nov: charging twice for a job abroad - to build later (owner)
+
+- **Not built; the fee rule is unchanged for now:** twice the fee when the candidate is not Sri Lankan (`feeMonthsFor`, `src/lib/money.ts`).
+- **Asked for:** charge twice when a Sri Lankan candidate is placed in another country.
+- **To settle before building:** whether a non-Sri Lankan in a local job still pays twice; whether "abroad" means the client is international or the job is; and the wording of agreement clause 5.2, which speaks of non-Sri Lankans. A sent invoice must never change amount.
+
 ## 26 Nov: set tracking and the export (ops lead, 25 Nov meeting; branch `rayan/set-tracking`)
 
 - **Client feedback stays manual entry.** The tracking reads what a person recorded through "Record the answer" and the interview decisions. A WhatsApp reply is not read into it.
