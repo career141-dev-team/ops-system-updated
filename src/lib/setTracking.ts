@@ -32,7 +32,7 @@ export interface TrackCandidate {
   level: CandidateLevel;
 }
 
-export { stageRowsCsv, stageRowsHtml, stageRowsTsv, type TrackRow } from "@/lib/stageTable";
+export { stageRowsCsv, stageRowsHtml, stageRowsTsv, stageRowsWithout, type TrackRow } from "@/lib/stageTable";
 
 export interface SetCount {
   setNumber: number;

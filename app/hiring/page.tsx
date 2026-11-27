@@ -144,7 +144,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
   return (
     <div className="flex flex-col gap-[22px]">
       <PageTitle
-        title="Scoops & vacancies"
+        title="Internal Hiring"
         sub={`Career 141's own hiring · ${openCount} open`}
         right={
           mayManage ? (
@@ -340,7 +340,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-scoop" && mayManage && (
-        <Panel kicker="Scoops & vacancies" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Internal Hiring" title="Add a Scoop" sub="Many CVs at once: the name, email, number, NIC and position are read from each" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={addScoop} encType="multipart/form-data">
             <input type="hidden" name="back" value="/hiring?view=scoops" />
             <PanelSection title="The CVs">
@@ -367,7 +367,7 @@ export default async function HiringPage({ searchParams }: { searchParams: Promi
       )}
 
       {sp.panel === "add-vacancy" && mayManage && (
-        <Panel kicker="Scoops & vacancies" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
+        <Panel kicker="Internal Hiring" title="Add a vacancy" sub="Open a new Career141 internal vacancy" closeHref={closeHref("/hiring", sp)} boxed>
           <form action={createVacancy}>
             <input type="hidden" name="back" value="/hiring" />
             <PanelSection title="Vacancy details">

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
+import { clientForQuickAdd, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
 
 // Tuesday 4 Nov 2026, 14:30 in Colombo (09:00 UTC).
 const TUESDAY_AFTERNOON = Date.UTC(2026, 10, 3, 9, 0);
@@ -48,4 +48,20 @@ test("a client is matched by its whole name, any case, and never by a part of it
   assert.equal(clientNamed("  ANOTHER CLIENT, PVT ", clients)?.id, "cl_2");
   assert.equal(clientNamed("Nippon", clients), null, "a part of a name is not the client");
   assert.equal(clientNamed("", clients), null);
+});
+
+test("a client context id wins over a name, and a stale id is refused", () => {
+  const clients = [{ id: "cl_1", name: "Nippon Paint Lanka" }, { id: "cl_2", name: "Another Client, Pvt" }];
+  assert.deepEqual(clientForQuickAdd("cl_2", "Nippon Paint Lanka", clients), {
+    client: clients[1],
+    problem: null,
+  });
+  assert.deepEqual(clientForQuickAdd("missing", "", clients), {
+    client: null,
+    problem: "That client is no longer available.",
+  });
+  assert.deepEqual(clientForQuickAdd("", "Nippon Paint Lanka", clients), {
+    client: clients[0],
+    problem: null,
+  });
 });

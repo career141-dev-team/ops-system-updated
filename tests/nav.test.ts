@@ -43,7 +43,7 @@ test("the bar is the eight of the v6 design, in its order", () => {
   assert.equal(NAV.length, 1);
   assert.deepEqual(
     NAV[0].pages.map((p) => p.what),
-    ["My work", "Inbox", "Calendar", "Clients", "Positions", "Scoops & vacancies", "Accounts", "Settings"],
+    ["My work", "Inbox", "Calendar", "Clients", "Positions", "Internal Hiring", "Accounts", "Settings"],
   );
   assert.deepEqual(
     NAV[0].pages.filter((p) => p.needs).map((p) => [p.href, p.needs]),

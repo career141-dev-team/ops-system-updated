@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { setCounts, stageRowsCsv, stageRowsHtml, stageRowsTsv, summaryLine, trackingRows, type TrackCandidate, type TrackSet } from "@/lib/setTracking";
+import { setCounts, stageRowsCsv, stageRowsHtml, stageRowsTsv, stageRowsWithout, summaryLine, trackingRows, type TrackCandidate, type TrackSet } from "@/lib/setTracking";
 
 const DAY = 86_400_000;
 const T = Date.UTC(2026, 10, 20, 6);
@@ -46,6 +46,19 @@ test("the CSV guards formulas and the table text is safe to paste", () => {
   assert.match(stageRowsCsv(rows), /"'=SUM\(A1\)"/);
   assert.equal(stageRowsTsv(rows).split("\n").length, 2);
   assert.match(stageRowsHtml([{ ...rows[0], name: "<b>x</b>" }]), /&lt;b&gt;x&lt;\/b&gt;/);
+});
+
+test("removed candidates are omitted from CSV, HTML, and pasted text", () => {
+  const rows = [
+    { id: "a", name: "Asha", setNumber: 1, stage: "Shortlisted", feedback: "Good", feedbackAt: T },
+    { id: "b", name: "Bimal", setNumber: 1, stage: "Interview", feedback: "Waiting", feedbackAt: null },
+  ];
+  const kept = stageRowsWithout(rows, new Set(["a"]));
+  assert.deepEqual(kept.map((row) => row.id), ["b"]);
+  assert.doesNotMatch(stageRowsCsv(kept), /Asha/);
+  assert.doesNotMatch(stageRowsHtml(kept), /Asha/);
+  assert.doesNotMatch(stageRowsTsv(kept), /Asha/);
+  assert.match(stageRowsTsv(kept), /Bimal/);
 });
 
 test("a claimed CV shows the claim, and interview answers read as words", () => {

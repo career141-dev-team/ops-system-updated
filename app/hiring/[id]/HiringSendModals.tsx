@@ -42,7 +42,7 @@ export function HiringSendModal({
         closeHref={closeHref}
         action={undefined}
         sendLabel="Send invite and message"
-        note="Internal hiring uses sample data right now — copy the WhatsApp or email message to send manually."
+        note="Internal Hiring uses sample data right now — copy the WhatsApp or email message to send manually."
         left={
           <>
             <SendLeftSection title="Applicant">
@@ -106,7 +106,7 @@ export function HiringSendModal({
         closeHref={closeHref}
         action={undefined}
         sendLabel="Send offer letter"
-        note="Internal hiring uses sample data right now — edit and copy the offer email below."
+        note="Internal Hiring uses sample data right now — edit and copy the offer email below."
         left={
           <SendLeftSection title="The offer">
             <div className="flex flex-col gap-2 rounded-[16px] border border-rule bg-surface p-4 text-[14px]">
