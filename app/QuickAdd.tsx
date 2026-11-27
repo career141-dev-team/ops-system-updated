@@ -95,6 +95,7 @@ export function AddPanel({ clients }: { clients: { id: string; name: string }[] 
   const which = params.get("panel");
   if (which !== "add-note" && which !== "add-call" && which !== "add-enquiry") return null;
   const close = closeHref(path, params);
+  const contextClient = which === "add-call" ? clients.find((client) => client.id === params.get("on")) ?? null : null;
 
   const about = (
     <label className="flex flex-col gap-1.5">
@@ -147,7 +148,15 @@ export function AddPanel({ clients }: { clients: { id: string; name: string }[] 
                 <span className={label}>Who you spoke to</span>
                 <input name="spokeTo" required className={field} />
               </label>
-              {about}
+              {contextClient ? (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <span className={label}>Client</span>
+                    <span className="t-body-m">{contextClient.name}</span>
+                  </div>
+                  <input type="hidden" name="clientId" value={contextClient.id} />
+                </>
+              ) : about}
             </PanelSection>
             <PanelSection title="What was said">
               <label className="flex flex-col gap-1.5">

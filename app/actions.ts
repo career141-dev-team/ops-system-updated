@@ -256,7 +256,7 @@ import { problemWithCall, tidyPhone } from "@/lib/calls";
 import { decodeRoles, permissionSentence } from "@/lib/integrationHealth";
 import { MAX_PER_BATCH } from "@/lib/scoop";
 import { problemWithNewBackup, problemWithNewHandler } from "@/lib/clientPositionTable";
-import { type QuickKind, QUICK_KINDS, clientNamed, noteToTask, problemWithNote } from "@/lib/quickAdd";
+import { type QuickKind, QUICK_KINDS, clientForQuickAdd, noteToTask, problemWithNote } from "@/lib/quickAdd";
 import { whatFirst, whatFirstKey } from "@/lib/whatFirst";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
@@ -8354,7 +8354,12 @@ export async function quickAdd(formData: FormData): Promise<void> {
   if (!(QUICK_KINDS as readonly string[]).includes(kind)) said("Not saved: that is not a thing the desk keeps.");
 
   const db = await desk();
-  const client = clientNamed(String(formData.get("about") ?? ""), db.clients);
+  const { client, problem: clientProblem } = clientForQuickAdd(
+    String(formData.get("clientId") ?? ""),
+    String(formData.get("about") ?? ""),
+    db.clients,
+  );
+  if (clientProblem) said("Not saved: " + clientProblem);
   const about = client ? { subjectType: "client", subjectId: client.id, link: "/clients/" + client.id } : null;
 
   if (kind === "call") {

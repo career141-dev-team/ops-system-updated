@@ -279,7 +279,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 title="Talks with the client"
                 sub="The last 5"
                 right={
-                  <Link href={panelHref(path, sp, "add-call")} scroll={false} className="t-body-m text-brand hover:underline">
+                  <Link href={panelHref(path, sp, "add-call", client.id)} scroll={false} className="t-body-m text-brand hover:underline">
                     Add a call note
                   </Link>
                 }
@@ -572,7 +572,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               body={(talk ? "Last contact " + lastTalkWords(talk, now).replace("last talk ", "") + "." : "No talk is written down yet.") + (card.status.tone === "info" || card.needsYou ? " " + card.status.text + "." : "")}
               links={[
                 { label: "Copy a check-in", href: sendHref(path, sp, "check-in", client.id) },
-                { label: "Add a call note", href: panelHref(path, sp, "add-call") },
+                { label: "Add a call note", href: panelHref(path, sp, "add-call", client.id) },
               ]}
             />
             <RailCard title="Client details">

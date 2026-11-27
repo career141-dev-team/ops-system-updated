@@ -64,3 +64,15 @@ export function clientNamed<T extends { id: string; name: string }>(name: string
   if (!key) return null;
   return clients.find((c) => c.name.trim().replace(/\s+/g, " ").toLowerCase() === key) ?? null;
 }
+
+/** A client id from a page context takes precedence over the optional name typed in a global quick-add form. */
+export function clientForQuickAdd<T extends { id: string; name: string }>(
+  id: string,
+  name: string,
+  clients: T[],
+): { client: T | null; problem: string | null } {
+  const key = id.trim();
+  if (!key) return { client: clientNamed(name, clients), problem: null };
+  const client = clients.find((candidate) => candidate.id === key) ?? null;
+  return { client, problem: client ? null : "That client is no longer available." };
+}

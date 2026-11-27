@@ -14,6 +14,12 @@ export interface TrackRow {
   feedbackAt: number | null;
 }
 
+/** Rows left after a person removes candidates from the export. */
+export function stageRowsWithout(rows: TrackRow[], removedIds: Iterable<string>): TrackRow[] {
+  const removed = new Set(removedIds);
+  return rows.filter((row) => !removed.has(row.id));
+}
+
 const HEADER = ["Candidate", "Set", "Stage", "Last feedback", "Feedback date"];
 const cells = (r: TrackRow) => [r.name, r.setNumber === null ? "" : "Set " + r.setNumber, r.stage, r.feedback, r.feedbackAt ? shortDay(r.feedbackAt) : ""];
 

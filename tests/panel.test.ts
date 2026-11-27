@@ -17,6 +17,7 @@ test("opening one panel replaces another and forgets its record", () => {
 
 test("closing puts the page back as it was", () => {
   assert.equal(closeHref("/positions/p1", { view: "interviews", panel: "find-time", on: "iv1" }), "/positions/p1?view=interviews");
+  assert.equal(closeHref("/positions/p1", { view: "sets", panel: "export", skip: "a,b" }), "/positions/p1?view=sets&skip=a%2Cb");
   assert.equal(closeHref("/", { panel: "add-note" }), "/");
 });
 

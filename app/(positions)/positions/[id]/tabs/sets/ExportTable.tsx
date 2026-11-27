@@ -1,39 +1,57 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import Icon from "@/app/Icon";
 import { pillPrimary, pillSecondary } from "@/app/ui/figma";
-import { stageRowsHtml, stageRowsTsv, type TrackRow } from "@/lib/stageTable";
+import { stageRowsHtml, stageRowsTsv, stageRowsWithout, type TrackRow } from "@/lib/stageTable";
 
 /**
  * The tracking rows with a × on each, so a person can take people off before sending the table on: copied as a
  * table (HTML for an email, tab-separated text for a sheet or WhatsApp) or downloaded as a CSV without them.
  */
 export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHref: string }) {
-  const [gone, setGone] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
-  const kept = rows.filter((r) => !gone.includes(r.id));
+  const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const gone = new Set((searchParams.get("skip") ?? "").split(",").filter(Boolean));
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const kept = stageRowsWithout(rows, gone);
+
+  function updateRemoved(next: Set<string>) {
+    const query = new URLSearchParams(searchParams.toString());
+    if (next.size) query.set("skip", [...next].join(","));
+    else query.delete("skip");
+    const suffix = query.toString();
+    router.replace(pathname + (suffix ? "?" + suffix : ""), { scroll: false });
+  }
 
   async function copy() {
     const text = stageRowsTsv(kept);
     try {
       if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([stageRowsHtml(kept)], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([stageRowsHtml(kept)], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+        } catch {
+          await navigator.clipboard.writeText(text);
+        }
       } else {
+        if (!navigator.clipboard?.writeText) throw new Error("Clipboard is not available");
         await navigator.clipboard.writeText(text);
       }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1800);
     } catch {
-      // Clipboard refused (no permission, or an old browser): the CSV button still works.
+      setCopyState("failed");
+      setTimeout(() => setCopyState("idle"), 1800);
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
       {kept.length === 0 ? (
-        <p className="t-small text-ink-3">No one left in the table. Reload the panel to bring everyone back.</p>
+        <p className="t-small text-ink-3">No one left in the table. Restore all to put everyone back in this view.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-rule rounded-[16px] bg-surface">
           {kept.map((r) => (
@@ -46,7 +64,7 @@ export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHr
                 </span>
                 <span className="t-small text-ink-2">{r.feedback}</span>
               </span>
-              <button type="button" aria-label={"Take " + r.name + " off the table"} onClick={() => setGone([...gone, r.id])} className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-danger">
+              <button type="button" aria-label={"Take " + r.name + " off the table"} onClick={() => updateRemoved(new Set([...gone, r.id]))} className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-danger">
                 <Icon name="x" size={16} />
               </button>
             </li>
@@ -56,9 +74,14 @@ export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHr
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={copy} disabled={kept.length === 0} className={pillPrimary + " !gap-2"}>
           <Icon name="copy" size={16} />
-          {copied ? "Copied" : "Copy as table"}
+          {copyState === "copied" ? "Copied" : copyState === "failed" ? "Could not copy" : "Copy as table"}
         </button>
-        <a href={csvHref + (gone.length ? "?skip=" + encodeURIComponent(gone.join(",")) : "")} className={pillSecondary + " !gap-2"}>
+        {gone.size > 0 && (
+          <button type="button" onClick={() => updateRemoved(new Set())} className={pillSecondary}>
+            Restore all
+          </button>
+        )}
+        <a href={csvHref + (gone.size ? "?skip=" + encodeURIComponent([...gone].join(",")) : "")} className={pillSecondary + " !gap-2"}>
           <Icon name="file" size={16} />
           Download CSV
         </a>

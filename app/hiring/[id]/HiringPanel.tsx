@@ -102,7 +102,7 @@ function Save({ happens }: { happens: string }) {
 
 const textarea = panelInput + " min-h-[72px]";
 
-/** The panels of Scoops & vacancies, wired to the backend actions. */
+/** The panels of Internal Hiring, wired to the backend actions. */
 export default function HiringPanel({
   kind,
   v,
@@ -129,7 +129,7 @@ export default function HiringPanel({
   // whether they have a laptop. Every field optional; the vacancy can change, which is how a CV held under "to sort" is placed.
   if (kind === "details") {
     return (
-      <Panel kicker="Details" title={`${a.name}'s details`} sub={`${v.title} > Internal hiring`} closeHref={closeHref}>
+      <Panel kicker="Details" title={`${a.name}'s details`} sub={`${v.title} > Internal Hiring`} closeHref={closeHref}>
         <Who a={a} cvHref={cvHref} />
         <form action={saveApplicantDetails}>
           <input type="hidden" name="vacancyId" value={v.id} />
@@ -188,7 +188,7 @@ export default function HiringPanel({
   // already past the call had no way to add the CV that was missed.
   if (kind === "cv") {
     return (
-      <Panel kicker="CV" title={cvHref ? `Replace ${a.name}'s CV` : `Add ${a.name}'s CV`} sub={`${v.title} > Internal hiring`} closeHref={closeHref}>
+      <Panel kicker="CV" title={cvHref ? `Replace ${a.name}'s CV` : `Add ${a.name}'s CV`} sub={`${v.title} > Internal Hiring`} closeHref={closeHref}>
         <Who a={a} cvHref={cvHref} />
         <form action={addApplicantCv} encType="multipart/form-data">
           <input type="hidden" name="vacancyId" value={v.id} />
@@ -210,7 +210,7 @@ export default function HiringPanel({
   if (kind === "call") {
     const next = triesSoFar(a.stage, a.tries ?? 0) + 1;
     return (
-      <Panel kicker="Call" title={`Call ${a.name}`} sub={`${v.title} > Internal hiring > CV from ${a.source}, ${dayWord(a.since)}`} closeHref={closeHref}>
+      <Panel kicker="Call" title={`Call ${a.name}`} sub={`${v.title} > Internal Hiring > CV from ${a.source}, ${dayWord(a.since)}`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a} cvHref={cvHref}>
           <div className="flex flex-col gap-1 pt-1">
@@ -299,7 +299,7 @@ export default function HiringPanel({
 
   if (kind === "reject") {
     return (
-      <Panel kicker="Not a fit" title={`Reject ${a.name}`} sub={`Internal hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
+      <Panel kicker="Not a fit" title={`Reject ${a.name}`} sub={`Internal Hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a} cvHref={cvHref} />
         <form action={decideHiringApplicant}>
@@ -322,7 +322,7 @@ export default function HiringPanel({
   if (kind === "book-interview") {
     const invite = inviteMessage(a, v.title);
     return (
-      <Panel kicker="Book an interview" title={`Book ${a.name}`} sub={`Internal hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
+      <Panel kicker="Book an interview" title={`Book ${a.name}`} sub={`Internal Hiring > ${v.title} > Called · fits`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a}>
           <div className="pt-1">
@@ -365,7 +365,7 @@ export default function HiringPanel({
 
   if (kind === "add-result") {
     return (
-      <Panel kicker="Add the result" title={`Result for ${a.name}`} sub={`Internal hiring > ${v.title} > Interview`} closeHref={closeHref}>
+      <Panel kicker="Add the result" title={`Result for ${a.name}`} sub={`Internal Hiring > ${v.title} > Interview`} closeHref={closeHref}>
         <Why v={v} a={a} now={now} />
         <Who a={a}>
           <div className="flex flex-col gap-1 pt-1">
@@ -401,7 +401,7 @@ export default function HiringPanel({
   const offer = offerLetter(a, v.title);
   const isOffered = a.stage === "offered";
   return (
-    <Panel kicker="Shortlisted & offered" title={isOffered ? `Offer outcome for ${name}` : `Decide on ${name}`} sub={`Internal interview > ${v.title}`} closeHref={closeHref}>
+    <Panel kicker="Shortlisted & offered" title={isOffered ? `Offer outcome for ${name}` : `Decide on ${name}`} sub={`Internal Hiring > ${v.title}`} closeHref={closeHref}>
       <Why v={v} a={a} now={now} />
       <Who a={a}>
         <div className="flex flex-col gap-1 pt-1">
