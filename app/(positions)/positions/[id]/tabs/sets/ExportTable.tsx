@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import Icon from "@/app/Icon";
 import { pillPrimary, pillSecondary } from "@/app/ui/figma";
@@ -11,9 +12,20 @@ import { stageRowsHtml, stageRowsTsv, stageRowsWithout, type TrackRow } from "@/
  * table (HTML for an email, tab-separated text for a sheet or WhatsApp) or downloaded as a CSV without them.
  */
 export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHref: string }) {
-  const [gone, setGone] = useState<Set<string>>(() => new Set());
+  const pathname = usePathname() ?? "/";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const gone = new Set((searchParams.get("skip") ?? "").split(",").filter(Boolean));
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const kept = stageRowsWithout(rows, gone);
+
+  function updateRemoved(next: Set<string>) {
+    const query = new URLSearchParams(searchParams.toString());
+    if (next.size) query.set("skip", [...next].join(","));
+    else query.delete("skip");
+    const suffix = query.toString();
+    router.replace(pathname + (suffix ? "?" + suffix : ""), { scroll: false });
+  }
 
   async function copy() {
     const text = stageRowsTsv(kept);
@@ -39,7 +51,7 @@ export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHr
   return (
     <div className="flex flex-col gap-4">
       {kept.length === 0 ? (
-        <p className="t-small text-ink-3">No one left in the table. Reload the panel to bring everyone back.</p>
+        <p className="t-small text-ink-3">No one left in the table. Restore all to put everyone back in this view.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-rule rounded-[16px] bg-surface">
           {kept.map((r) => (
@@ -52,7 +64,7 @@ export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHr
                 </span>
                 <span className="t-small text-ink-2">{r.feedback}</span>
               </span>
-              <button type="button" aria-label={"Take " + r.name + " off the table"} onClick={() => setGone((current) => new Set(current).add(r.id))} className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-danger">
+              <button type="button" aria-label={"Take " + r.name + " off the table"} onClick={() => updateRemoved(new Set([...gone, r.id]))} className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-danger">
                 <Icon name="x" size={16} />
               </button>
             </li>
@@ -64,6 +76,11 @@ export default function ExportTable({ rows, csvHref }: { rows: TrackRow[]; csvHr
           <Icon name="copy" size={16} />
           {copyState === "copied" ? "Copied" : copyState === "failed" ? "Could not copy" : "Copy as table"}
         </button>
+        {gone.size > 0 && (
+          <button type="button" onClick={() => updateRemoved(new Set())} className={pillSecondary}>
+            Restore all
+          </button>
+        )}
         <a href={csvHref + (gone.size ? "?skip=" + encodeURIComponent([...gone].join(",")) : "")} className={pillSecondary + " !gap-2"}>
           <Icon name="file" size={16} />
           Download CSV
