@@ -229,8 +229,8 @@ export default async function VacancyPage({
                 {[
                   { key: "calling", label: "Calling", items: mineOnly ? filterByCaller(v.applicants.filter((a) => sectionOfStage(a.stage) === "calling"), me.id) : v.applicants.filter((a) => sectionOfStage(a.stage) === "calling") },
                   { key: "interview", label: "Interview", items: v.applicants.filter((a) => sectionOfStage(a.stage) === "interviews") },
-                  { key: "shortlisted", label: "Shortlisted", items: v.applicants.filter((a) => a.stage === "shortlisted") },
-                  { key: "offered", label: "Offered", items: v.applicants.filter((a) => a.stage === "offered" || a.stage === "decision") },
+                  { key: "shortlisted", label: "Shortlisted", items: v.applicants.filter((a) => a.stage === "shortlisted" || a.stage === "decision") },
+                  { key: "offered", label: "Offered", items: v.applicants.filter((a) => a.stage === "offered") },
                 ].map((col) => (
                   <div key={col.key} className="flex w-[270px] shrink-0 flex-col gap-2.5 self-start rounded-[18px] bg-sunk p-2.5">
                     <div className="flex items-center gap-2 px-1.5 pt-1">

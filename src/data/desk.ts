@@ -18,7 +18,7 @@ import { unanswered } from "@/lib/setsBoard";
 import { MAX_PER_BATCH, PER_PASS, WA_BATCH_TITLE, WA_KEEPS_MS, WA_QUEUE, WA_RETRY_GAP_MS, isDirectCv, isGroupCv, parseWaRow, waBatchId, waQueueKey, waRowOf, type WaCvRow, batchesOf, batchesOn, isScoopSender, keyOf as scoopKeyOf, newBatch, nextSummaryAt, sendersFrom, summaryOf, type ScoopBatch } from "@/lib/scoop";
 import { graphScoopSource, scoopProblem, type ScoopSource } from "@/lib/graphMail";
 import { people as fetchTaPeople, type TaPerson, type TaResult } from "@/lib/ta";
-import { TA_ROSTER_KEY, parseTaRoster, withLiveIds } from "@/lib/taRoster";
+import { TA_ROSTER_KEY, parseTaRoster, rosterWithLive } from "@/lib/taRoster";
 import { matchPhone, type GroupEvent, type WaMessage } from "@/lib/whatsapp";
 import { cancelTeamsEvent } from "@/lib/graphCalendar";
 import type {
@@ -4232,7 +4232,7 @@ export async function taRosterPeople(db: OpsDatabase): Promise<TaResult<TaPerson
   const live = await fetchTaPeople();
   if (saved === null) return live;
   // The roster says who is on the list; TA's ids are what is stored and written back to TA.
-  return { ok: true, data: live.ok ? withLiveIds(saved, live.data) : saved, ms: live.ok ? live.ms : 0 };
+  return { ok: true, data: live.ok ? rosterWithLive(saved, live.data) : saved, ms: live.ok ? live.ms : 0 };
 }
 
 export async function saveTaRoster(roster: TaPerson[], by: Id, reason: string): Promise<void> {

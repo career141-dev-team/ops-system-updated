@@ -65,7 +65,7 @@ export default function OpeningAdmin({ c, open = false }: { c: RoleCtx; /** Open
                 <span className="t-small text-ink-3">Primary TA</span>
               </li>
               {team.map((t) => {
-                const person = taPeopleList.find((p) => p.id === t.taId);
+                const person = (c.taSide.ok ? c.taSide.data : []).find((p) => p.id === t.taId);
                 return (
                   <li key={t.taId} className="flex items-center gap-2 py-2">
                     <Avatar name={person?.fullName ?? t.taId} size="28" tone="neutral" />

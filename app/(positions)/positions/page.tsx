@@ -72,7 +72,8 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const db = await desk();
   const ta = await taRosterPeople(db);
   const taList = ta.ok ? ta.data.filter((p) => p.isActive) : [];
-  const taName = (id: string) => taList.find((p) => p.id === id)?.fullName ?? null;
+  // Names come from everyone, active or not, so a position keeps its TA's name after they leave the list.
+  const taName = (id: string) => (ta.ok ? ta.data : []).find((p) => p.id === id)?.fullName ?? null;
 
   const positions = positionsNewestFirst(db);
   const byId = new Map(positions.map((p) => [p.id, p]));

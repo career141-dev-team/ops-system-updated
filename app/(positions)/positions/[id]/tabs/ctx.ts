@@ -80,7 +80,7 @@ export async function buildRoleCtx(id: string, stage: string, me: NonNullable<Aw
   const taSide = await taRosterPeople(db);
   const taPeopleList = taSide.ok ? taSide.data.filter((p) => p.isActive) : [];
   const primaryTaPerson = taPeopleList.find((p) => p.id === position.primaryTaId) ?? null;
-  const taName = primaryTaPerson?.fullName.split(" ")[0] ?? (position.primaryTaId || "TA");
+  const taName = (taSide.ok ? taSide.data : []).find((p) => p.id === position.primaryTaId)?.fullName.split(" ")[0] ?? (position.primaryTaId || "TA");
   const opsOwner = memberIn(db, position.ownerId);
   const opsOwnerName = opsOwner?.name.split(" ")[0] ?? "Ops";
   // "" is how a removed backup is stored.

@@ -137,6 +137,20 @@ export function withLiveIds(roster: TaPerson[], live: TaPerson[]): TaPerson[] {
   });
 }
 
+/**
+ * The list Ops reads (27 Nov review): the roster with TA's ids, plus TA System people it lacks as
+ * inactive, so a position that already names them shows a name while pickers (active only) skip them.
+ */
+export function rosterWithLive(roster: TaPerson[], live: TaPerson[]): TaPerson[] {
+  const next = withLiveIds(roster, live);
+  const emails = new Set(next.map((p) => p.email.trim().toLowerCase()));
+  const ids = new Set(next.map((p) => p.id));
+  const extra = live
+    .filter((p) => !ids.has(p.id) && !(p.email && emails.has(p.email.trim().toLowerCase())))
+    .map((p) => ({ ...p, email: p.email.trim().toLowerCase(), taRole: normalizeTaRole(p.taRole), isActive: false }));
+  return [...next, ...extra];
+}
+
 /** Adds TA System people the roster does not have yet; people it has take TA's id. */
 export function mergeLiveTaIntoRoster(current: TaPerson[], live: TaPerson[]): TaPerson[] {
   const next = withLiveIds(current, live);

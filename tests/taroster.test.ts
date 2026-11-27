@@ -8,6 +8,7 @@ import {
   parseTaRoster,
   removeTaPersonFromRoster,
   taRoleLabel,
+  rosterWithLive,
   withLiveIds,
 } from "@/lib/taRoster";
 
@@ -104,4 +105,13 @@ test("mergeLiveTaIntoRoster adds missing live people without duplicating existin
   assert.deepEqual(merged.map((p) => p.fullName), ["Dewmini", "Shamra"]);
   assert.equal(merged[0].id, "live_1", "an email match takes TA's id");
   assert.equal(merged[1].id, "live_2");
+});
+
+test("rosterWithLive keeps TA people the roster lacks as inactive, so names still resolve but pickers skip them", () => {
+  const roster = parseTaRoster(JSON.stringify([{ id: "ta_dewmini", fullName: "Dewmini", email: "dewmini@career141.com", taRole: "ta", isActive: true }]))!;
+  const out = rosterWithLive(roster, [
+    { id: "k1", fullName: "Dewmini", email: "dewmini@career141.com", taRole: "ta", isActive: true },
+    { id: "k2", fullName: "Kavindi", email: "kavindi@career141.com", taRole: "ta", isActive: true },
+  ]);
+  assert.deepEqual(out.map((p) => [p.id, p.isActive]), [["k1", true], ["k2", false]]);
 });

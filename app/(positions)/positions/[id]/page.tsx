@@ -69,7 +69,7 @@ export default async function PositionPage({
   const word = stageWord(c);
   const posTas =
     [...new Set([position.primaryTaId, ...(position.team ?? []).map((t) => t.taId)].filter((x): x is string => !!x))]
-      .map((taId) => c.taPeopleList.find((p) => p.id === taId)?.fullName ?? taId)
+      .map((taId) => (c.taSide.ok ? c.taSide.data : []).find((p) => p.id === taId)?.fullName ?? taId)
       .join(", ") || taName;
   const sub = [
     clientName,
